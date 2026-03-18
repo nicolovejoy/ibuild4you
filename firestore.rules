@@ -1,0 +1,9 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Deny all direct client access — all reads/writes go through API routes
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -1,0 +1,61 @@
+@import 'tailwindcss';
+
+:root {
+  --background: #f8f8f0;
+  --foreground: #333333;
+  --brand-navy: #1a3c6b;
+  --brand-navy-light: #234d85;
+  --brand-navy-dark: #132d50;
+  --brand-cream: #f8f8f0;
+  --brand-slate: #4a6e91;
+  --brand-charcoal: #333333;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-brand-navy: var(--brand-navy);
+  --color-brand-navy-light: var(--brand-navy-light);
+  --color-brand-navy-dark: var(--brand-navy-dark);
+  --color-brand-cream: var(--brand-cream);
+  --color-brand-slate: var(--brand-slate);
+  --color-brand-charcoal: var(--brand-charcoal);
+  --font-sans: var(--font-open-sans);
+  --font-heading: var(--font-montserrat);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--font-heading), var(--font-sans), sans-serif;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.animate-shimmer {
+  background: linear-gradient(
+    90deg,
+    rgb(229 231 235) 25%,
+    rgb(243 244 246) 50%,
+    rgb(229 231 235) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
