@@ -33,6 +33,8 @@ npm run lint         # ESLint
 npm run lint:fix     # ESLint with auto-fix
 npm run type-check   # TypeScript check (tsc --noEmit)
 npm run format       # Prettier format all files
+npm test             # Run tests (vitest)
+npm run test:watch   # Run tests in watch mode
 ```
 
 ## Architecture
