@@ -2,7 +2,7 @@
 
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useApproval } from '@/lib/hooks/useApproval'
-import { useSessions, useMessages } from '@/lib/query/hooks'
+import { useSessions, useMessages, useClaimProject } from '@/lib/query/hooks'
 import { useRouter, useParams } from 'next/navigation'
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { MessageSquare, Send, ArrowLeft, FileText } from 'lucide-react'
@@ -43,6 +43,14 @@ export default function ProjectPage() {
 function ConversationView({ projectId }: { projectId: string }) {
   const router = useRouter()
   const queryClient = useQueryClient()
+  const claimProject = useClaimProject()
+
+  // Auto-claim the project if the user was invited (claim is idempotent — fails silently if already owned)
+  useEffect(() => {
+    claimProject.mutate(projectId)
+    // Only run once on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId])
   const { data: sessions, isLoading: sessionsLoading } = useSessions(projectId)
   const activeSession = sessions?.find((s) => s.status === 'active') || sessions?.[0]
   const sessionId = activeSession?.id

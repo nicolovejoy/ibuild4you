@@ -1,19 +1,37 @@
 import { NextResponse } from 'next/server'
 import { getAuthenticatedUser, getAdminDb } from '@/lib/api/firebase-server-helpers'
 
-// GET /api/projects — list the current user's projects
+// GET /api/projects — list the current user's projects (owned + shared with them)
 export async function GET(request: Request) {
   const auth = await getAuthenticatedUser(request)
   if (auth.error) return auth.error
 
   const db = getAdminDb()
-  const snapshot = await db
+
+  // Projects the user owns
+  const ownedSnap = await db
     .collection('projects')
     .where('requester_id', '==', auth.uid)
     .orderBy('created_at', 'desc')
     .get()
 
-  const projects = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
+  // Projects shared with the user's email (not yet claimed)
+  const sharedSnap = await db
+    .collection('projects')
+    .where('requester_email', '==', auth.email)
+    .orderBy('created_at', 'desc')
+    .get()
+
+  // Merge and deduplicate
+  const seen = new Set<string>()
+  const projects = []
+  for (const doc of [...ownedSnap.docs, ...sharedSnap.docs]) {
+    if (!seen.has(doc.id)) {
+      seen.add(doc.id)
+      projects.push({ id: doc.id, ...doc.data() })
+    }
+  }
+
   return NextResponse.json(projects)
 }
 
@@ -23,7 +41,7 @@ export async function POST(request: Request) {
   if (auth.error) return auth.error
 
   const body = await request.json()
-  const { title } = body
+  const { title, context } = body
 
   if (!title?.trim()) {
     return NextResponse.json({ error: 'Title is required' }, { status: 400 })
@@ -32,13 +50,18 @@ export async function POST(request: Request) {
   const db = getAdminDb()
   const now = new Date().toISOString()
 
-  const docRef = await db.collection('projects').add({
+  const projectData: Record<string, unknown> = {
     requester_id: auth.uid,
     title: title.trim(),
     status: 'active',
     created_at: now,
     updated_at: now,
-  })
+  }
+  if (context?.trim()) {
+    projectData.context = context.trim()
+  }
+
+  const docRef = await db.collection('projects').add(projectData)
 
   // Create the first session for the project automatically
   const sessionRef = await db.collection('sessions').add({

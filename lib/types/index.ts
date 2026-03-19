@@ -20,6 +20,8 @@ export interface Project extends BaseEntity {
   requester_id: string
   title: string
   status: 'active' | 'paused' | 'completed'
+  context?: string // admin-provided context about the project/requester
+  requester_email?: string // email of the intended requester (for sharing)
 }
 
 // Sessions collection — each conversation between requester and agent

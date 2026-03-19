@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { getAuthenticatedUser, getAdminDb } from '@/lib/api/firebase-server-helpers'
+import { getAuthenticatedUser, getAdminDb, canAccessProject } from '@/lib/api/firebase-server-helpers'
 import { buildBriefPrompt } from '@/lib/agent/brief-prompt'
 import { BRIEF_MODEL, BRIEF_MAX_TOKENS, BRIEF_TEMPERATURE } from '@/lib/agent/constants'
 import Anthropic from '@anthropic-ai/sdk'
@@ -25,7 +25,7 @@ export async function POST(request: Request) {
 
   // Verify ownership
   const projectDoc = await db.collection('projects').doc(project_id).get()
-  if (!projectDoc.exists || projectDoc.data()?.requester_id !== auth.uid) {
+  if (!projectDoc.exists || !canAccessProject(projectDoc.data()!, auth.uid, auth.email)) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
 

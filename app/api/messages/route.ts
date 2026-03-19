@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { getAuthenticatedUser, getAdminDb } from '@/lib/api/firebase-server-helpers'
+import { getAuthenticatedUser, getAdminDb, canAccessProject } from '@/lib/api/firebase-server-helpers'
 
 // GET /api/messages?session_id=xxx — list messages for a session
 export async function GET(request: Request) {
@@ -23,7 +23,7 @@ export async function GET(request: Request) {
 
   const projectId = sessionDoc.data()?.project_id
   const projectDoc = await db.collection('projects').doc(projectId).get()
-  if (!projectDoc.exists || projectDoc.data()?.requester_id !== auth.uid) {
+  if (!projectDoc.exists || !canAccessProject(projectDoc.data()!, auth.uid, auth.email)) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
 

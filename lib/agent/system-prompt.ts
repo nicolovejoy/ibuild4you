@@ -3,14 +3,25 @@ import type { BriefContent } from '@/lib/types'
 
 interface SystemPromptInput {
   briefContent: BriefContent | null
+  projectContext: string | null
   sessionNumber: number
 }
 
-export function buildSystemPrompt({ briefContent, sessionNumber }: SystemPromptInput): string {
+export function buildSystemPrompt({ briefContent, projectContext, sessionNumber }: SystemPromptInput): string {
   const parts: string[] = []
 
   parts.push('You are the iBuild4you project intake assistant.')
   parts.push(AGENT_BEHAVIOR_RULES)
+
+  if (projectContext) {
+    parts.push(`
+## Background
+
+Here's some context about this user and their project that was provided before the conversation started. Use this as a starting point — you don't need to re-ask about things covered here, but you can dig deeper into them.
+
+${projectContext}
+`.trim())
+  }
 
   if (briefContent && hasBriefContent(briefContent)) {
     parts.push(`

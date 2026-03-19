@@ -55,6 +55,19 @@ export async function getAuthenticatedUser(request: Request): Promise<AuthSucces
   }
 }
 
+// Check if a user can access a project (owner or shared requester)
+export function canAccessProject(
+  projectData: Record<string, unknown>,
+  uid: string,
+  email: string
+): boolean {
+  return (
+    projectData.requester_id === uid ||
+    projectData.requester_email === email ||
+    isAdminEmail(email)
+  )
+}
+
 export async function isApprovedEmail(email: string): Promise<boolean> {
   // Admins are always approved
   if (isAdminEmail(email)) return true

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { getAuthenticatedUser, getAdminDb } from '@/lib/api/firebase-server-helpers'
+import { getAuthenticatedUser, getAdminDb, canAccessProject } from '@/lib/api/firebase-server-helpers'
 
 // GET /api/sessions?project_id=xxx — list sessions for a project
 export async function GET(request: Request) {
@@ -15,9 +15,8 @@ export async function GET(request: Request) {
 
   const db = getAdminDb()
 
-  // Verify the user owns this project
   const projectDoc = await db.collection('projects').doc(projectId).get()
-  if (!projectDoc.exists || projectDoc.data()?.requester_id !== auth.uid) {
+  if (!projectDoc.exists || !canAccessProject(projectDoc.data()!, auth.uid, auth.email)) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
 
@@ -45,9 +44,8 @@ export async function POST(request: Request) {
 
   const db = getAdminDb()
 
-  // Verify the user owns this project
   const projectDoc = await db.collection('projects').doc(project_id).get()
-  if (!projectDoc.exists || projectDoc.data()?.requester_id !== auth.uid) {
+  if (!projectDoc.exists || !canAccessProject(projectDoc.data()!, auth.uid, auth.email)) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
 

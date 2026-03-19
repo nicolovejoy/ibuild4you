@@ -1,4 +1,4 @@
-import { getAuthenticatedUser, getAdminDb } from '@/lib/api/firebase-server-helpers'
+import { getAuthenticatedUser, getAdminDb, canAccessProject } from '@/lib/api/firebase-server-helpers'
 import { buildSystemPrompt } from '@/lib/agent/system-prompt'
 import { AGENT_MODEL, AGENT_MAX_TOKENS, AGENT_TEMPERATURE } from '@/lib/agent/constants'
 import Anthropic from '@anthropic-ai/sdk'
@@ -35,7 +35,8 @@ export async function POST(request: Request) {
 
   const projectId = sessionDoc.data()?.project_id
   const projectDoc = await db.collection('projects').doc(projectId).get()
-  if (!projectDoc.exists || projectDoc.data()?.requester_id !== auth.uid) {
+  const projectData = projectDoc.data() || {}
+  if (!projectDoc.exists || !canAccessProject(projectData, auth.uid, auth.email)) {
     return new Response(JSON.stringify({ error: 'Not found' }), {
       status: 404,
       headers: { 'Content-Type': 'application/json' },
@@ -92,8 +93,10 @@ export async function POST(request: Request) {
   }
 
   // Build system prompt
+  const projectContext = projectDoc.data()?.context || null
   const systemPrompt = buildSystemPrompt({
     briefContent,
+    projectContext,
     sessionNumber,
   })
 

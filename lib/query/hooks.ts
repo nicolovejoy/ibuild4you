@@ -19,14 +19,56 @@ export function useCreateProject() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: async (title: string) => {
+    mutationFn: async ({ title, context }: { title: string; context?: string }) => {
       const res = await apiFetch('/api/projects', {
         method: 'POST',
-        body: JSON.stringify({ title }),
+        body: JSON.stringify({ title, context }),
       })
       if (!res.ok) {
         const data = await res.json()
         throw new Error(data.error || 'Failed to create project')
+      }
+      return res.json()
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['projects'] })
+    },
+  })
+}
+
+export function useShareProject() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({ project_id, email }: { project_id: string; email: string }) => {
+      const res = await apiFetch('/api/projects/share', {
+        method: 'POST',
+        body: JSON.stringify({ project_id, email }),
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || 'Failed to share project')
+      }
+      return res.json()
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['projects'] })
+    },
+  })
+}
+
+export function useClaimProject() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (project_id: string) => {
+      const res = await apiFetch('/api/projects/claim', {
+        method: 'POST',
+        body: JSON.stringify({ project_id }),
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || 'Failed to claim project')
       }
       return res.json()
     },
