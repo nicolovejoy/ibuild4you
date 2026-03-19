@@ -4,7 +4,9 @@ import { AGENT_MODEL, AGENT_MAX_TOKENS, AGENT_TEMPERATURE } from '@/lib/agent/co
 import Anthropic from '@anthropic-ai/sdk'
 import type { BriefContent } from '@/lib/types'
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+function getAnthropic() {
+  return new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+}
 
 export async function POST(request: Request) {
   const auth = await getAuthenticatedUser(request)
@@ -96,7 +98,7 @@ export async function POST(request: Request) {
   })
 
   // Stream response from Claude
-  const stream = anthropic.messages.stream({
+  const stream = getAnthropic().messages.stream({
     model: AGENT_MODEL,
     system: systemPrompt,
     messages: claudeMessages,

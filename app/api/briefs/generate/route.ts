@@ -5,7 +5,9 @@ import { BRIEF_MODEL, BRIEF_MAX_TOKENS, BRIEF_TEMPERATURE } from '@/lib/agent/co
 import Anthropic from '@anthropic-ai/sdk'
 import type { BriefContent } from '@/lib/types'
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+function getAnthropic() {
+  return new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+}
 
 // POST /api/briefs/generate — generate/update the brief for a project
 export async function POST(request: Request) {
@@ -75,7 +77,7 @@ export async function POST(request: Request) {
   })
 
   try {
-    const response = await anthropic.messages.create({
+    const response = await getAnthropic().messages.create({
       model: BRIEF_MODEL,
       max_tokens: BRIEF_MAX_TOKENS,
       temperature: BRIEF_TEMPERATURE,

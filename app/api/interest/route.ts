@@ -3,7 +3,9 @@ import { getAdminDb } from '@/lib/firebase/admin'
 import { Resend } from 'resend'
 import { ADMIN_EMAILS } from '@/lib/constants'
 
-const resend = new Resend(process.env.RESEND_API_KEY)
+function getResend() {
+  return new Resend(process.env.RESEND_API_KEY)
+}
 
 export async function POST(request: Request) {
   try {
@@ -30,7 +32,7 @@ export async function POST(request: Request) {
 
     // Send email notification to admin
     try {
-      await resend.emails.send({
+      await getResend().emails.send({
         from: 'iBuild4you <noreply@ibuild4you.com>',
         to: ADMIN_EMAILS,
         subject: `New interest: ${name.trim()}`,
