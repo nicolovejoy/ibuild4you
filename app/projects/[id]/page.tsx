@@ -194,6 +194,7 @@ function ConversationView({ projectId }: { projectId: string }) {
       })
     } finally {
       setStreaming(false)
+      textareaRef.current?.focus()
     }
   }
 
