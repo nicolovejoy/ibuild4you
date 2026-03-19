@@ -80,7 +80,13 @@ describe('data model types', () => {
       id: 'b1',
       project_id: 'p1',
       version: 1,
-      content: { problem: 'No online ordering', users: ['customers', 'staff'] },
+      content: {
+        problem: 'No online ordering',
+        target_users: 'Bakery customers and staff',
+        features: ['Online ordering', 'Menu display'],
+        constraints: '',
+        additional_context: '',
+      },
       created_at: '2026-03-18T00:00:00Z',
       updated_at: '2026-03-18T00:00:00Z',
     }

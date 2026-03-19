@@ -1,0 +1,147 @@
+import { getAuthenticatedUser, getAdminDb } from '@/lib/api/firebase-server-helpers'
+import { buildSystemPrompt } from '@/lib/agent/system-prompt'
+import { AGENT_MODEL, AGENT_MAX_TOKENS, AGENT_TEMPERATURE } from '@/lib/agent/constants'
+import Anthropic from '@anthropic-ai/sdk'
+import type { BriefContent } from '@/lib/types'
+
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+
+export async function POST(request: Request) {
+  const auth = await getAuthenticatedUser(request)
+  if (auth.error) return auth.error
+
+  const body = await request.json()
+  const { session_id, content } = body
+
+  if (!session_id || !content?.trim()) {
+    return new Response(JSON.stringify({ error: 'session_id and content are required' }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
+  const db = getAdminDb()
+
+  // Look up session → project, verify ownership
+  const sessionDoc = await db.collection('sessions').doc(session_id).get()
+  if (!sessionDoc.exists) {
+    return new Response(JSON.stringify({ error: 'Session not found' }), {
+      status: 404,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
+  const projectId = sessionDoc.data()?.project_id
+  const projectDoc = await db.collection('projects').doc(projectId).get()
+  if (!projectDoc.exists || projectDoc.data()?.requester_id !== auth.uid) {
+    return new Response(JSON.stringify({ error: 'Not found' }), {
+      status: 404,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
+  const now = new Date().toISOString()
+
+  // Store the user message
+  await db.collection('messages').add({
+    session_id,
+    role: 'user',
+    content: content.trim(),
+    created_at: now,
+    updated_at: now,
+  })
+
+  // Load conversation history for this session
+  const messagesSnap = await db
+    .collection('messages')
+    .where('session_id', '==', session_id)
+    .orderBy('created_at', 'asc')
+    .get()
+
+  const messages = messagesSnap.docs.map((doc) => ({
+    role: doc.data().role as 'user' | 'assistant',
+    content: doc.data().content as string,
+  }))
+  // Map our 'agent' role to Claude's 'assistant' role
+  const claudeMessages = messages.map((m) => ({
+    role: m.role === 'user' ? ('user' as const) : ('assistant' as const),
+    content: m.content,
+  }))
+
+  // Count sessions for this project to determine session number
+  const sessionsSnap = await db
+    .collection('sessions')
+    .where('project_id', '==', projectId)
+    .orderBy('created_at', 'asc')
+    .get()
+  const sessionIds = sessionsSnap.docs.map((d) => d.id)
+  const sessionNumber = sessionIds.indexOf(session_id) + 1
+
+  // Load current brief if exists
+  let briefContent: BriefContent | null = null
+  const briefSnap = await db
+    .collection('briefs')
+    .where('project_id', '==', projectId)
+    .orderBy('version', 'desc')
+    .limit(1)
+    .get()
+  if (!briefSnap.empty) {
+    briefContent = briefSnap.docs[0].data().content as BriefContent
+  }
+
+  // Build system prompt
+  const systemPrompt = buildSystemPrompt({
+    briefContent,
+    sessionNumber,
+  })
+
+  // Stream response from Claude
+  const stream = anthropic.messages.stream({
+    model: AGENT_MODEL,
+    system: systemPrompt,
+    messages: claudeMessages,
+    max_tokens: AGENT_MAX_TOKENS,
+    temperature: AGENT_TEMPERATURE,
+  })
+
+  const encoder = new TextEncoder()
+  let fullResponse = ''
+
+  const readable = new ReadableStream({
+    async start(controller) {
+      try {
+        for await (const event of stream) {
+          if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
+            fullResponse += event.delta.text
+            const chunk = `data: ${JSON.stringify({ text: event.delta.text })}\n\n`
+            controller.enqueue(encoder.encode(chunk))
+          }
+        }
+
+        // Store the complete agent response
+        const responseTime = new Date().toISOString()
+        await db.collection('messages').add({
+          session_id,
+          role: 'agent',
+          content: fullResponse,
+          created_at: responseTime,
+          updated_at: responseTime,
+        })
+
+        controller.enqueue(encoder.encode('data: [DONE]\n\n'))
+        controller.close()
+      } catch (err) {
+        console.error('Stream error:', err)
+        controller.error(err)
+      }
+    },
+  })
+
+  return new Response(readable, {
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive',
+    },
+  })
+}

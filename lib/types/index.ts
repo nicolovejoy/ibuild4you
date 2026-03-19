@@ -40,7 +40,7 @@ export interface Message extends BaseEntity {
 export interface Brief extends BaseEntity {
   project_id: string
   version: number
-  content: Record<string, unknown>
+  content: BriefContent
 }
 
 // Reviews collection — builder annotations on a brief
@@ -55,4 +55,22 @@ export interface ReviewAnnotation {
   section: string
   comment: string
   created_at: string
+}
+
+// Interest form submissions from the landing page
+export interface InterestSubmission extends BaseEntity {
+  name: string
+  email: string
+  how_found: string
+  want_to_try: boolean
+  what_for: string
+}
+
+// Structured brief content sections
+export interface BriefContent {
+  problem: string
+  target_users: string
+  features: string[]
+  constraints: string
+  additional_context: string
 }

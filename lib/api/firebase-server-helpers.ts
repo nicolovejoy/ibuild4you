@@ -55,4 +55,13 @@ export async function getAuthenticatedUser(request: Request): Promise<AuthSucces
   }
 }
 
+export async function isApprovedEmail(email: string): Promise<boolean> {
+  // Admins are always approved
+  if (isAdminEmail(email)) return true
+
+  const db = getAdminDb()
+  const doc = await db.collection('approved_emails').doc(email).get()
+  return doc.exists
+}
+
 export { getAdminDb }

@@ -1,0 +1,65 @@
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { apiFetch } from '@/lib/firebase/api-fetch'
+import type { Project, Session, Message } from '@/lib/types'
+
+// --- Projects ---
+
+export function useProjects() {
+  return useQuery<Project[]>({
+    queryKey: ['projects'],
+    queryFn: async () => {
+      const res = await apiFetch('/api/projects')
+      if (!res.ok) throw new Error('Failed to load projects')
+      return res.json()
+    },
+  })
+}
+
+export function useCreateProject() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (title: string) => {
+      const res = await apiFetch('/api/projects', {
+        method: 'POST',
+        body: JSON.stringify({ title }),
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || 'Failed to create project')
+      }
+      return res.json()
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['projects'] })
+    },
+  })
+}
+
+// --- Sessions ---
+
+export function useSessions(projectId: string | undefined) {
+  return useQuery<Session[]>({
+    queryKey: ['sessions', projectId],
+    queryFn: async () => {
+      const res = await apiFetch(`/api/sessions?project_id=${projectId}`)
+      if (!res.ok) throw new Error('Failed to load sessions')
+      return res.json()
+    },
+    enabled: !!projectId,
+  })
+}
+
+// --- Messages ---
+
+export function useMessages(sessionId: string | undefined) {
+  return useQuery<Message[]>({
+    queryKey: ['messages', sessionId],
+    queryFn: async () => {
+      const res = await apiFetch(`/api/messages?session_id=${sessionId}`)
+      if (!res.ok) throw new Error('Failed to load messages')
+      return res.json()
+    },
+    enabled: !!sessionId,
+  })
+}

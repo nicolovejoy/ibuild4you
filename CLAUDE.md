@@ -74,6 +74,12 @@ Conversational intake → structured living brief → builder review → next se
 
 NOT in MVP: process flow diagrams, data architecture drafts, microservice sketches, comparable app analysis, whiteboard UI mockups.
 
+## Testing & Deployment
+
+- **Production-first testing**: We test in prod. No staging environment. This is fine while the app is invite-only and low-stakes — revisit when risk profile changes (payments, sensitive data, larger user base).
+- **CI/CD**: GitHub Actions runs `type-check`, `lint`, `build`, `test` before deploying to Vercel.
+- **TDD when possible**: Write tests before implementation. Skip only when it genuinely doesn't fit (pure UI layout, exploratory prototyping).
+
 ## Code Style
 
 This is a learning project (Max, 19, college freshman, is contributing). Code should be:
