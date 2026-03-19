@@ -15,7 +15,7 @@ iBuild4you.com — an AI-powered project intake system. A conversational agent g
 ## Stack
 
 - Next.js App Router on Vercel
-- Firestore (`piano-house-shared` Firebase project, shared with NoteMaxxing for now) — all DB access through API routes using Firebase Admin SDK, never from client components
+- Firestore (`ibuild4you-a0c4d` Firebase project) — all DB access through API routes using Firebase Admin SDK, never from client components
 - Firebase Auth with magic link login via Resend
 - Shared `apiFetch()` client helper with Bearer tokens
 - React Query for state management
