@@ -7,6 +7,17 @@ export async function GET(request: Request) {
   if (auth.error) return auth.error
 
   const db = getAdminDb()
+  const { isAdminEmail } = await import('@/lib/constants')
+
+  // Admins see all projects
+  if (isAdminEmail(auth.email)) {
+    const allSnap = await db
+      .collection('projects')
+      .orderBy('created_at', 'desc')
+      .get()
+    const projects = allSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
+    return NextResponse.json(projects)
+  }
 
   // Projects the user owns
   const ownedSnap = await db
