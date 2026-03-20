@@ -26,7 +26,6 @@ async function enrichProjects(
           const msgSnap = await db
             .collection('messages')
             .where('session_id', 'in', chunk)
-            .where('role', '==', 'user')
             .orderBy('created_at', 'desc')
             .limit(1)
             .get()
@@ -35,7 +34,9 @@ async function enrichProjects(
             const msg = msgSnap.docs[0].data()
             if (!lastMessageAt || msg.created_at > lastMessageAt) {
               lastMessageAt = msg.created_at as string
-              lastMessageBy = (msg.sender_email as string) || null
+              lastMessageBy = msg.role === 'user'
+                ? (msg.sender_email as string) || null
+                : 'agent'
             }
           }
         }
