@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiFetch } from '@/lib/firebase/api-fetch'
-import type { Project, Session, Message } from '@/lib/types'
+import type { Project, Session, Message, Brief } from '@/lib/types'
 
 // --- Projects ---
 
@@ -75,6 +75,34 @@ export function useClaimProject() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['projects'] })
     },
+  })
+}
+
+export function useProject(projectId: string | undefined) {
+  return useQuery<Project>({
+    queryKey: ['project', projectId],
+    queryFn: async () => {
+      // Fetch from the list endpoint and find the one we want
+      const res = await apiFetch('/api/projects')
+      if (!res.ok) throw new Error('Failed to load project')
+      const projects: Project[] = await res.json()
+      const project = projects.find((p) => p.id === projectId)
+      if (!project) throw new Error('Project not found')
+      return project
+    },
+    enabled: !!projectId,
+  })
+}
+
+export function useBrief(projectId: string | undefined) {
+  return useQuery<Brief | null>({
+    queryKey: ['brief', projectId],
+    queryFn: async () => {
+      const res = await apiFetch(`/api/briefs?project_id=${projectId}`)
+      if (!res.ok) throw new Error('Failed to load brief')
+      return res.json()
+    },
+    enabled: !!projectId,
   })
 }
 
