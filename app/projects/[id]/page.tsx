@@ -18,7 +18,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { StatusMessage } from '@/components/ui/StatusMessage'
 import { Card, CardBody } from '@/components/ui/Card'
 import { Skeleton } from '@/components/ui/Skeleton'
-import type { Message, BriefContent } from '@/lib/types'
+import type { BriefContent } from '@/lib/types'
 
 const BRIEF_UPDATE_INTERVAL = 15_000
 
@@ -45,10 +45,10 @@ export default function ProjectPage() {
     )
   }
 
-  return <ProjectHub projectId={projectId} />
+  return <ProjectHub projectId={projectId} userEmail={user.email || ''} />
 }
 
-function ProjectHub({ projectId }: { projectId: string }) {
+function ProjectHub({ projectId, userEmail }: { projectId: string; userEmail: string }) {
   const router = useRouter()
   const claimProject = useClaimProject()
   const { data: project, isLoading: projectLoading } = useProject(projectId)
@@ -129,7 +129,7 @@ function ProjectHub({ projectId }: { projectId: string }) {
             <MessageSquare className="h-4 w-4" />
             Chat
           </h2>
-          <ChatSection projectId={projectId} />
+          <ChatSection projectId={projectId} userEmail={userEmail} />
         </div>
       </main>
     </div>
@@ -161,7 +161,7 @@ function hasBriefContent(brief: BriefContent): boolean {
   )
 }
 
-function ChatSection({ projectId }: { projectId: string }) {
+function ChatSection({ projectId, userEmail }: { projectId: string; userEmail: string }) {
   const queryClient = useQueryClient()
   const { data: sessions, isLoading: sessionsLoading } = useSessions(projectId)
   const activeSession = sessions?.find((s) => s.status === 'active') || sessions?.[0]
@@ -169,7 +169,8 @@ function ChatSection({ projectId }: { projectId: string }) {
 
   const { data: savedMessages, isLoading: messagesLoading } = useMessages(sessionId)
 
-  const [messages, setMessages] = useState<Pick<Message, 'role' | 'content'>[]>([])
+  type ChatMessage = { role: 'user' | 'agent'; content: string; created_at?: string }
+  const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [streaming, setStreaming] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -180,7 +181,7 @@ function ChatSection({ projectId }: { projectId: string }) {
   // Sync saved messages into local state
   useEffect(() => {
     if (savedMessages) {
-      setMessages(savedMessages.map((m) => ({ role: m.role, content: m.content })))
+      setMessages(savedMessages.map((m) => ({ role: m.role, content: m.content, created_at: m.created_at })))
     }
   }, [savedMessages])
 
@@ -231,8 +232,9 @@ function ChatSection({ projectId }: { projectId: string }) {
     setInput('')
     setError(null)
 
-    setMessages((prev) => [...prev, { role: 'user', content: userMessage }])
-    setMessages((prev) => [...prev, { role: 'agent', content: '' }])
+    const nowIso = new Date().toISOString()
+    setMessages((prev) => [...prev, { role: 'user', content: userMessage, created_at: nowIso }])
+    setMessages((prev) => [...prev, { role: 'agent', content: '', created_at: nowIso }])
     setStreaming(true)
 
     try {
@@ -324,7 +326,7 @@ function ChatSection({ projectId }: { projectId: string }) {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Describe your idea..."
+          placeholder="Type a message..."
           rows={1}
           disabled={streaming || isLoading}
           className="flex-1 resize-none px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy disabled:bg-gray-50 disabled:text-gray-400"
@@ -367,6 +369,12 @@ function ChatSection({ projectId }: { projectId: string }) {
                     : 'bg-white border border-gray-200 text-gray-800'
                 }`}
               >
+                <p className={`text-[10px] mb-1 ${
+                  msg.role === 'user' ? 'text-blue-200' : 'text-gray-400'
+                }`}>
+                  {msg.role === 'user' ? userEmail : 'iBuild4you assistant'}
+                  {msg.created_at ? ` · ${formatTimestamp(msg.created_at)}` : ''}
+                </p>
                 <p className="whitespace-pre-wrap text-sm leading-relaxed">{msg.content}</p>
               </div>
             </div>
@@ -375,4 +383,20 @@ function ChatSection({ projectId }: { projectId: string }) {
       )}
     </div>
   )
+}
+
+function formatTimestamp(iso: string): string {
+  const date = new Date(iso)
+  const now = new Date()
+  const isToday = date.toDateString() === now.toDateString()
+
+  const time = date.toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  })
+
+  if (isToday) return time
+
+  return `${date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} ${time}`
 }
