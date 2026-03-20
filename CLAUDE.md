@@ -86,3 +86,10 @@ This is a learning project (Max, 19, college freshman, is contributing). Code sh
 - Clear and straightforward — no clever abstractions
 - Well-commented where non-obvious
 - Following patterns established in NoteMaxxing
+
+## Next Steps
+
+1. Test share flow end-to-end with Jamie (bakerylouise.com) and Owen
+2. Set up Resend domain verification for ibuild4you.com so admin notification emails deliver
+3. Refine agent conversation quality based on real user feedback
+4. Set up GitHub Actions CI/CD pipeline (type-check, lint, build, test → Vercel deploy)
