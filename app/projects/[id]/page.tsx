@@ -379,28 +379,26 @@ function AdminSetup({ project, isUnshared }: { project: { id: string; title: str
                 )}
               </div>
 
-              {isUnshared && (
-                <form onSubmit={handleShare} className="flex items-center gap-2">
-                  <input
-                    type="email"
-                    value={shareEmail}
-                    onChange={(e) => setShareEmail(e.target.value)}
-                    placeholder="maker@email.com"
-                    className="px-2.5 py-1.5 border border-gray-300 rounded-md text-sm w-48 focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
-                  />
-                  <LoadingButton
-                    type="submit"
-                    variant="primary"
-                    size="sm"
-                    loading={shareProject.isPending}
-                    loadingText="Sharing..."
-                    disabled={!shareEmail.trim()}
-                    icon={Share2}
-                  >
-                    Share
-                  </LoadingButton>
-                </form>
-              )}
+              <form onSubmit={handleShare} className="flex items-center gap-2">
+                <input
+                  type="email"
+                  value={shareEmail}
+                  onChange={(e) => setShareEmail(e.target.value)}
+                  placeholder="maker@email.com"
+                  className="px-2.5 py-1.5 border border-gray-300 rounded-md text-sm w-48 focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
+                />
+                <LoadingButton
+                  type="submit"
+                  variant="primary"
+                  size="sm"
+                  loading={shareProject.isPending}
+                  loadingText="Sharing..."
+                  disabled={!shareEmail.trim()}
+                  icon={Share2}
+                >
+                  {isUnshared ? 'Share' : 'Reshare'}
+                </LoadingButton>
+              </form>
             </div>
 
             {shareProject.isSuccess && (
@@ -478,7 +476,7 @@ function BriefSummary({ content }: { content: BriefContent }) {
 
   return (
     <p className="text-sm text-gray-700 leading-relaxed">
-      {parts.join(' · ') || 'Brief is being generated...'}
+      {parts.join(' · ')}
     </p>
   )
 }
