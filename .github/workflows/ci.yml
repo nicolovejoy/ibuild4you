@@ -21,6 +21,9 @@ jobs:
 
       - run: npm ci
 
+      - name: Generate build info
+        run: node scripts/generate-build-info.js
+
       - name: Type-check
         run: npm run type-check
 
