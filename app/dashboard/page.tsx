@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { UserMenu } from '@/components/user-menu'
 import { MessageSquare, Plus, FolderOpen, Share2, Copy, Check } from 'lucide-react'
+import { BuildTimestamp } from '@/components/build-timestamp'
 import { useProjects, useCreateProject, useShareProject } from '@/lib/query/hooks'
 import { isAdminEmail } from '@/lib/constants'
 import { LoadingButton } from '@/components/ui/LoadingButton'
@@ -50,9 +51,10 @@ export default function DashboardPage() {
       <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
         <div className="px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 group relative">
               <MessageSquare className="h-7 w-7 text-brand-navy" />
               <h1 className="text-xl font-bold text-brand-charcoal">iBuild4you</h1>
+              <BuildTimestamp />
             </div>
             <UserMenu />
           </div>

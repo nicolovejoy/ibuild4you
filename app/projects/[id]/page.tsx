@@ -6,6 +6,7 @@ import { useSessions, useMessages, useClaimProject } from '@/lib/query/hooks'
 import { useRouter, useParams } from 'next/navigation'
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { MessageSquare, Send, ArrowLeft, FileText } from 'lucide-react'
+import { BuildTimestamp } from '@/components/build-timestamp'
 import { apiFetch } from '@/lib/firebase/api-fetch'
 import { useQueryClient } from '@tanstack/react-query'
 import { StatusMessage } from '@/components/ui/StatusMessage'
@@ -227,8 +228,10 @@ function ConversationView({ projectId }: { projectId: string }) {
             >
               <ArrowLeft className="h-5 w-5 text-gray-600" />
             </button>
-            <MessageSquare className="h-5 w-5 text-brand-navy" />
-            <span className="font-semibold text-brand-charcoal">Chat</span>
+            <div className="group relative">
+              <span className="font-semibold text-brand-charcoal">Chat</span>
+              <BuildTimestamp />
+            </div>
           </div>
           <button
             onClick={() => router.push(`/projects/${projectId}/brief`)}
