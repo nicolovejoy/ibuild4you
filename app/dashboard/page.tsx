@@ -256,7 +256,7 @@ function ProjectList({ isAdmin }: { isAdmin: boolean }) {
 }
 
 function ShareModal({ project, onClose }: { project: Project; onClose: () => void }) {
-  const [email, setEmail] = useState(project.requester_email || '')
+  const [email, setEmail] = useState('')
   const [copied, setCopied] = useState(false)
   const shareProject = useShareProject()
   const shareLink = typeof window !== 'undefined'
