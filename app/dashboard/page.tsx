@@ -215,7 +215,7 @@ function ProjectList({ isAdmin }: { isAdmin: boolean }) {
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
-                  {isAdmin && !project.requester_email && (
+                  {isAdmin && (
                     <button
                       onClick={(e) => {
                         e.stopPropagation()
@@ -256,7 +256,7 @@ function ProjectList({ isAdmin }: { isAdmin: boolean }) {
 }
 
 function ShareModal({ project, onClose }: { project: Project; onClose: () => void }) {
-  const [email, setEmail] = useState('')
+  const [email, setEmail] = useState(project.requester_email || '')
   const [copied, setCopied] = useState(false)
   const shareProject = useShareProject()
   const shareLink = typeof window !== 'undefined'
