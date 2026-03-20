@@ -499,7 +499,7 @@ function ChatSection({ projectId, userEmail, isAdmin }: { projectId: string; use
 
   const { data: savedMessages, isLoading: messagesLoading } = useMessages(sessionId)
 
-  type ChatMessage = { id?: string; role: 'user' | 'agent'; content: string; created_at?: string }
+  type ChatMessage = { id?: string; role: 'user' | 'agent'; content: string; created_at?: string; sender_email?: string }
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [streaming, setStreaming] = useState(false)
@@ -512,7 +512,7 @@ function ChatSection({ projectId, userEmail, isAdmin }: { projectId: string; use
   // Sync saved messages into local state
   useEffect(() => {
     if (savedMessages) {
-      setMessages(savedMessages.map((m) => ({ id: m.id, role: m.role, content: m.content, created_at: m.created_at })))
+      setMessages(savedMessages.map((m) => ({ id: m.id, role: m.role, content: m.content, created_at: m.created_at, sender_email: m.sender_email })))
     }
   }, [savedMessages])
 
@@ -564,7 +564,7 @@ function ChatSection({ projectId, userEmail, isAdmin }: { projectId: string; use
     setError(null)
 
     const nowIso = new Date().toISOString()
-    setMessages((prev) => [...prev, { role: 'user', content: userMessage, created_at: nowIso }])
+    setMessages((prev) => [...prev, { role: 'user', content: userMessage, created_at: nowIso, sender_email: userEmail }])
     setMessages((prev) => [...prev, { role: 'agent', content: '', created_at: nowIso }])
     setStreaming(true)
 
@@ -703,7 +703,7 @@ function ChatSection({ projectId, userEmail, isAdmin }: { projectId: string; use
                 <p className={`text-[10px] mb-1 ${
                   msg.role === 'user' ? 'text-blue-200' : 'text-gray-400'
                 }`}>
-                  {msg.role === 'user' ? userEmail : 'iBuild4you assistant'}
+                  {msg.role === 'user' ? (msg.sender_email || userEmail) : 'iBuild4you assistant'}
                   {msg.created_at ? ` · ${formatTimestamp(msg.created_at)}` : ''}
                 </p>
                 <p className="whitespace-pre-wrap text-sm leading-relaxed">{msg.content}</p>

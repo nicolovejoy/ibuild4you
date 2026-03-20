@@ -56,6 +56,7 @@ export async function POST(request: Request) {
     session_id,
     role: 'user',
     content: content.trim(),
+    sender_email: auth.email,
     created_at: now,
     updated_at: now,
   })

@@ -39,6 +39,7 @@ export interface Message extends BaseEntity {
   session_id: string
   role: 'user' | 'agent'
   content: string
+  sender_email?: string // who sent this message (for user messages)
 }
 
 // Briefs collection — the living brief for a project
