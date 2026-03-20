@@ -161,6 +161,11 @@ function ProjectHub({ projectId, userEmail }: { projectId: string; userEmail: st
           </h2>
           <ChatSection projectId={projectId} userEmail={userEmail} isAdmin={isAdmin} />
         </div>
+
+        {/* Export — admin only */}
+        {isAdmin && project && !projectLoading && (
+          <ExportSection project={project} briefContent={briefContent || null} projectId={projectId} />
+        )}
       </main>
     </div>
   )
@@ -463,6 +468,86 @@ function AdminSetup({ project, isUnshared }: { project: { id: string; title: str
         )}
       </CardBody>
     </Card>
+  )
+}
+
+function ExportSection({ project, briefContent, projectId }: {
+  project: { title: string; context?: string; seed_questions?: string[]; style_guide?: string }
+  briefContent: BriefContent | null
+  projectId: string
+}) {
+  const [convCopied, setConvCopied] = useState(false)
+  const [briefCopied, setBriefCopied] = useState(false)
+  const { data: sessions } = useSessions(projectId)
+  const activeSession = sessions?.find((s) => s.status === 'active') || sessions?.[0]
+  const { data: messages } = useMessages(activeSession?.id)
+
+  const formatConversation = () => {
+    const lines: string[] = [`# ${project.title}`, '']
+    if (project.context) {
+      lines.push(`## Context`, project.context, '')
+    }
+    if (project.style_guide) {
+      lines.push(`## Style guide`, project.style_guide, '')
+    }
+    if (project.seed_questions?.length) {
+      lines.push(`## Seed questions`, ...project.seed_questions.map((q, i) => `${i + 1}. ${q}`), '')
+    }
+    lines.push(`## Conversation`, '')
+    if (messages) {
+      for (const msg of messages) {
+        const sender = msg.role === 'agent' ? 'Agent' : (msg.sender_email || 'User')
+        lines.push(`**${sender}:** ${msg.content}`, '')
+      }
+    }
+    return lines.join('\n')
+  }
+
+  const formatBrief = () => {
+    if (!briefContent) return ''
+    const sections: string[] = [`# Brief: ${project.title}`, '']
+    if (briefContent.problem) sections.push(`## Problem`, briefContent.problem, '')
+    if (briefContent.target_users) sections.push(`## Target users`, briefContent.target_users, '')
+    if (briefContent.features?.length) {
+      sections.push(`## Features`, ...briefContent.features.map((f) => `- ${f}`), '')
+    }
+    if (briefContent.constraints) sections.push(`## Constraints`, briefContent.constraints, '')
+    if (briefContent.additional_context) sections.push(`## Additional context`, briefContent.additional_context, '')
+    return sections.join('\n')
+  }
+
+  const handleCopyConversation = async () => {
+    await navigator.clipboard.writeText(formatConversation())
+    setConvCopied(true)
+    setTimeout(() => setConvCopied(false), 2000)
+  }
+
+  const handleCopyBrief = async () => {
+    await navigator.clipboard.writeText(formatBrief())
+    setBriefCopied(true)
+    setTimeout(() => setBriefCopied(false), 2000)
+  }
+
+  return (
+    <div className="flex items-center gap-3 pt-2 border-t border-gray-200">
+      <span className="text-xs text-gray-400 uppercase tracking-wide">Export</span>
+      <button
+        onClick={handleCopyConversation}
+        disabled={!messages?.length}
+        className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand-navy disabled:opacity-40 disabled:cursor-not-allowed"
+      >
+        {convCopied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+        {convCopied ? 'Copied!' : 'Conversation'}
+      </button>
+      <button
+        onClick={handleCopyBrief}
+        disabled={!briefContent || !hasBriefContent(briefContent)}
+        className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand-navy disabled:opacity-40 disabled:cursor-not-allowed"
+      >
+        {briefCopied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+        {briefCopied ? 'Copied!' : 'Brief'}
+      </button>
+    </div>
   )
 }
 
