@@ -15,7 +15,7 @@ import {
 } from '@/lib/query/hooks'
 import { useRouter, useParams } from 'next/navigation'
 import { useEffect, useState, useRef, useCallback } from 'react'
-import { MessageSquare, Send, ArrowLeft, FileText, Calendar, Trash2, Sparkles, Plus, X, Share2, ChevronDown, ChevronUp } from 'lucide-react'
+import { MessageSquare, Send, ArrowLeft, FileText, Calendar, Trash2, Sparkles, Plus, X, Share2, ChevronDown, ChevronUp, Copy, Check, Mail } from 'lucide-react'
 import { BuildTimestamp } from '@/components/build-timestamp'
 import { apiFetch } from '@/lib/firebase/api-fetch'
 import { isAdminEmail } from '@/lib/constants'
@@ -214,10 +214,16 @@ function AdminSetup({ project, isUnshared }: { project: { id: string; title: str
   const [styleGuide, setStyleGuide] = useState(project.style_guide || '')
   const [shareEmail, setShareEmail] = useState('')
   const [saved, setSaved] = useState(false)
+  const [linkCopied, setLinkCopied] = useState(false)
+  const [emailCopied, setEmailCopied] = useState(false)
 
   const updateProject = useUpdateProject()
   const generateWelcome = useGenerateWelcome()
   const shareProject = useShareProject()
+
+  const shareLink = typeof window !== 'undefined'
+    ? `${window.location.origin}/projects/${project.id}`
+    : ''
 
   // Sync from project data when it changes
   useEffect(() => {
@@ -398,7 +404,59 @@ function AdminSetup({ project, isUnshared }: { project: { id: string; title: str
             </div>
 
             {shareProject.isSuccess && (
-              <StatusMessage type="success" message="Project shared! The maker will see your welcome message when they open it." />
+              <div className="space-y-3 p-3 bg-green-50 border border-green-200 rounded-lg">
+                <p className="text-sm font-medium text-green-800">
+                  Shared with {shareEmail}! Send them the link and invite email below.
+                </p>
+
+                {/* Copy link */}
+                <div>
+                  <p className="text-xs text-gray-600 mb-1">Project link</p>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      readOnly
+                      value={shareLink}
+                      className="flex-1 px-2.5 py-1.5 bg-white border border-gray-300 rounded-md text-sm text-gray-700"
+                    />
+                    <button
+                      onClick={async () => {
+                        await navigator.clipboard.writeText(shareLink)
+                        setLinkCopied(true)
+                        setTimeout(() => setLinkCopied(false), 2000)
+                      }}
+                      className="p-1.5 text-gray-500 hover:text-brand-navy hover:bg-white rounded"
+                    >
+                      {linkCopied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Invite email */}
+                <div>
+                  <p className="text-xs text-gray-600 mb-1 flex items-center gap-1">
+                    <Mail className="h-3.5 w-3.5" />
+                    Invite email
+                  </p>
+                  <textarea
+                    readOnly
+                    value={`Hey! I've set up a project for you on iBuild4you — it's a tool that helps figure out exactly what you want built through a simple conversation.\n\nHere's your link:\n${shareLink}\n\nJust sign in with your email (${shareEmail}) and you'll see a chat waiting for you. Answer a few questions about your idea and it'll start putting together a project brief.\n\nNo rush — you can come back anytime to pick up where you left off.`}
+                    rows={8}
+                    className="w-full px-2.5 py-1.5 bg-white border border-gray-300 rounded-md text-sm text-gray-700 resize-none"
+                  />
+                  <button
+                    onClick={async () => {
+                      await navigator.clipboard.writeText(`Hey! I've set up a project for you on iBuild4you — it's a tool that helps figure out exactly what you want built through a simple conversation.\n\nHere's your link:\n${shareLink}\n\nJust sign in with your email (${shareEmail}) and you'll see a chat waiting for you. Answer a few questions about your idea and it'll start putting together a project brief.\n\nNo rush — you can come back anytime to pick up where you left off.`)
+                      setEmailCopied(true)
+                      setTimeout(() => setEmailCopied(false), 2000)
+                    }}
+                    className="mt-1 flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand-navy"
+                  >
+                    {emailCopied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+                    {emailCopied ? 'Copied!' : 'Copy email'}
+                  </button>
+                </div>
+              </div>
             )}
             {shareProject.error && (
               <StatusMessage type="error" message={shareProject.error.message} />
