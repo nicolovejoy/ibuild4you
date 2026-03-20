@@ -57,6 +57,71 @@ export function useShareProject() {
   })
 }
 
+export function useUpdateProject() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (data: {
+      project_id: string
+      welcome_message?: string
+      seed_questions?: string[]
+      style_guide?: string
+      context?: string
+      title?: string
+    }) => {
+      const res = await apiFetch('/api/projects', {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      })
+      if (!res.ok) {
+        const resp = await res.json()
+        throw new Error(resp.error || 'Failed to update project')
+      }
+      return res.json()
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['projects'] })
+      queryClient.invalidateQueries({ queryKey: ['project', variables.project_id] })
+    },
+  })
+}
+
+export function useGenerateWelcome() {
+  return useMutation({
+    mutationFn: async (projectId: string) => {
+      const res = await apiFetch('/api/projects/welcome', {
+        method: 'POST',
+        body: JSON.stringify({ project_id: projectId }),
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || 'Failed to generate welcome message')
+      }
+      return res.json() as Promise<{ welcome_message: string }>
+    },
+  })
+}
+
+export function useDeleteProject() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (projectId: string) => {
+      const res = await apiFetch(`/api/projects?project_id=${projectId}`, {
+        method: 'DELETE',
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || 'Failed to delete project')
+      }
+      return res.json()
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['projects'] })
+    },
+  })
+}
+
 export function useClaimProject() {
   const queryClient = useQueryClient()
 
@@ -121,6 +186,26 @@ export function useSessions(projectId: string | undefined) {
 }
 
 // --- Messages ---
+
+export function useDeleteMessage() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({ messageId }: { messageId: string; sessionId: string }) => {
+      const res = await apiFetch(`/api/messages?message_id=${messageId}`, {
+        method: 'DELETE',
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || 'Failed to delete message')
+      }
+      return res.json()
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['messages', variables.sessionId] })
+    },
+  })
+}
 
 export function useMessages(sessionId: string | undefined) {
   return useQuery<Message[]>({

@@ -22,7 +22,6 @@
   --color-brand-charcoal: var(--brand-charcoal);
   --font-sans: var(--font-open-sans);
   --font-heading: var(--font-montserrat);
-  --font-mono: var(--font-geist-mono);
 }
 
 body {

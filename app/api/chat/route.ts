@@ -1,11 +1,17 @@
 import { getAuthenticatedUser, getAdminDb, canAccessProject } from '@/lib/api/firebase-server-helpers'
 import { buildSystemPrompt } from '@/lib/agent/system-prompt'
 import { AGENT_MODEL, AGENT_MAX_TOKENS, AGENT_TEMPERATURE } from '@/lib/agent/constants'
+import { isAdminEmail, ADMIN_EMAILS } from '@/lib/constants'
 import Anthropic from '@anthropic-ai/sdk'
+import { Resend } from 'resend'
 import type { BriefContent } from '@/lib/types'
 
 function getAnthropic() {
   return new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+}
+
+function getResend() {
+  return new Resend(process.env.RESEND_API_KEY)
 }
 
 export async function POST(request: Request) {
@@ -54,6 +60,24 @@ export async function POST(request: Request) {
     updated_at: now,
   })
 
+  // Notify admin of non-admin chat activity (fire-and-forget)
+  if (!isAdminEmail(auth.email)) {
+    const projectTitle = projectData.title || 'Untitled project'
+    getResend()
+      .emails.send({
+        from: 'iBuild4you <noreply@ibuild4you.com>',
+        to: ADMIN_EMAILS,
+        subject: `New chat: ${projectTitle}`,
+        text: [
+          `${auth.email} sent a message in "${projectTitle}"`,
+          '',
+          `Time: ${now}`,
+          `Project: https://ibuild4you.com/projects/${projectId}`,
+        ].join('\n'),
+      })
+      .catch((err) => console.error('Failed to send chat notification:', err))
+  }
+
   // Load conversation history for this session
   const messagesSnap = await db
     .collection('messages')
@@ -70,6 +94,12 @@ export async function POST(request: Request) {
     role: m.role === 'user' ? ('user' as const) : ('assistant' as const),
     content: m.content,
   }))
+
+  // Claude requires conversations to start with a user message.
+  // With a welcome message, the first stored message is 'assistant'.
+  if (claudeMessages.length > 0 && claudeMessages[0].role === 'assistant') {
+    claudeMessages.unshift({ role: 'user', content: 'Hi' })
+  }
 
   // Count sessions for this project to determine session number
   const sessionsSnap = await db
@@ -93,11 +123,15 @@ export async function POST(request: Request) {
   }
 
   // Build system prompt
-  const projectContext = projectDoc.data()?.context || null
+  const projectContext = projectData.context as string | null || null
+  const seedQuestions = projectData.seed_questions as string[] | undefined
+  const styleGuide = projectData.style_guide as string | undefined
   const systemPrompt = buildSystemPrompt({
     briefContent,
     projectContext,
     sessionNumber,
+    seedQuestions,
+    styleGuide,
   })
 
   // Stream response from Claude

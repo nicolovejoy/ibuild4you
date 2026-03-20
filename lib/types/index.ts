@@ -5,7 +5,7 @@ export interface BaseEntity {
   updated_at: string
 }
 
-// User roles in the system
+// User roles in the system ('requester' is the DB value for makers)
 export type UserRole = 'requester' | 'builder'
 
 // Users collection
@@ -15,13 +15,16 @@ export interface AppUser extends BaseEntity {
   display_name?: string
 }
 
-// Projects collection — one per requester engagement
+// Projects collection — one per maker engagement
 export interface Project extends BaseEntity {
   requester_id: string
   title: string
   status: 'active' | 'paused' | 'completed'
-  context?: string // admin-provided context about the project/requester
-  requester_email?: string // email of the intended requester (for sharing)
+  context?: string // admin-provided context about the project/maker
+  requester_email?: string // email of the intended maker (for sharing)
+  welcome_message?: string // admin-reviewed welcome message for the maker
+  seed_questions?: string[] // ordered questions the agent should weave in early
+  style_guide?: string // tone/approach notes for communicating with this maker
 }
 
 // Sessions collection — each conversation between requester and agent

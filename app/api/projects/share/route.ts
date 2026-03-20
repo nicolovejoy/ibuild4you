@@ -4,6 +4,7 @@ import {
   getAdminDb,
   requireAdmin,
 } from '@/lib/api/firebase-server-helpers'
+import { generateWelcomeMessage } from '@/lib/agent/welcome-message'
 
 // POST /api/projects/share — share a project with a requester by email (admin-only)
 export async function POST(request: Request) {
@@ -32,6 +33,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Project not found' }, { status: 404 })
   }
 
+  const projectData = projectDoc.data()!
+
   // Add email to approved_emails so they can sign in
   await db.collection('approved_emails').doc(normalizedEmail).set({
     email: normalizedEmail,
@@ -44,6 +47,50 @@ export async function POST(request: Request) {
     requester_email: normalizedEmail,
     updated_at: new Date().toISOString(),
   })
+
+  // Generate a welcome message so the requester sees a greeting when they arrive
+  try {
+    const sessionSnap = await db
+      .collection('sessions')
+      .where('project_id', '==', project_id)
+      .where('status', '==', 'active')
+      .limit(1)
+      .get()
+
+    if (!sessionSnap.empty) {
+      const sessionDoc = sessionSnap.docs[0]
+
+      // Only add welcome if session has no messages yet (prevent duplicate on re-share)
+      const existingMessages = await db
+        .collection('messages')
+        .where('session_id', '==', sessionDoc.id)
+        .limit(1)
+        .get()
+
+      if (existingMessages.empty) {
+        // Use admin-reviewed welcome message if available, otherwise generate one
+        const welcomeText = (projectData.welcome_message as string) ||
+          await generateWelcomeMessage(
+            projectData.title as string,
+            projectData.context as string | undefined
+          )
+
+        if (welcomeText) {
+          const now = new Date().toISOString()
+          await db.collection('messages').add({
+            session_id: sessionDoc.id,
+            role: 'agent',
+            content: welcomeText,
+            created_at: now,
+            updated_at: now,
+          })
+        }
+      }
+    }
+  } catch (err) {
+    console.error('Failed to generate welcome message:', err)
+    // Don't break the share flow
+  }
 
   return NextResponse.json({
     email: normalizedEmail,

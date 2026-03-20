@@ -1,12 +1,8 @@
 import { NextResponse } from 'next/server'
 import { getAdminAuth, getAdminDb } from '@/lib/firebase/admin'
-import { ADMIN_EMAILS } from '@/lib/constants'
+import { ADMIN_EMAILS, isAdminEmail } from '@/lib/constants'
 
-export { ADMIN_EMAILS }
-
-export function isAdminEmail(email: string | null): boolean {
-  return !!email && ADMIN_EMAILS.includes(email)
-}
+export { ADMIN_EMAILS, isAdminEmail }
 
 export function requireAdmin(email: string | null): NextResponse | null {
   if (!isAdminEmail(email)) {

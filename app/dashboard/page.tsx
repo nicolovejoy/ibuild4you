@@ -5,9 +5,9 @@ import { useApproval } from '@/lib/hooks/useApproval'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { UserMenu } from '@/components/user-menu'
-import { MessageSquare, Plus, FolderOpen, Share2, Copy, Check } from 'lucide-react'
+import { MessageSquare, Plus, FolderOpen, Share2, Copy, Check, Mail, Trash2 } from 'lucide-react'
 import { BuildTimestamp } from '@/components/build-timestamp'
-import { useProjects, useCreateProject, useShareProject } from '@/lib/query/hooks'
+import { useProjects, useCreateProject, useShareProject, useDeleteProject } from '@/lib/query/hooks'
 import { isAdminEmail } from '@/lib/constants'
 import { LoadingButton } from '@/components/ui/LoadingButton'
 import { Card, CardBody } from '@/components/ui/Card'
@@ -169,6 +169,7 @@ function ProjectList({ isAdmin }: { isAdmin: boolean }) {
   const { data: projects, isLoading, error } = useProjects()
   const router = useRouter()
   const [sharingProject, setSharingProject] = useState<Project | null>(null)
+  const [deletingProject, setDeletingProject] = useState<Project | null>(null)
 
   if (isLoading) {
     return (
@@ -189,7 +190,7 @@ function ProjectList({ isAdmin }: { isAdmin: boolean }) {
         icon={FolderOpen}
         title="No projects yet"
         description={isAdmin
-          ? "Create your first project and start chatting about your idea."
+          ? "Create a project, set it up, and share it with a maker."
           : "You don't have any projects yet. Check back soon!"}
       />
     )
@@ -218,16 +219,28 @@ function ProjectList({ isAdmin }: { isAdmin: boolean }) {
                 </div>
                 <div className="flex items-center gap-2">
                   {isAdmin && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        setSharingProject(project)
-                      }}
-                      className="p-1.5 text-gray-400 hover:text-brand-navy hover:bg-gray-100 rounded"
-                      title="Share with someone"
-                    >
-                      <Share2 className="h-4 w-4" />
-                    </button>
+                    <>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setSharingProject(project)
+                        }}
+                        className="p-1.5 text-gray-400 hover:text-brand-navy hover:bg-gray-100 rounded"
+                        title="Share with someone"
+                      >
+                        <Share2 className="h-4 w-4" />
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setDeletingProject(project)
+                        }}
+                        className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded"
+                        title="Delete project"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </>
                   )}
                   <span
                     className={`text-xs px-2 py-1 rounded-full ${
@@ -253,6 +266,13 @@ function ProjectList({ isAdmin }: { isAdmin: boolean }) {
           onClose={() => setSharingProject(null)}
         />
       )}
+
+      {deletingProject && (
+        <DeleteProjectModal
+          project={deletingProject}
+          onClose={() => setDeletingProject(null)}
+        />
+      )}
     </>
   )
 }
@@ -260,10 +280,20 @@ function ProjectList({ isAdmin }: { isAdmin: boolean }) {
 function ShareModal({ project, onClose }: { project: Project; onClose: () => void }) {
   const [email, setEmail] = useState('')
   const [copied, setCopied] = useState(false)
+  const [emailCopied, setEmailCopied] = useState(false)
   const shareProject = useShareProject()
   const shareLink = typeof window !== 'undefined'
     ? `${window.location.origin}/projects/${project.id}`
     : ''
+
+  const inviteEmailBody = `Hey! I've set up a project for you on iBuild4you — it's a tool that helps figure out exactly what you want built through a simple conversation.
+
+Here's your link:
+${shareLink}
+
+Just sign in with your email (${email}) and you'll see a chat waiting for you. Answer a few questions about your idea and it'll start putting together a project brief.
+
+No rush — you can come back anytime to pick up where you left off.`
 
   const handleShare = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -280,6 +310,12 @@ function ShareModal({ project, onClose }: { project: Project; onClose: () => voi
     await navigator.clipboard.writeText(shareLink)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
+  }
+
+  const handleCopyEmail = async () => {
+    await navigator.clipboard.writeText(inviteEmailBody)
+    setEmailCopied(true)
+    setTimeout(() => setEmailCopied(false), 2000)
   }
 
   return (
@@ -305,6 +341,27 @@ function ShareModal({ project, onClose }: { project: Project; onClose: () => voi
               </button>
             </div>
           </div>
+
+          <div>
+            <p className="text-sm text-gray-700 mb-2 flex items-center gap-1.5">
+              <Mail className="h-4 w-4" />
+              Invite email to send them:
+            </p>
+            <textarea
+              readOnly
+              value={inviteEmailBody}
+              rows={8}
+              className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-md text-sm text-gray-700 resize-none"
+            />
+            <button
+              onClick={handleCopyEmail}
+              className="mt-1.5 flex items-center gap-1.5 text-sm text-gray-500 hover:text-brand-navy"
+            >
+              {emailCopied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+              {emailCopied ? 'Copied!' : 'Copy email'}
+            </button>
+          </div>
+
           <div className="flex justify-end">
             <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800">
               Done
@@ -357,6 +414,67 @@ function ShareModal({ project, onClose }: { project: Project; onClose: () => voi
           </div>
         </form>
       )}
+    </Modal>
+  )
+}
+
+function DeleteProjectModal({ project, onClose }: { project: Project; onClose: () => void }) {
+  const [confirmation, setConfirmation] = useState('')
+  const deleteProject = useDeleteProject()
+
+  const canDelete = confirmation.toLowerCase() === 'delete'
+
+  return (
+    <Modal isOpen onClose={onClose} title={`Delete "${project.title}"?`}>
+      <div className="space-y-4">
+        <p className="text-sm text-gray-700">
+          This permanently deletes the project, all conversations, and the brief. This can&apos;t be undone.
+        </p>
+        <div>
+          <label htmlFor="delete-confirm" className="block text-sm font-medium text-gray-700 mb-1">
+            Type <span className="font-mono font-bold">delete</span> to confirm
+          </label>
+          <input
+            id="delete-confirm"
+            type="text"
+            value={confirmation}
+            onChange={(e) => setConfirmation(e.target.value)}
+            placeholder="delete"
+            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+            autoFocus
+          />
+        </div>
+
+        {deleteProject.error && (
+          <StatusMessage type="error" message={deleteProject.error.message} />
+        )}
+
+        <div className="flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800"
+          >
+            Cancel
+          </button>
+          <LoadingButton
+            variant="danger"
+            loading={deleteProject.isPending}
+            loadingText="Deleting..."
+            disabled={!canDelete}
+            onClick={async () => {
+              try {
+                await deleteProject.mutateAsync(project.id)
+                onClose()
+              } catch {
+                // error shown via deleteProject.error
+              }
+            }}
+          >
+            Delete
+          </LoadingButton>
+        </div>
+      </div>
     </Modal>
   )
 }

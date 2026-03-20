@@ -5,21 +5,43 @@ interface SystemPromptInput {
   briefContent: BriefContent | null
   projectContext: string | null
   sessionNumber: number
+  seedQuestions?: string[]
+  styleGuide?: string
 }
 
-export function buildSystemPrompt({ briefContent, projectContext, sessionNumber }: SystemPromptInput): string {
+export function buildSystemPrompt({ briefContent, projectContext, sessionNumber, seedQuestions, styleGuide }: SystemPromptInput): string {
   const parts: string[] = []
 
   parts.push('You are the iBuild4you project intake assistant.')
   parts.push(AGENT_BEHAVIOR_RULES)
 
+  if (styleGuide) {
+    parts.push(`
+## Style guide for this maker
+
+The following notes describe how to communicate with this particular person. Adapt your tone and approach accordingly.
+
+${styleGuide}
+`.trim())
+  }
+
   if (projectContext) {
     parts.push(`
 ## Background
 
-Here's some context about this user and their project that was provided before the conversation started. Use this as a starting point — you don't need to re-ask about things covered here, but you can dig deeper into them.
+Here's some context about this person and their project that was provided before the conversation started. Use this as a starting point — you don't need to re-ask about things covered here, but you can dig deeper into them.
 
 ${projectContext}
+`.trim())
+  }
+
+  if (seedQuestions && seedQuestions.length > 0) {
+    parts.push(`
+## Topics to explore
+
+Here are some specific questions to weave into the conversation naturally. Don't ask them all at once — work them in when they fit. You don't need to ask them verbatim; adapt the phrasing to the flow of conversation.
+
+${seedQuestions.map((q, i) => `${i + 1}. ${q}`).join('\n')}
 `.trim())
   }
 

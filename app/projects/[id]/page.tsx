@@ -8,16 +8,22 @@ import {
   useSessions,
   useMessages,
   useClaimProject,
+  useDeleteMessage,
+  useUpdateProject,
+  useGenerateWelcome,
+  useShareProject,
 } from '@/lib/query/hooks'
 import { useRouter, useParams } from 'next/navigation'
 import { useEffect, useState, useRef, useCallback } from 'react'
-import { MessageSquare, Send, ArrowLeft, FileText, Calendar } from 'lucide-react'
+import { MessageSquare, Send, ArrowLeft, FileText, Calendar, Trash2, Sparkles, Plus, X, Share2, ChevronDown, ChevronUp } from 'lucide-react'
 import { BuildTimestamp } from '@/components/build-timestamp'
 import { apiFetch } from '@/lib/firebase/api-fetch'
+import { isAdminEmail } from '@/lib/constants'
 import { useQueryClient } from '@tanstack/react-query'
 import { StatusMessage } from '@/components/ui/StatusMessage'
 import { Card, CardBody } from '@/components/ui/Card'
 import { Skeleton } from '@/components/ui/Skeleton'
+import { LoadingButton } from '@/components/ui/LoadingButton'
 import type { BriefContent } from '@/lib/types'
 
 const BRIEF_UPDATE_INTERVAL = 15_000
@@ -53,6 +59,10 @@ function ProjectHub({ projectId, userEmail }: { projectId: string; userEmail: st
   const claimProject = useClaimProject()
   const { data: project, isLoading: projectLoading } = useProject(projectId)
   const { data: brief } = useBrief(projectId)
+  const { data: sessions } = useSessions(projectId)
+  const activeSession = sessions?.find((s) => s.status === 'active') || sessions?.[0]
+  const { data: messages } = useMessages(activeSession?.id)
+  const isAdmin = isAdminEmail(userEmail)
 
   // Auto-claim on mount
   useEffect(() => {
@@ -61,6 +71,13 @@ function ProjectHub({ projectId, userEmail }: { projectId: string; userEmail: st
   }, [projectId])
 
   const briefContent = brief?.content as BriefContent | undefined
+  const isUnshared = isAdmin && project && !project.requester_email
+
+  // Derive workflow state
+  const hasSetup = !!(project?.welcome_message || (project?.seed_questions && project.seed_questions.length > 0))
+  const isShared = !!project?.requester_email
+  const hasConversation = !!(messages && messages.length > 1) // more than just welcome
+  const hasBrief = !!(briefContent && hasBriefContent(briefContent))
 
   return (
     <div className="min-h-screen bg-brand-cream">
@@ -94,13 +111,26 @@ function ProjectHub({ projectId, userEmail }: { projectId: string; userEmail: st
               <Calendar className="h-4 w-4" />
               Started {new Date(project.created_at).toLocaleDateString()}
             </span>
-            {project.updated_at !== project.created_at && (
-              <span>
-                Last updated {new Date(project.updated_at).toLocaleDateString()}
-              </span>
+            {project.requester_email && (
+              <span>Maker: {project.requester_email}</span>
             )}
           </div>
         ) : null}
+
+        {/* Workflow status — admin only */}
+        {isAdmin && project && !projectLoading && (
+          <WorkflowStatus
+            hasSetup={hasSetup}
+            isShared={isShared}
+            hasConversation={hasConversation}
+            hasBrief={hasBrief}
+          />
+        )}
+
+        {/* Admin setup — shows for unshared projects, collapsible for shared ones */}
+        {isAdmin && project && !projectLoading && (
+          <AdminSetup project={project} isUnshared={!!isUnshared} />
+        )}
 
         {/* Brief summary */}
         {briefContent && hasBriefContent(briefContent) && (
@@ -129,10 +159,254 @@ function ProjectHub({ projectId, userEmail }: { projectId: string; userEmail: st
             <MessageSquare className="h-4 w-4" />
             Chat
           </h2>
-          <ChatSection projectId={projectId} userEmail={userEmail} />
+          <ChatSection projectId={projectId} userEmail={userEmail} isAdmin={isAdmin} />
         </div>
       </main>
     </div>
+  )
+}
+
+type WorkflowStep = { label: string; who: string; done: boolean; active: boolean }
+
+function WorkflowStatus({ hasSetup, isShared, hasConversation, hasBrief }: {
+  hasSetup: boolean; isShared: boolean; hasConversation: boolean; hasBrief: boolean
+}) {
+  const steps: WorkflowStep[] = [
+    { label: 'Setup', who: 'Builder', done: hasSetup || isShared, active: !hasSetup && !isShared },
+    { label: 'Share', who: 'Builder', done: isShared, active: hasSetup && !isShared },
+    { label: 'Conversation', who: 'Maker', done: hasConversation, active: isShared && !hasConversation },
+    { label: 'Brief', who: 'Auto', done: hasBrief, active: hasConversation && !hasBrief },
+    { label: 'Review', who: 'Builder', done: false, active: hasBrief },
+  ]
+
+  return (
+    <div className="flex items-center gap-1">
+      {steps.map((step, i) => (
+        <div key={step.label} className="flex items-center">
+          {i > 0 && (
+            <div className={`w-4 h-px mx-0.5 ${step.done || steps[i - 1].done ? 'bg-green-300' : 'bg-gray-200'}`} />
+          )}
+          <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
+            step.done
+              ? 'bg-green-100 text-green-700'
+              : step.active
+                ? 'bg-brand-navy/10 text-brand-navy ring-1 ring-brand-navy/20'
+                : 'bg-gray-100 text-gray-400'
+          }`}>
+            {step.done && <span>&#10003;</span>}
+            {step.active && <span className="w-1.5 h-1.5 rounded-full bg-brand-navy animate-pulse" />}
+            <span>{step.label}</span>
+            <span className={`text-[10px] ${step.done ? 'text-green-500' : step.active ? 'text-brand-navy/60' : 'text-gray-300'}`}>
+              {step.who}
+            </span>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function AdminSetup({ project, isUnshared }: { project: { id: string; title: string; welcome_message?: string; seed_questions?: string[]; style_guide?: string; context?: string }; isUnshared: boolean }) {
+  const [expanded, setExpanded] = useState(isUnshared)
+  const [welcomeMessage, setWelcomeMessage] = useState(project.welcome_message || '')
+  const [seedQuestions, setSeedQuestions] = useState<string[]>(project.seed_questions || [])
+  const [newQuestion, setNewQuestion] = useState('')
+  const [styleGuide, setStyleGuide] = useState(project.style_guide || '')
+  const [shareEmail, setShareEmail] = useState('')
+  const [saved, setSaved] = useState(false)
+
+  const updateProject = useUpdateProject()
+  const generateWelcome = useGenerateWelcome()
+  const shareProject = useShareProject()
+
+  // Sync from project data when it changes
+  useEffect(() => {
+    setWelcomeMessage(project.welcome_message || '')
+    setSeedQuestions(project.seed_questions || [])
+    setStyleGuide(project.style_guide || '')
+  }, [project.welcome_message, project.seed_questions, project.style_guide])
+
+  const handleSave = async () => {
+    await updateProject.mutateAsync({
+      project_id: project.id,
+      welcome_message: welcomeMessage,
+      seed_questions: seedQuestions,
+      style_guide: styleGuide,
+    })
+    setSaved(true)
+    setTimeout(() => setSaved(false), 2000)
+  }
+
+  const handleGenerateWelcome = async () => {
+    const result = await generateWelcome.mutateAsync(project.id)
+    setWelcomeMessage(result.welcome_message)
+  }
+
+  const handleAddQuestion = () => {
+    if (!newQuestion.trim()) return
+    setSeedQuestions((prev) => [...prev, newQuestion.trim()])
+    setNewQuestion('')
+  }
+
+  const handleRemoveQuestion = (index: number) => {
+    setSeedQuestions((prev) => prev.filter((_, i) => i !== index))
+  }
+
+  const handleShare = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!shareEmail.trim()) return
+    // Save setup first, then share
+    await updateProject.mutateAsync({
+      project_id: project.id,
+      welcome_message: welcomeMessage,
+      seed_questions: seedQuestions,
+      style_guide: styleGuide,
+    })
+    await shareProject.mutateAsync({ project_id: project.id, email: shareEmail.trim() })
+  }
+
+  return (
+    <Card hover={false}>
+      <CardBody>
+        <button
+          onClick={() => setExpanded(!expanded)}
+          className="w-full flex items-center justify-between"
+        >
+          <h2 className="text-sm font-semibold text-brand-slate uppercase tracking-wide flex items-center gap-1.5">
+            <Sparkles className="h-4 w-4" />
+            {isUnshared ? 'Setup before sharing' : 'Agent setup'}
+          </h2>
+          {expanded ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
+        </button>
+
+        {expanded && (
+          <div className="mt-4 space-y-5">
+            {/* Welcome message */}
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-sm font-medium text-gray-700">Welcome message</label>
+                <LoadingButton
+                  variant="ghost"
+                  size="sm"
+                  loading={generateWelcome.isPending}
+                  loadingText="Generating..."
+                  onClick={handleGenerateWelcome}
+                  icon={Sparkles}
+                >
+                  {welcomeMessage ? 'Regenerate' : 'Generate'}
+                </LoadingButton>
+              </div>
+              <textarea
+                value={welcomeMessage}
+                onChange={(e) => setWelcomeMessage(e.target.value)}
+                placeholder="The maker will see this message when they first open the project. Generate one or write your own."
+                rows={4}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
+              />
+            </div>
+
+            {/* Seed questions */}
+            <div>
+              <label className="text-sm font-medium text-gray-700 block mb-1.5">Seed questions</label>
+              <p className="text-xs text-gray-500 mb-2">Questions the agent should weave into the conversation early on.</p>
+              {seedQuestions.length > 0 && (
+                <ul className="space-y-1.5 mb-2">
+                  {seedQuestions.map((q, i) => (
+                    <li key={i} className="flex items-start gap-2 text-sm text-gray-700 bg-gray-50 rounded px-2.5 py-1.5">
+                      <span className="text-gray-400 text-xs mt-0.5">{i + 1}.</span>
+                      <span className="flex-1">{q}</span>
+                      <button
+                        onClick={() => handleRemoveQuestion(i)}
+                        className="p-0.5 text-gray-400 hover:text-red-500 shrink-0"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={newQuestion}
+                  onChange={(e) => setNewQuestion(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddQuestion() } }}
+                  placeholder="What does a typical day look like for you?"
+                  className="flex-1 px-3 py-1.5 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
+                />
+                <button
+                  onClick={handleAddQuestion}
+                  disabled={!newQuestion.trim()}
+                  className="p-1.5 text-gray-400 hover:text-brand-navy hover:bg-gray-100 rounded disabled:opacity-40"
+                >
+                  <Plus className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Style guide */}
+            <div>
+              <label className="text-sm font-medium text-gray-700 block mb-1.5">Style guide</label>
+              <textarea
+                value={styleGuide}
+                onChange={(e) => setStyleGuide(e.target.value)}
+                placeholder="Jamie isn't technical at all — keep it super simple. She thinks in terms of her bakery workflow, not app features. Be warm and encouraging."
+                rows={3}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
+              />
+            </div>
+
+            {/* Save + Share */}
+            <div className="flex items-center justify-between pt-2 border-t border-gray-100">
+              <div className="flex items-center gap-2">
+                <LoadingButton
+                  variant="secondary"
+                  size="sm"
+                  loading={updateProject.isPending}
+                  loadingText="Saving..."
+                  onClick={handleSave}
+                >
+                  {saved ? 'Saved!' : 'Save setup'}
+                </LoadingButton>
+                {updateProject.error && (
+                  <span className="text-xs text-red-500">{updateProject.error.message}</span>
+                )}
+              </div>
+
+              {isUnshared && (
+                <form onSubmit={handleShare} className="flex items-center gap-2">
+                  <input
+                    type="email"
+                    value={shareEmail}
+                    onChange={(e) => setShareEmail(e.target.value)}
+                    placeholder="maker@email.com"
+                    className="px-2.5 py-1.5 border border-gray-300 rounded-md text-sm w-48 focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
+                  />
+                  <LoadingButton
+                    type="submit"
+                    variant="primary"
+                    size="sm"
+                    loading={shareProject.isPending}
+                    loadingText="Sharing..."
+                    disabled={!shareEmail.trim()}
+                    icon={Share2}
+                  >
+                    Share
+                  </LoadingButton>
+                </form>
+              )}
+            </div>
+
+            {shareProject.isSuccess && (
+              <StatusMessage type="success" message="Project shared! The maker will see your welcome message when they open it." />
+            )}
+            {shareProject.error && (
+              <StatusMessage type="error" message={shareProject.error.message} />
+            )}
+          </div>
+        )}
+      </CardBody>
+    </Card>
   )
 }
 
@@ -161,7 +435,7 @@ function hasBriefContent(brief: BriefContent): boolean {
   )
 }
 
-function ChatSection({ projectId, userEmail }: { projectId: string; userEmail: string }) {
+function ChatSection({ projectId, userEmail, isAdmin }: { projectId: string; userEmail: string; isAdmin: boolean }) {
   const queryClient = useQueryClient()
   const { data: sessions, isLoading: sessionsLoading } = useSessions(projectId)
   const activeSession = sessions?.find((s) => s.status === 'active') || sessions?.[0]
@@ -169,7 +443,7 @@ function ChatSection({ projectId, userEmail }: { projectId: string; userEmail: s
 
   const { data: savedMessages, isLoading: messagesLoading } = useMessages(sessionId)
 
-  type ChatMessage = { role: 'user' | 'agent'; content: string; created_at?: string }
+  type ChatMessage = { id?: string; role: 'user' | 'agent'; content: string; created_at?: string }
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [streaming, setStreaming] = useState(false)
@@ -177,11 +451,12 @@ function ChatSection({ projectId, userEmail }: { projectId: string; userEmail: s
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const lastBriefUpdate = useRef<number>(0)
   const briefTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const deleteMessage = useDeleteMessage()
 
   // Sync saved messages into local state
   useEffect(() => {
     if (savedMessages) {
-      setMessages(savedMessages.map((m) => ({ role: m.role, content: m.content, created_at: m.created_at })))
+      setMessages(savedMessages.map((m) => ({ id: m.id, role: m.role, content: m.content, created_at: m.created_at })))
     }
   }, [savedMessages])
 
@@ -359,11 +634,11 @@ function ChatSection({ projectId, userEmail }: { projectId: string; userEmail: s
         <div className="space-y-3">
           {displayMessages.map((msg, i) => (
             <div
-              key={i}
-              className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+              key={msg.id || i}
+              className={`group flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
             >
               <div
-                className={`max-w-[80%] rounded-lg px-4 py-2.5 ${
+                className={`relative max-w-[80%] rounded-lg px-4 py-2.5 ${
                   msg.role === 'user'
                     ? 'bg-brand-navy text-white'
                     : 'bg-white border border-gray-200 text-gray-800'
@@ -376,6 +651,15 @@ function ChatSection({ projectId, userEmail }: { projectId: string; userEmail: s
                   {msg.created_at ? ` · ${formatTimestamp(msg.created_at)}` : ''}
                 </p>
                 <p className="whitespace-pre-wrap text-sm leading-relaxed">{msg.content}</p>
+                {isAdmin && msg.id && sessionId && (
+                  <button
+                    onClick={() => deleteMessage.mutate({ messageId: msg.id!, sessionId })}
+                    className="absolute -top-2 -right-2 p-1 bg-white border border-gray-200 rounded-full text-gray-400 hover:text-red-600 hover:border-red-200 opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
+                    title="Delete message"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </button>
+                )}
               </div>
             </div>
           ))}
