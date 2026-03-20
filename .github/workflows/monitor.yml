@@ -1,0 +1,35 @@
+name: Synthetic monitoring
+
+on:
+  schedule:
+    # Every 10 minutes
+    - cron: '*/10 * * * *'
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  monitor:
+    name: Health check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check production health
+        run: |
+          RESPONSE=$(curl -s -w "\n%{http_code}" --max-time 30 https://ibuild4you.com/api/health)
+          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+          BODY=$(echo "$RESPONSE" | head -n -1)
+
+          echo "Status: $HTTP_CODE"
+          echo "$BODY" | jq . 2>/dev/null || echo "$BODY"
+
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "::error::Health check failed with status $HTTP_CODE"
+            exit 1
+          fi
+
+          FAILED=$(echo "$BODY" | jq -r '.checks[] | select(.ok == false) | .name' 2>/dev/null)
+          if [ -n "$FAILED" ]; then
+            echo "::error::Failed checks: $FAILED"
+            exit 1
+          fi
+
+          echo "All checks passed"

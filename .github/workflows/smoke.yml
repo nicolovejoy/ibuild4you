@@ -1,0 +1,51 @@
+name: Post-deploy smoke test
+
+on:
+  # Trigger after CI passes on main
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+jobs:
+  smoke:
+    name: Smoke test production
+    runs-on: ubuntu-latest
+    # Only run if CI succeeded
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+
+    steps:
+      - name: Wait for Vercel deploy
+        run: sleep 60
+
+      - name: Health check
+        run: |
+          RESPONSE=$(curl -s -w "\n%{http_code}" https://ibuild4you.com/api/health)
+          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+          BODY=$(echo "$RESPONSE" | head -n -1)
+
+          echo "Status: $HTTP_CODE"
+          echo "$BODY" | jq . 2>/dev/null || echo "$BODY"
+
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "::error::Health check failed with status $HTTP_CODE"
+            exit 1
+          fi
+
+          # Check that all individual checks passed
+          FAILED=$(echo "$BODY" | jq -r '.checks[] | select(.ok == false) | .name' 2>/dev/null)
+          if [ -n "$FAILED" ]; then
+            echo "::error::Failed checks: $FAILED"
+            exit 1
+          fi
+
+      - name: Verify key pages load
+        run: |
+          for path in "/" "/auth/login" "/dashboard"; do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "https://ibuild4you.com$path")
+            echo "$path -> $STATUS"
+            if [ "$STATUS" -ge 500 ]; then
+              echo "::error::$path returned $STATUS"
+              exit 1
+            fi
+          done

@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  check:
+    name: Type-check, lint, build, test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Type-check
+        run: npm run type-check
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+        env:
+          NEXT_PUBLIC_FIREBASE_API_KEY: fake
+          NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: fake
+          NEXT_PUBLIC_FIREBASE_PROJECT_ID: fake
+          NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: fake
+          NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: fake
+          NEXT_PUBLIC_FIREBASE_APP_ID: fake
+
+      - name: Test
+        run: npm test
