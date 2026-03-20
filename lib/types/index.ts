@@ -25,6 +25,10 @@ export interface Project extends BaseEntity {
   welcome_message?: string // admin-reviewed welcome message for the maker
   seed_questions?: string[] // ordered questions the agent should weave in early
   style_guide?: string // tone/approach notes for communicating with this maker
+  // Enriched by GET /api/projects
+  session_count?: number
+  last_message_at?: string | null
+  last_message_by?: string | null
 }
 
 // Sessions collection — each conversation between requester and agent

@@ -1,6 +1,56 @@
 import { NextResponse } from 'next/server'
 import { getAuthenticatedUser, getAdminDb, requireAdmin } from '@/lib/api/firebase-server-helpers'
 
+// Enrich project docs with last activity and session count
+async function enrichProjects(
+  db: FirebaseFirestore.Firestore,
+  projectDocs: { id: string; [key: string]: unknown }[]
+) {
+  return Promise.all(
+    projectDocs.map(async (project) => {
+      // Get session count
+      const sessionsSnap = await db
+        .collection('sessions')
+        .where('project_id', '==', project.id)
+        .get()
+
+      // Get most recent user message across all sessions
+      const sessionIds = sessionsSnap.docs.map((d) => d.id)
+      let lastMessageAt: string | null = null
+      let lastMessageBy: string | null = null
+
+      if (sessionIds.length > 0) {
+        // Firestore 'in' queries support up to 30 values
+        for (let i = 0; i < sessionIds.length; i += 30) {
+          const chunk = sessionIds.slice(i, i + 30)
+          const msgSnap = await db
+            .collection('messages')
+            .where('session_id', 'in', chunk)
+            .where('role', '==', 'user')
+            .orderBy('created_at', 'desc')
+            .limit(1)
+            .get()
+
+          if (!msgSnap.empty) {
+            const msg = msgSnap.docs[0].data()
+            if (!lastMessageAt || msg.created_at > lastMessageAt) {
+              lastMessageAt = msg.created_at as string
+              lastMessageBy = (msg.sender_email as string) || null
+            }
+          }
+        }
+      }
+
+      return {
+        ...project,
+        session_count: sessionsSnap.size,
+        last_message_at: lastMessageAt,
+        last_message_by: lastMessageBy,
+      }
+    })
+  )
+}
+
 // GET /api/projects — list the current user's projects (owned + shared with them)
 export async function GET(request: Request) {
   const auth = await getAuthenticatedUser(request)
@@ -16,7 +66,7 @@ export async function GET(request: Request) {
       .orderBy('created_at', 'desc')
       .get()
     const projects = allSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
-    return NextResponse.json(projects)
+    return NextResponse.json(await enrichProjects(db, projects))
   }
 
   // Projects the user owns
@@ -35,7 +85,7 @@ export async function GET(request: Request) {
 
   // Merge and deduplicate
   const seen = new Set<string>()
-  const projects = []
+  const projects: { id: string; [key: string]: unknown }[] = []
   for (const doc of [...ownedSnap.docs, ...sharedSnap.docs]) {
     if (!seen.has(doc.id)) {
       seen.add(doc.id)
@@ -43,7 +93,7 @@ export async function GET(request: Request) {
     }
   }
 
-  return NextResponse.json(projects)
+  return NextResponse.json(await enrichProjects(db, projects))
 }
 
 // PATCH /api/projects — update project setup fields (admin-only)

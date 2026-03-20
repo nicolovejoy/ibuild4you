@@ -208,14 +208,25 @@ function ProjectList({ isAdmin }: { isAdmin: boolean }) {
                   onClick={() => router.push(`/projects/${project.id}`)}
                 >
                   <h3 className="font-medium text-gray-900">{project.title}</h3>
-                  <p className="text-sm text-gray-500">
-                    {new Date(project.created_at).toLocaleDateString()}
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-sm text-gray-500">
+                    <span>{new Date(project.created_at).toLocaleDateString()}</span>
                     {project.requester_email && (
-                      <span className="ml-2 text-brand-slate">
+                      <span className="text-brand-slate">
                         → {project.requester_email}
                       </span>
                     )}
-                  </p>
+                    {project.last_message_at && (
+                      <span className="text-gray-400">
+                        Last active: {formatRelativeTime(project.last_message_at)}
+                        {project.last_message_by && ` by ${project.last_message_by}`}
+                      </span>
+                    )}
+                    {isAdmin && project.session_count !== undefined && project.session_count > 0 && (
+                      <span className="text-gray-400">
+                        {project.session_count} session{project.session_count === 1 ? '' : 's'}
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <div className="flex items-center gap-2">
                   {isAdmin && (
@@ -477,4 +488,19 @@ function DeleteProjectModal({ project, onClose }: { project: Project; onClose: (
       </div>
     </Modal>
   )
+}
+
+function formatRelativeTime(iso: string): string {
+  const date = new Date(iso)
+  const now = new Date()
+  const diffMs = now.getTime() - date.getTime()
+  const diffMins = Math.floor(diffMs / 60000)
+  const diffHours = Math.floor(diffMs / 3600000)
+  const diffDays = Math.floor(diffMs / 86400000)
+
+  if (diffMins < 1) return 'just now'
+  if (diffMins < 60) return `${diffMins}m ago`
+  if (diffHours < 24) return `${diffHours}h ago`
+  if (diffDays < 7) return `${diffDays}d ago`
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
