@@ -99,6 +99,10 @@ export async function POST(request: Request) {
     if (!Array.isArray(briefContent.features)) briefContent.features = []
     if (typeof briefContent.constraints !== 'string') briefContent.constraints = ''
     if (typeof briefContent.additional_context !== 'string') briefContent.additional_context = ''
+    if (!Array.isArray(briefContent.decisions)) briefContent.decisions = []
+    briefContent.decisions = briefContent.decisions.filter(
+      (d) => d && typeof d.topic === 'string' && typeof d.decision === 'string'
+    )
 
     // Store new version
     const now = new Date().toISOString()

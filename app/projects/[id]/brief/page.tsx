@@ -106,9 +106,11 @@ function BriefView({ content }: { content: BriefContent }) {
     { label: 'Additional context', value: content.additional_context },
   ]
 
+  const decisions = content.decisions || []
+
   const hasContent = sections.some((s) =>
     Array.isArray(s.value) ? s.value.length > 0 : !!s.value
-  )
+  ) || decisions.length > 0
 
   if (!hasContent) {
     return (
@@ -148,6 +150,24 @@ function BriefView({ content }: { content: BriefContent }) {
           </Card>
         )
       })}
+
+      {decisions.length > 0 && (
+        <Card hover={false}>
+          <CardBody>
+            <h3 className="text-sm font-semibold text-brand-slate uppercase tracking-wide mb-2">
+              Decisions
+            </h3>
+            <ul className="space-y-2">
+              {decisions.map((d, i) => (
+                <li key={i} className="text-sm">
+                  <span className="font-medium text-gray-900">{d.topic}:</span>{' '}
+                  <span className="text-gray-700">{d.decision}</span>
+                </li>
+              ))}
+            </ul>
+          </CardBody>
+        </Card>
+      )}
     </div>
   )
 }

@@ -68,6 +68,8 @@ export function useUpdateProject() {
       style_guide?: string
       context?: string
       title?: string
+      builder_directives?: string[]
+      session_mode?: 'discover' | 'converge'
     }) => {
       const res = await apiFetch('/api/projects', {
         method: 'PATCH',

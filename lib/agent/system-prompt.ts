@@ -1,4 +1,4 @@
-import { AGENT_BEHAVIOR_RULES } from './constants'
+import { AGENT_BEHAVIOR_RULES, CONVERGE_BEHAVIOR_RULES } from './constants'
 import type { BriefContent } from '@/lib/types'
 
 interface SystemPromptInput {
@@ -7,13 +7,15 @@ interface SystemPromptInput {
   sessionNumber: number
   seedQuestions?: string[]
   styleGuide?: string
+  builderDirectives?: string[]
+  sessionMode?: 'discover' | 'converge'
 }
 
-export function buildSystemPrompt({ briefContent, projectContext, sessionNumber, seedQuestions, styleGuide }: SystemPromptInput): string {
+export function buildSystemPrompt({ briefContent, projectContext, sessionNumber, seedQuestions, styleGuide, builderDirectives, sessionMode }: SystemPromptInput): string {
   const parts: string[] = []
 
   parts.push('You are the iBuild4you project intake assistant.')
-  parts.push(AGENT_BEHAVIOR_RULES)
+  parts.push(sessionMode === 'converge' ? CONVERGE_BEHAVIOR_RULES : AGENT_BEHAVIOR_RULES)
 
   if (styleGuide) {
     parts.push(`
@@ -42,6 +44,26 @@ ${projectContext}
 Here are some specific questions to weave into the conversation naturally. Don't ask them all at once — work them in when they fit. You don't need to ask them verbatim; adapt the phrasing to the flow of conversation.
 
 ${seedQuestions.map((q, i) => `${i + 1}. ${q}`).join('\n')}
+`.trim())
+  }
+
+  if (builderDirectives && builderDirectives.length > 0) {
+    parts.push(`
+## Directives
+
+The builder has identified specific things to drive toward this session. Actively steer the conversation to address these — don't leave the session without covering them:
+
+${builderDirectives.map((d, i) => `${i + 1}. ${d}`).join('\n')}
+`.trim())
+  }
+
+  if (briefContent?.decisions && briefContent.decisions.length > 0) {
+    parts.push(`
+## Decisions already made
+
+These have been decided in prior sessions. Don't revisit them unless the user brings them up:
+
+${briefContent.decisions.map((d) => `- **${d.topic}:** ${d.decision}`).join('\n')}
 `.trim())
   }
 
@@ -78,7 +100,8 @@ function hasBriefContent(brief: BriefContent): boolean {
     brief.target_users ||
     brief.features.length > 0 ||
     brief.constraints ||
-    brief.additional_context
+    brief.additional_context ||
+    (brief.decisions && brief.decisions.length > 0)
   )
 }
 

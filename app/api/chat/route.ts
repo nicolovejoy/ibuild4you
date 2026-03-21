@@ -127,12 +127,16 @@ export async function POST(request: Request) {
   const projectContext = projectData.context as string | null || null
   const seedQuestions = projectData.seed_questions as string[] | undefined
   const styleGuide = projectData.style_guide as string | undefined
+  const builderDirectives = projectData.builder_directives as string[] | undefined
+  const sessionMode = projectData.session_mode as 'discover' | 'converge' | undefined
   const systemPrompt = buildSystemPrompt({
     briefContent,
     projectContext,
     sessionNumber,
     seedQuestions,
     styleGuide,
+    builderDirectives,
+    sessionMode,
   })
 
   // Stream response from Claude

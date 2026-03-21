@@ -211,12 +211,15 @@ function WorkflowStatus({ hasSetup, isShared, hasConversation, hasBrief }: {
   )
 }
 
-function AdminSetup({ project, isUnshared }: { project: { id: string; title: string; welcome_message?: string; seed_questions?: string[]; style_guide?: string; context?: string }; isUnshared: boolean }) {
+function AdminSetup({ project, isUnshared }: { project: { id: string; title: string; welcome_message?: string; seed_questions?: string[]; style_guide?: string; context?: string; session_mode?: 'discover' | 'converge'; builder_directives?: string[] }; isUnshared: boolean }) {
   const [expanded, setExpanded] = useState(isUnshared)
   const [welcomeMessage, setWelcomeMessage] = useState(project.welcome_message || '')
   const [seedQuestions, setSeedQuestions] = useState<string[]>(project.seed_questions || [])
   const [newQuestion, setNewQuestion] = useState('')
   const [styleGuide, setStyleGuide] = useState(project.style_guide || '')
+  const [sessionMode, setSessionMode] = useState<'discover' | 'converge'>(project.session_mode || 'discover')
+  const [directives, setDirectives] = useState<string[]>(project.builder_directives || [])
+  const [newDirective, setNewDirective] = useState('')
   const [shareEmail, setShareEmail] = useState('')
   const [saved, setSaved] = useState(false)
   const [linkCopied, setLinkCopied] = useState(false)
@@ -235,7 +238,9 @@ function AdminSetup({ project, isUnshared }: { project: { id: string; title: str
     setWelcomeMessage(project.welcome_message || '')
     setSeedQuestions(project.seed_questions || [])
     setStyleGuide(project.style_guide || '')
-  }, [project.welcome_message, project.seed_questions, project.style_guide])
+    setSessionMode(project.session_mode || 'discover')
+    setDirectives(project.builder_directives || [])
+  }, [project.welcome_message, project.seed_questions, project.style_guide, project.session_mode, project.builder_directives])
 
   const handleSave = async () => {
     await updateProject.mutateAsync({
@@ -243,6 +248,8 @@ function AdminSetup({ project, isUnshared }: { project: { id: string; title: str
       welcome_message: welcomeMessage,
       seed_questions: seedQuestions,
       style_guide: styleGuide,
+      session_mode: sessionMode,
+      builder_directives: directives,
     })
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
@@ -263,6 +270,16 @@ function AdminSetup({ project, isUnshared }: { project: { id: string; title: str
     setSeedQuestions((prev) => prev.filter((_, i) => i !== index))
   }
 
+  const handleAddDirective = () => {
+    if (!newDirective.trim()) return
+    setDirectives((prev) => [...prev, newDirective.trim()])
+    setNewDirective('')
+  }
+
+  const handleRemoveDirective = (index: number) => {
+    setDirectives((prev) => prev.filter((_, i) => i !== index))
+  }
+
   const handleShare = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!shareEmail.trim()) return
@@ -272,6 +289,8 @@ function AdminSetup({ project, isUnshared }: { project: { id: string; title: str
       welcome_message: welcomeMessage,
       seed_questions: seedQuestions,
       style_guide: styleGuide,
+      session_mode: sessionMode,
+      builder_directives: directives,
     })
     await shareProject.mutateAsync({ project_id: project.id, email: shareEmail.trim() })
   }
@@ -316,44 +335,119 @@ function AdminSetup({ project, isUnshared }: { project: { id: string; title: str
               />
             </div>
 
-            {/* Seed questions */}
+            {/* Session mode toggle */}
             <div>
-              <label className="text-sm font-medium text-gray-700 block mb-1.5">Seed questions</label>
-              <p className="text-xs text-gray-500 mb-2">Questions the agent should weave into the conversation early on.</p>
-              {seedQuestions.length > 0 && (
-                <ul className="space-y-1.5 mb-2">
-                  {seedQuestions.map((q, i) => (
-                    <li key={i} className="flex items-start gap-2 text-sm text-gray-700 bg-gray-50 rounded px-2.5 py-1.5">
-                      <span className="text-gray-400 text-xs mt-0.5">{i + 1}.</span>
-                      <span className="flex-1">{q}</span>
-                      <button
-                        onClick={() => handleRemoveQuestion(i)}
-                        className="p-0.5 text-gray-400 hover:text-red-500 shrink-0"
-                      >
-                        <X className="h-3.5 w-3.5" />
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
+              <label className="text-sm font-medium text-gray-700 block mb-1.5">Session mode</label>
               <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={newQuestion}
-                  onChange={(e) => setNewQuestion(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddQuestion() } }}
-                  placeholder="What does a typical day look like for you?"
-                  className="flex-1 px-3 py-1.5 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
-                />
                 <button
-                  onClick={handleAddQuestion}
-                  disabled={!newQuestion.trim()}
-                  className="p-1.5 text-gray-400 hover:text-brand-navy hover:bg-gray-100 rounded disabled:opacity-40"
+                  onClick={() => setSessionMode('discover')}
+                  className={`flex-1 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                    sessionMode === 'discover'
+                      ? 'bg-brand-navy text-white'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
                 >
-                  <Plus className="h-4 w-4" />
+                  Discover
+                </button>
+                <button
+                  onClick={() => setSessionMode('converge')}
+                  className={`flex-1 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                    sessionMode === 'converge'
+                      ? 'bg-brand-navy text-white'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                >
+                  Converge
                 </button>
               </div>
+              <p className="text-xs text-gray-500 mt-1">
+                {sessionMode === 'discover'
+                  ? 'Broad exploration — the agent asks open-ended questions'
+                  : 'Push for decisions — the agent narrows scope and presents options'}
+              </p>
             </div>
+
+            {/* Seed questions (discover mode) */}
+            {sessionMode === 'discover' && (
+              <div>
+                <label className="text-sm font-medium text-gray-700 block mb-1.5">Seed questions</label>
+                <p className="text-xs text-gray-500 mb-2">Questions the agent should weave into the conversation early on.</p>
+                {seedQuestions.length > 0 && (
+                  <ul className="space-y-1.5 mb-2">
+                    {seedQuestions.map((q, i) => (
+                      <li key={i} className="flex items-start gap-2 text-sm text-gray-700 bg-gray-50 rounded px-2.5 py-1.5">
+                        <span className="text-gray-400 text-xs mt-0.5">{i + 1}.</span>
+                        <span className="flex-1">{q}</span>
+                        <button
+                          onClick={() => handleRemoveQuestion(i)}
+                          className="p-0.5 text-gray-400 hover:text-red-500 shrink-0"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={newQuestion}
+                    onChange={(e) => setNewQuestion(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddQuestion() } }}
+                    placeholder="What does a typical day look like for you?"
+                    className="flex-1 px-3 py-1.5 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
+                  />
+                  <button
+                    onClick={handleAddQuestion}
+                    disabled={!newQuestion.trim()}
+                    className="p-1.5 text-gray-400 hover:text-brand-navy hover:bg-gray-100 rounded disabled:opacity-40"
+                  >
+                    <Plus className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Builder directives (converge mode) */}
+            {sessionMode === 'converge' && (
+              <div>
+                <label className="text-sm font-medium text-gray-700 block mb-1.5">Builder directives</label>
+                <p className="text-xs text-gray-500 mb-2">Things the agent should actively drive toward. It will not leave the session without covering these.</p>
+                {directives.length > 0 && (
+                  <ul className="space-y-1.5 mb-2">
+                    {directives.map((d, i) => (
+                      <li key={i} className="flex items-start gap-2 text-sm text-gray-700 bg-gray-50 rounded px-2.5 py-1.5">
+                        <span className="text-gray-400 text-xs mt-0.5">{i + 1}.</span>
+                        <span className="flex-1">{d}</span>
+                        <button
+                          onClick={() => handleRemoveDirective(i)}
+                          className="p-0.5 text-gray-400 hover:text-red-500 shrink-0"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={newDirective}
+                    onChange={(e) => setNewDirective(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddDirective() } }}
+                    placeholder="Get them to pick 1-2 tickers to start with"
+                    className="flex-1 px-3 py-1.5 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
+                  />
+                  <button
+                    onClick={handleAddDirective}
+                    disabled={!newDirective.trim()}
+                    className="p-1.5 text-gray-400 hover:text-brand-navy hover:bg-gray-100 rounded disabled:opacity-40"
+                  >
+                    <Plus className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* Style guide */}
             <div>
@@ -513,6 +607,9 @@ function ExportSection({ project, briefContent, projectId }: {
     }
     if (briefContent.constraints) sections.push(`## Constraints`, briefContent.constraints, '')
     if (briefContent.additional_context) sections.push(`## Additional context`, briefContent.additional_context, '')
+    if (briefContent.decisions && briefContent.decisions.length > 0) {
+      sections.push(`## Decisions`, ...briefContent.decisions.map((d) => `- **${d.topic}:** ${d.decision}`), '')
+    }
     return sections.join('\n')
   }
 
@@ -558,6 +655,9 @@ function BriefSummary({ content }: { content: BriefContent }) {
   if (content.features?.length > 0) {
     parts.push(`${content.features.length} feature${content.features.length === 1 ? '' : 's'} identified`)
   }
+  if (content.decisions && content.decisions.length > 0) {
+    parts.push(`${content.decisions.length} decision${content.decisions.length === 1 ? '' : 's'} made`)
+  }
 
   return (
     <p className="text-sm text-gray-700 leading-relaxed">
@@ -572,7 +672,8 @@ function hasBriefContent(brief: BriefContent): boolean {
     brief.target_users ||
     (brief.features && brief.features.length > 0) ||
     brief.constraints ||
-    brief.additional_context
+    brief.additional_context ||
+    (brief.decisions && brief.decisions.length > 0)
   )
 }
 

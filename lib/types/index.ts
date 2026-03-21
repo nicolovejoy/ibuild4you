@@ -25,6 +25,8 @@ export interface Project extends BaseEntity {
   welcome_message?: string // admin-reviewed welcome message for the maker
   seed_questions?: string[] // ordered questions the agent should weave in early
   style_guide?: string // tone/approach notes for communicating with this maker
+  builder_directives?: string[] // things agent should actively push toward
+  session_mode?: 'discover' | 'converge' // current operating mode (default: discover)
   // Enriched by GET /api/projects
   session_count?: number
   last_message_at?: string | null
@@ -83,4 +85,10 @@ export interface BriefContent {
   features: string[]
   constraints: string
   additional_context: string
+  decisions?: BriefDecision[]
+}
+
+export interface BriefDecision {
+  topic: string // short label ("Data source", "Ticker selection")
+  decision: string // what was decided ("Reddit API for user sentiment")
 }
