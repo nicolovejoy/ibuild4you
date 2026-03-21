@@ -1,5 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { isAdminEmail, requireAdmin, getAuthenticatedUser } from '../firebase-server-helpers'
+import {
+  isAdminEmail,
+  requireRole,
+  canChat,
+  canReview,
+  canConfigure,
+  canManage,
+  getAuthenticatedUser,
+} from '../firebase-server-helpers'
 
 // Mock Firebase Admin SDK — we don't want real Firebase calls in unit tests
 vi.mock('@/lib/firebase/admin', () => ({
@@ -27,21 +35,57 @@ describe('isAdminEmail', () => {
   })
 })
 
-describe('requireAdmin', () => {
-  it('returns null for admin emails (no error)', () => {
-    expect(requireAdmin('nlovejoy@me.com')).toBeNull()
+describe('requireRole', () => {
+  it('returns null when role meets minimum', () => {
+    expect(requireRole('owner', 'maker')).toBeNull()
+    expect(requireRole('builder', 'builder')).toBeNull()
+    expect(requireRole('maker', 'maker')).toBeNull()
   })
 
-  it('returns 403 response for non-admin emails', () => {
-    const response = requireAdmin('random@example.com')
+  it('returns 403 when role is below minimum', () => {
+    const response = requireRole('maker', 'builder')
     expect(response).not.toBeNull()
     expect(response!.status).toBe(403)
   })
 
-  it('returns 403 response for null', () => {
-    const response = requireAdmin(null)
+  it('returns 403 for null role', () => {
+    const response = requireRole(null, 'maker')
     expect(response).not.toBeNull()
     expect(response!.status).toBe(403)
+  })
+})
+
+describe('permission helpers', () => {
+  it('canChat allows maker+', () => {
+    expect(canChat('maker')).toBe(true)
+    expect(canChat('apprentice')).toBe(true)
+    expect(canChat('builder')).toBe(true)
+    expect(canChat('owner')).toBe(true)
+    expect(canChat(null)).toBe(false)
+  })
+
+  it('canReview allows apprentice+', () => {
+    expect(canReview('maker')).toBe(false)
+    expect(canReview('apprentice')).toBe(true)
+    expect(canReview('builder')).toBe(true)
+    expect(canReview('owner')).toBe(true)
+    expect(canReview(null)).toBe(false)
+  })
+
+  it('canConfigure allows builder+', () => {
+    expect(canConfigure('maker')).toBe(false)
+    expect(canConfigure('apprentice')).toBe(false)
+    expect(canConfigure('builder')).toBe(true)
+    expect(canConfigure('owner')).toBe(true)
+    expect(canConfigure(null)).toBe(false)
+  })
+
+  it('canManage allows owner only', () => {
+    expect(canManage('maker')).toBe(false)
+    expect(canManage('apprentice')).toBe(false)
+    expect(canManage('builder')).toBe(false)
+    expect(canManage('owner')).toBe(true)
+    expect(canManage(null)).toBe(false)
   })
 })
 

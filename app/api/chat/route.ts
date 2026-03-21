@@ -1,7 +1,6 @@
-import { getAuthenticatedUser, getAdminDb, canAccessProject } from '@/lib/api/firebase-server-helpers'
+import { getAuthenticatedUser, getAdminDb, getProjectRole, isAdminEmail, ADMIN_EMAILS } from '@/lib/api/firebase-server-helpers'
 import { buildSystemPrompt } from '@/lib/agent/system-prompt'
 import { AGENT_MODEL, AGENT_MAX_TOKENS, AGENT_TEMPERATURE } from '@/lib/agent/constants'
-import { isAdminEmail, ADMIN_EMAILS } from '@/lib/constants'
 import Anthropic from '@anthropic-ai/sdk'
 import { Resend } from 'resend'
 import type { BriefContent } from '@/lib/types'
@@ -30,7 +29,7 @@ export async function POST(request: Request) {
 
   const db = getAdminDb()
 
-  // Look up session → project, verify ownership
+  // Look up session → project, verify membership (chat = maker+)
   const sessionDoc = await db.collection('sessions').doc(session_id).get()
   if (!sessionDoc.exists) {
     return new Response(JSON.stringify({ error: 'Session not found' }), {
@@ -42,7 +41,9 @@ export async function POST(request: Request) {
   const projectId = sessionDoc.data()?.project_id
   const projectDoc = await db.collection('projects').doc(projectId).get()
   const projectData = projectDoc.data() || {}
-  if (!projectDoc.exists || !canAccessProject(projectData, auth.uid, auth.email)) {
+
+  const role = await getProjectRole(db, projectId, auth.uid, auth.email)
+  if (!projectDoc.exists || !role) {
     return new Response(JSON.stringify({ error: 'Not found' }), {
       status: 404,
       headers: { 'Content-Type': 'application/json' },

@@ -5,13 +5,21 @@ export interface BaseEntity {
   updated_at: string
 }
 
-// User roles in the system ('requester' is the DB value for makers)
-export type UserRole = 'requester' | 'builder'
+// Project membership roles — each level includes everything below
+export type MemberRole = 'owner' | 'builder' | 'apprentice' | 'maker'
 
-// Users collection
+// Project members collection — role lives on the project-person relationship
+export interface ProjectMember extends BaseEntity {
+  project_id: string
+  user_id: string
+  email: string
+  role: MemberRole
+  added_by: string // email of who added them
+}
+
+// Users collection — pure identity, no global role
 export interface AppUser extends BaseEntity {
   email: string
-  role: UserRole
   display_name?: string
 }
 
@@ -33,6 +41,7 @@ export interface Project extends BaseEntity {
   last_message_by?: string | null
   brief_version?: number | null
   brief_decision_count?: number | null
+  brief_feature_count?: number | null
 }
 
 // Sessions collection — each conversation between requester and agent

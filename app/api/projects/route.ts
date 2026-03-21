@@ -1,5 +1,11 @@
 import { NextResponse } from 'next/server'
-import { getAuthenticatedUser, getAdminDb, requireAdmin } from '@/lib/api/firebase-server-helpers'
+import {
+  getAuthenticatedUser,
+  getAdminDb,
+  getProjectRole,
+  requireRole,
+  isAdminEmail,
+} from '@/lib/api/firebase-server-helpers'
 
 // Enrich project docs with last activity and session count
 async function enrichProjects(
@@ -52,11 +58,13 @@ async function enrichProjects(
 
       let briefVersion: number | null = null
       let briefDecisionCount: number | null = null
+      let briefFeatureCount: number | null = null
       if (!briefSnap.empty) {
         const briefData = briefSnap.docs[0].data()
         briefVersion = (briefData.version as number) || null
-        const decisions = (briefData.content as { decisions?: unknown[] })?.decisions
-        briefDecisionCount = Array.isArray(decisions) ? decisions.length : 0
+        const content = briefData.content as { decisions?: unknown[]; features?: unknown[] } | undefined
+        briefDecisionCount = Array.isArray(content?.decisions) ? content.decisions.length : 0
+        briefFeatureCount = Array.isArray(content?.features) ? content.features.length : 0
       }
 
       return {
@@ -66,18 +74,18 @@ async function enrichProjects(
         last_message_by: lastMessageBy,
         brief_version: briefVersion,
         brief_decision_count: briefDecisionCount,
+        brief_feature_count: briefFeatureCount,
       }
     })
   )
 }
 
-// GET /api/projects — list the current user's projects (owned + shared with them)
+// GET /api/projects — list projects the current user has membership on
 export async function GET(request: Request) {
   const auth = await getAuthenticatedUser(request)
   if (auth.error) return auth.error
 
   const db = getAdminDb()
-  const { isAdminEmail } = await import('@/lib/constants')
 
   // Admins see all projects
   if (isAdminEmail(auth.email)) {
@@ -89,40 +97,67 @@ export async function GET(request: Request) {
     return NextResponse.json(await enrichProjects(db, projects))
   }
 
-  // Projects the user owns
+  // Get project IDs from membership
+  const memberSnap = await db
+    .collection('project_members')
+    .where('user_id', '==', auth.uid)
+    .get()
+
+  const memberByEmail = await db
+    .collection('project_members')
+    .where('email', '==', auth.email)
+    .get()
+
+  // Also check legacy: projects where requester_id or requester_email matches
   const ownedSnap = await db
     .collection('projects')
     .where('requester_id', '==', auth.uid)
     .orderBy('created_at', 'desc')
     .get()
 
-  // Projects shared with the user's email (not yet claimed)
   const sharedSnap = await db
     .collection('projects')
     .where('requester_email', '==', auth.email)
     .orderBy('created_at', 'desc')
     .get()
 
-  // Merge and deduplicate
-  const seen = new Set<string>()
+  // Collect all project IDs
+  const projectIds = new Set<string>()
+  for (const doc of memberSnap.docs) projectIds.add(doc.data().project_id as string)
+  for (const doc of memberByEmail.docs) projectIds.add(doc.data().project_id as string)
+  for (const doc of ownedSnap.docs) projectIds.add(doc.id)
+  for (const doc of sharedSnap.docs) projectIds.add(doc.id)
+
+  if (projectIds.size === 0) {
+    return NextResponse.json([])
+  }
+
+  // Fetch all project docs
+  const projectIdArray = Array.from(projectIds)
   const projects: { id: string; [key: string]: unknown }[] = []
-  for (const doc of [...ownedSnap.docs, ...sharedSnap.docs]) {
-    if (!seen.has(doc.id)) {
-      seen.add(doc.id)
+
+  // Firestore 'in' queries support up to 30 values
+  for (let i = 0; i < projectIdArray.length; i += 30) {
+    const chunk = projectIdArray.slice(i, i + 30)
+    const snap = await db
+      .collection('projects')
+      .where('__name__', 'in', chunk)
+      .get()
+    for (const doc of snap.docs) {
       projects.push({ id: doc.id, ...doc.data() })
     }
   }
 
+  // Sort by created_at desc
+  projects.sort((a, b) => (b.created_at as string).localeCompare(a.created_at as string))
+
   return NextResponse.json(await enrichProjects(db, projects))
 }
 
-// PATCH /api/projects — update project setup fields (admin-only)
+// PATCH /api/projects — update project setup fields (builder+)
 export async function PATCH(request: Request) {
   const auth = await getAuthenticatedUser(request)
   if (auth.error) return auth.error
-
-  const adminCheck = requireAdmin(auth.email)
-  if (adminCheck) return adminCheck
 
   const body = await request.json()
   const { project_id, ...updates } = body
@@ -132,6 +167,10 @@ export async function PATCH(request: Request) {
   }
 
   const db = getAdminDb()
+  const role = await getProjectRole(db, project_id, auth.uid, auth.email)
+  const roleCheck = requireRole(role, 'builder')
+  if (roleCheck) return roleCheck
+
   const projectDoc = await db.collection('projects').doc(project_id).get()
   if (!projectDoc.exists) {
     return NextResponse.json({ error: 'Project not found' }, { status: 404 })
@@ -151,13 +190,10 @@ export async function PATCH(request: Request) {
   return NextResponse.json({ id: project_id, ...patch })
 }
 
-// DELETE /api/projects?project_id=xxx — delete a project and all related data (admin-only)
+// DELETE /api/projects?project_id=xxx — delete a project and all related data (owner only)
 export async function DELETE(request: Request) {
   const auth = await getAuthenticatedUser(request)
   if (auth.error) return auth.error
-
-  const adminCheck = requireAdmin(auth.email)
-  if (adminCheck) return adminCheck
 
   const { searchParams } = new URL(request.url)
   const projectId = searchParams.get('project_id')
@@ -167,6 +203,9 @@ export async function DELETE(request: Request) {
   }
 
   const db = getAdminDb()
+  const role = await getProjectRole(db, projectId, auth.uid, auth.email)
+  const roleCheck = requireRole(role, 'owner')
+  if (roleCheck) return roleCheck
 
   // Verify project exists
   const projectDoc = await db.collection('projects').doc(projectId).get()
@@ -198,6 +237,13 @@ export async function DELETE(request: Request) {
     .where('project_id', '==', projectId)
     .get()
   briefsSnap.docs.forEach((doc) => docsToDelete.push(doc.ref))
+
+  // Project members
+  const membersSnap = await db
+    .collection('project_members')
+    .where('project_id', '==', projectId)
+    .get()
+  membersSnap.docs.forEach((doc) => docsToDelete.push(doc.ref))
 
   // The project itself
   docsToDelete.push(db.collection('projects').doc(projectId))
@@ -239,6 +285,17 @@ export async function POST(request: Request) {
   }
 
   const docRef = await db.collection('projects').add(projectData)
+
+  // Create owner membership for the creator
+  await db.collection('project_members').add({
+    project_id: docRef.id,
+    user_id: auth.uid,
+    email: auth.email,
+    role: 'owner',
+    added_by: auth.email,
+    created_at: now,
+    updated_at: now,
+  })
 
   // Create the first session for the project automatically
   const sessionRef = await db.collection('sessions').add({

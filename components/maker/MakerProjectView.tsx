@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { ArrowLeft, Send, FileText, ChevronDown, ChevronUp, MessageSquare } from 'lucide-react'
 import { BuildTimestamp } from '@/components/build-timestamp'
@@ -17,8 +17,6 @@ import {
 import { apiFetch } from '@/lib/firebase/api-fetch'
 import { useQueryClient } from '@tanstack/react-query'
 import type { BriefContent, Session } from '@/lib/types'
-
-const BRIEF_UPDATE_INTERVAL = 15_000
 
 export function MakerProjectView({ projectId, userEmail }: { projectId: string; userEmail: string }) {
   const router = useRouter()
@@ -172,8 +170,6 @@ function MakerChat({
   const [error, setError] = useState<string | null>(null)
   const [creatingSession, setCreatingSession] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const lastBriefUpdate = useRef<number>(0)
-  const briefTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     if (savedMessages) {
@@ -183,42 +179,6 @@ function MakerChat({
       })))
     }
   }, [savedMessages])
-
-  const triggerBriefUpdate = useCallback(() => {
-    if (!sessionId) return
-    const now = Date.now()
-    const elapsed = now - lastBriefUpdate.current
-    if (briefTimerRef.current) {
-      clearTimeout(briefTimerRef.current)
-      briefTimerRef.current = null
-    }
-    if (elapsed >= BRIEF_UPDATE_INTERVAL) {
-      lastBriefUpdate.current = now
-      apiFetch('/api/briefs/generate', {
-        method: 'POST',
-        body: JSON.stringify({ project_id: projectId }),
-      })
-        .then(() => queryClient.invalidateQueries({ queryKey: ['brief', projectId] }))
-        .catch((err) => console.error('Brief update failed:', err))
-    } else {
-      const remaining = BRIEF_UPDATE_INTERVAL - elapsed
-      briefTimerRef.current = setTimeout(() => {
-        lastBriefUpdate.current = Date.now()
-        apiFetch('/api/briefs/generate', {
-          method: 'POST',
-          body: JSON.stringify({ project_id: projectId }),
-        })
-          .then(() => queryClient.invalidateQueries({ queryKey: ['brief', projectId] }))
-          .catch((err) => console.error('Brief update failed:', err))
-      }, remaining)
-    }
-  }, [projectId, sessionId, queryClient])
-
-  useEffect(() => {
-    return () => {
-      if (briefTimerRef.current) clearTimeout(briefTimerRef.current)
-    }
-  }, [])
 
   const handleSend = async () => {
     if (!input.trim() || streaming || creatingSession) return
@@ -297,7 +257,6 @@ function MakerChat({
 
       queryClient.invalidateQueries({ queryKey: ['messages', targetSessionId] })
       queryClient.invalidateQueries({ queryKey: ['sessions', projectId] })
-      triggerBriefUpdate()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong')
       setMessages((prev) => {

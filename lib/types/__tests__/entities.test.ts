@@ -7,7 +7,8 @@ import type {
   Brief,
   Review,
   ReviewAnnotation,
-  UserRole,
+  MemberRole,
+  ProjectMember,
 } from '../index'
 
 // Type-level tests — these verify the data model compiles and
@@ -18,17 +19,30 @@ describe('data model types', () => {
     const user: AppUser = {
       id: 'u1',
       email: 'jamie@bakery.com',
-      role: 'requester',
       created_at: '2026-03-18T00:00:00Z',
       updated_at: '2026-03-18T00:00:00Z',
     }
-    expect(user.role).toBe('requester')
     expect(user.email).toBeDefined()
   })
 
-  it('UserRole is requester or builder', () => {
-    const roles: UserRole[] = ['requester', 'builder']
-    expect(roles).toHaveLength(2)
+  it('MemberRole has four levels', () => {
+    const roles: MemberRole[] = ['owner', 'builder', 'apprentice', 'maker']
+    expect(roles).toHaveLength(4)
+  })
+
+  it('ProjectMember links user to project with a role', () => {
+    const member: ProjectMember = {
+      id: 'pm1',
+      project_id: 'p1',
+      user_id: 'u1',
+      email: 'jamie@bakery.com',
+      role: 'maker',
+      added_by: 'nlovejoy@me.com',
+      created_at: '2026-03-18T00:00:00Z',
+      updated_at: '2026-03-18T00:00:00Z',
+    }
+    expect(member.role).toBe('maker')
+    expect(member.project_id).toBe('p1')
   })
 
   it('Project belongs to a requester', () => {

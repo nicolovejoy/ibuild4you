@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server'
-import { getAuthenticatedUser, getAdminDb } from '@/lib/api/firebase-server-helpers'
-import { isAdminEmail } from '@/lib/constants'
+import { getAuthenticatedUser, getAdminDb, isAdminEmail } from '@/lib/api/firebase-server-helpers'
 
 // POST /api/projects/claim — claim a project that was shared with you
 export async function POST(request: Request) {
@@ -28,15 +27,49 @@ export async function POST(request: Request) {
     return NextResponse.json({ claimed: true, project_id })
   }
 
-  // Check that this project was shared with this user's email
-  if (project?.requester_email !== auth.email) {
+  // Check membership by email
+  const memberSnap = await db
+    .collection('project_members')
+    .where('project_id', '==', project_id)
+    .where('email', '==', auth.email)
+    .limit(1)
+    .get()
+
+  // Also check legacy requester_email
+  const hasLegacyAccess = project?.requester_email === auth.email
+
+  if (memberSnap.empty && !hasLegacyAccess) {
     return NextResponse.json({ error: 'This project was not shared with you' }, { status: 403 })
   }
 
-  // Transfer ownership
+  const now = new Date().toISOString()
+
+  // Update membership record with user_id if it exists
+  if (!memberSnap.empty) {
+    const memberDoc = memberSnap.docs[0]
+    if (!memberDoc.data().user_id) {
+      await memberDoc.ref.update({
+        user_id: auth.uid,
+        updated_at: now,
+      })
+    }
+  } else if (hasLegacyAccess) {
+    // Create membership record from legacy access
+    await db.collection('project_members').add({
+      project_id,
+      user_id: auth.uid,
+      email: auth.email,
+      role: 'maker',
+      added_by: 'system-migration',
+      created_at: now,
+      updated_at: now,
+    })
+  }
+
+  // Transfer ownership on the project doc
   await db.collection('projects').doc(project_id).update({
     requester_id: auth.uid,
-    updated_at: new Date().toISOString(),
+    updated_at: now,
   })
 
   return NextResponse.json({ claimed: true, project_id })

@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server'
-import { getAuthenticatedUser, getAdminDb, canAccessProject } from '@/lib/api/firebase-server-helpers'
+import { getAuthenticatedUser, getAdminDb, getProjectRole, requireRole } from '@/lib/api/firebase-server-helpers'
 import { buildBriefPrompt } from '@/lib/agent/brief-prompt'
 import { BRIEF_MODEL, BRIEF_MAX_TOKENS, BRIEF_TEMPERATURE } from '@/lib/agent/constants'
+import { upsertBrief } from '@/lib/api/briefs'
 import Anthropic from '@anthropic-ai/sdk'
 import type { BriefContent } from '@/lib/types'
 
@@ -9,7 +10,7 @@ function getAnthropic() {
   return new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 }
 
-// POST /api/briefs/generate — generate/update the brief for a project
+// POST /api/briefs/generate — generate/update the brief for a project (builder+)
 export async function POST(request: Request) {
   const auth = await getAuthenticatedUser(request)
   if (auth.error) return auth.error
@@ -23,11 +24,9 @@ export async function POST(request: Request) {
 
   const db = getAdminDb()
 
-  // Verify ownership
-  const projectDoc = await db.collection('projects').doc(project_id).get()
-  if (!projectDoc.exists || !canAccessProject(projectDoc.data()!, auth.uid, auth.email)) {
-    return NextResponse.json({ error: 'Not found' }, { status: 404 })
-  }
+  const role = await getProjectRole(db, project_id, auth.uid, auth.email)
+  const roleCheck = requireRole(role, 'builder')
+  if (roleCheck) return roleCheck
 
   // Load all messages across all sessions for this project
   const sessionsSnap = await db
@@ -55,9 +54,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'No messages to generate brief from' }, { status: 400 })
   }
 
-  // Load current brief
+  // Load current brief for context
   let currentBrief: BriefContent | null = null
-  let currentVersion = 0
   const briefSnap = await db
     .collection('briefs')
     .where('project_id', '==', project_id)
@@ -67,7 +65,6 @@ export async function POST(request: Request) {
 
   if (!briefSnap.empty) {
     currentBrief = briefSnap.docs[0].data().content as BriefContent
-    currentVersion = briefSnap.docs[0].data().version as number
   }
 
   // Build prompt and call Claude
@@ -104,25 +101,10 @@ export async function POST(request: Request) {
       (d) => d && typeof d.topic === 'string' && typeof d.decision === 'string'
     )
 
-    // Store new version
-    const now = new Date().toISOString()
-    const newVersion = currentVersion + 1
-    const docRef = await db.collection('briefs').add({
-      project_id,
-      version: newVersion,
-      content: briefContent,
-      created_at: now,
-      updated_at: now,
-    })
+    // Upsert the brief
+    const result = await upsertBrief(db, project_id, briefContent)
 
-    return NextResponse.json({
-      id: docRef.id,
-      project_id,
-      version: newVersion,
-      content: briefContent,
-      created_at: now,
-      updated_at: now,
-    })
+    return NextResponse.json(result)
   } catch (err) {
     console.error('Brief generation error:', err)
     return NextResponse.json({ error: 'Failed to generate brief' }, { status: 500 })

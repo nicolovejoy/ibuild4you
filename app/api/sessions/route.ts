@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { getAuthenticatedUser, getAdminDb, canAccessProject } from '@/lib/api/firebase-server-helpers'
+import { getAuthenticatedUser, getAdminDb, getProjectRole, requireRole } from '@/lib/api/firebase-server-helpers'
 
 // GET /api/sessions?project_id=xxx — list sessions for a project
 export async function GET(request: Request) {
@@ -15,8 +15,8 @@ export async function GET(request: Request) {
 
   const db = getAdminDb()
 
-  const projectDoc = await db.collection('projects').doc(projectId).get()
-  if (!projectDoc.exists || !canAccessProject(projectDoc.data()!, auth.uid, auth.email)) {
+  const role = await getProjectRole(db, projectId, auth.uid, auth.email)
+  if (!role) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
 
@@ -30,7 +30,7 @@ export async function GET(request: Request) {
   return NextResponse.json(sessions)
 }
 
-// POST /api/sessions — create a new session for a project
+// POST /api/sessions — create a new session for a project (builder+)
 // Snapshots current agent config from the project onto the session for tracking.
 export async function POST(request: Request) {
   const auth = await getAuthenticatedUser(request)
@@ -45,8 +45,12 @@ export async function POST(request: Request) {
 
   const db = getAdminDb()
 
+  const role = await getProjectRole(db, project_id, auth.uid, auth.email)
+  const roleCheck = requireRole(role, 'builder')
+  if (roleCheck) return roleCheck
+
   const projectDoc = await db.collection('projects').doc(project_id).get()
-  if (!projectDoc.exists || !canAccessProject(projectDoc.data()!, auth.uid, auth.email)) {
+  if (!projectDoc.exists) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
 

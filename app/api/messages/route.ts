@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { getAuthenticatedUser, getAdminDb, canAccessProject, requireAdmin } from '@/lib/api/firebase-server-helpers'
+import { getAuthenticatedUser, getAdminDb, getProjectRole, requireRole } from '@/lib/api/firebase-server-helpers'
 
 // GET /api/messages?session_id=xxx — list messages for a session
 export async function GET(request: Request) {
@@ -15,15 +15,15 @@ export async function GET(request: Request) {
 
   const db = getAdminDb()
 
-  // Look up the session to get its project, then verify ownership
+  // Look up the session to get its project, then verify membership
   const sessionDoc = await db.collection('sessions').doc(sessionId).get()
   if (!sessionDoc.exists) {
     return NextResponse.json({ error: 'Session not found' }, { status: 404 })
   }
 
   const projectId = sessionDoc.data()?.project_id
-  const projectDoc = await db.collection('projects').doc(projectId).get()
-  if (!projectDoc.exists || !canAccessProject(projectDoc.data()!, auth.uid, auth.email)) {
+  const role = await getProjectRole(db, projectId, auth.uid, auth.email)
+  if (!role) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
 
@@ -37,13 +37,10 @@ export async function GET(request: Request) {
   return NextResponse.json(messages)
 }
 
-// DELETE /api/messages?message_id=xxx — delete a single message (admin-only)
+// DELETE /api/messages?message_id=xxx — delete a single message (builder+)
 export async function DELETE(request: Request) {
   const auth = await getAuthenticatedUser(request)
   if (auth.error) return auth.error
-
-  const adminCheck = requireAdmin(auth.email)
-  if (adminCheck) return adminCheck
 
   const { searchParams } = new URL(request.url)
   const messageId = searchParams.get('message_id')
@@ -58,6 +55,18 @@ export async function DELETE(request: Request) {
   if (!messageDoc.exists) {
     return NextResponse.json({ error: 'Message not found' }, { status: 404 })
   }
+
+  // Look up the session → project to verify role
+  const sessionId = messageDoc.data()?.session_id
+  const sessionDoc = await db.collection('sessions').doc(sessionId).get()
+  if (!sessionDoc.exists) {
+    return NextResponse.json({ error: 'Session not found' }, { status: 404 })
+  }
+
+  const projectId = sessionDoc.data()?.project_id
+  const role = await getProjectRole(db, projectId, auth.uid, auth.email)
+  const roleCheck = requireRole(role, 'builder')
+  if (roleCheck) return roleCheck
 
   await db.collection('messages').doc(messageId).delete()
 

@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiFetch } from '@/lib/firebase/api-fetch'
-import type { Project, Session, Message, Brief } from '@/lib/types'
+import type { Project, Session, Message, Brief, MemberRole } from '@/lib/types'
 
 // --- Projects ---
 
@@ -161,6 +161,19 @@ export function useProject(projectId: string | undefined) {
   })
 }
 
+export function useProjectRole(projectId: string | undefined) {
+  return useQuery<MemberRole | null>({
+    queryKey: ['projectRole', projectId],
+    queryFn: async () => {
+      const res = await apiFetch(`/api/projects/role?project_id=${projectId}`)
+      if (!res.ok) throw new Error('Failed to load role')
+      const data = await res.json()
+      return data.role as MemberRole | null
+    },
+    enabled: !!projectId,
+  })
+}
+
 export function useBrief(projectId: string | undefined) {
   return useQuery<Brief | null>({
     queryKey: ['brief', projectId],
@@ -170,6 +183,28 @@ export function useBrief(projectId: string | undefined) {
       return res.json()
     },
     enabled: !!projectId,
+  })
+}
+
+export function useUpdateBrief() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({ project_id, content }: { project_id: string; content: unknown }) => {
+      const res = await apiFetch('/api/briefs', {
+        method: 'PUT',
+        body: JSON.stringify({ project_id, content }),
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || 'Failed to update brief')
+      }
+      return res.json()
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['brief', variables.project_id] })
+      queryClient.invalidateQueries({ queryKey: ['projects'] })
+    },
   })
 }
 

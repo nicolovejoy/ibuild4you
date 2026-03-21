@@ -229,7 +229,10 @@ function ProjectList({ isAdmin }: { isAdmin: boolean }) {
                       )}
                       {project.brief_version != null && (
                         <span className="text-gray-400">
-                          Brief v{project.brief_version}
+                          Brief
+                          {(project.brief_feature_count ?? 0) > 0 && (
+                            <> &middot; {project.brief_feature_count} feature{project.brief_feature_count === 1 ? '' : 's'}</>
+                          )}
                           {(project.brief_decision_count ?? 0) > 0 && (
                             <> &middot; {project.brief_decision_count} decision{project.brief_decision_count === 1 ? '' : 's'}</>
                           )}

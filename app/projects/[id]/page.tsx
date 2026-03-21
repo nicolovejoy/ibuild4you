@@ -2,10 +2,9 @@
 
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useApproval } from '@/lib/hooks/useApproval'
-import { useClaimProject } from '@/lib/query/hooks'
+import { useClaimProject, useProjectRole } from '@/lib/query/hooks'
 import { useRouter, useParams } from 'next/navigation'
 import { useEffect } from 'react'
-import { isAdminEmail } from '@/lib/constants'
 import { BuilderProjectView } from '@/components/builder/BuilderProjectView'
 import { MakerProjectView } from '@/components/maker/MakerProjectView'
 
@@ -16,6 +15,9 @@ export default function ProjectPage() {
   const params = useParams()
   const projectId = params.id as string
   const claimProject = useClaimProject()
+  const { data: role, isLoading: roleLoading } = useProjectRole(
+    user && approved ? projectId : undefined
+  )
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) router.push('/auth/login')
@@ -33,7 +35,7 @@ export default function ProjectPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, user, approved])
 
-  if (authLoading || approvalLoading || !user || !approved) {
+  if (authLoading || approvalLoading || !user || !approved || roleLoading) {
     return (
       <div className="min-h-screen bg-brand-cream flex items-center justify-center">
         <div className="animate-pulse text-brand-slate">Loading...</div>
@@ -42,9 +44,10 @@ export default function ProjectPage() {
   }
 
   const userEmail = user.email || ''
-  const isAdmin = isAdminEmail(userEmail)
+  // builder+ gets the builder view, everyone else gets maker view
+  const isBuilder = role === 'owner' || role === 'builder'
 
-  if (isAdmin) {
+  if (isBuilder) {
     return <BuilderProjectView projectId={projectId} userEmail={userEmail} />
   }
 

@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import {
   getAuthenticatedUser,
   getAdminDb,
-  requireAdmin,
+  isAdminEmail,
   isApprovedEmail,
 } from '@/lib/api/firebase-server-helpers'
 
@@ -20,8 +20,9 @@ export async function POST(request: Request) {
   const auth = await getAuthenticatedUser(request)
   if (auth.error) return auth.error
 
-  const adminCheck = requireAdmin(auth.email)
-  if (adminCheck) return adminCheck
+  if (!isAdminEmail(auth.email)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
 
   const body = await request.json()
   const { email } = body

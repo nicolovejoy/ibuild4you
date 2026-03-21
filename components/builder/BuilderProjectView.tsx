@@ -1,11 +1,11 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
   ArrowLeft, MessageSquare, Send, FileText, Sparkles, Plus, X,
   Share2, ChevronDown, ChevronUp, Copy, Check, Mail, RotateCw,
-  Lock, Trash2, Settings,
+  Lock, Trash2, Settings, Upload, ClipboardCopy,
 } from 'lucide-react'
 import { BuildTimestamp } from '@/components/build-timestamp'
 import { Card, CardBody } from '@/components/ui/Card'
@@ -16,6 +16,7 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import {
   useProject,
   useBrief,
+  useUpdateBrief,
   useSessions,
   useMessages,
   useDeleteMessage,
@@ -24,11 +25,10 @@ import {
   useShareProject,
   useCreateSession,
 } from '@/lib/query/hooks'
+import { buildBriefPrompt } from '@/lib/agent/brief-prompt'
 import { apiFetch } from '@/lib/firebase/api-fetch'
 import { useQueryClient } from '@tanstack/react-query'
 import type { Project, Session, BriefContent } from '@/lib/types'
-
-const BRIEF_UPDATE_INTERVAL = 15_000
 
 type TabId = 'sessions' | 'brief' | 'setup'
 
@@ -227,7 +227,6 @@ function SessionsTab({
         {selectedSession ? (
           <SessionChat
             key={selectedSession.id}
-            projectId={projectId}
             session={selectedSession}
             userEmail={userEmail}
             isActive={selectedSession.status === 'active'}
@@ -241,12 +240,10 @@ function SessionsTab({
 }
 
 function SessionChat({
-  projectId,
   session,
   userEmail,
   isActive,
 }: {
-  projectId: string
   session: Session
   userEmail: string
   isActive: boolean
@@ -262,8 +259,6 @@ function SessionChat({
   const [streaming, setStreaming] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const lastBriefUpdate = useRef<number>(0)
-  const briefTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     if (savedMessages) {
@@ -273,40 +268,6 @@ function SessionChat({
       })))
     }
   }, [savedMessages])
-
-  const triggerBriefUpdate = useCallback(() => {
-    const now = Date.now()
-    const elapsed = now - lastBriefUpdate.current
-    if (briefTimerRef.current) {
-      clearTimeout(briefTimerRef.current)
-      briefTimerRef.current = null
-    }
-    if (elapsed >= BRIEF_UPDATE_INTERVAL) {
-      lastBriefUpdate.current = now
-      apiFetch('/api/briefs/generate', {
-        method: 'POST',
-        body: JSON.stringify({ project_id: projectId }),
-      })
-        .then(() => queryClient.invalidateQueries({ queryKey: ['brief', projectId] }))
-        .catch((err) => console.error('Brief update failed:', err))
-    } else {
-      briefTimerRef.current = setTimeout(() => {
-        lastBriefUpdate.current = Date.now()
-        apiFetch('/api/briefs/generate', {
-          method: 'POST',
-          body: JSON.stringify({ project_id: projectId }),
-        })
-          .then(() => queryClient.invalidateQueries({ queryKey: ['brief', projectId] }))
-          .catch((err) => console.error('Brief update failed:', err))
-      }, BRIEF_UPDATE_INTERVAL - elapsed)
-    }
-  }, [projectId, queryClient])
-
-  useEffect(() => {
-    return () => {
-      if (briefTimerRef.current) clearTimeout(briefTimerRef.current)
-    }
-  }, [])
 
   const handleSend = async () => {
     if (!input.trim() || streaming) return
@@ -365,7 +326,6 @@ function SessionChat({
       }
 
       queryClient.invalidateQueries({ queryKey: ['messages', sessionId] })
-      triggerBriefUpdate()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong')
       setMessages((prev) => {
@@ -478,9 +438,14 @@ function BriefTab({
   projectId: string
   brief: { version: number; content: BriefContent } | null | undefined
 }) {
+  const [payloadCopied, setPayloadCopied] = useState(false)
   const [briefCopied, setBriefCopied] = useState(false)
+  const [pasteJson, setPasteJson] = useState('')
+  const [pasteError, setPasteError] = useState<string | null>(null)
   const queryClient = useQueryClient()
   const [generating, setGenerating] = useState(false)
+  const [loadingPayload, setLoadingPayload] = useState(false)
+  const updateBrief = useUpdateBrief()
 
   const briefContent = brief?.content as BriefContent | undefined
   const hasBrief = briefContent && hasBriefContent(briefContent)
@@ -497,6 +462,70 @@ function BriefTab({
       console.error('Brief generation failed:', err)
     } finally {
       setGenerating(false)
+    }
+  }
+
+  const handleCopyPayload = async () => {
+    setLoadingPayload(true)
+    try {
+      // Fetch all sessions for the project
+      const sessionsRes = await apiFetch(`/api/sessions?project_id=${projectId}`)
+      if (!sessionsRes.ok) throw new Error('Failed to load sessions')
+      const sessions = await sessionsRes.json()
+
+      // Sort by created_at ascending
+      sessions.sort((a: { created_at: string }, b: { created_at: string }) =>
+        a.created_at.localeCompare(b.created_at)
+      )
+
+      // Fetch messages for each session
+      const allMessages: { role: string; content: string }[] = []
+      for (const session of sessions) {
+        const msgRes = await apiFetch(`/api/messages?session_id=${session.id}`)
+        if (!msgRes.ok) continue
+        const messages = await msgRes.json()
+        for (const msg of messages) {
+          allMessages.push({ role: msg.role, content: msg.content })
+        }
+      }
+
+      // Build current brief if it exists
+      let currentBrief: BriefContent | null = null
+      if (briefContent && hasBrief) {
+        currentBrief = briefContent
+      }
+
+      // Build the prompt
+      const prompt = buildBriefPrompt({
+        currentBrief,
+        conversationHistory: allMessages,
+      })
+
+      await navigator.clipboard.writeText(prompt)
+      setPayloadCopied(true)
+      setTimeout(() => setPayloadCopied(false), 2000)
+    } catch (err) {
+      console.error('Failed to copy payload:', err)
+    } finally {
+      setLoadingPayload(false)
+    }
+  }
+
+  const handleImportJson = async () => {
+    setPasteError(null)
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(pasteJson)
+    } catch {
+      setPasteError('Invalid JSON — check the format and try again')
+      return
+    }
+
+    try {
+      await updateBrief.mutateAsync({ project_id: projectId, content: parsed })
+      setPasteJson('')
+    } catch (err) {
+      setPasteError(err instanceof Error ? err.message : 'Failed to save brief')
     }
   }
 
@@ -523,38 +552,80 @@ function BriefTab({
           <h2 className="text-sm font-semibold text-brand-slate uppercase tracking-wide">Brief</h2>
           {brief && <span className="text-xs text-gray-400">v{brief.version}</span>}
         </div>
-        <div className="flex items-center gap-2">
-          <LoadingButton
-            variant="ghost"
-            size="sm"
-            loading={generating}
-            loadingText="Generating..."
-            onClick={handleGenerate}
-            icon={Sparkles}
+        {hasBrief && (
+          <button
+            onClick={async () => {
+              await navigator.clipboard.writeText(formatBrief())
+              setBriefCopied(true)
+              setTimeout(() => setBriefCopied(false), 2000)
+            }}
+            className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand-navy"
           >
-            {hasBrief ? 'Regenerate' : 'Generate brief'}
-          </LoadingButton>
-          {hasBrief && (
-            <button
-              onClick={async () => {
-                await navigator.clipboard.writeText(formatBrief())
-                setBriefCopied(true)
-                setTimeout(() => setBriefCopied(false), 2000)
-              }}
-              className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand-navy"
-            >
-              {briefCopied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
-              {briefCopied ? 'Copied!' : 'Copy markdown'}
-            </button>
-          )}
-        </div>
+            {briefCopied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+            {briefCopied ? 'Copied!' : 'Copy markdown'}
+          </button>
+        )}
       </div>
+
+      {/* Generate / Import controls */}
+      <Card hover={false}>
+        <CardBody>
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <LoadingButton
+                variant="primary"
+                size="sm"
+                loading={loadingPayload}
+                loadingText="Loading..."
+                onClick={handleCopyPayload}
+                icon={ClipboardCopy}
+              >
+                {payloadCopied ? 'Copied!' : 'Copy prompt for Claude'}
+              </LoadingButton>
+              <LoadingButton
+                variant="ghost"
+                size="sm"
+                loading={generating}
+                loadingText="Generating..."
+                onClick={handleGenerate}
+                icon={Sparkles}
+              >
+                {hasBrief ? 'Regenerate via API' : 'Generate via API'}
+              </LoadingButton>
+            </div>
+            <p className="text-xs text-gray-500">
+              Copy the prompt, paste it into Claude, then paste the JSON response below.
+            </p>
+            <div className="space-y-2">
+              <textarea
+                value={pasteJson}
+                onChange={(e) => { setPasteJson(e.target.value); setPasteError(null) }}
+                placeholder='Paste brief JSON here...'
+                rows={4}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm font-mono focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
+              />
+              {pasteError && <StatusMessage type="error" message={pasteError} />}
+              <LoadingButton
+                variant="primary"
+                size="sm"
+                loading={updateBrief.isPending}
+                loadingText="Importing..."
+                disabled={!pasteJson.trim()}
+                onClick={handleImportJson}
+                icon={Upload}
+              >
+                Import brief
+              </LoadingButton>
+            </div>
+          </div>
+        </CardBody>
+      </Card>
 
       {!hasBrief ? (
         <EmptyState
           icon={FileText}
           title="No brief yet"
-          description="Chat with the maker for a bit and then generate a brief, or it will be auto-generated during conversation."
+          description="Copy the prompt for Claude and paste the response above, or use Generate via API."
         />
       ) : (
         <BriefView content={briefContent!} />

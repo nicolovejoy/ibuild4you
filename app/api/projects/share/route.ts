@@ -2,20 +2,18 @@ import { NextResponse } from 'next/server'
 import {
   getAuthenticatedUser,
   getAdminDb,
-  requireAdmin,
+  getProjectRole,
+  requireRole,
 } from '@/lib/api/firebase-server-helpers'
 import { generateWelcomeMessage } from '@/lib/agent/welcome-message'
 
-// POST /api/projects/share — share a project with a requester by email (admin-only)
+// POST /api/projects/share — share a project with a maker (builder+)
 export async function POST(request: Request) {
   const auth = await getAuthenticatedUser(request)
   if (auth.error) return auth.error
 
-  const adminCheck = requireAdmin(auth.email)
-  if (adminCheck) return adminCheck
-
   const body = await request.json()
-  const { project_id, email } = body
+  const { project_id, email, role: memberRole } = body
 
   if (!project_id || !email?.trim()) {
     return NextResponse.json(
@@ -25,6 +23,11 @@ export async function POST(request: Request) {
   }
 
   const db = getAdminDb()
+
+  const callerRole = await getProjectRole(db, project_id, auth.uid, auth.email)
+  const roleCheck = requireRole(callerRole, 'builder')
+  if (roleCheck) return roleCheck
+
   const normalizedEmail = email.trim().toLowerCase()
 
   // Verify project exists
@@ -34,18 +37,46 @@ export async function POST(request: Request) {
   }
 
   const projectData = projectDoc.data()!
+  const now = new Date().toISOString()
 
   // Add email to approved_emails so they can sign in
   await db.collection('approved_emails').doc(normalizedEmail).set({
     email: normalizedEmail,
     approved_by: auth.email,
-    created_at: new Date().toISOString(),
+    created_at: now,
   })
 
-  // Store the requester_email on the project
+  // Create or update project_members record
+  const assignedRole = memberRole || 'maker'
+  const existingMember = await db
+    .collection('project_members')
+    .where('project_id', '==', project_id)
+    .where('email', '==', normalizedEmail)
+    .limit(1)
+    .get()
+
+  if (existingMember.empty) {
+    await db.collection('project_members').add({
+      project_id,
+      user_id: '', // will be set on claim
+      email: normalizedEmail,
+      role: assignedRole,
+      added_by: auth.email,
+      created_at: now,
+      updated_at: now,
+    })
+  } else {
+    // Update role if re-sharing
+    await existingMember.docs[0].ref.update({
+      role: assignedRole,
+      updated_at: now,
+    })
+  }
+
+  // Keep requester_email on the project as convenience (for dashboard display)
   await db.collection('projects').doc(project_id).update({
     requester_email: normalizedEmail,
-    updated_at: new Date().toISOString(),
+    updated_at: now,
   })
 
   // Snapshot agent config onto the active session + add welcome message
@@ -61,7 +92,7 @@ export async function POST(request: Request) {
       const sessionDoc = sessionSnap.docs[0]
 
       // Snapshot agent config from project onto session for tracking
-      const configSnapshot: Record<string, unknown> = { updated_at: new Date().toISOString() }
+      const configSnapshot: Record<string, unknown> = { updated_at: now }
       const configFields = ['session_mode', 'seed_questions', 'builder_directives', 'welcome_message', 'style_guide'] as const
       for (const field of configFields) {
         if (projectData[field] !== undefined) {
@@ -86,7 +117,6 @@ export async function POST(request: Request) {
           )
 
         if (welcomeText) {
-          const now = new Date().toISOString()
           await db.collection('messages').add({
             session_id: sessionDoc.id,
             role: 'agent',
