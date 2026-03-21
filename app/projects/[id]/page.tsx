@@ -12,10 +12,11 @@ import {
   useUpdateProject,
   useGenerateWelcome,
   useShareProject,
+  useCreateSession,
 } from '@/lib/query/hooks'
 import { useRouter, useParams } from 'next/navigation'
 import { useEffect, useState, useRef, useCallback } from 'react'
-import { MessageSquare, Send, ArrowLeft, FileText, Calendar, Trash2, Sparkles, Plus, X, Share2, ChevronDown, ChevronUp, Copy, Check, Mail } from 'lucide-react'
+import { MessageSquare, Send, ArrowLeft, FileText, Calendar, Trash2, Sparkles, Plus, X, Share2, ChevronDown, ChevronUp, Copy, Check, Mail, RotateCw } from 'lucide-react'
 import { BuildTimestamp } from '@/components/build-timestamp'
 import { apiFetch } from '@/lib/firebase/api-fetch'
 import { isAdminEmail } from '@/lib/constants'
@@ -130,6 +131,11 @@ function ProjectHub({ projectId, userEmail }: { projectId: string; userEmail: st
         {/* Admin setup — shows for unshared projects, collapsible for shared ones */}
         {isAdmin && project && !projectLoading && (
           <AdminSetup project={project} isUnshared={!!isUnshared} />
+        )}
+
+        {/* Next session — admin only, after first conversation */}
+        {isAdmin && project && !projectLoading && isShared && hasConversation && (
+          <NextSession project={project} projectId={projectId} />
         )}
 
         {/* Brief summary */}
@@ -558,6 +564,96 @@ function AdminSetup({ project, isUnshared }: { project: { id: string; title: str
             {shareProject.error && (
               <StatusMessage type="error" message={shareProject.error.message} />
             )}
+          </div>
+        )}
+      </CardBody>
+    </Card>
+  )
+}
+
+function NextSession({ project, projectId }: {
+  project: { id: string; title: string; requester_email?: string }
+  projectId: string
+}) {
+  const [nudgeNote, setNudgeNote] = useState('')
+  const [created, setCreated] = useState(false)
+  const [nudgeCopied, setNudgeCopied] = useState(false)
+  const createSession = useCreateSession()
+
+  const shareLink = typeof window !== 'undefined'
+    ? `${window.location.origin}/projects/${projectId}`
+    : ''
+
+  const makerEmail = project.requester_email || ''
+
+  const handleCreateSession = async () => {
+    await createSession.mutateAsync({ project_id: projectId, include_welcome: true })
+    setCreated(true)
+  }
+
+  const nudgeMessage = nudgeNote
+    ? `Hey! We're ready for another conversation about your ${project.title} project.\n\n${nudgeNote}\n\nSame link as before:\n${shareLink}\n\nJust sign in and you'll see a fresh chat waiting.`
+    : `Hey! We're ready for another conversation about your ${project.title} project.\n\nSame link as before:\n${shareLink}\n\nJust sign in and you'll see a fresh chat waiting.`
+
+  return (
+    <Card hover={false}>
+      <CardBody>
+        <h2 className="text-sm font-semibold text-brand-slate uppercase tracking-wide flex items-center gap-1.5 mb-3">
+          <RotateCw className="h-4 w-4" />
+          Next session
+        </h2>
+
+        {!created ? (
+          <div className="space-y-3">
+            <p className="text-sm text-gray-600">
+              Create a new session and send {makerEmail} a nudge to come back.
+            </p>
+            <div>
+              <label className="text-xs text-gray-500 block mb-1">Note for the maker (optional)</label>
+              <textarea
+                value={nudgeNote}
+                onChange={(e) => setNudgeNote(e.target.value)}
+                placeholder="This time we'll narrow down which data sources to use and pick a few tickers to start with."
+                rows={2}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
+              />
+            </div>
+            <LoadingButton
+              variant="primary"
+              size="sm"
+              loading={createSession.isPending}
+              loadingText="Creating..."
+              onClick={handleCreateSession}
+              icon={RotateCw}
+            >
+              Create next session
+            </LoadingButton>
+            {createSession.error && (
+              <StatusMessage type="error" message={createSession.error.message} />
+            )}
+          </div>
+        ) : (
+          <div className="space-y-3 p-3 bg-green-50 border border-green-200 rounded-lg">
+            <p className="text-sm font-medium text-green-800">
+              New session created. Send {makerEmail} this message:
+            </p>
+            <textarea
+              readOnly
+              value={nudgeMessage}
+              rows={6}
+              className="w-full px-2.5 py-1.5 bg-white border border-gray-300 rounded-md text-sm text-gray-700 resize-none"
+            />
+            <button
+              onClick={async () => {
+                await navigator.clipboard.writeText(nudgeMessage)
+                setNudgeCopied(true)
+                setTimeout(() => setNudgeCopied(false), 2000)
+              }}
+              className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand-navy"
+            >
+              {nudgeCopied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+              {nudgeCopied ? 'Copied!' : 'Copy message'}
+            </button>
           </div>
         )}
       </CardBody>

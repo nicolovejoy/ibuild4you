@@ -175,6 +175,29 @@ export function useBrief(projectId: string | undefined) {
 
 // --- Sessions ---
 
+export function useCreateSession() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({ project_id, include_welcome }: { project_id: string; include_welcome?: boolean }) => {
+      const res = await apiFetch('/api/sessions', {
+        method: 'POST',
+        body: JSON.stringify({ project_id, include_welcome }),
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || 'Failed to create session')
+      }
+      return res.json() as Promise<Session>
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['sessions', variables.project_id] })
+      queryClient.invalidateQueries({ queryKey: ['project', variables.project_id] })
+      queryClient.invalidateQueries({ queryKey: ['projects'] })
+    },
+  })
+}
+
 export function useSessions(projectId: string | undefined) {
   return useQuery<Session[]>({
     queryKey: ['sessions', projectId],

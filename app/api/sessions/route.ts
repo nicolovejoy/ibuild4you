@@ -36,7 +36,7 @@ export async function POST(request: Request) {
   if (auth.error) return auth.error
 
   const body = await request.json()
-  const { project_id } = body
+  const { project_id, include_welcome } = body
 
   if (!project_id) {
     return NextResponse.json({ error: 'project_id is required' }, { status: 400 })
@@ -56,6 +56,20 @@ export async function POST(request: Request) {
     created_at: now,
     updated_at: now,
   })
+
+  // Add welcome message to the new session if requested and one exists on the project
+  if (include_welcome) {
+    const welcomeMessage = projectDoc.data()?.welcome_message as string | undefined
+    if (welcomeMessage) {
+      await db.collection('messages').add({
+        session_id: docRef.id,
+        role: 'agent',
+        content: welcomeMessage,
+        created_at: now,
+        updated_at: now,
+      })
+    }
+  }
 
   return NextResponse.json(
     { id: docRef.id, project_id, status: 'active', created_at: now, updated_at: now },
