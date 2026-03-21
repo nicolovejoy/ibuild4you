@@ -5,7 +5,8 @@ import { useApproval } from '@/lib/hooks/useApproval'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { UserMenu } from '@/components/user-menu'
-import { MessageSquare, Plus, FolderOpen, Share2, Copy, Check, Mail, Trash2 } from 'lucide-react'
+import { Plus, FolderOpen, Share2, Copy, Check, Mail, Trash2 } from 'lucide-react'
+import { ScaffoldIcon } from '@/components/ScaffoldIcon'
 import { BuildTimestamp } from '@/components/build-timestamp'
 import { useProjects, useCreateProject, useShareProject, useDeleteProject } from '@/lib/query/hooks'
 import { isAdminEmail } from '@/lib/constants'
@@ -52,7 +53,7 @@ export default function DashboardPage() {
         <div className="px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-3 group relative">
-              <MessageSquare className="h-7 w-7 text-brand-navy" />
+              <ScaffoldIcon className="h-7 w-7 text-brand-navy" />
               <h1 className="text-xl font-bold text-brand-charcoal">iBuild4you</h1>
               <BuildTimestamp />
             </div>

@@ -1,19 +1,28 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
-  <!-- Scaffolding that's building itself -->
+  <style>
+    @media (prefers-color-scheme: dark) {
+      .icon-fill { fill: #f8f8f0; }
+      .icon-stroke { stroke: #f8f8f0; }
+    }
+    @media (prefers-color-scheme: light) {
+      .icon-fill { fill: #1a3c6b; }
+      .icon-stroke { stroke: #1a3c6b; }
+    }
+  </style>
   <!-- Base/ground -->
-  <rect x="4" y="28" width="24" height="2" rx="1" fill="#1a3c6b"/>
+  <rect x="4" y="28" width="24" height="2" rx="1" class="icon-fill"/>
   <!-- Left vertical pole -->
-  <rect x="6" y="8" width="2.5" height="20" rx="1" fill="#1a3c6b"/>
+  <rect x="6" y="8" width="2.5" height="20" rx="1" class="icon-fill"/>
   <!-- Right vertical pole -->
-  <rect x="23.5" y="8" width="2.5" height="20" rx="1" fill="#1a3c6b"/>
+  <rect x="23.5" y="8" width="2.5" height="20" rx="1" class="icon-fill"/>
   <!-- Cross bars (completed levels) -->
-  <rect x="6" y="22" width="20" height="2" rx="0.5" fill="#1a3c6b"/>
-  <rect x="6" y="16" width="20" height="2" rx="0.5" fill="#1a3c6b"/>
-  <!-- Top bar being placed (in motion — slightly offset, lighter) -->
-  <rect x="6" y="10" width="14" height="2" rx="0.5" fill="#1a3c6b" opacity="0.5"/>
+  <rect x="6" y="22" width="20" height="2" rx="0.5" class="icon-fill"/>
+  <rect x="6" y="16" width="20" height="2" rx="0.5" class="icon-fill"/>
+  <!-- Top bar being placed (in motion) -->
+  <rect x="6" y="10" width="14" height="2" rx="0.5" class="icon-fill" opacity="0.5"/>
   <!-- Diagonal brace -->
-  <line x1="8.5" y1="22" x2="23.5" y2="16" stroke="#1a3c6b" stroke-width="1.5" stroke-linecap="round" opacity="0.7"/>
-  <!-- Spark/building indicator — small rising element -->
-  <circle cx="22" cy="6" r="1.5" fill="#1a3c6b" opacity="0.3"/>
-  <circle cx="25" cy="4" r="1" fill="#1a3c6b" opacity="0.2"/>
+  <line x1="8.5" y1="22" x2="23.5" y2="16" class="icon-stroke" stroke-width="1.5" stroke-linecap="round" opacity="0.7"/>
+  <!-- Spark/building indicators -->
+  <circle cx="22" cy="6" r="1.5" class="icon-fill" opacity="0.3"/>
+  <circle cx="25" cy="4" r="1" class="icon-fill" opacity="0.2"/>
 </svg>

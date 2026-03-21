@@ -3,7 +3,8 @@
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
-import { MessageSquare, ArrowRight, Send, CheckCircle } from 'lucide-react'
+import { ArrowRight, Send, CheckCircle } from 'lucide-react'
+import { ScaffoldIcon } from '@/components/ScaffoldIcon'
 import { LoadingButton } from '@/components/ui/LoadingButton'
 import { StatusMessage } from '@/components/ui/StatusMessage'
 
@@ -32,7 +33,7 @@ export default function HomePage() {
       {/* Hero */}
       <div className="flex flex-col items-center justify-center px-4 pt-20 pb-16">
         <div className="max-w-2xl text-center space-y-6">
-          <MessageSquare className="h-16 w-16 text-brand-navy mx-auto" />
+          <ScaffoldIcon className="h-16 w-16 text-brand-navy mx-auto" />
           <h1 className="text-4xl font-bold text-brand-charcoal">iBuild4you</h1>
           <p className="text-lg text-brand-slate leading-relaxed">
             Have an idea for an app or website but not sure where to start? Our AI guides you through
