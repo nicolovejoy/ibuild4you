@@ -77,7 +77,10 @@ function ProjectHub({ projectId, userEmail }: { projectId: string; userEmail: st
   // Derive workflow state
   const hasSetup = !!(project?.welcome_message || (project?.seed_questions && project.seed_questions.length > 0))
   const isShared = !!project?.requester_email
-  const hasConversation = !!(messages && messages.length > 1) // more than just welcome
+  // A conversation has happened if: current session has user messages, OR there are completed sessions
+  const hasUserMessages = !!(messages && messages.some((m) => m.role === 'user'))
+  const hasCompletedSessions = !!(sessions && sessions.some((s) => s.status === 'completed'))
+  const hasConversation = hasUserMessages || hasCompletedSessions
   const hasBrief = !!(briefContent && hasBriefContent(briefContent))
 
   return (
@@ -706,9 +709,20 @@ function PrepNextSession({ project, projectId, sessionNumber }: {
     setCreated(true)
   }
 
-  const nudgeMessage = nudgeNote
-    ? `Hey! We're ready for another conversation about your ${project.title} project.\n\n${nudgeNote}\n\nSame link as before:\n${shareLink}\n\nJust sign in and you'll see a fresh chat waiting.`
-    : `Hey! We're ready for another conversation about your ${project.title} project.\n\nSame link as before:\n${shareLink}\n\nJust sign in and you'll see a fresh chat waiting.`
+  const modeLabel = sessionMode === 'converge'
+    ? 'This time we want to narrow things down and lock in some decisions.'
+    : 'We want to dig deeper into a few things from last time.'
+
+  const nudgeMessage = [
+    `Hey! Thanks for the last conversation about ${project.title} — really helpful.`,
+    '',
+    nudgeNote || modeLabel,
+    '',
+    `Same link as before:`,
+    shareLink,
+    '',
+    `Just sign in when you have a few minutes — there'll be a fresh chat ready to go.`,
+  ].join('\n')
 
   if (created) {
     return (
