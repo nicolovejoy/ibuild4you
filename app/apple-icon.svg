@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="180" height="180" viewBox="0 0 180 180">
+  <rect width="180" height="180" rx="40" fill="#1a3c6b"/>
+  <!-- Scaffolding that's building itself — light on dark -->
+  <!-- Base/ground -->
+  <rect x="30" y="148" width="120" height="8" rx="4" fill="#f8f8f0"/>
+  <!-- Left vertical pole -->
+  <rect x="38" y="40" width="12" height="108" rx="4" fill="#f8f8f0"/>
+  <!-- Right vertical pole -->
+  <rect x="130" y="40" width="12" height="108" rx="4" fill="#f8f8f0"/>
+  <!-- Cross bars (completed levels) -->
+  <rect x="38" y="118" width="104" height="8" rx="3" fill="#f8f8f0"/>
+  <rect x="38" y="86" width="104" height="8" rx="3" fill="#f8f8f0"/>
+  <!-- Top bar being placed (in motion — slightly shorter, translucent) -->
+  <rect x="38" y="54" width="72" height="8" rx="3" fill="#f8f8f0" opacity="0.5"/>
+  <!-- Diagonal brace -->
+  <line x1="50" y1="118" x2="130" y2="86" stroke="#f8f8f0" stroke-width="6" stroke-linecap="round" opacity="0.6"/>
+  <!-- Spark/building indicators -->
+  <circle cx="124" cy="36" r="6" fill="#f8f8f0" opacity="0.3"/>
+  <circle cx="140" cy="24" r="4" fill="#f8f8f0" opacity="0.2"/>
+</svg>
