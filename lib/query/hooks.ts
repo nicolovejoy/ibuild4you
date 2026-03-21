@@ -51,8 +51,10 @@ export function useShareProject() {
       }
       return res.json()
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['projects'] })
+      queryClient.invalidateQueries({ queryKey: ['project', variables.project_id] })
+      queryClient.invalidateQueries({ queryKey: ['sessions', variables.project_id] })
     },
   })
 }

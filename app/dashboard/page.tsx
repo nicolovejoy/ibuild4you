@@ -92,7 +92,7 @@ function NewProjectButton() {
       setTitle('')
       setContext('')
       setShowForm(false)
-      router.push(`/projects/${result.id}`)
+      router.push(`/projects/${result.id}?tab=setup`)
     } catch {
       // error is available via createProject.error
     }

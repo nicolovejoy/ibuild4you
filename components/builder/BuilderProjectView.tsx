@@ -41,7 +41,8 @@ export function BuilderProjectView({ projectId, userEmail }: { projectId: string
 
   const activeSession = sessions?.find((s) => s.status === 'active')
   const tabParam = searchParams.get('tab') as TabId | null
-  const activeTab: TabId = tabParam && ['sessions', 'brief', 'setup'].includes(tabParam) ? tabParam : 'sessions'
+  const defaultTab: TabId = (!project || !project.requester_email) ? 'setup' : 'sessions'
+  const activeTab: TabId = tabParam && ['sessions', 'brief', 'setup'].includes(tabParam) ? tabParam : defaultTab
 
   const setTab = (tab: TabId) => {
     const params = new URLSearchParams(searchParams.toString())
@@ -208,7 +209,7 @@ function SessionsTab({
             >
               <div className="flex items-center gap-2">
                 <span className={`w-2 h-2 rounded-full shrink-0 ${isActive ? 'bg-green-500' : 'bg-gray-300'}`} />
-                <span className="font-medium text-gray-900">Session {i + 1}</span>
+                <span className="font-medium text-gray-900">Session {sessions.length - i}</span>
                 <span className="text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">{mode}</span>
               </div>
               <div className="text-xs text-gray-400 mt-0.5 ml-4">
@@ -704,14 +705,16 @@ function SetupTab({
   activeSession: Session | null
 }) {
   const completedSessions = sessions.filter((s) => s.status === 'completed')
+  const { data: activeMessages } = useMessages(activeSession?.id)
+  const hasUserMessages = activeMessages?.some((m) => m.role === 'user') ?? false
 
   return (
     <div className="space-y-6">
       {/* Share section if unshared */}
       {!project.requester_email && <ShareSection project={project} />}
 
-      {/* Current session config or editable setup */}
-      {activeSession ? (
+      {/* Current session config or editable setup — stay editable until maker chats */}
+      {activeSession && hasUserMessages ? (
         <ActiveSessionConfig
           session={activeSession}
           sessionNumber={sessions.indexOf(activeSession) + 1}
