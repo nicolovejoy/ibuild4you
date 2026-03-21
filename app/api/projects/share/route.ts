@@ -48,7 +48,7 @@ export async function POST(request: Request) {
     updated_at: new Date().toISOString(),
   })
 
-  // Generate a welcome message so the requester sees a greeting when they arrive
+  // Snapshot agent config onto the active session + add welcome message
   try {
     const sessionSnap = await db
       .collection('sessions')
@@ -59,6 +59,16 @@ export async function POST(request: Request) {
 
     if (!sessionSnap.empty) {
       const sessionDoc = sessionSnap.docs[0]
+
+      // Snapshot agent config from project onto session for tracking
+      const configSnapshot: Record<string, unknown> = { updated_at: new Date().toISOString() }
+      const configFields = ['session_mode', 'seed_questions', 'builder_directives', 'welcome_message', 'style_guide'] as const
+      for (const field of configFields) {
+        if (projectData[field] !== undefined) {
+          configSnapshot[field] = projectData[field]
+        }
+      }
+      await sessionDoc.ref.update(configSnapshot)
 
       // Only add welcome if session has no messages yet (prevent duplicate on re-share)
       const existingMessages = await db
@@ -88,7 +98,7 @@ export async function POST(request: Request) {
       }
     }
   } catch (err) {
-    console.error('Failed to generate welcome message:', err)
+    console.error('Failed to set up session:', err)
     // Don't break the share flow
   }
 

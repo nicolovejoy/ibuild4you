@@ -179,10 +179,10 @@ export function useCreateSession() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: async ({ project_id, include_welcome }: { project_id: string; include_welcome?: boolean }) => {
+    mutationFn: async ({ project_id }: { project_id: string }) => {
       const res = await apiFetch('/api/sessions', {
         method: 'POST',
-        body: JSON.stringify({ project_id, include_welcome }),
+        body: JSON.stringify({ project_id }),
       })
       if (!res.ok) {
         const data = await res.json()

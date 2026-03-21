@@ -123,12 +123,13 @@ export async function POST(request: Request) {
     briefContent = briefSnap.docs[0].data().content as BriefContent
   }
 
-  // Build system prompt
+  // Build system prompt — read config from session (snapshotted), fall back to project
+  const sessionData = sessionDoc.data() || {}
   const projectContext = projectData.context as string | null || null
-  const seedQuestions = projectData.seed_questions as string[] | undefined
-  const styleGuide = projectData.style_guide as string | undefined
-  const builderDirectives = projectData.builder_directives as string[] | undefined
-  const sessionMode = projectData.session_mode as 'discover' | 'converge' | undefined
+  const seedQuestions = (sessionData.seed_questions ?? projectData.seed_questions) as string[] | undefined
+  const styleGuide = (sessionData.style_guide ?? projectData.style_guide) as string | undefined
+  const builderDirectives = (sessionData.builder_directives ?? projectData.builder_directives) as string[] | undefined
+  const sessionMode = (sessionData.session_mode ?? projectData.session_mode) as 'discover' | 'converge' | undefined
   const systemPrompt = buildSystemPrompt({
     briefContent,
     projectContext,
@@ -171,6 +172,21 @@ export async function POST(request: Request) {
           created_at: responseTime,
           updated_at: responseTime,
         })
+
+        // Track token usage + model on the session
+        const finalMessage = await stream.finalMessage()
+        if (finalMessage.usage) {
+          const sessionRef = db.collection('sessions').doc(session_id)
+          const currentSession = (await sessionRef.get()).data() || {}
+          const prevInput = (currentSession.token_usage_input as number) || 0
+          const prevOutput = (currentSession.token_usage_output as number) || 0
+          await sessionRef.update({
+            token_usage_input: prevInput + finalMessage.usage.input_tokens,
+            token_usage_output: prevOutput + finalMessage.usage.output_tokens,
+            model: AGENT_MODEL,
+            updated_at: responseTime,
+          })
+        }
 
         controller.enqueue(encoder.encode('data: [DONE]\n\n'))
         controller.close()

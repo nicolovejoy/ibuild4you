@@ -38,6 +38,16 @@ export interface Session extends BaseEntity {
   project_id: string
   status: 'active' | 'completed'
   summary?: string
+  // Agent config snapshot — captured when session is created
+  session_mode?: 'discover' | 'converge'
+  seed_questions?: string[]
+  builder_directives?: string[]
+  welcome_message?: string
+  style_guide?: string
+  // Usage tracking — accumulated across all exchanges in the session
+  model?: string
+  token_usage_input?: number
+  token_usage_output?: number
 }
 
 // Messages collection — individual messages within a session

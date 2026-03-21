@@ -16,7 +16,7 @@ import {
 } from '@/lib/query/hooks'
 import { useRouter, useParams } from 'next/navigation'
 import { useEffect, useState, useRef, useCallback } from 'react'
-import { MessageSquare, Send, ArrowLeft, FileText, Calendar, Trash2, Sparkles, Plus, X, Share2, ChevronDown, ChevronUp, Copy, Check, Mail, RotateCw } from 'lucide-react'
+import { MessageSquare, Send, ArrowLeft, FileText, Calendar, Trash2, Sparkles, Plus, X, Share2, ChevronDown, ChevronUp, Copy, Check, Mail, RotateCw, Lock } from 'lucide-react'
 import { BuildTimestamp } from '@/components/build-timestamp'
 import { apiFetch } from '@/lib/firebase/api-fetch'
 import { isAdminEmail } from '@/lib/constants'
@@ -25,7 +25,7 @@ import { StatusMessage } from '@/components/ui/StatusMessage'
 import { Card, CardBody } from '@/components/ui/Card'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { LoadingButton } from '@/components/ui/LoadingButton'
-import type { BriefContent } from '@/lib/types'
+import type { BriefContent, Session } from '@/lib/types'
 
 const BRIEF_UPDATE_INTERVAL = 15_000
 
@@ -128,14 +128,17 @@ function ProjectHub({ projectId, userEmail }: { projectId: string; userEmail: st
           />
         )}
 
-        {/* Admin setup — shows for unshared projects, collapsible for shared ones */}
-        {isAdmin && project && !projectLoading && (
+        {/* Admin setup — only before conversation starts */}
+        {isAdmin && project && !projectLoading && !hasConversation && (
           <AdminSetup project={project} isUnshared={!!isUnshared} />
         )}
 
-        {/* Next session — admin only, after first conversation */}
-        {isAdmin && project && !projectLoading && isShared && hasConversation && (
-          <NextSession project={project} projectId={projectId} />
+        {/* After conversation: locked session config + prep next session */}
+        {isAdmin && project && !projectLoading && hasConversation && activeSession && (
+          <>
+            <SessionConfig session={activeSession} sessionNumber={sessions?.length || 1} />
+            <PrepNextSession project={project} projectId={projectId} sessionNumber={(sessions?.length || 1) + 1} />
+          </>
         )}
 
         {/* Brief summary */}
@@ -571,23 +574,135 @@ function AdminSetup({ project, isUnshared }: { project: { id: string; title: str
   )
 }
 
-function NextSession({ project, projectId }: {
-  project: { id: string; title: string; requester_email?: string }
+function SessionConfig({ session, sessionNumber }: { session: Session; sessionNumber: number }) {
+  const [expanded, setExpanded] = useState(false)
+  const mode = session.session_mode || 'discover'
+  const questions = session.seed_questions || []
+  const dirs = session.builder_directives || []
+  const guide = session.style_guide || ''
+
+  const hasConfig = mode || questions.length > 0 || dirs.length > 0 || guide
+
+  if (!hasConfig) return null
+
+  return (
+    <Card hover={false}>
+      <CardBody>
+        <button
+          onClick={() => setExpanded(!expanded)}
+          className="w-full flex items-center justify-between"
+        >
+          <h2 className="text-sm font-semibold text-brand-slate uppercase tracking-wide flex items-center gap-1.5">
+            <Lock className="h-4 w-4" />
+            Session {sessionNumber} setup
+          </h2>
+          <div className="flex items-center gap-2">
+            {session.token_usage_input != null && (
+              <span className="text-[10px] text-gray-400">
+                {((session.token_usage_input + (session.token_usage_output || 0)) / 1000).toFixed(1)}k tokens
+              </span>
+            )}
+            <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded">{mode}</span>
+            {expanded ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
+          </div>
+        </button>
+
+        {expanded && (
+          <div className="mt-4 space-y-3 text-sm text-gray-700">
+            {mode === 'discover' && questions.length > 0 && (
+              <div>
+                <p className="text-xs font-medium text-gray-500 uppercase mb-1">Seed questions</p>
+                <ul className="space-y-1">
+                  {questions.map((q, i) => (
+                    <li key={i} className="bg-gray-50 rounded px-2.5 py-1.5 text-sm">{i + 1}. {q}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {mode === 'converge' && dirs.length > 0 && (
+              <div>
+                <p className="text-xs font-medium text-gray-500 uppercase mb-1">Builder directives</p>
+                <ul className="space-y-1">
+                  {dirs.map((d, i) => (
+                    <li key={i} className="bg-gray-50 rounded px-2.5 py-1.5 text-sm">{i + 1}. {d}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {guide && (
+              <div>
+                <p className="text-xs font-medium text-gray-500 uppercase mb-1">Style guide</p>
+                <p className="bg-gray-50 rounded px-2.5 py-1.5">{guide}</p>
+              </div>
+            )}
+            {session.model && (
+              <p className="text-xs text-gray-400">Model: {session.model}</p>
+            )}
+          </div>
+        )}
+      </CardBody>
+    </Card>
+  )
+}
+
+function PrepNextSession({ project, projectId, sessionNumber }: {
+  project: { id: string; title: string; requester_email?: string; welcome_message?: string; seed_questions?: string[]; style_guide?: string; session_mode?: 'discover' | 'converge'; builder_directives?: string[] }
   projectId: string
+  sessionNumber: number
 }) {
+  const [expanded, setExpanded] = useState(false)
+  const [sessionMode, setSessionMode] = useState<'discover' | 'converge'>(project.session_mode || 'discover')
+  const [welcomeMessage, setWelcomeMessage] = useState(project.welcome_message || '')
+  const [seedQuestions, setSeedQuestions] = useState<string[]>(project.seed_questions || [])
+  const [newQuestion, setNewQuestion] = useState('')
+  const [directives, setDirectives] = useState<string[]>(project.builder_directives || [])
+  const [newDirective, setNewDirective] = useState('')
+  const [styleGuide, setStyleGuide] = useState(project.style_guide || '')
   const [nudgeNote, setNudgeNote] = useState('')
   const [created, setCreated] = useState(false)
   const [nudgeCopied, setNudgeCopied] = useState(false)
+
+  const updateProject = useUpdateProject()
+  const generateWelcome = useGenerateWelcome()
   const createSession = useCreateSession()
 
   const shareLink = typeof window !== 'undefined'
     ? `${window.location.origin}/projects/${projectId}`
     : ''
-
   const makerEmail = project.requester_email || ''
 
-  const handleCreateSession = async () => {
-    await createSession.mutateAsync({ project_id: projectId, include_welcome: true })
+  useEffect(() => {
+    setWelcomeMessage(project.welcome_message || '')
+    setSeedQuestions(project.seed_questions || [])
+    setStyleGuide(project.style_guide || '')
+    setSessionMode(project.session_mode || 'discover')
+    setDirectives(project.builder_directives || [])
+  }, [project.welcome_message, project.seed_questions, project.style_guide, project.session_mode, project.builder_directives])
+
+  const handleAddQuestion = () => {
+    if (!newQuestion.trim()) return
+    setSeedQuestions((prev) => [...prev, newQuestion.trim()])
+    setNewQuestion('')
+  }
+  const handleRemoveQuestion = (index: number) => setSeedQuestions((prev) => prev.filter((_, i) => i !== index))
+  const handleAddDirective = () => {
+    if (!newDirective.trim()) return
+    setDirectives((prev) => [...prev, newDirective.trim()])
+    setNewDirective('')
+  }
+  const handleRemoveDirective = (index: number) => setDirectives((prev) => prev.filter((_, i) => i !== index))
+
+  const handleCreate = async () => {
+    // Save config to project (staging area), then create session (snapshots it)
+    await updateProject.mutateAsync({
+      project_id: project.id,
+      welcome_message: welcomeMessage,
+      seed_questions: seedQuestions,
+      style_guide: styleGuide,
+      session_mode: sessionMode,
+      builder_directives: directives,
+    })
+    await createSession.mutateAsync({ project_id: projectId })
     setCreated(true)
   }
 
@@ -595,44 +710,14 @@ function NextSession({ project, projectId }: {
     ? `Hey! We're ready for another conversation about your ${project.title} project.\n\n${nudgeNote}\n\nSame link as before:\n${shareLink}\n\nJust sign in and you'll see a fresh chat waiting.`
     : `Hey! We're ready for another conversation about your ${project.title} project.\n\nSame link as before:\n${shareLink}\n\nJust sign in and you'll see a fresh chat waiting.`
 
-  return (
-    <Card hover={false}>
-      <CardBody>
-        <h2 className="text-sm font-semibold text-brand-slate uppercase tracking-wide flex items-center gap-1.5 mb-3">
-          <RotateCw className="h-4 w-4" />
-          Next session
-        </h2>
-
-        {!created ? (
-          <div className="space-y-3">
-            <p className="text-sm text-gray-600">
-              Create a new session and send {makerEmail} a nudge to come back.
-            </p>
-            <div>
-              <label className="text-xs text-gray-500 block mb-1">Note for the maker (optional)</label>
-              <textarea
-                value={nudgeNote}
-                onChange={(e) => setNudgeNote(e.target.value)}
-                placeholder="This time we'll narrow down which data sources to use and pick a few tickers to start with."
-                rows={2}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
-              />
-            </div>
-            <LoadingButton
-              variant="primary"
-              size="sm"
-              loading={createSession.isPending}
-              loadingText="Creating..."
-              onClick={handleCreateSession}
-              icon={RotateCw}
-            >
-              Create next session
-            </LoadingButton>
-            {createSession.error && (
-              <StatusMessage type="error" message={createSession.error.message} />
-            )}
-          </div>
-        ) : (
+  if (created) {
+    return (
+      <Card hover={false}>
+        <CardBody>
+          <h2 className="text-sm font-semibold text-brand-slate uppercase tracking-wide flex items-center gap-1.5 mb-3">
+            <Check className="h-4 w-4 text-green-600" />
+            Session {sessionNumber} ready
+          </h2>
           <div className="space-y-3 p-3 bg-green-50 border border-green-200 rounded-lg">
             <p className="text-sm font-medium text-green-800">
               New session created. Send {makerEmail} this message:
@@ -654,6 +739,193 @@ function NextSession({ project, projectId }: {
               {nudgeCopied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
               {nudgeCopied ? 'Copied!' : 'Copy message'}
             </button>
+          </div>
+        </CardBody>
+      </Card>
+    )
+  }
+
+  return (
+    <Card hover={false}>
+      <CardBody>
+        <button
+          onClick={() => setExpanded(!expanded)}
+          className="w-full flex items-center justify-between"
+        >
+          <h2 className="text-sm font-semibold text-brand-slate uppercase tracking-wide flex items-center gap-1.5">
+            <RotateCw className="h-4 w-4" />
+            Prep session {sessionNumber}
+          </h2>
+          {expanded ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
+        </button>
+
+        {expanded && (
+          <div className="mt-4 space-y-5">
+            {/* Session mode toggle */}
+            <div>
+              <label className="text-sm font-medium text-gray-700 block mb-1.5">Session mode</label>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setSessionMode('discover')}
+                  className={`flex-1 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                    sessionMode === 'discover'
+                      ? 'bg-brand-navy text-white'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                >
+                  Discover
+                </button>
+                <button
+                  onClick={() => setSessionMode('converge')}
+                  className={`flex-1 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                    sessionMode === 'converge'
+                      ? 'bg-brand-navy text-white'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                >
+                  Converge
+                </button>
+              </div>
+              <p className="text-xs text-gray-500 mt-1">
+                {sessionMode === 'discover'
+                  ? 'Broad exploration — the agent asks open-ended questions'
+                  : 'Push for decisions — the agent narrows scope and presents options'}
+              </p>
+            </div>
+
+            {/* Seed questions (discover) */}
+            {sessionMode === 'discover' && (
+              <div>
+                <label className="text-sm font-medium text-gray-700 block mb-1.5">Seed questions</label>
+                <p className="text-xs text-gray-500 mb-2">Questions the agent should weave into the conversation early on.</p>
+                {seedQuestions.length > 0 && (
+                  <ul className="space-y-1.5 mb-2">
+                    {seedQuestions.map((q, i) => (
+                      <li key={i} className="flex items-start gap-2 text-sm text-gray-700 bg-gray-50 rounded px-2.5 py-1.5">
+                        <span className="text-gray-400 text-xs mt-0.5">{i + 1}.</span>
+                        <span className="flex-1">{q}</span>
+                        <button onClick={() => handleRemoveQuestion(i)} className="p-0.5 text-gray-400 hover:text-red-500 shrink-0">
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={newQuestion}
+                    onChange={(e) => setNewQuestion(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddQuestion() } }}
+                    placeholder="What does a typical day look like for you?"
+                    className="flex-1 px-3 py-1.5 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
+                  />
+                  <button onClick={handleAddQuestion} disabled={!newQuestion.trim()} className="p-1.5 text-gray-400 hover:text-brand-navy hover:bg-gray-100 rounded disabled:opacity-40">
+                    <Plus className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Builder directives (converge) */}
+            {sessionMode === 'converge' && (
+              <div>
+                <label className="text-sm font-medium text-gray-700 block mb-1.5">Builder directives</label>
+                <p className="text-xs text-gray-500 mb-2">Things the agent should actively drive toward. It will not leave the session without covering these.</p>
+                {directives.length > 0 && (
+                  <ul className="space-y-1.5 mb-2">
+                    {directives.map((d, i) => (
+                      <li key={i} className="flex items-start gap-2 text-sm text-gray-700 bg-gray-50 rounded px-2.5 py-1.5">
+                        <span className="text-gray-400 text-xs mt-0.5">{i + 1}.</span>
+                        <span className="flex-1">{d}</span>
+                        <button onClick={() => handleRemoveDirective(i)} className="p-0.5 text-gray-400 hover:text-red-500 shrink-0">
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={newDirective}
+                    onChange={(e) => setNewDirective(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddDirective() } }}
+                    placeholder="Get them to pick 1-2 tickers to start with"
+                    className="flex-1 px-3 py-1.5 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
+                  />
+                  <button onClick={handleAddDirective} disabled={!newDirective.trim()} className="p-1.5 text-gray-400 hover:text-brand-navy hover:bg-gray-100 rounded disabled:opacity-40">
+                    <Plus className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Welcome message */}
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-sm font-medium text-gray-700">Welcome message</label>
+                <LoadingButton
+                  variant="ghost"
+                  size="sm"
+                  loading={generateWelcome.isPending}
+                  loadingText="Generating..."
+                  onClick={async () => {
+                    const result = await generateWelcome.mutateAsync(project.id)
+                    setWelcomeMessage(result.welcome_message)
+                  }}
+                  icon={Sparkles}
+                >
+                  {welcomeMessage ? 'Regenerate' : 'Generate'}
+                </LoadingButton>
+              </div>
+              <textarea
+                value={welcomeMessage}
+                onChange={(e) => setWelcomeMessage(e.target.value)}
+                placeholder="The maker will see this message when they open the new session."
+                rows={3}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
+              />
+            </div>
+
+            {/* Style guide */}
+            <div>
+              <label className="text-sm font-medium text-gray-700 block mb-1.5">Style guide</label>
+              <textarea
+                value={styleGuide}
+                onChange={(e) => setStyleGuide(e.target.value)}
+                placeholder="Tone and approach notes for communicating with this maker."
+                rows={2}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
+              />
+            </div>
+
+            {/* Nudge note + create */}
+            <div className="pt-3 border-t border-gray-100 space-y-3">
+              <div>
+                <label className="text-sm font-medium text-gray-700 block mb-1.5">Note for {makerEmail} (optional)</label>
+                <textarea
+                  value={nudgeNote}
+                  onChange={(e) => setNudgeNote(e.target.value)}
+                  placeholder="This time we'll narrow down which data sources to use and pick a few tickers to start with."
+                  rows={2}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
+                />
+              </div>
+              <LoadingButton
+                variant="primary"
+                size="sm"
+                loading={updateProject.isPending || createSession.isPending}
+                loadingText="Creating session..."
+                onClick={handleCreate}
+                icon={RotateCw}
+              >
+                Create session {sessionNumber} & copy nudge
+              </LoadingButton>
+              {(updateProject.error || createSession.error) && (
+                <StatusMessage type="error" message={(updateProject.error || createSession.error)?.message || 'Failed'} />
+              )}
+            </div>
           </div>
         )}
       </CardBody>

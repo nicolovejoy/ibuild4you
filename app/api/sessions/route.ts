@@ -31,12 +31,13 @@ export async function GET(request: Request) {
 }
 
 // POST /api/sessions — create a new session for a project
+// Snapshots current agent config from the project onto the session for tracking.
 export async function POST(request: Request) {
   const auth = await getAuthenticatedUser(request)
   if (auth.error) return auth.error
 
   const body = await request.json()
-  const { project_id, include_welcome } = body
+  const { project_id } = body
 
   if (!project_id) {
     return NextResponse.json({ error: 'project_id is required' }, { status: 400 })
@@ -49,30 +50,55 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
 
+  const projectData = projectDoc.data()!
   const now = new Date().toISOString()
-  const docRef = await db.collection('sessions').add({
+
+  // Mark any existing active sessions as completed
+  const activeSessions = await db
+    .collection('sessions')
+    .where('project_id', '==', project_id)
+    .where('status', '==', 'active')
+    .get()
+
+  const batch = db.batch()
+  for (const doc of activeSessions.docs) {
+    batch.update(doc.ref, { status: 'completed', updated_at: now })
+  }
+
+  // Snapshot agent config from project onto the new session
+  const sessionData: Record<string, unknown> = {
     project_id,
     status: 'active',
     created_at: now,
     updated_at: now,
-  })
-
-  // Add welcome message to the new session if requested and one exists on the project
-  if (include_welcome) {
-    const welcomeMessage = projectDoc.data()?.welcome_message as string | undefined
-    if (welcomeMessage) {
-      await db.collection('messages').add({
-        session_id: docRef.id,
-        role: 'agent',
-        content: welcomeMessage,
-        created_at: now,
-        updated_at: now,
-      })
+  }
+  const configFields = ['session_mode', 'seed_questions', 'builder_directives', 'welcome_message', 'style_guide'] as const
+  for (const field of configFields) {
+    if (projectData[field] !== undefined) {
+      sessionData[field] = projectData[field]
     }
   }
 
+  const docRef = db.collection('sessions').doc()
+  batch.set(docRef, sessionData)
+
+  // Add welcome message as first message in the new session
+  const welcomeMessage = projectData.welcome_message as string | undefined
+  if (welcomeMessage) {
+    const msgRef = db.collection('messages').doc()
+    batch.set(msgRef, {
+      session_id: docRef.id,
+      role: 'agent',
+      content: welcomeMessage,
+      created_at: now,
+      updated_at: now,
+    })
+  }
+
+  await batch.commit()
+
   return NextResponse.json(
-    { id: docRef.id, project_id, status: 'active', created_at: now, updated_at: now },
+    { id: docRef.id, ...sessionData },
     { status: 201 }
   )
 }
