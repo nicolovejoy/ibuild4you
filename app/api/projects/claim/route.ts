@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getAuthenticatedUser, getAdminDb } from '@/lib/api/firebase-server-helpers'
+import { isAdminEmail } from '@/lib/constants'
 
 // POST /api/projects/claim — claim a project that was shared with you
 export async function POST(request: Request) {
@@ -21,6 +22,11 @@ export async function POST(request: Request) {
   }
 
   const project = projectDoc.data()
+
+  // Admins and existing owners don't need to claim
+  if (isAdminEmail(auth.email) || project?.requester_id === auth.uid) {
+    return NextResponse.json({ claimed: true, project_id })
+  }
 
   // Check that this project was shared with this user's email
   if (project?.requester_email !== auth.email) {
