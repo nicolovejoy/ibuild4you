@@ -200,76 +200,79 @@ function ProjectList({ isAdmin }: { isAdmin: boolean }) {
   return (
     <>
       <div className="space-y-3">
-        {projects.map((project) => (
-          <Card key={project.id}>
-            <CardBody>
-              <div className="flex items-center justify-between">
-                <div
-                  className="flex-1 cursor-pointer"
-                  onClick={() => router.push(`/projects/${project.id}`)}
-                >
-                  <h3 className="font-medium text-gray-900">{project.title}</h3>
-                  <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-sm text-gray-500">
-                    <span>{new Date(project.created_at).toLocaleDateString()}</span>
-                    {project.requester_email && (
-                      <span className="text-brand-slate">
-                        → {project.requester_email}
+        {projects.map((project) => {
+          const turn = getTurnIndicator(project)
+          return (
+            <Card key={project.id}>
+              <CardBody>
+                <div className="flex items-center justify-between">
+                  <div
+                    className="flex-1 cursor-pointer"
+                    onClick={() => router.push(`/projects/${project.id}`)}
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <h3 className="font-medium text-gray-900">{project.title}</h3>
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${turn.className}`}>
+                        {turn.label}
                       </span>
-                    )}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-sm text-gray-500">
+                      {project.requester_email && (
+                        <span className="text-brand-slate">
+                          {project.requester_email}
+                        </span>
+                      )}
+                      {isAdmin && project.session_count !== undefined && project.session_count > 0 && (
+                        <span className="text-gray-400">
+                          {project.session_count} session{project.session_count === 1 ? '' : 's'}
+                        </span>
+                      )}
+                      {project.brief_version != null && (
+                        <span className="text-gray-400">
+                          Brief v{project.brief_version}
+                          {(project.brief_decision_count ?? 0) > 0 && (
+                            <> &middot; {project.brief_decision_count} decision{project.brief_decision_count === 1 ? '' : 's'}</>
+                          )}
+                        </span>
+                      )}
+                    </div>
                     {project.last_message_at && (
-                      <span className="text-gray-400">
-                        Last active: {formatRelativeTime(project.last_message_at)}
-                        {project.last_message_by && ` by ${project.last_message_by}`}
-                      </span>
+                      <p className="text-xs text-gray-400 mt-1">
+                        {formatActivityLine(project)}
+                      </p>
                     )}
-                    {isAdmin && project.session_count !== undefined && project.session_count > 0 && (
-                      <span className="text-gray-400">
-                        {project.session_count} session{project.session_count === 1 ? '' : 's'}
-                      </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {isAdmin && (
+                      <>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setSharingProject(project)
+                          }}
+                          className="p-1.5 text-gray-400 hover:text-brand-navy hover:bg-gray-100 rounded"
+                          title="Share with someone"
+                        >
+                          <Share2 className="h-4 w-4" />
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setDeletingProject(project)
+                          }}
+                          className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded"
+                          title="Delete project"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </>
                     )}
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  {isAdmin && (
-                    <>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          setSharingProject(project)
-                        }}
-                        className="p-1.5 text-gray-400 hover:text-brand-navy hover:bg-gray-100 rounded"
-                        title="Share with someone"
-                      >
-                        <Share2 className="h-4 w-4" />
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          setDeletingProject(project)
-                        }}
-                        className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded"
-                        title="Delete project"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </>
-                  )}
-                  <span
-                    className={`text-xs px-2 py-1 rounded-full ${
-                      project.status === 'active'
-                        ? 'bg-green-100 text-green-700'
-                        : project.status === 'completed'
-                          ? 'bg-blue-100 text-blue-700'
-                          : 'bg-gray-100 text-gray-600'
-                    }`}
-                  >
-                    {project.status}
-                  </span>
-                </div>
-              </div>
-            </CardBody>
-          </Card>
-        ))}
+              </CardBody>
+            </Card>
+          )
+        })}
       </div>
 
       {sharingProject && (
@@ -489,6 +492,29 @@ function DeleteProjectModal({ project, onClose }: { project: Project; onClose: (
       </div>
     </Modal>
   )
+}
+
+function getTurnIndicator(project: Project): { label: string; className: string } {
+  if (!project.requester_email || !project.session_count) {
+    return { label: 'Needs setup', className: 'bg-gray-100 text-gray-600' }
+  }
+  if (!project.last_message_by || project.last_message_by === 'agent') {
+    const name = project.requester_email.split('@')[0]
+    return { label: `Waiting on ${name}`, className: 'bg-blue-100 text-blue-700' }
+  }
+  return { label: 'Ready to review', className: 'bg-amber-100 text-amber-700' }
+}
+
+function formatActivityLine(project: Project): string {
+  if (!project.last_message_at) return ''
+  const time = formatRelativeTime(project.last_message_at)
+  if (project.last_message_by === 'agent') {
+    return `Agent responded ${time}`
+  }
+  if (project.last_message_by) {
+    return `${project.last_message_by} sent a message ${time}`
+  }
+  return `Last active ${time}`
 }
 
 function formatRelativeTime(iso: string): string {

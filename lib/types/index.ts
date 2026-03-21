@@ -31,6 +31,8 @@ export interface Project extends BaseEntity {
   session_count?: number
   last_message_at?: string | null
   last_message_by?: string | null
+  brief_version?: number | null
+  brief_decision_count?: number | null
 }
 
 // Sessions collection — each conversation between requester and agent

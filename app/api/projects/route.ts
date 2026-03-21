@@ -42,11 +42,30 @@ async function enrichProjects(
         }
       }
 
+      // Get latest brief
+      const briefSnap = await db
+        .collection('briefs')
+        .where('project_id', '==', project.id)
+        .orderBy('version', 'desc')
+        .limit(1)
+        .get()
+
+      let briefVersion: number | null = null
+      let briefDecisionCount: number | null = null
+      if (!briefSnap.empty) {
+        const briefData = briefSnap.docs[0].data()
+        briefVersion = (briefData.version as number) || null
+        const decisions = (briefData.content as { decisions?: unknown[] })?.decisions
+        briefDecisionCount = Array.isArray(decisions) ? decisions.length : 0
+      }
+
       return {
         ...project,
         session_count: sessionsSnap.size,
         last_message_at: lastMessageAt,
         last_message_by: lastMessageBy,
+        brief_version: briefVersion,
+        brief_decision_count: briefDecisionCount,
       }
     })
   )
