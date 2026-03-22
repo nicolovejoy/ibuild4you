@@ -14,7 +14,7 @@ import { StatusMessage } from '@/components/ui/StatusMessage'
 import { LoadingButton } from '@/components/ui/LoadingButton'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { MessageContent } from '@/components/ui/MessageContent'
-import { WireframePreview } from '@/components/ui/WireframePreview'
+import { MockupEditor } from './MockupEditor'
 import { Modal } from '@/components/ui/Modal'
 import {
   useProject,
@@ -1227,109 +1227,6 @@ function PrepNextSession({ project, projectId, sessionNumber }: {
 }
 
 // --- Shared Components ---
-
-function MockupEditor({ mockups, onUpdate }: { mockups: WireframeMockup[]; onUpdate: (m: WireframeMockup[]) => void }) {
-  const [jsonInput, setJsonInput] = useState('')
-  const [parseError, setParseError] = useState<string | null>(null)
-  const [expandedIndex, setExpandedIndex] = useState<number | null>(null)
-
-  // Try to parse and validate a mockup from JSON text
-  const tryParse = (text: string): WireframeMockup | null => {
-    try {
-      const obj = JSON.parse(text)
-      if (!obj || typeof obj.title !== 'string' || !Array.isArray(obj.sections)) {
-        setParseError('JSON must have "title" (string) and "sections" (array)')
-        return null
-      }
-      setParseError(null)
-      return obj as WireframeMockup
-    } catch {
-      setParseError('Invalid JSON')
-      return null
-    }
-  }
-
-  const handleAdd = () => {
-    const parsed = tryParse(jsonInput)
-    if (parsed) {
-      onUpdate([...mockups, parsed])
-      setJsonInput('')
-      setParseError(null)
-    }
-  }
-
-  // Live preview of what's in the textarea
-  let preview: WireframeMockup | null = null
-  if (jsonInput.trim()) {
-    try {
-      const obj = JSON.parse(jsonInput)
-      if (obj && typeof obj.title === 'string' && Array.isArray(obj.sections)) {
-        preview = obj as WireframeMockup
-      }
-    } catch { /* no preview for invalid JSON */ }
-  }
-
-  return (
-    <div>
-      <label className="text-sm font-medium text-gray-700 block mb-1">Layout mockups</label>
-      <p className="text-xs text-gray-500 mb-2">Wireframe layouts the agent can show to the maker during conversation.</p>
-
-      {/* Existing mockups */}
-      {mockups.length > 0 && (
-        <div className="space-y-1.5 mb-3">
-          {mockups.map((m, i) => (
-            <div key={i} className="border border-gray-200 rounded-lg overflow-hidden">
-              <div className="flex items-center justify-between px-3 py-2 bg-gray-50">
-                <button
-                  onClick={() => setExpandedIndex(expandedIndex === i ? null : i)}
-                  className="text-sm font-medium text-gray-700 hover:text-brand-navy flex items-center gap-1.5"
-                >
-                  {expandedIndex === i ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-                  {m.title}
-                  <span className="text-xs text-gray-400 font-normal">{m.sections.length} section{m.sections.length === 1 ? '' : 's'}</span>
-                </button>
-                <button onClick={() => onUpdate(mockups.filter((_, idx) => idx !== i))} className="p-1 text-gray-400 hover:text-red-500">
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              </div>
-              {expandedIndex === i && (
-                <div className="px-3 pb-2">
-                  <WireframePreview mockup={m} />
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Add new mockup */}
-      <textarea
-        value={jsonInput}
-        onChange={(e) => { setJsonInput(e.target.value); setParseError(null) }}
-        placeholder='Paste mockup JSON: {"title": "...", "sections": [...]}'
-        rows={3}
-        className="w-full px-3 py-2 border border-gray-300 rounded-md text-xs font-mono focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
-      />
-      {parseError && <p className="text-xs text-red-500 mt-1">{parseError}</p>}
-
-      {/* Live preview */}
-      {preview && (
-        <div className="mt-1">
-          <WireframePreview mockup={preview} />
-        </div>
-      )}
-
-      <button
-        onClick={handleAdd}
-        disabled={!jsonInput.trim()}
-        className="mt-1.5 flex items-center gap-1 text-sm text-brand-navy hover:text-brand-navy-light disabled:text-gray-300 disabled:cursor-not-allowed"
-      >
-        <Plus className="h-3.5 w-3.5" />
-        Add mockup
-      </button>
-    </div>
-  )
-}
 
 function SessionModeToggle({ mode, onChange }: { mode: 'discover' | 'converge'; onChange: (m: 'discover' | 'converge') => void }) {
   return (

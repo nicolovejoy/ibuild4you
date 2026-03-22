@@ -10,7 +10,7 @@ import type { LucideIcon } from 'lucide-react'
 // Each section type maps to a color palette and icon.
 // Unknown types fall back to gray/Box so the agent can invent new types
 // without breaking the UI.
-const SECTION_STYLES: Record<string, { icon: LucideIcon; bg: string; border: string; iconColor: string }> = {
+export const SECTION_STYLES: Record<string, { icon: LucideIcon; bg: string; border: string; iconColor: string }> = {
   hero:    { icon: Image,             bg: 'bg-amber-50',   border: 'border-amber-200',   iconColor: 'text-amber-500' },
   text:    { icon: AlignLeft,         bg: 'bg-blue-50',    border: 'border-blue-200',     iconColor: 'text-blue-500' },
   cta:     { icon: MousePointerClick, bg: 'bg-green-50',   border: 'border-green-200',    iconColor: 'text-green-600' },
@@ -23,7 +23,9 @@ const SECTION_STYLES: Record<string, { icon: LucideIcon; bg: string; border: str
   video:   { icon: Play,              bg: 'bg-indigo-50',  border: 'border-indigo-200',   iconColor: 'text-indigo-500' },
 }
 
-const DEFAULT_STYLE = { icon: Box, bg: 'bg-gray-50', border: 'border-gray-200', iconColor: 'text-gray-400' }
+export const DEFAULT_STYLE = { icon: Box, bg: 'bg-gray-50', border: 'border-gray-200', iconColor: 'text-gray-400' }
+
+export const SECTION_TYPES = Object.keys(SECTION_STYLES)
 
 function getStyle(type: string) {
   return SECTION_STYLES[type] || DEFAULT_STYLE
