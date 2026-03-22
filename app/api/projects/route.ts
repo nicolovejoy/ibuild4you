@@ -20,7 +20,7 @@ async function enrichProjects(
         .where('project_id', '==', project.id)
         .get()
 
-      // Get most recent message and most recent maker message across all sessions
+      // Get recent messages to derive last activity and last maker message
       const sessionIds = sessionsSnap.docs.map((d) => d.id)
       let lastMessageAt: string | null = null
       let lastMessageBy: string | null = null
@@ -31,37 +31,26 @@ async function enrichProjects(
         for (let i = 0; i < sessionIds.length; i += 30) {
           const chunk = sessionIds.slice(i, i + 30)
 
-          // Most recent message overall
+          // Fetch recent messages (enough to find the last maker message)
           const msgSnap = await db
             .collection('messages')
             .where('session_id', 'in', chunk)
             .orderBy('created_at', 'desc')
-            .limit(1)
+            .limit(10)
             .get()
 
-          if (!msgSnap.empty) {
-            const msg = msgSnap.docs[0].data()
+          for (const doc of msgSnap.docs) {
+            const msg = doc.data()
+            // Track overall last message
             if (!lastMessageAt || msg.created_at > lastMessageAt) {
               lastMessageAt = msg.created_at as string
               lastMessageBy = msg.role === 'user'
                 ? (msg.sender_email as string) || null
                 : 'agent'
             }
-          }
-
-          // Most recent maker (user) message
-          const makerMsgSnap = await db
-            .collection('messages')
-            .where('session_id', 'in', chunk)
-            .where('role', '==', 'user')
-            .orderBy('created_at', 'desc')
-            .limit(1)
-            .get()
-
-          if (!makerMsgSnap.empty) {
-            const makerMsg = makerMsgSnap.docs[0].data()
-            if (!lastMakerMessageAt || makerMsg.created_at > lastMakerMessageAt) {
-              lastMakerMessageAt = makerMsg.created_at as string
+            // Track last maker (user) message
+            if (msg.role === 'user' && (!lastMakerMessageAt || msg.created_at > lastMakerMessageAt)) {
+              lastMakerMessageAt = msg.created_at as string
             }
           }
         }
