@@ -245,6 +245,9 @@ function ProjectList({ isAdmin }: { isAdmin: boolean }) {
                       {project.last_message_at && project.last_message_by === 'agent' && (
                         <span>{copy.dashboard.activityAgent(formatRelativeTime(project.last_message_at))}</span>
                       )}
+                      {project.last_builder_activity_at && (
+                        <span>{copy.dashboard.builderActivity(formatRelativeTime(project.last_builder_activity_at))}</span>
+                      )}
                       {!project.last_maker_message_at && project.shared_at && (
                         <span>{copy.dashboard.sharedAt(formatRelativeTime(project.shared_at))}</span>
                       )}
@@ -541,7 +544,7 @@ function getTurnIndicator(project: Project): { label: string; className: string 
   if (!project.requester_email || !project.session_count) {
     return { label: copy.dashboard.turnNeedsSetup, className: 'bg-gray-100 text-gray-600' }
   }
-  if (!project.last_message_by || project.last_message_by === 'agent') {
+  if (!project.last_maker_message_at) {
     const name = makerShortName(project)
     return { label: copy.dashboard.turnAwaitingMaker(name), className: 'bg-blue-100 text-blue-700' }
   }

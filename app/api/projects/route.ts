@@ -186,7 +186,7 @@ export async function PATCH(request: Request) {
   }
 
   // Only allow updating specific setup fields
-  const allowed = ['welcome_message', 'seed_questions', 'context', 'title', 'builder_directives', 'session_mode', 'requester_first_name', 'requester_last_name', 'last_nudged_at'] as const
+  const allowed = ['welcome_message', 'seed_questions', 'context', 'title', 'builder_directives', 'session_mode', 'requester_first_name', 'requester_last_name', 'last_nudged_at', 'last_builder_activity_at'] as const
   const patch: Record<string, unknown> = { updated_at: new Date().toISOString() }
   for (const key of allowed) {
     if (key in updates) {

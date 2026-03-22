@@ -54,6 +54,7 @@ export const copy = {
     activityAgent: (time: string) => `Agent responded ${time}`,
     activityMaker: (name: string, time: string) => `${name} messaged ${time}`,
     activityGeneric: (time: string) => `Last active ${time}`,
+    builderActivity: (time: string) => `You edited ${time}`,
     nudgedAt: (time: string) => `Nudged ${time}`,
     sharedAt: (time: string) => `Shared ${time}`,
   },

@@ -487,7 +487,7 @@ function ConfigUsed({ session }: { session: Session }) {
               <p className="text-sm text-gray-700 bg-gray-50 rounded px-2.5 py-1.5 whitespace-pre-wrap">{session.welcome_message}</p>
             </div>
           )}
-          {mode === 'discover' && questions.length > 0 && (
+          {questions.length > 0 && (
             <div>
               <p className="text-xs font-medium text-gray-500 uppercase mb-1">Seed questions</p>
               <ul className="space-y-1">
@@ -495,7 +495,7 @@ function ConfigUsed({ session }: { session: Session }) {
               </ul>
             </div>
           )}
-          {mode === 'converge' && dirs.length > 0 && (
+          {dirs.length > 0 && (
             <div>
               <p className="text-xs font-medium text-gray-500 uppercase mb-1">Builder directives</p>
               <ul className="space-y-1">
@@ -831,7 +831,11 @@ function ShareModal({ project, onClose }: { project: Project; onClose: () => voi
   const [linkCopied, setLinkCopied] = useState(false)
   const [passcodeCopied, setPasscodeCopied] = useState(false)
   const [emailCopied, setEmailCopied] = useState(false)
+  const [editingName, setEditingName] = useState(false)
+  const [editFirstName, setEditFirstName] = useState(project.requester_first_name || '')
+  const [editLastName, setEditLastName] = useState(project.requester_last_name || '')
   const shareProject = useShareProject()
+  const updateProject = useUpdateProject()
   const alreadyShared = !!project.requester_email
   const { data: fetchedPasscode } = useProjectPasscode(alreadyShared ? project.id : undefined)
   const resetPasscode = useResetPasscode()
@@ -871,7 +875,56 @@ function ShareModal({ project, onClose }: { project: Project; onClose: () => voi
       {alreadyShared || shareProject.isSuccess ? (
         <div className="space-y-3">
           <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
-            <p className="text-sm font-medium text-green-800">Shared with {sharedEmail}</p>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-green-800">Shared with {sharedEmail}</p>
+                {!editingName && (editFirstName || editLastName) && (
+                  <p className="text-xs text-green-700 mt-0.5">{[editFirstName, editLastName].filter(Boolean).join(' ')}</p>
+                )}
+              </div>
+              {!editingName && (
+                <button onClick={() => setEditingName(true)} className="text-xs text-green-700 hover:text-green-900 underline">
+                  Edit name
+                </button>
+              )}
+            </div>
+            {editingName && (
+              <div className="mt-2 flex items-center gap-2">
+                <input
+                  type="text"
+                  value={editFirstName}
+                  onChange={(e) => setEditFirstName(e.target.value)}
+                  placeholder="First name"
+                  className="flex-1 px-2 py-1 border border-green-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-brand-navy"
+                  autoFocus
+                />
+                <input
+                  type="text"
+                  value={editLastName}
+                  onChange={(e) => setEditLastName(e.target.value)}
+                  placeholder="Last name"
+                  className="flex-1 px-2 py-1 border border-green-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-brand-navy"
+                />
+                <LoadingButton
+                  variant="ghost"
+                  size="sm"
+                  loading={updateProject.isPending}
+                  onClick={async () => {
+                    await updateProject.mutateAsync({
+                      project_id: project.id,
+                      requester_first_name: editFirstName.trim() || '',
+                      requester_last_name: editLastName.trim() || '',
+                    })
+                    setEditingName(false)
+                  }}
+                >
+                  Save
+                </LoadingButton>
+                <button onClick={() => setEditingName(false)} className="text-xs text-gray-500 hover:text-gray-700">
+                  Cancel
+                </button>
+              </div>
+            )}
           </div>
           <div>
             <p className="text-xs text-gray-600 mb-1">Project link</p>
@@ -978,6 +1031,7 @@ function EditableSetup({ project }: { project: Project }) {
       seed_questions: seedQuestions,
       session_mode: sessionMode,
       builder_directives: directives,
+      last_builder_activity_at: new Date().toISOString(),
     })
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
@@ -1061,6 +1115,7 @@ function PrepNextSession({ project, projectId, sessionNumber }: {
       seed_questions: seedQuestions,
       session_mode: sessionMode,
       builder_directives: directives,
+      last_builder_activity_at: new Date().toISOString(),
     })
     await createSession.mutateAsync({ project_id: projectId })
     setCreated(true)
@@ -1090,7 +1145,8 @@ function PrepNextSession({ project, projectId, sessionNumber }: {
                 setNudgeCopied(true)
                 setTimeout(() => setNudgeCopied(false), 2000)
                 // Track nudge as sent (copy = assumed sent)
-                updateProject.mutate({ project_id: project.id, last_nudged_at: new Date().toISOString() })
+                const now = new Date().toISOString()
+                updateProject.mutate({ project_id: project.id, last_nudged_at: now, last_builder_activity_at: now })
               }}
               className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand-navy"
             >
@@ -1264,11 +1320,11 @@ function getTurnIndicator(project: Project | undefined): { label: string; classN
   if (!project.requester_email || !project.session_count) {
     return { label: 'Needs setup', className: 'bg-gray-100 text-gray-600' }
   }
-  if (!project.last_message_by || project.last_message_by === 'agent') {
-    const name = project.requester_email.split('@')[0]
+  if (!project.last_maker_message_at) {
+    const name = project.requester_first_name || project.requester_email.split('@')[0]
     return { label: `Waiting on ${name}`, className: 'bg-blue-100 text-blue-700' }
   }
-  return { label: 'Ready to review', className: 'bg-amber-100 text-amber-700' }
+  return { label: 'Your turn', className: 'bg-amber-100 text-amber-700' }
 }
 
 function hasBriefContent(brief: BriefContent): boolean {
