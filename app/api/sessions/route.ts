@@ -76,7 +76,7 @@ export async function POST(request: Request) {
     created_at: now,
     updated_at: now,
   }
-  const configFields = ['session_mode', 'seed_questions', 'builder_directives', 'welcome_message', 'style_guide'] as const
+  const configFields = ['session_mode', 'seed_questions', 'builder_directives', 'welcome_message'] as const
   for (const field of configFields) {
     if (projectData[field] !== undefined) {
       sessionData[field] = projectData[field]

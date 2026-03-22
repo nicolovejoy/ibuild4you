@@ -27,7 +27,7 @@ import {
   useResetPasscode,
   useCreateSession,
 } from '@/lib/query/hooks'
-import { buildBriefPrompt } from '@/lib/agent/brief-prompt'
+import { buildPrepPrompt } from '@/lib/agent/brief-prompt'
 import { apiFetch } from '@/lib/firebase/api-fetch'
 import { useQueryClient } from '@tanstack/react-query'
 import type { Project, Session, BriefContent } from '@/lib/types'
@@ -122,7 +122,7 @@ export function BuilderProjectView({ projectId, userEmail }: { projectId: string
           />
         )}
         {activeTab === 'brief' && (
-          <BriefTab projectId={projectId} brief={brief} />
+          <BriefTab projectId={projectId} brief={brief} project={project} />
         )}
         {activeTab === 'setup' && project && (
           <SetupTab
@@ -437,9 +437,11 @@ function SessionChat({
 function BriefTab({
   projectId,
   brief,
+  project,
 }: {
   projectId: string
   brief: { version: number; content: BriefContent } | null | undefined
+  project: Project | undefined
 }) {
   const [payloadCopied, setPayloadCopied] = useState(false)
   const [briefCopied, setBriefCopied] = useState(false)
@@ -449,6 +451,7 @@ function BriefTab({
   const [generating, setGenerating] = useState(false)
   const [loadingPayload, setLoadingPayload] = useState(false)
   const updateBrief = useUpdateBrief()
+  const updateProject = useUpdateProject()
 
   const briefContent = brief?.content as BriefContent | undefined
   const hasBrief = briefContent && hasBriefContent(briefContent)
@@ -499,9 +502,11 @@ function BriefTab({
       }
 
       // Build the prompt
-      const prompt = buildBriefPrompt({
+      const prompt = buildPrepPrompt({
         currentBrief,
         conversationHistory: allMessages,
+        projectTitle: project?.title || 'Untitled',
+        sessionCount: sessions?.length || 0,
       })
 
       await navigator.clipboard.writeText(prompt)
@@ -516,7 +521,7 @@ function BriefTab({
 
   const handleImportJson = async () => {
     setPasteError(null)
-    let parsed: unknown
+    let parsed: Record<string, unknown>
     try {
       parsed = JSON.parse(pasteJson)
     } catch {
@@ -525,10 +530,23 @@ function BriefTab({
     }
 
     try {
-      await updateBrief.mutateAsync({ project_id: projectId, content: parsed })
+      if (parsed.brief) {
+        // Multi-field format: save brief + project config
+        await updateBrief.mutateAsync({ project_id: projectId, content: parsed.brief })
+        const projectUpdate: Record<string, unknown> = { project_id: projectId }
+        if (parsed.session_opener !== undefined) projectUpdate.welcome_message = parsed.session_opener
+        if (parsed.builder_directives !== undefined) projectUpdate.builder_directives = parsed.builder_directives
+        if (parsed.session_mode !== undefined) projectUpdate.session_mode = parsed.session_mode
+        if (Object.keys(projectUpdate).length > 1) {
+          await updateProject.mutateAsync(projectUpdate as Parameters<typeof updateProject.mutateAsync>[0])
+        }
+      } else {
+        // Legacy brief-only format
+        await updateBrief.mutateAsync({ project_id: projectId, content: parsed })
+      }
       setPasteJson('')
     } catch (err) {
-      setPasteError(err instanceof Error ? err.message : 'Failed to save brief')
+      setPasteError(err instanceof Error ? err.message : 'Failed to save')
     }
   }
 
@@ -583,7 +601,7 @@ function BriefTab({
                 onClick={handleCopyPayload}
                 icon={ClipboardCopy}
               >
-                {payloadCopied ? 'Copied!' : 'Copy prompt for Claude'}
+                {payloadCopied ? 'Copied!' : 'Copy prep context'}
               </LoadingButton>
               <LoadingButton
                 variant="ghost"
@@ -597,13 +615,13 @@ function BriefTab({
               </LoadingButton>
             </div>
             <p className="text-xs text-gray-500">
-              Copy the prompt, paste it into Claude, then paste the JSON response below.
+              Copy the prep context, paste into Claude to discuss strategy, then ask for output and paste the JSON below.
             </p>
             <div className="space-y-2">
               <textarea
                 value={pasteJson}
                 onChange={(e) => { setPasteJson(e.target.value); setPasteError(null) }}
-                placeholder='Paste brief JSON here...'
+                placeholder='Paste JSON here (multi-field with brief/session_opener/directives/mode, or brief-only)...'
                 rows={4}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm font-mono focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
               />
@@ -617,7 +635,7 @@ function BriefTab({
                 onClick={handleImportJson}
                 icon={Upload}
               >
-                Import brief
+                Import JSON
               </LoadingButton>
             </div>
           </div>
@@ -859,7 +877,6 @@ function EditableSetup({ project }: { project: Project }) {
   const [welcomeMessage, setWelcomeMessage] = useState(project.welcome_message || '')
   const [seedQuestions, setSeedQuestions] = useState<string[]>(project.seed_questions || [])
   const [newQuestion, setNewQuestion] = useState('')
-  const [styleGuide, setStyleGuide] = useState(project.style_guide || '')
   const [sessionMode, setSessionMode] = useState<'discover' | 'converge'>(project.session_mode || 'discover')
   const [directives, setDirectives] = useState<string[]>(project.builder_directives || [])
   const [newDirective, setNewDirective] = useState('')
@@ -871,17 +888,15 @@ function EditableSetup({ project }: { project: Project }) {
   useEffect(() => {
     setWelcomeMessage(project.welcome_message || '')
     setSeedQuestions(project.seed_questions || [])
-    setStyleGuide(project.style_guide || '')
     setSessionMode(project.session_mode || 'discover')
     setDirectives(project.builder_directives || [])
-  }, [project.welcome_message, project.seed_questions, project.style_guide, project.session_mode, project.builder_directives])
+  }, [project.welcome_message, project.seed_questions, project.session_mode, project.builder_directives])
 
   const handleSave = async () => {
     await updateProject.mutateAsync({
       project_id: project.id,
       welcome_message: welcomeMessage,
       seed_questions: seedQuestions,
-      style_guide: styleGuide,
       session_mode: sessionMode,
       builder_directives: directives,
     })
@@ -897,15 +912,15 @@ function EditableSetup({ project }: { project: Project }) {
           Agent setup
         </h2>
         <div className="space-y-5">
-          {/* Welcome message */}
+          {/* Session opener */}
           <div>
             <div className="flex items-center justify-between mb-1.5">
-              <label className="text-sm font-medium text-gray-700">Welcome message</label>
+              <label className="text-sm font-medium text-gray-700">Session opener</label>
               <LoadingButton variant="ghost" size="sm" loading={generateWelcome.isPending} loadingText="Generating..." onClick={async () => { const r = await generateWelcome.mutateAsync(project.id); setWelcomeMessage(r.welcome_message) }} icon={Sparkles}>
                 {welcomeMessage ? 'Regenerate' : 'Generate'}
               </LoadingButton>
             </div>
-            <textarea value={welcomeMessage} onChange={(e) => setWelcomeMessage(e.target.value)} placeholder="The maker will see this message when they first open the project." rows={4} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy" />
+            <textarea value={welcomeMessage} onChange={(e) => setWelcomeMessage(e.target.value)} placeholder="The message the agent sends when the maker opens this session." rows={4} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy" />
           </div>
 
           {/* Session mode */}
@@ -917,12 +932,6 @@ function EditableSetup({ project }: { project: Project }) {
           ) : (
             <ListEditor label="Builder directives" description="Things the agent should actively drive toward." items={directives} newItem={newDirective} onNewItemChange={setNewDirective} onAdd={() => { if (!newDirective.trim()) return; setDirectives(p => [...p, newDirective.trim()]); setNewDirective('') }} onRemove={(i) => setDirectives(p => p.filter((_, idx) => idx !== i))} placeholder="Get them to pick 1-2 tickers to start with" />
           )}
-
-          {/* Style guide */}
-          <div>
-            <label className="text-sm font-medium text-gray-700 block mb-1.5">Style guide</label>
-            <textarea value={styleGuide} onChange={(e) => setStyleGuide(e.target.value)} placeholder="Tone and approach notes for communicating with this maker." rows={3} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy" />
-          </div>
 
           <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
             <LoadingButton variant="secondary" size="sm" loading={updateProject.isPending} loadingText="Saving..." onClick={handleSave}>
@@ -943,7 +952,6 @@ function ActiveSessionConfig({ session, sessionNumber }: { session: Session; ses
   const mode = session.session_mode || 'discover'
   const questions = session.seed_questions || []
   const dirs = session.builder_directives || []
-  const guide = session.style_guide || ''
 
   return (
     <Card hover={false}>
@@ -982,12 +990,6 @@ function ActiveSessionConfig({ session, sessionNumber }: { session: Session; ses
                 </ul>
               </div>
             )}
-            {guide && (
-              <div>
-                <p className="text-xs font-medium text-gray-500 uppercase mb-1">Style guide</p>
-                <p className="bg-gray-50 rounded px-2.5 py-1.5">{guide}</p>
-              </div>
-            )}
             {session.model && <p className="text-xs text-gray-400">Model: {session.model}</p>}
           </div>
         )}
@@ -1008,7 +1010,6 @@ function PrepNextSession({ project, projectId, sessionNumber }: {
   const [newQuestion, setNewQuestion] = useState('')
   const [directives, setDirectives] = useState<string[]>(project.builder_directives || [])
   const [newDirective, setNewDirective] = useState('')
-  const [styleGuide, setStyleGuide] = useState(project.style_guide || '')
   const [nudgeNote, setNudgeNote] = useState('')
   const [created, setCreated] = useState(false)
   const [nudgeCopied, setNudgeCopied] = useState(false)
@@ -1023,17 +1024,15 @@ function PrepNextSession({ project, projectId, sessionNumber }: {
   useEffect(() => {
     setWelcomeMessage(project.welcome_message || '')
     setSeedQuestions(project.seed_questions || [])
-    setStyleGuide(project.style_guide || '')
     setSessionMode(project.session_mode || 'discover')
     setDirectives(project.builder_directives || [])
-  }, [project.welcome_message, project.seed_questions, project.style_guide, project.session_mode, project.builder_directives])
+  }, [project.welcome_message, project.seed_questions, project.session_mode, project.builder_directives])
 
   const handleCreate = async () => {
     await updateProject.mutateAsync({
       project_id: project.id,
       welcome_message: welcomeMessage,
       seed_questions: seedQuestions,
-      style_guide: styleGuide,
       session_mode: sessionMode,
       builder_directives: directives,
     })
@@ -1101,21 +1100,15 @@ function PrepNextSession({ project, projectId, sessionNumber }: {
               <ListEditor label="Builder directives" description="Things the agent should actively drive toward." items={directives} newItem={newDirective} onNewItemChange={setNewDirective} onAdd={() => { if (!newDirective.trim()) return; setDirectives(p => [...p, newDirective.trim()]); setNewDirective('') }} onRemove={(i) => setDirectives(p => p.filter((_, idx) => idx !== i))} placeholder="Get them to pick 1-2 tickers to start with" />
             )}
 
-            {/* Welcome message */}
+            {/* Session opener */}
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <label className="text-sm font-medium text-gray-700">Welcome message</label>
+                <label className="text-sm font-medium text-gray-700">Session opener</label>
                 <LoadingButton variant="ghost" size="sm" loading={generateWelcome.isPending} loadingText="Generating..." onClick={async () => { const r = await generateWelcome.mutateAsync(project.id); setWelcomeMessage(r.welcome_message) }} icon={Sparkles}>
                   {welcomeMessage ? 'Regenerate' : 'Generate'}
                 </LoadingButton>
               </div>
-              <textarea value={welcomeMessage} onChange={(e) => setWelcomeMessage(e.target.value)} placeholder="The maker will see this message when they open the new session." rows={3} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy" />
-            </div>
-
-            {/* Style guide */}
-            <div>
-              <label className="text-sm font-medium text-gray-700 block mb-1.5">Style guide</label>
-              <textarea value={styleGuide} onChange={(e) => setStyleGuide(e.target.value)} placeholder="Tone and approach notes." rows={2} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy" />
+              <textarea value={welcomeMessage} onChange={(e) => setWelcomeMessage(e.target.value)} placeholder="The message the agent sends when the maker opens this session." rows={3} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy" />
             </div>
 
             {/* Nudge + create */}
@@ -1154,7 +1147,6 @@ function PastSessionConfigs({ sessions, allSessions }: { sessions: Session[]; al
             const mode = session.session_mode || 'discover'
             const questions = session.seed_questions || []
             const dirs = session.builder_directives || []
-            const guide = session.style_guide || ''
 
             return (
               <div key={session.id}>
@@ -1188,12 +1180,6 @@ function PastSessionConfigs({ sessions, allSessions }: { sessions: Session[]; al
                         <ul className="space-y-1">
                           {dirs.map((d, i) => <li key={i} className="bg-gray-50 rounded px-2.5 py-1.5 text-sm">{i + 1}. {d}</li>)}
                         </ul>
-                      </div>
-                    )}
-                    {guide && (
-                      <div>
-                        <p className="text-xs font-medium text-gray-500 uppercase mb-1">Style guide</p>
-                        <p className="bg-gray-50 rounded px-2.5 py-1.5">{guide}</p>
                       </div>
                     )}
                     {session.model && <p className="text-xs text-gray-400">Model: {session.model}</p>}

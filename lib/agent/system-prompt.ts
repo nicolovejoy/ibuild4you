@@ -6,26 +6,15 @@ interface SystemPromptInput {
   projectContext: string | null
   sessionNumber: number
   seedQuestions?: string[]
-  styleGuide?: string
   builderDirectives?: string[]
   sessionMode?: 'discover' | 'converge'
 }
 
-export function buildSystemPrompt({ briefContent, projectContext, sessionNumber, seedQuestions, styleGuide, builderDirectives, sessionMode }: SystemPromptInput): string {
+export function buildSystemPrompt({ briefContent, projectContext, sessionNumber, seedQuestions, builderDirectives, sessionMode }: SystemPromptInput): string {
   const parts: string[] = []
 
   parts.push('You are the iBuild4you project intake assistant.')
   parts.push(sessionMode === 'converge' ? CONVERGE_BEHAVIOR_RULES : AGENT_BEHAVIOR_RULES)
-
-  if (styleGuide) {
-    parts.push(`
-## Style guide for this maker
-
-The following notes describe how to communicate with this particular person. Adapt your tone and approach accordingly.
-
-${styleGuide}
-`.trim())
-  }
 
   if (projectContext) {
     parts.push(`

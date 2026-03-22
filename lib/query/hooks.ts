@@ -102,7 +102,6 @@ export function useUpdateProject() {
       project_id: string
       welcome_message?: string
       seed_questions?: string[]
-      style_guide?: string
       context?: string
       title?: string
       builder_directives?: string[]

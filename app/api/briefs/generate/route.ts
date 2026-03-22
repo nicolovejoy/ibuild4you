@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getAuthenticatedUser, getAdminDb, getProjectRole, requireRole } from '@/lib/api/firebase-server-helpers'
-import { buildBriefPrompt } from '@/lib/agent/brief-prompt'
+import { buildPrepPrompt } from '@/lib/agent/brief-prompt'
 import { BRIEF_MODEL, BRIEF_MAX_TOKENS, BRIEF_TEMPERATURE } from '@/lib/agent/constants'
 import { upsertBrief } from '@/lib/api/briefs'
 import Anthropic from '@anthropic-ai/sdk'
@@ -67,10 +67,16 @@ export async function POST(request: Request) {
     currentBrief = briefSnap.docs[0].data().content as BriefContent
   }
 
+  // Get project title and session count for the prompt
+  const projectDoc = await db.collection('projects').doc(project_id).get()
+  const projectTitle = (projectDoc.data()?.title as string) || 'Untitled'
+
   // Build prompt and call Claude
-  const prompt = buildBriefPrompt({
+  const prompt = buildPrepPrompt({
     currentBrief,
     conversationHistory: allMessages,
+    projectTitle,
+    sessionCount: sessionIds.length,
   })
 
   try {
@@ -87,8 +93,9 @@ export async function POST(request: Request) {
       .map((block) => block.text)
       .join('')
 
-    // Parse the JSON response
-    const briefContent: BriefContent = JSON.parse(text)
+    // Parse the JSON response — may be multi-field or brief-only
+    const parsed = JSON.parse(text)
+    const briefContent: BriefContent = parsed.brief || parsed
 
     // Validate shape
     if (typeof briefContent.problem !== 'string') briefContent.problem = ''

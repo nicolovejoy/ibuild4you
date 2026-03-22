@@ -33,7 +33,6 @@ export interface Project extends BaseEntity {
   requester_email?: string // email of the intended maker (for sharing)
   welcome_message?: string // admin-reviewed welcome message for the maker
   seed_questions?: string[] // ordered questions the agent should weave in early
-  style_guide?: string // tone/approach notes for communicating with this maker
   builder_directives?: string[] // things agent should actively push toward
   session_mode?: 'discover' | 'converge' // current operating mode (default: discover)
   // Enriched by GET /api/projects
@@ -55,7 +54,6 @@ export interface Session extends BaseEntity {
   seed_questions?: string[]
   builder_directives?: string[]
   welcome_message?: string
-  style_guide?: string
   // Usage tracking — accumulated across all exchanges in the session
   model?: string
   token_usage_input?: number

@@ -102,7 +102,7 @@ export async function POST(request: Request) {
 
       // Snapshot agent config from project onto session for tracking
       const configSnapshot: Record<string, unknown> = { updated_at: now }
-      const configFields = ['session_mode', 'seed_questions', 'builder_directives', 'welcome_message', 'style_guide'] as const
+      const configFields = ['session_mode', 'seed_questions', 'builder_directives', 'welcome_message'] as const
       for (const field of configFields) {
         if (projectData[field] !== undefined) {
           configSnapshot[field] = projectData[field]

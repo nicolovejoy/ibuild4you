@@ -128,7 +128,6 @@ export async function POST(request: Request) {
   const sessionData = sessionDoc.data() || {}
   const projectContext = projectData.context as string | null || null
   const seedQuestions = (sessionData.seed_questions ?? projectData.seed_questions) as string[] | undefined
-  const styleGuide = (sessionData.style_guide ?? projectData.style_guide) as string | undefined
   const builderDirectives = (sessionData.builder_directives ?? projectData.builder_directives) as string[] | undefined
   const sessionMode = (sessionData.session_mode ?? projectData.session_mode) as 'discover' | 'converge' | undefined
   const systemPrompt = buildSystemPrompt({
@@ -136,7 +135,6 @@ export async function POST(request: Request) {
     projectContext,
     sessionNumber,
     seedQuestions,
-    styleGuide,
     builderDirectives,
     sessionMode,
   })
