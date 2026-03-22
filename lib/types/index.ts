@@ -49,6 +49,7 @@ export interface Project extends BaseEntity {
   last_message_by?: string | null
   last_maker_message_at?: string | null
   last_builder_activity_at?: string
+  latest_session_created_at?: string | null
   brief_version?: number | null
   brief_decision_count?: number | null
   brief_feature_count?: number | null

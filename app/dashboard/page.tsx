@@ -544,7 +544,11 @@ function getTurnIndicator(project: Project): { label: string; className: string 
   if (!project.requester_email || !project.session_count) {
     return { label: copy.dashboard.turnNeedsSetup, className: 'bg-gray-100 text-gray-600' }
   }
-  if (!project.last_maker_message_at) {
+  // Maker must have messaged since the latest session was created
+  const makerMessagedInCurrentSession = project.last_maker_message_at
+    && project.latest_session_created_at
+    && project.last_maker_message_at > project.latest_session_created_at
+  if (!makerMessagedInCurrentSession) {
     const name = makerShortName(project)
     return { label: copy.dashboard.turnAwaitingMaker(name), className: 'bg-blue-100 text-blue-700' }
   }

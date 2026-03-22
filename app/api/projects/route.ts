@@ -75,12 +75,22 @@ async function enrichProjects(
         briefFeatureCount = Array.isArray(content?.features) ? content.features.length : 0
       }
 
+      // Find latest session created_at
+      let latestSessionCreatedAt: string | null = null
+      for (const doc of sessionsSnap.docs) {
+        const createdAt = doc.data().created_at as string
+        if (!latestSessionCreatedAt || createdAt > latestSessionCreatedAt) {
+          latestSessionCreatedAt = createdAt
+        }
+      }
+
       return {
         ...project,
         session_count: sessionsSnap.size,
         last_message_at: lastMessageAt,
         last_message_by: lastMessageBy,
         last_maker_message_at: lastMakerMessageAt,
+        latest_session_created_at: latestSessionCreatedAt,
         brief_version: briefVersion,
         brief_decision_count: briefDecisionCount,
         brief_feature_count: briefFeatureCount,

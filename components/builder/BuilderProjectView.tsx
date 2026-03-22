@@ -1320,7 +1320,10 @@ function getTurnIndicator(project: Project | undefined): { label: string; classN
   if (!project.requester_email || !project.session_count) {
     return { label: 'Needs setup', className: 'bg-gray-100 text-gray-600' }
   }
-  if (!project.last_maker_message_at) {
+  const makerMessagedInCurrentSession = project.last_maker_message_at
+    && project.latest_session_created_at
+    && project.last_maker_message_at > project.latest_session_created_at
+  if (!makerMessagedInCurrentSession) {
     const name = project.requester_first_name || project.requester_email.split('@')[0]
     return { label: `Waiting on ${name}`, className: 'bg-blue-100 text-blue-700' }
   }
