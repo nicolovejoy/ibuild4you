@@ -278,12 +278,14 @@ export async function DELETE(request: Request) {
 }
 
 // POST /api/projects — create a new project
+// Accepts full setup payload: title (required), plus optional context,
+// requester info, session config, and layout mockups.
 export async function POST(request: Request) {
   const auth = await getAuthenticatedUser(request)
   if (auth.error) return auth.error
 
   const body = await request.json()
-  const { title, context } = body
+  const { title } = body
 
   if (!title?.trim()) {
     return NextResponse.json({ error: 'Title is required' }, { status: 400 })
@@ -299,8 +301,25 @@ export async function POST(request: Request) {
     created_at: now,
     updated_at: now,
   }
-  if (context?.trim()) {
-    projectData.context = context.trim()
+
+  // Optional setup fields — include only if provided
+  const optionalStrings = ['context', 'requester_first_name', 'requester_last_name', 'requester_email', 'welcome_message'] as const
+  for (const field of optionalStrings) {
+    if (typeof body[field] === 'string' && body[field].trim()) {
+      projectData[field] = body[field].trim()
+    }
+  }
+  if (body.session_mode === 'discover' || body.session_mode === 'converge') {
+    projectData.session_mode = body.session_mode
+  }
+  if (Array.isArray(body.seed_questions) && body.seed_questions.length > 0) {
+    projectData.seed_questions = body.seed_questions.filter((q: unknown) => typeof q === 'string' && q.trim())
+  }
+  if (Array.isArray(body.builder_directives) && body.builder_directives.length > 0) {
+    projectData.builder_directives = body.builder_directives.filter((d: unknown) => typeof d === 'string' && d.trim())
+  }
+  if (Array.isArray(body.layout_mockups) && body.layout_mockups.length > 0) {
+    projectData.layout_mockups = body.layout_mockups
   }
 
   const docRef = await db.collection('projects').add(projectData)
@@ -316,22 +335,20 @@ export async function POST(request: Request) {
     updated_at: now,
   })
 
-  // Create the first session for the project automatically
-  const sessionRef = await db.collection('sessions').add({
+  // Create the first session, snapshotting any config provided
+  const sessionData: Record<string, unknown> = {
     project_id: docRef.id,
     status: 'active',
     created_at: now,
     updated_at: now,
-  })
-
-  const project = {
-    id: docRef.id,
-    requester_id: auth.uid,
-    title: title.trim(),
-    status: 'active',
-    created_at: now,
-    updated_at: now,
   }
+  // Snapshot config fields onto the session so it captures the initial setup
+  for (const field of ['session_mode', 'seed_questions', 'builder_directives', 'welcome_message', 'layout_mockups'] as const) {
+    if (projectData[field] !== undefined) {
+      sessionData[field] = projectData[field]
+    }
+  }
+  const sessionRef = await db.collection('sessions').add(sessionData)
 
-  return NextResponse.json({ ...project, session_id: sessionRef.id }, { status: 201 })
+  return NextResponse.json({ ...projectData, id: docRef.id, session_id: sessionRef.id }, { status: 201 })
 }

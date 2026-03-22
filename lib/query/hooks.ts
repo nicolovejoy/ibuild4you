@@ -19,10 +19,10 @@ export function useCreateProject() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: async ({ title, context }: { title: string; context?: string }) => {
+    mutationFn: async (payload: { title: string; [key: string]: unknown }) => {
       const res = await apiFetch('/api/projects', {
         method: 'POST',
-        body: JSON.stringify({ title, context }),
+        body: JSON.stringify(payload),
       })
       if (!res.ok) {
         const data = await res.json()

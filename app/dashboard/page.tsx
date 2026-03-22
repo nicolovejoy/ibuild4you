@@ -76,10 +76,22 @@ export default function DashboardPage() {
 
 function NewProjectButton() {
   const [showForm, setShowForm] = useState(false)
+  const [mode, setMode] = useState<'form' | 'import'>('form')
   const [title, setTitle] = useState('')
   const [context, setContext] = useState('')
+  const [jsonInput, setJsonInput] = useState('')
+  const [jsonError, setJsonError] = useState<string | null>(null)
   const createProject = useCreateProject()
   const router = useRouter()
+
+  const resetAndClose = () => {
+    setTitle('')
+    setContext('')
+    setJsonInput('')
+    setJsonError(null)
+    setMode('form')
+    setShowForm(false)
+  }
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -90,14 +102,55 @@ function NewProjectButton() {
         title: title.trim(),
         context: context.trim() || undefined,
       })
-      setTitle('')
-      setContext('')
-      setShowForm(false)
+      resetAndClose()
       router.push(`/projects/${result.id}?tab=setup`)
     } catch {
       // error is available via createProject.error
     }
   }
+
+  const handleImport = async () => {
+    setJsonError(null)
+    let payload: Record<string, unknown>
+    try {
+      payload = JSON.parse(jsonInput)
+    } catch {
+      setJsonError('Invalid JSON')
+      return
+    }
+    if (!payload || typeof payload !== 'object') {
+      setJsonError('JSON must be an object')
+      return
+    }
+    if (!payload.title || typeof payload.title !== 'string' || !payload.title.trim()) {
+      setJsonError('JSON must include a "title" field')
+      return
+    }
+
+    try {
+      const result = await createProject.mutateAsync(payload as { title: string; [key: string]: unknown })
+      resetAndClose()
+      router.push(`/projects/${result.id}?tab=setup`)
+    } catch {
+      // error is available via createProject.error
+    }
+  }
+
+  const jsonPreview = (() => {
+    if (!jsonInput.trim()) return null
+    try {
+      const obj = JSON.parse(jsonInput)
+      if (!obj?.title) return null
+      const fields: string[] = []
+      if (obj.requester_email) fields.push(obj.requester_email)
+      if (obj.session_mode) fields.push(obj.session_mode)
+      if (Array.isArray(obj.seed_questions)) fields.push(`${obj.seed_questions.length} seed questions`)
+      if (Array.isArray(obj.builder_directives)) fields.push(`${obj.builder_directives.length} directives`)
+      if (obj.welcome_message) fields.push('welcome message')
+      if (Array.isArray(obj.layout_mockups)) fields.push(`${obj.layout_mockups.length} mockup${obj.layout_mockups.length === 1 ? '' : 's'}`)
+      return { title: obj.title, fields }
+    } catch { return null }
+  })()
 
   return (
     <>
@@ -105,63 +158,138 @@ function NewProjectButton() {
         New project
       </LoadingButton>
 
-      <Modal isOpen={showForm} onClose={() => setShowForm(false)} title="New project">
-        <form onSubmit={handleCreate} className="space-y-4">
-          <div>
-            <label htmlFor="project-title" className="block text-sm font-medium text-gray-700 mb-1">
-              Title *
-            </label>
-            <input
-              id="project-title"
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="Jamie's Bakery App"
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
-              autoFocus
-            />
-          </div>
+      <Modal isOpen={showForm} onClose={resetAndClose} title="New project">
+        {/* Mode toggle */}
+        <div className="flex gap-1 mb-4">
+          <button
+            onClick={() => setMode('form')}
+            className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
+              mode === 'form' ? 'bg-brand-navy text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            Form
+          </button>
+          <button
+            onClick={() => setMode('import')}
+            className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
+              mode === 'import' ? 'bg-brand-navy text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            Import JSON
+          </button>
+        </div>
 
-          <div>
-            <label htmlFor="project-context" className="block text-sm font-medium text-gray-700 mb-1">
-              Context for the agent
-            </label>
-            <textarea
-              id="project-context"
-              value={context}
-              onChange={(e) => setContext(e.target.value)}
-              placeholder="Jamie owns a bakery in downtown Portland. She wants to let customers order online and pick up in store. She's not technical at all..."
-              rows={4}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
-            />
-            <p className="text-xs text-gray-500 mt-1">
-              Background info the agent will use to skip basic discovery questions.
-            </p>
-          </div>
+        {mode === 'form' ? (
+          <form onSubmit={handleCreate} className="space-y-4">
+            <div>
+              <label htmlFor="project-title" className="block text-sm font-medium text-gray-700 mb-1">
+                Title *
+              </label>
+              <input
+                id="project-title"
+                type="text"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="Jamie's Bakery App"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
+                autoFocus
+              />
+            </div>
 
-          {createProject.error && (
-            <StatusMessage type="error" message={createProject.error.message} />
-          )}
+            <div>
+              <label htmlFor="project-context" className="block text-sm font-medium text-gray-700 mb-1">
+                Context for the agent
+              </label>
+              <textarea
+                id="project-context"
+                value={context}
+                onChange={(e) => setContext(e.target.value)}
+                placeholder="Jamie owns a bakery in downtown Portland. She wants to let customers order online and pick up in store. She's not technical at all..."
+                rows={4}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Background info the agent will use to skip basic discovery questions.
+              </p>
+            </div>
 
-          <div className="flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={() => setShowForm(false)}
-              className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800"
-            >
-              Cancel
-            </button>
-            <LoadingButton
-              type="submit"
-              variant="primary"
-              loading={createProject.isPending}
-              loadingText="Creating..."
-              disabled={!title.trim()}
-            >
-              Create project
-            </LoadingButton>
+            {createProject.error && (
+              <StatusMessage type="error" message={createProject.error.message} />
+            )}
+
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={resetAndClose}
+                className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800"
+              >
+                Cancel
+              </button>
+              <LoadingButton
+                type="submit"
+                variant="primary"
+                loading={createProject.isPending}
+                loadingText="Creating..."
+                disabled={!title.trim()}
+              >
+                Create project
+              </LoadingButton>
+            </div>
+          </form>
+        ) : (
+          <div className="space-y-4">
+            <div>
+              <label htmlFor="project-json" className="block text-sm font-medium text-gray-700 mb-1">
+                Paste setup JSON
+              </label>
+              <textarea
+                id="project-json"
+                value={jsonInput}
+                onChange={(e) => { setJsonInput(e.target.value); setJsonError(null) }}
+                placeholder={'{\n  "title": "Jamie\'s Bakery App",\n  "requester_email": "jamie@example.com",\n  "seed_questions": [...],\n  ...\n}'}
+                rows={10}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-xs font-mono focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
+                autoFocus
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Full setup payload from your prep workflow. Only &quot;title&quot; is required.
+              </p>
+            </div>
+
+            {jsonPreview && (
+              <div className="bg-gray-50 rounded-md px-3 py-2 text-sm">
+                <p className="font-medium text-gray-800">{jsonPreview.title}</p>
+                {jsonPreview.fields.length > 0 && (
+                  <p className="text-xs text-gray-500 mt-0.5">{jsonPreview.fields.join(' · ')}</p>
+                )}
+              </div>
+            )}
+
+            {jsonError && <StatusMessage type="error" message={jsonError} />}
+            {createProject.error && (
+              <StatusMessage type="error" message={createProject.error.message} />
+            )}
+
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={resetAndClose}
+                className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800"
+              >
+                Cancel
+              </button>
+              <LoadingButton
+                variant="primary"
+                loading={createProject.isPending}
+                loadingText="Creating..."
+                disabled={!jsonInput.trim()}
+                onClick={handleImport}
+              >
+                Import & create
+              </LoadingButton>
+            </div>
           </div>
-        </form>
+        )}
       </Modal>
     </>
   )
