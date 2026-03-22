@@ -710,8 +710,8 @@ function SetupTab({
 
   return (
     <div className="space-y-6">
-      {/* Share section if unshared */}
-      {!project.requester_email && <ShareSection project={project} />}
+      {/* Share section — form if unshared, link/email copy always visible after sharing */}
+      <ShareSection project={project} />
 
       {/* Current session config or editable setup — stay editable until maker chats */}
       {activeSession && hasUserMessages ? (
@@ -741,10 +741,11 @@ function SetupTab({
 }
 
 function ShareSection({ project }: { project: Project }) {
-  const [email, setEmail] = useState('')
+  const [email, setEmail] = useState(project.requester_email || '')
   const [linkCopied, setLinkCopied] = useState(false)
   const [emailCopied, setEmailCopied] = useState(false)
   const shareProject = useShareProject()
+  const alreadyShared = !!project.requester_email
 
   const shareLink = typeof window !== 'undefined'
     ? `${window.location.origin}/projects/${project.id}`
@@ -756,12 +757,14 @@ function ShareSection({ project }: { project: Project }) {
     await shareProject.mutateAsync({ project_id: project.id, email: email.trim() })
   }
 
+  const sharedEmail = alreadyShared ? project.requester_email! : email
+
   const inviteEmailBody = `Hey! I've set up a project for you on iBuild4you — it's a tool that helps figure out exactly what you want built through a simple conversation.
 
 Here's your link:
 ${shareLink}
 
-Just sign in with your email (${email}) and you'll see a chat waiting for you. Answer a few questions about your idea and it'll start putting together a project brief.
+Just sign in with your email (${sharedEmail}) and you'll see a chat waiting for you. Answer a few questions about your idea and it'll start putting together a project brief.
 
 No rush — you can come back anytime to pick up where you left off.`
 
@@ -773,9 +776,9 @@ No rush — you can come back anytime to pick up where you left off.`
           Share with maker
         </h2>
 
-        {shareProject.isSuccess ? (
+        {alreadyShared || shareProject.isSuccess ? (
           <div className="space-y-3 p-3 bg-green-50 border border-green-200 rounded-lg">
-            <p className="text-sm font-medium text-green-800">Shared with {email}!</p>
+            <p className="text-sm font-medium text-green-800">Shared with {sharedEmail}!</p>
             <div>
               <p className="text-xs text-gray-600 mb-1">Project link</p>
               <div className="flex items-center gap-2">
