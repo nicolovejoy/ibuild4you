@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { ArrowLeft, Send, ChevronDown, ChevronUp, MessageSquare } from 'lucide-react'
 import { BuildTimestamp } from '@/components/build-timestamp'
 import { Card, CardBody } from '@/components/ui/Card'
+import { MessageContent } from '@/components/ui/MessageContent'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { StatusMessage } from '@/components/ui/StatusMessage'
 import {
@@ -242,7 +243,7 @@ function MakerChat({
                   {msg.role === 'user' ? (msg.sender_email || userEmail) : 'iBuild4you assistant'}
                   {msg.created_at ? ` \u00b7 ${formatTimestamp(msg.created_at)}` : ''}
                 </p>
-                <p className="whitespace-pre-wrap text-sm leading-relaxed">{msg.content}</p>
+                <MessageContent content={msg.content} />
               </div>
             </div>
           ))}
@@ -326,7 +327,7 @@ function SessionAccordion({
                     {msg.role === 'user' ? (msg.sender_email || 'You') : 'Assistant'}
                     {msg.created_at ? ` \u00b7 ${formatTimestamp(msg.created_at)}` : ''}
                   </p>
-                  <p className="whitespace-pre-wrap text-sm leading-relaxed">{msg.content}</p>
+                  <MessageContent content={msg.content} />
                 </div>
               </div>
             ))

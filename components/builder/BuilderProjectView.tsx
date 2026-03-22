@@ -13,6 +13,8 @@ import { Skeleton } from '@/components/ui/Skeleton'
 import { StatusMessage } from '@/components/ui/StatusMessage'
 import { LoadingButton } from '@/components/ui/LoadingButton'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { MessageContent } from '@/components/ui/MessageContent'
+import { WireframePreview } from '@/components/ui/WireframePreview'
 import { Modal } from '@/components/ui/Modal'
 import {
   useProject,
@@ -32,7 +34,7 @@ import { buildPrepPrompt } from '@/lib/agent/brief-prompt'
 import { copy } from '@/lib/copy'
 import { apiFetch } from '@/lib/firebase/api-fetch'
 import { useQueryClient } from '@tanstack/react-query'
-import type { Project, Session, BriefContent } from '@/lib/types'
+import type { Project, Session, BriefContent, WireframeMockup } from '@/lib/types'
 
 type TabId = 'sessions' | 'brief' | 'setup'
 
@@ -437,7 +439,7 @@ function SessionChat({
                   {msg.role === 'user' ? (msg.sender_email || userEmail) : 'iBuild4you assistant'}
                   {msg.created_at ? ` \u00b7 ${formatTimestamp(msg.created_at)}` : ''}
                 </p>
-                <p className="whitespace-pre-wrap text-sm leading-relaxed">{msg.content}</p>
+                <MessageContent content={msg.content} />
                 {msg.id && (
                   <button
                     onClick={() => deleteMessage.mutate({ messageId: msg.id!, sessionId })}
@@ -615,6 +617,7 @@ function BriefTab({
         if (parsed.session_opener !== undefined) projectUpdate.welcome_message = parsed.session_opener
         if (parsed.builder_directives !== undefined) projectUpdate.builder_directives = parsed.builder_directives
         if (parsed.session_mode !== undefined) projectUpdate.session_mode = parsed.session_mode
+        if (parsed.layout_mockups !== undefined) projectUpdate.layout_mockups = parsed.layout_mockups
         if (Object.keys(projectUpdate).length > 1) {
           await updateProject.mutateAsync(projectUpdate as Parameters<typeof updateProject.mutateAsync>[0])
         }
@@ -1012,6 +1015,7 @@ function EditableSetup({ project }: { project: Project }) {
   const [sessionMode, setSessionMode] = useState<'discover' | 'converge'>(project.session_mode || 'discover')
   const [directives, setDirectives] = useState<string[]>(project.builder_directives || [])
   const [newDirective, setNewDirective] = useState('')
+  const [mockups, setMockups] = useState<WireframeMockup[]>(project.layout_mockups || [])
   const [saved, setSaved] = useState(false)
 
   const updateProject = useUpdateProject()
@@ -1022,7 +1026,8 @@ function EditableSetup({ project }: { project: Project }) {
     setSeedQuestions(project.seed_questions || [])
     setSessionMode(project.session_mode || 'discover')
     setDirectives(project.builder_directives || [])
-  }, [project.welcome_message, project.seed_questions, project.session_mode, project.builder_directives])
+    setMockups(project.layout_mockups || [])
+  }, [project.welcome_message, project.seed_questions, project.session_mode, project.builder_directives, project.layout_mockups])
 
   const handleSave = async () => {
     await updateProject.mutateAsync({
@@ -1031,6 +1036,7 @@ function EditableSetup({ project }: { project: Project }) {
       seed_questions: seedQuestions,
       session_mode: sessionMode,
       builder_directives: directives,
+      layout_mockups: mockups,
       last_builder_activity_at: new Date().toISOString(),
     })
     setSaved(true)
@@ -1066,6 +1072,9 @@ function EditableSetup({ project }: { project: Project }) {
             <ListEditor label="Builder directives" description="Things the agent should actively drive toward." items={directives} newItem={newDirective} onNewItemChange={setNewDirective} onAdd={() => { if (!newDirective.trim()) return; setDirectives(p => [...p, newDirective.trim()]); setNewDirective('') }} onBulkAdd={(bulk) => setDirectives(p => [...p, ...bulk])} onRemove={(i) => setDirectives(p => p.filter((_, idx) => idx !== i))} placeholder="Get them to pick 1-2 tickers to start with" />
           )}
 
+          {/* Layout mockups */}
+          <MockupEditor mockups={mockups} onUpdate={setMockups} />
+
           <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
             <LoadingButton variant="secondary" size="sm" loading={updateProject.isPending} loadingText="Saving..." onClick={handleSave}>
               {saved ? 'Saved!' : 'Save setup'}
@@ -1090,6 +1099,7 @@ function PrepNextSession({ project, projectId, sessionNumber }: {
   const [newQuestion, setNewQuestion] = useState('')
   const [directives, setDirectives] = useState<string[]>(project.builder_directives || [])
   const [newDirective, setNewDirective] = useState('')
+  const [mockups, setMockups] = useState<WireframeMockup[]>(project.layout_mockups || [])
   const [nudgeNote, setNudgeNote] = useState('')
   const [created, setCreated] = useState(false)
   const [nudgeCopied, setNudgeCopied] = useState(false)
@@ -1106,7 +1116,8 @@ function PrepNextSession({ project, projectId, sessionNumber }: {
     setSeedQuestions(project.seed_questions || [])
     setSessionMode(project.session_mode || 'discover')
     setDirectives(project.builder_directives || [])
-  }, [project.welcome_message, project.seed_questions, project.session_mode, project.builder_directives])
+    setMockups(project.layout_mockups || [])
+  }, [project.welcome_message, project.seed_questions, project.session_mode, project.builder_directives, project.layout_mockups])
 
   const handleCreate = async () => {
     await updateProject.mutateAsync({
@@ -1115,6 +1126,7 @@ function PrepNextSession({ project, projectId, sessionNumber }: {
       seed_questions: seedQuestions,
       session_mode: sessionMode,
       builder_directives: directives,
+      layout_mockups: mockups,
       last_builder_activity_at: new Date().toISOString(),
     })
     await createSession.mutateAsync({ project_id: projectId })
@@ -1180,6 +1192,9 @@ function PrepNextSession({ project, projectId, sessionNumber }: {
               <ListEditor label="Builder directives" description="Things the agent should actively drive toward." items={directives} newItem={newDirective} onNewItemChange={setNewDirective} onAdd={() => { if (!newDirective.trim()) return; setDirectives(p => [...p, newDirective.trim()]); setNewDirective('') }} onBulkAdd={(bulk) => setDirectives(p => [...p, ...bulk])} onRemove={(i) => setDirectives(p => p.filter((_, idx) => idx !== i))} placeholder="Get them to pick 1-2 tickers to start with" />
             )}
 
+            {/* Layout mockups */}
+            <MockupEditor mockups={mockups} onUpdate={setMockups} />
+
             {/* Conversation opener */}
             <div>
               <div className="flex items-center justify-between mb-1.5">
@@ -1212,6 +1227,109 @@ function PrepNextSession({ project, projectId, sessionNumber }: {
 }
 
 // --- Shared Components ---
+
+function MockupEditor({ mockups, onUpdate }: { mockups: WireframeMockup[]; onUpdate: (m: WireframeMockup[]) => void }) {
+  const [jsonInput, setJsonInput] = useState('')
+  const [parseError, setParseError] = useState<string | null>(null)
+  const [expandedIndex, setExpandedIndex] = useState<number | null>(null)
+
+  // Try to parse and validate a mockup from JSON text
+  const tryParse = (text: string): WireframeMockup | null => {
+    try {
+      const obj = JSON.parse(text)
+      if (!obj || typeof obj.title !== 'string' || !Array.isArray(obj.sections)) {
+        setParseError('JSON must have "title" (string) and "sections" (array)')
+        return null
+      }
+      setParseError(null)
+      return obj as WireframeMockup
+    } catch {
+      setParseError('Invalid JSON')
+      return null
+    }
+  }
+
+  const handleAdd = () => {
+    const parsed = tryParse(jsonInput)
+    if (parsed) {
+      onUpdate([...mockups, parsed])
+      setJsonInput('')
+      setParseError(null)
+    }
+  }
+
+  // Live preview of what's in the textarea
+  let preview: WireframeMockup | null = null
+  if (jsonInput.trim()) {
+    try {
+      const obj = JSON.parse(jsonInput)
+      if (obj && typeof obj.title === 'string' && Array.isArray(obj.sections)) {
+        preview = obj as WireframeMockup
+      }
+    } catch { /* no preview for invalid JSON */ }
+  }
+
+  return (
+    <div>
+      <label className="text-sm font-medium text-gray-700 block mb-1">Layout mockups</label>
+      <p className="text-xs text-gray-500 mb-2">Wireframe layouts the agent can show to the maker during conversation.</p>
+
+      {/* Existing mockups */}
+      {mockups.length > 0 && (
+        <div className="space-y-1.5 mb-3">
+          {mockups.map((m, i) => (
+            <div key={i} className="border border-gray-200 rounded-lg overflow-hidden">
+              <div className="flex items-center justify-between px-3 py-2 bg-gray-50">
+                <button
+                  onClick={() => setExpandedIndex(expandedIndex === i ? null : i)}
+                  className="text-sm font-medium text-gray-700 hover:text-brand-navy flex items-center gap-1.5"
+                >
+                  {expandedIndex === i ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                  {m.title}
+                  <span className="text-xs text-gray-400 font-normal">{m.sections.length} section{m.sections.length === 1 ? '' : 's'}</span>
+                </button>
+                <button onClick={() => onUpdate(mockups.filter((_, idx) => idx !== i))} className="p-1 text-gray-400 hover:text-red-500">
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+              {expandedIndex === i && (
+                <div className="px-3 pb-2">
+                  <WireframePreview mockup={m} />
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Add new mockup */}
+      <textarea
+        value={jsonInput}
+        onChange={(e) => { setJsonInput(e.target.value); setParseError(null) }}
+        placeholder='Paste mockup JSON: {"title": "...", "sections": [...]}'
+        rows={3}
+        className="w-full px-3 py-2 border border-gray-300 rounded-md text-xs font-mono focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
+      />
+      {parseError && <p className="text-xs text-red-500 mt-1">{parseError}</p>}
+
+      {/* Live preview */}
+      {preview && (
+        <div className="mt-1">
+          <WireframePreview mockup={preview} />
+        </div>
+      )}
+
+      <button
+        onClick={handleAdd}
+        disabled={!jsonInput.trim()}
+        className="mt-1.5 flex items-center gap-1 text-sm text-brand-navy hover:text-brand-navy-light disabled:text-gray-300 disabled:cursor-not-allowed"
+      >
+        <Plus className="h-3.5 w-3.5" />
+        Add mockup
+      </button>
+    </div>
+  )
+}
 
 function SessionModeToggle({ mode, onChange }: { mode: 'discover' | 'converge'; onChange: (m: 'discover' | 'converge') => void }) {
   return (

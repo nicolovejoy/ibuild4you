@@ -110,6 +110,7 @@ export function useUpdateProject() {
       requester_last_name?: string
       last_nudged_at?: string
       last_builder_activity_at?: string
+      layout_mockups?: import('@/lib/types').WireframeMockup[]
     }) => {
       const res = await apiFetch('/api/projects', {
         method: 'PATCH',

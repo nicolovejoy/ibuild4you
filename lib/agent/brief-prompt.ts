@@ -43,7 +43,15 @@ When I say "give me the output", produce ONLY valid JSON matching this schema (n
   },
   "session_opener": "The message the agent sends to start the next session",
   "builder_directives": ["Things the agent should push toward"],
-  "session_mode": "discover or converge"
+  "session_mode": "discover or converge",
+  "layout_mockups": [
+    {
+      "title": "Strategy name",
+      "sections": [
+        { "type": "hero|text|cta|gallery|form|signup|nav|footer|map|video", "label": "Section label", "description": "What this section does" }
+      ]
+    }
+  ]
 }
 
 Rules for the brief:

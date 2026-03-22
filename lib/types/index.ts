@@ -43,6 +43,7 @@ export interface Project extends BaseEntity {
   seed_questions?: string[] // ordered questions the agent should weave in early
   builder_directives?: string[] // things agent should actively push toward
   session_mode?: 'discover' | 'converge' // current operating mode (default: discover)
+  layout_mockups?: WireframeMockup[] // wireframe layouts the agent can show in chat
   // Enriched by GET /api/projects
   session_count?: number
   last_message_at?: string | null
@@ -65,6 +66,7 @@ export interface Session extends BaseEntity {
   seed_questions?: string[]
   builder_directives?: string[]
   welcome_message?: string
+  layout_mockups?: WireframeMockup[]
   // Usage tracking — accumulated across all exchanges in the session
   model?: string
   token_usage_input?: number
@@ -122,4 +124,17 @@ export interface BriefContent {
 export interface BriefDecision {
   topic: string // short label ("Data source", "Ticker selection")
   decision: string // what was decided ("Reddit API for user sentiment")
+}
+
+// Wireframe mockup — visual layout the agent can show inline in chat
+export interface WireframeSection {
+  type: string // hero, text, cta, gallery, form, signup, nav, footer, map, video
+  label: string // what the maker sees ("Custom Cakes")
+  description: string // brief explanation ("Photo portfolio with sizes")
+  page?: string // groups sections under page headings for multi-page layouts
+}
+
+export interface WireframeMockup {
+  title: string // "Strategy A: Single Page"
+  sections: WireframeSection[]
 }
