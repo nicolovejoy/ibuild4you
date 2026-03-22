@@ -223,7 +223,7 @@ function ProjectList({ isAdmin }: { isAdmin: boolean }) {
                       )}
                       {isAdmin && project.session_count !== undefined && project.session_count > 0 && (
                         <span className="text-gray-400">
-                          {project.session_count} session{project.session_count === 1 ? '' : 's'}
+                          {project.session_count} conversation{project.session_count === 1 ? '' : 's'}
                         </span>
                       )}
                       {project.brief_version != null && (

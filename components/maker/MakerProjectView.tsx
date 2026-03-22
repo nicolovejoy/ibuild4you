@@ -2,32 +2,27 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Send, FileText, ChevronDown, ChevronUp, MessageSquare } from 'lucide-react'
+import { ArrowLeft, Send, ChevronDown, ChevronUp, MessageSquare } from 'lucide-react'
 import { BuildTimestamp } from '@/components/build-timestamp'
 import { Card, CardBody } from '@/components/ui/Card'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { StatusMessage } from '@/components/ui/StatusMessage'
 import {
   useProject,
-  useBrief,
   useSessions,
   useMessages,
   useCreateSession,
 } from '@/lib/query/hooks'
 import { apiFetch } from '@/lib/firebase/api-fetch'
 import { useQueryClient } from '@tanstack/react-query'
-import type { BriefContent, Session } from '@/lib/types'
+import type { Session } from '@/lib/types'
 
 export function MakerProjectView({ projectId, userEmail }: { projectId: string; userEmail: string }) {
   const router = useRouter()
   const { data: project, isLoading: projectLoading } = useProject(projectId)
-  const { data: brief } = useBrief(projectId)
   const { data: sessions } = useSessions(projectId)
   const activeSession = sessions?.find((s) => s.status === 'active')
   const completedSessions = sessions?.filter((s) => s.status === 'completed') || []
-
-  const briefContent = brief?.content as BriefContent | undefined
-  const hasBriefData = briefContent && hasBriefContent(briefContent)
 
   return (
     <div className="min-h-screen bg-brand-cream">
@@ -46,11 +41,6 @@ export function MakerProjectView({ projectId, userEmail }: { projectId: string; 
       </header>
 
       <main className="max-w-2xl mx-auto px-4 py-6 space-y-4">
-        {/* Brief card */}
-        {hasBriefData && (
-          <BriefCard content={briefContent!} version={brief?.version} />
-        )}
-
         {/* Always-open chat */}
         <MakerChat
           projectId={projectId}
@@ -65,84 +55,6 @@ export function MakerProjectView({ projectId, userEmail }: { projectId: string; 
         )}
       </main>
     </div>
-  )
-}
-
-function BriefCard({ content, version }: { content: BriefContent; version?: number }) {
-  const [expanded, setExpanded] = useState(false)
-
-  const featureCount = content.features?.length || 0
-  const decisionCount = content.decisions?.length || 0
-
-  const summaryParts: string[] = []
-  if (content.problem) summaryParts.push(content.problem)
-  if (featureCount > 0) summaryParts.push(`${featureCount} feature${featureCount === 1 ? '' : 's'}`)
-  if (decisionCount > 0) summaryParts.push(`${decisionCount} decision${decisionCount === 1 ? '' : 's'}`)
-
-  return (
-    <Card hover={false}>
-      <CardBody>
-        <button
-          onClick={() => setExpanded(!expanded)}
-          className="w-full flex items-center justify-between"
-        >
-          <div className="flex items-center gap-2 text-sm">
-            <FileText className="h-4 w-4 text-brand-navy" />
-            <span className="font-medium text-gray-900">What we know so far</span>
-            {version && <span className="text-xs text-gray-400">v{version}</span>}
-          </div>
-          {expanded
-            ? <ChevronUp className="h-4 w-4 text-gray-400" />
-            : <ChevronDown className="h-4 w-4 text-gray-400" />
-          }
-        </button>
-        <p className="text-sm text-gray-500 mt-1">
-          {summaryParts.join(' \u00b7 ')}
-        </p>
-        {expanded && (
-          <div className="mt-3 space-y-3 text-sm text-gray-700">
-            {content.problem && (
-              <div>
-                <p className="text-xs font-medium text-gray-500 uppercase mb-1">Problem</p>
-                <p>{content.problem}</p>
-              </div>
-            )}
-            {content.target_users && (
-              <div>
-                <p className="text-xs font-medium text-gray-500 uppercase mb-1">Target users</p>
-                <p>{content.target_users}</p>
-              </div>
-            )}
-            {featureCount > 0 && (
-              <div>
-                <p className="text-xs font-medium text-gray-500 uppercase mb-1">Features</p>
-                <ul className="list-disc list-inside space-y-0.5">
-                  {content.features.map((f, i) => <li key={i}>{f}</li>)}
-                </ul>
-              </div>
-            )}
-            {content.constraints && (
-              <div>
-                <p className="text-xs font-medium text-gray-500 uppercase mb-1">Constraints</p>
-                <p>{content.constraints}</p>
-              </div>
-            )}
-            {decisionCount > 0 && (
-              <div>
-                <p className="text-xs font-medium text-gray-500 uppercase mb-1">Decisions</p>
-                <ul className="space-y-1">
-                  {content.decisions!.map((d, i) => (
-                    <li key={i}>
-                      <span className="font-medium">{d.topic}:</span> {d.decision}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
-        )}
-      </CardBody>
-    </Card>
   )
 }
 
@@ -386,7 +298,7 @@ function SessionAccordion({
         onClick={onToggle}
         className="w-full flex items-center justify-between py-2 px-2 rounded hover:bg-gray-50 text-sm text-gray-700"
       >
-        <span>Session {sessionNumber} &middot; {date}</span>
+        <span>Conversation {sessionNumber} &middot; {date}</span>
         <div className="flex items-center gap-2 text-gray-400">
           {session.token_usage_input != null && (
             <span className="text-[10px]">
@@ -422,17 +334,6 @@ function SessionAccordion({
         </div>
       )}
     </div>
-  )
-}
-
-function hasBriefContent(brief: BriefContent): boolean {
-  return !!(
-    brief.problem ||
-    brief.target_users ||
-    (brief.features && brief.features.length > 0) ||
-    brief.constraints ||
-    brief.additional_context ||
-    (brief.decisions && brief.decisions.length > 0)
   )
 }
 

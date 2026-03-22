@@ -78,17 +78,17 @@ export const copy = {
   // --- Setup tab ---
   setup: {
     agentSetup: 'Agent setup',
-    sessionOpener: 'Session opener',
-    sessionOpenerPlaceholder: 'The message the agent sends when the maker opens this session.',
-    sessionOpenerGenerate: 'Generate',
-    sessionOpenerRegenerate: 'Regenerate',
+    conversationOpener: 'Conversation opener',
+    conversationOpenerPlaceholder: 'The message the agent sends when the maker opens this conversation.',
+    conversationOpenerGenerate: 'Generate',
+    conversationOpenerRegenerate: 'Regenerate',
     seedQuestionsLabel: 'Seed questions',
     seedQuestionsDescription: 'Questions the agent should weave into the conversation early on.',
     seedQuestionsPlaceholder: 'What does a typical day look like for you?',
     directivesLabel: 'Builder directives',
     directivesDescription: 'Things the agent should actively drive toward.',
     directivesPlaceholder: 'Get them to pick 1-2 tickers to start with',
-    sessionModeLabel: 'Session mode',
+    modeLabel: 'Mode',
     discoverDescription: 'Broad exploration — the agent asks open-ended questions',
     convergeDescription: 'Push for decisions — the agent narrows scope and presents options',
     shareWithMaker: 'Share with maker',
@@ -109,7 +109,7 @@ export const copy = {
   // --- Chat ---
   chat: {
     agentLabel: 'iBuild4you assistant',
-    completedSession: 'Completed session — read only',
+    completedSession: 'Completed conversation — read only',
     placeholder: 'Type a message...',
     makerEmptyState: 'Send a message to start the conversation.',
     builderEmptyState: 'No messages yet.',
@@ -117,7 +117,6 @@ export const copy = {
 
   // --- Maker view ---
   maker: {
-    briefCardTitle: 'What we know so far',
     previousConversations: 'Previous conversations',
   },
 

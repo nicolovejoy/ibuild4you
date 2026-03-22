@@ -16,7 +16,7 @@ iBuild4you.com — an AI-powered project intake system. A conversational agent g
 
 - Next.js App Router on Vercel
 - Firestore (`ibuild4you-a0c4d` Firebase project) — all DB access through API routes using Firebase Admin SDK, never from client components
-- Firebase Auth with magic link login via Resend
+- Firebase Auth with Google OAuth + passcode login
 - Shared `apiFetch()` client helper with Bearer tokens
 - React Query for state management
 - Tailwind CSS v4 with @theme inline tokens
@@ -44,18 +44,24 @@ npm run test:watch   # Run tests in watch mode
 - `lib/firebase/` — Client SDK (`client.ts`), Admin SDK (`admin.ts`), `apiFetch()` helper
 - `lib/api/` — Server-side auth helpers (`getAuthenticatedUser`, `requireAdmin`)
 - `lib/hooks/` — React hooks (`useAuth`, `useDebounce`)
-- `lib/query/` — React Query client config
+- `lib/query/` — React Query client config and hooks
 - `lib/types/` — TypeScript types for all entities
+- `lib/copy.ts` — All user-facing text centralized in one file for easy editing
+- `lib/agent/` — Agent system prompt, prep prompt, welcome message generator, constants
 - `components/ui/` — Reusable UI primitives (Button, Modal, Card, StatusMessage, etc.)
+- `components/builder/` — Builder project view (sessions, brief, setup tabs)
+- `components/maker/` — Maker project view (chat, brief card)
 - `components/` — App-level components (ErrorBoundary, UserMenu)
 
 Key pattern: clients call `apiFetch()` which attaches the Firebase Bearer token. API routes call `getAuthenticatedUser(request)` to verify the token server-side before accessing Firestore via `getAdminDb()`.
 
 ## Data Model
 
-- **users** — requester or builder role, email, auth metadata
-- **projects** — one per requester engagement
-- **sessions** — each conversation between requester and agent, belonging to a project
+- **users** — identity (email, first_name, last_name), auto-populated from Google sign-in
+- **approved_emails** — allowlist for sign-in (invite-only)
+- **project_members** — role-based membership (owner, builder, apprentice, maker) with passcode for maker auth
+- **projects** — one per maker engagement, includes agent config (session_mode, directives, opener), requester name/email, tracking fields (shared_at, last_nudged_at)
+- **sessions** — each conversation between maker and agent, snapshots agent config at creation
 - **messages** — individual messages within a session, role (user/agent) and timestamp
 - **briefs** — living brief for a project, structured and versioned, updated after each session
 - **reviews** — builder annotations on a brief, feed back into agent context for next session
@@ -94,3 +100,4 @@ This is a learning project (Max, 19, college freshman, is contributing). Code sh
 3. Set up Resend domain verification for ibuild4you.com (admin emails silently fail without it)
 4. Set up GitHub Actions CI/CD pipeline (type-check, lint, build, test → Vercel deploy)
 5. Display names instead of emails in chat sender labels
+6. Two-tier brief: simple friendly version for maker, detailed version (with complexity/challenges) for builder

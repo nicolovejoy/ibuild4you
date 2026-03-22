@@ -13,6 +13,7 @@ import { Skeleton } from '@/components/ui/Skeleton'
 import { StatusMessage } from '@/components/ui/StatusMessage'
 import { LoadingButton } from '@/components/ui/LoadingButton'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { Modal } from '@/components/ui/Modal'
 import {
   useProject,
   useBrief,
@@ -43,6 +44,7 @@ export function BuilderProjectView({ projectId, userEmail }: { projectId: string
   const { data: brief } = useBrief(projectId)
 
   const activeSession = sessions?.find((s) => s.status === 'active')
+  const [showShareModal, setShowShareModal] = useState(false)
   const tabParam = searchParams.get('tab') as TabId | null
   const defaultTab: TabId = (!project || !project.requester_email) ? 'setup' : 'sessions'
   const activeTab: TabId = tabParam && ['sessions', 'brief', 'setup'].includes(tabParam) ? tabParam : defaultTab
@@ -86,11 +88,27 @@ export function BuilderProjectView({ projectId, userEmail }: { projectId: string
             )}
           </div>
 
-          {/* Project meta line */}
+          {/* Project meta line with share */}
           {project && (
             <div className="flex items-center gap-3 pb-2 text-sm text-gray-500">
-              {project.requester_email && <span>{project.requester_email}</span>}
-              {sessions && <span>{sessions.length} session{sessions.length === 1 ? '' : 's'}</span>}
+              {project.requester_email ? (
+                <button
+                  onClick={() => setShowShareModal(true)}
+                  className="flex items-center gap-1.5 hover:text-brand-navy transition-colors"
+                >
+                  <Share2 className="h-3.5 w-3.5" />
+                  <span>{project.requester_email}</span>
+                </button>
+              ) : (
+                <button
+                  onClick={() => setShowShareModal(true)}
+                  className="flex items-center gap-1.5 text-brand-navy hover:text-brand-navy-light transition-colors font-medium"
+                >
+                  <Share2 className="h-3.5 w-3.5" />
+                  Share
+                </button>
+              )}
+              {sessions && <span>{sessions.length} conversation{sessions.length === 1 ? '' : 's'}</span>}
             </div>
           )}
 
@@ -106,7 +124,7 @@ export function BuilderProjectView({ projectId, userEmail }: { projectId: string
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
               >
-                {tab === 'sessions' ? 'Sessions' : tab === 'brief' ? 'Brief' : 'Setup'}
+                {tab === 'sessions' ? 'Conversations' : tab === 'brief' ? 'Brief' : 'Next Conversation'}
               </button>
             ))}
           </div>
@@ -126,7 +144,7 @@ export function BuilderProjectView({ projectId, userEmail }: { projectId: string
           <BriefTab projectId={projectId} brief={brief} project={project} />
         )}
         {activeTab === 'setup' && project && (
-          <SetupTab
+          <NextConversationTab
             project={project}
             projectId={projectId}
             sessions={sessions || []}
@@ -134,6 +152,11 @@ export function BuilderProjectView({ projectId, userEmail }: { projectId: string
           />
         )}
       </main>
+
+      {/* Share modal */}
+      {project && showShareModal && (
+        <ShareModal project={project} onClose={() => setShowShareModal(false)} />
+      )}
     </div>
   )
 }
@@ -186,8 +209,8 @@ function SessionsTab({
     return (
       <EmptyState
         icon={MessageSquare}
-        title="No sessions yet"
-        description="Create a session in the Setup tab to get started."
+        title="No conversations yet"
+        description="Create a conversation in the Next Conversation tab to get started."
       />
     )
   }
@@ -212,7 +235,7 @@ function SessionsTab({
             >
               <div className="flex items-center gap-2">
                 <span className={`w-2 h-2 rounded-full shrink-0 ${isActive ? 'bg-green-500' : 'bg-gray-300'}`} />
-                <span className="font-medium text-gray-900">Session {sessions.length - i}</span>
+                <span className="font-medium text-gray-900">Conversation {sessions.length - i}</span>
                 <span className="text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">{mode}</span>
               </div>
               <div className="text-xs text-gray-400 mt-0.5 ml-4">
@@ -236,7 +259,7 @@ function SessionsTab({
             isActive={selectedSession.status === 'active'}
           />
         ) : (
-          <p className="text-sm text-gray-400">Select a session</p>
+          <p className="text-sm text-gray-400">Select a conversation</p>
         )}
       </div>
     </div>
@@ -382,7 +405,7 @@ function SessionChat({
       {!isActive && (
         <div className="text-xs text-gray-400 bg-gray-50 rounded-lg px-3 py-2 flex items-center gap-1.5">
           <Lock className="h-3.5 w-3.5" />
-          Completed session — read only
+          Completed conversation — read only
         </div>
       )}
 
@@ -427,6 +450,60 @@ function SessionChat({
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Inline config used for this conversation */}
+      <ConfigUsed session={session} />
+    </div>
+  )
+}
+
+function ConfigUsed({ session }: { session: Session }) {
+  const [expanded, setExpanded] = useState(false)
+  const mode = session.session_mode || 'discover'
+  const questions = session.seed_questions || []
+  const dirs = session.builder_directives || []
+  const hasConfig = questions.length > 0 || dirs.length > 0 || !!session.welcome_message
+
+  if (!hasConfig) return null
+
+  return (
+    <div className="border-t border-gray-100 pt-3 mt-3">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-600"
+      >
+        <Settings className="h-3.5 w-3.5" />
+        Config used
+        <span className="bg-gray-100 px-1.5 py-0.5 rounded text-[10px]">{mode}</span>
+        {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+      </button>
+      {expanded && (
+        <div className="mt-2 space-y-2 text-sm text-gray-600">
+          {session.welcome_message && (
+            <div>
+              <p className="text-xs font-medium text-gray-500 uppercase mb-1">Conversation opener</p>
+              <p className="text-sm text-gray-700 bg-gray-50 rounded px-2.5 py-1.5 whitespace-pre-wrap">{session.welcome_message}</p>
+            </div>
+          )}
+          {mode === 'discover' && questions.length > 0 && (
+            <div>
+              <p className="text-xs font-medium text-gray-500 uppercase mb-1">Seed questions</p>
+              <ul className="space-y-1">
+                {questions.map((q, i) => <li key={i} className="bg-gray-50 rounded px-2.5 py-1.5 text-sm">{i + 1}. {q}</li>)}
+              </ul>
+            </div>
+          )}
+          {mode === 'converge' && dirs.length > 0 && (
+            <div>
+              <p className="text-xs font-medium text-gray-500 uppercase mb-1">Builder directives</p>
+              <ul className="space-y-1">
+                {dirs.map((d, i) => <li key={i} className="bg-gray-50 rounded px-2.5 py-1.5 text-sm">{i + 1}. {d}</li>)}
+              </ul>
+            </div>
+          )}
+          {session.model && <p className="text-xs text-gray-400">Model: {session.model}</p>}
         </div>
       )}
     </div>
@@ -712,9 +789,9 @@ function BriefView({ content }: { content: BriefContent }) {
   )
 }
 
-// --- Setup Tab ---
+// --- Next Conversation Tab ---
 
-function SetupTab({
+function NextConversationTab({
   project,
   projectId,
   sessions,
@@ -725,26 +802,17 @@ function SetupTab({
   sessions: Session[]
   activeSession: Session | null
 }) {
-  const completedSessions = sessions.filter((s) => s.status === 'completed')
   const { data: activeMessages } = useMessages(activeSession?.id)
   const hasUserMessages = activeMessages?.some((m) => m.role === 'user') ?? false
 
   return (
     <div className="space-y-6">
-      {/* Share section — form if unshared, link/email copy always visible after sharing */}
-      <ShareSection project={project} />
-
-      {/* Current session config or editable setup — stay editable until maker chats */}
-      {activeSession && hasUserMessages ? (
-        <ActiveSessionConfig
-          session={activeSession}
-          sessionNumber={sessions.indexOf(activeSession) + 1}
-        />
-      ) : (
+      {/* Editable setup — shown when active conversation has no maker messages yet */}
+      {!(activeSession && hasUserMessages) && (
         <EditableSetup project={project} />
       )}
 
-      {/* Prep next session */}
+      {/* Prep next conversation */}
       {project.requester_email && (
         <PrepNextSession
           project={project}
@@ -752,16 +820,11 @@ function SetupTab({
           sessionNumber={sessions.length + 1}
         />
       )}
-
-      {/* Past session configs */}
-      {completedSessions.length > 0 && (
-        <PastSessionConfigs sessions={completedSessions} allSessions={sessions} />
-      )}
     </div>
   )
 }
 
-function ShareSection({ project }: { project: Project }) {
+function ShareModal({ project, onClose }: { project: Project; onClose: () => void }) {
   const [email, setEmail] = useState(project.requester_email || '')
   const [firstName, setFirstName] = useState(project.requester_first_name || '')
   const [lastName, setLastName] = useState(project.requester_last_name || '')
@@ -773,7 +836,6 @@ function ShareSection({ project }: { project: Project }) {
   const { data: fetchedPasscode } = useProjectPasscode(alreadyShared ? project.id : undefined)
   const resetPasscode = useResetPasscode()
 
-  // Use passcode from share response if just shared, otherwise from fetch
   const passcode = shareProject.data?.passcode || fetchedPasscode || null
 
   const shareLink = typeof window !== 'undefined'
@@ -805,86 +867,88 @@ function ShareSection({ project }: { project: Project }) {
   })
 
   return (
-    <Card hover={false}>
-      <CardBody>
-        <h2 className="text-sm font-semibold text-brand-slate uppercase tracking-wide flex items-center gap-1.5 mb-3">
-          <Share2 className="h-4 w-4" />
-          Share with maker
-        </h2>
-
-        {alreadyShared || shareProject.isSuccess ? (
-          <div className="space-y-3 p-3 bg-green-50 border border-green-200 rounded-lg">
-            <p className="text-sm font-medium text-green-800">Shared with {sharedEmail}!</p>
-            <div>
-              <p className="text-xs text-gray-600 mb-1">Project link</p>
-              <div className="flex items-center gap-2">
-                <input type="text" readOnly value={shareLink} className="flex-1 px-2.5 py-1.5 bg-white border border-gray-300 rounded-md text-sm text-gray-700" />
-                <button onClick={async () => { await navigator.clipboard.writeText(shareLink); setLinkCopied(true); setTimeout(() => setLinkCopied(false), 2000) }} className="p-1.5 text-gray-500 hover:text-brand-navy hover:bg-white rounded">
-                  {linkCopied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
-                </button>
-              </div>
-            </div>
-            {passcode && (
-              <div>
-                <p className="text-xs text-gray-600 mb-1 flex items-center gap-1"><Lock className="h-3.5 w-3.5" /> Maker passcode</p>
-                <div className="flex items-center gap-2">
-                  <code className="flex-1 px-2.5 py-1.5 bg-white border border-gray-300 rounded-md text-lg tracking-widest font-mono text-brand-charcoal">{passcode}</code>
-                  <button onClick={async () => { await navigator.clipboard.writeText(passcode); setPasscodeCopied(true); setTimeout(() => setPasscodeCopied(false), 2000) }} className="p-1.5 text-gray-500 hover:text-brand-navy hover:bg-white rounded">
-                    {passcodeCopied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
-                  </button>
-                  <button onClick={handleResetPasscode} disabled={resetPasscode.isPending} className="p-1.5 text-gray-500 hover:text-brand-navy hover:bg-white rounded" title="Reset passcode">
-                    <RotateCw className={`h-4 w-4 ${resetPasscode.isPending ? 'animate-spin' : ''}`} />
-                  </button>
-                </div>
-                <p className="text-xs text-gray-500 mt-1">Share this passcode with the maker so they can sign in</p>
-              </div>
-            )}
-            <div>
-              <p className="text-xs text-gray-600 mb-1 flex items-center gap-1"><Mail className="h-3.5 w-3.5" /> Invite message</p>
-              <textarea readOnly value={inviteEmailBody} rows={8} className="w-full px-2.5 py-1.5 bg-white border border-gray-300 rounded-md text-sm text-gray-700 resize-none" />
-              <button onClick={async () => { await navigator.clipboard.writeText(inviteEmailBody); setEmailCopied(true); setTimeout(() => setEmailCopied(false), 2000) }} className="mt-1 flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand-navy">
-                {emailCopied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
-                {emailCopied ? 'Copied!' : 'Copy message'}
+    <Modal isOpen onClose={onClose} title="Share with maker">
+      {alreadyShared || shareProject.isSuccess ? (
+        <div className="space-y-3">
+          <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+            <p className="text-sm font-medium text-green-800">Shared with {sharedEmail}</p>
+          </div>
+          <div>
+            <p className="text-xs text-gray-600 mb-1">Project link</p>
+            <div className="flex items-center gap-2">
+              <input type="text" readOnly value={shareLink} className="flex-1 px-2.5 py-1.5 bg-gray-50 border border-gray-300 rounded-md text-sm text-gray-700" />
+              <button onClick={async () => { await navigator.clipboard.writeText(shareLink); setLinkCopied(true); setTimeout(() => setLinkCopied(false), 2000) }} className="p-1.5 text-gray-500 hover:text-brand-navy hover:bg-gray-100 rounded">
+                {linkCopied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
               </button>
             </div>
           </div>
-        ) : (
-          <form onSubmit={handleShare} className="space-y-3">
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={firstName}
-                onChange={(e) => setFirstName(e.target.value)}
-                placeholder="First name"
-                className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
-              />
-              <input
-                type="text"
-                value={lastName}
-                onChange={(e) => setLastName(e.target.value)}
-                placeholder="Last name"
-                className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
-              />
+          {passcode && (
+            <div>
+              <p className="text-xs text-gray-600 mb-1 flex items-center gap-1"><Lock className="h-3.5 w-3.5" /> Maker passcode</p>
+              <div className="flex items-center gap-2">
+                <code className="flex-1 px-2.5 py-1.5 bg-gray-50 border border-gray-300 rounded-md text-lg tracking-widest font-mono text-brand-charcoal">{passcode}</code>
+                <button onClick={async () => { await navigator.clipboard.writeText(passcode); setPasscodeCopied(true); setTimeout(() => setPasscodeCopied(false), 2000) }} className="p-1.5 text-gray-500 hover:text-brand-navy hover:bg-gray-100 rounded">
+                  {passcodeCopied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+                </button>
+                <button onClick={handleResetPasscode} disabled={resetPasscode.isPending} className="p-1.5 text-gray-500 hover:text-brand-navy hover:bg-gray-100 rounded" title="Reset passcode">
+                  <RotateCw className={`h-4 w-4 ${resetPasscode.isPending ? 'animate-spin' : ''}`} />
+                </button>
+              </div>
+              <p className="text-xs text-gray-500 mt-1">Share this passcode with the maker so they can sign in</p>
             </div>
-            <div className="flex items-end gap-2">
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="maker@email.com"
-                className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
-              />
-              <LoadingButton type="submit" variant="primary" size="sm" loading={shareProject.isPending} loadingText="Sharing..." disabled={!email.trim()} icon={Share2}>
-                Share
-              </LoadingButton>
-            </div>
-          </form>
-        )}
-        {shareProject.error && <StatusMessage type="error" message={shareProject.error.message} />}
-        {resetPasscode.error && <StatusMessage type="error" message={resetPasscode.error.message} />}
-      </CardBody>
-    </Card>
+          )}
+          <div>
+            <p className="text-xs text-gray-600 mb-1 flex items-center gap-1"><Mail className="h-3.5 w-3.5" /> Invite message</p>
+            <textarea readOnly value={inviteEmailBody} rows={8} className="w-full px-2.5 py-1.5 bg-gray-50 border border-gray-300 rounded-md text-sm text-gray-700 resize-none" />
+            <button onClick={async () => { await navigator.clipboard.writeText(inviteEmailBody); setEmailCopied(true); setTimeout(() => setEmailCopied(false), 2000) }} className="mt-1 flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand-navy">
+              {emailCopied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+              {emailCopied ? 'Copied!' : 'Copy message'}
+            </button>
+          </div>
+          <div className="flex justify-end">
+            <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800">Done</button>
+          </div>
+        </div>
+      ) : (
+        <form onSubmit={handleShare} className="space-y-3">
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={firstName}
+              onChange={(e) => setFirstName(e.target.value)}
+              placeholder="First name"
+              className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
+              autoFocus
+            />
+            <input
+              type="text"
+              value={lastName}
+              onChange={(e) => setLastName(e.target.value)}
+              placeholder="Last name"
+              className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
+            />
+          </div>
+          <div>
+            <input
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="maker@email.com"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
+            />
+          </div>
+          {shareProject.error && <StatusMessage type="error" message={shareProject.error.message} />}
+          <div className="flex justify-end gap-2">
+            <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800">Cancel</button>
+            <LoadingButton type="submit" variant="primary" loading={shareProject.isPending} loadingText="Sharing..." disabled={!email.trim()} icon={Share2}>
+              Share
+            </LoadingButton>
+          </div>
+        </form>
+      )}
+      {resetPasscode.error && <StatusMessage type="error" message={resetPasscode.error.message} />}
+    </Modal>
   )
 }
 
@@ -927,18 +991,18 @@ function EditableSetup({ project }: { project: Project }) {
           Agent setup
         </h2>
         <div className="space-y-5">
-          {/* Session opener */}
+          {/* Conversation opener */}
           <div>
             <div className="flex items-center justify-between mb-1.5">
-              <label className="text-sm font-medium text-gray-700">Session opener</label>
+              <label className="text-sm font-medium text-gray-700">Conversation opener</label>
               <LoadingButton variant="ghost" size="sm" loading={generateWelcome.isPending} loadingText="Generating..." onClick={async () => { const r = await generateWelcome.mutateAsync(project.id); setWelcomeMessage(r.welcome_message) }} icon={Sparkles}>
                 {welcomeMessage ? 'Regenerate' : 'Generate'}
               </LoadingButton>
             </div>
-            <textarea value={welcomeMessage} onChange={(e) => setWelcomeMessage(e.target.value)} placeholder="The message the agent sends when the maker opens this session." rows={4} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy" />
+            <textarea value={welcomeMessage} onChange={(e) => setWelcomeMessage(e.target.value)} placeholder="The message the agent sends when the maker opens this conversation." rows={4} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy" />
           </div>
 
-          {/* Session mode */}
+          {/* Mode */}
           <SessionModeToggle mode={sessionMode} onChange={setSessionMode} />
 
           {/* Seed questions / directives */}
@@ -955,59 +1019,6 @@ function EditableSetup({ project }: { project: Project }) {
             {updateProject.error && <span className="text-xs text-red-500">{updateProject.error.message}</span>}
           </div>
         </div>
-      </CardBody>
-    </Card>
-  )
-}
-
-function ActiveSessionConfig({ session, sessionNumber }: { session: Session; sessionNumber: number }) {
-  const [expanded, setExpanded] = useState(false)
-  const { data: messages } = useMessages(session.id)
-  const hasUserMessages = messages?.some((m) => m.role === 'user') ?? false
-  const mode = session.session_mode || 'discover'
-  const questions = session.seed_questions || []
-  const dirs = session.builder_directives || []
-
-  return (
-    <Card hover={false}>
-      <CardBody>
-        <button onClick={() => setExpanded(!expanded)} className="w-full flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-brand-slate uppercase tracking-wide flex items-center gap-1.5">
-            {hasUserMessages ? <Lock className="h-4 w-4" /> : <Settings className="h-4 w-4" />}
-            Session {sessionNumber} config
-          </h2>
-          <div className="flex items-center gap-2">
-            {session.token_usage_input != null && (
-              <span className="text-[10px] text-gray-400">
-                {((session.token_usage_input + (session.token_usage_output || 0)) / 1000).toFixed(1)}k tokens
-              </span>
-            )}
-            <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded">{mode}</span>
-            {expanded ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
-          </div>
-        </button>
-
-        {expanded && (
-          <div className="mt-4 space-y-3 text-sm text-gray-700">
-            {mode === 'discover' && questions.length > 0 && (
-              <div>
-                <p className="text-xs font-medium text-gray-500 uppercase mb-1">Seed questions</p>
-                <ul className="space-y-1">
-                  {questions.map((q, i) => <li key={i} className="bg-gray-50 rounded px-2.5 py-1.5 text-sm">{i + 1}. {q}</li>)}
-                </ul>
-              </div>
-            )}
-            {mode === 'converge' && dirs.length > 0 && (
-              <div>
-                <p className="text-xs font-medium text-gray-500 uppercase mb-1">Builder directives</p>
-                <ul className="space-y-1">
-                  {dirs.map((d, i) => <li key={i} className="bg-gray-50 rounded px-2.5 py-1.5 text-sm">{i + 1}. {d}</li>)}
-                </ul>
-              </div>
-            )}
-            {session.model && <p className="text-xs text-gray-400">Model: {session.model}</p>}
-          </div>
-        )}
       </CardBody>
     </Card>
   )
@@ -1068,10 +1079,10 @@ function PrepNextSession({ project, projectId, sessionNumber }: {
         <CardBody>
           <h2 className="text-sm font-semibold text-brand-slate uppercase tracking-wide flex items-center gap-1.5 mb-3">
             <Check className="h-4 w-4 text-green-600" />
-            Session {sessionNumber} ready
+            Conversation {sessionNumber} ready
           </h2>
           <div className="space-y-3 p-3 bg-green-50 border border-green-200 rounded-lg">
-            <p className="text-sm font-medium text-green-800">New session created. Send {makerEmail} this message:</p>
+            <p className="text-sm font-medium text-green-800">New conversation created. Send {makerEmail} this message:</p>
             <textarea readOnly value={nudgeMessage} rows={6} className="w-full px-2.5 py-1.5 bg-white border border-gray-300 rounded-md text-sm text-gray-700 resize-none" />
             <button
               onClick={async () => {
@@ -1098,7 +1109,7 @@ function PrepNextSession({ project, projectId, sessionNumber }: {
         <button onClick={() => setExpanded(!expanded)} className="w-full flex items-center justify-between">
           <h2 className="text-sm font-semibold text-brand-slate uppercase tracking-wide flex items-center gap-1.5">
             <RotateCw className="h-4 w-4" />
-            Prep session {sessionNumber}
+            Prep conversation {sessionNumber}
           </h2>
           {expanded ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
         </button>
@@ -1113,15 +1124,15 @@ function PrepNextSession({ project, projectId, sessionNumber }: {
               <ListEditor label="Builder directives" description="Things the agent should actively drive toward." items={directives} newItem={newDirective} onNewItemChange={setNewDirective} onAdd={() => { if (!newDirective.trim()) return; setDirectives(p => [...p, newDirective.trim()]); setNewDirective('') }} onBulkAdd={(bulk) => setDirectives(p => [...p, ...bulk])} onRemove={(i) => setDirectives(p => p.filter((_, idx) => idx !== i))} placeholder="Get them to pick 1-2 tickers to start with" />
             )}
 
-            {/* Session opener */}
+            {/* Conversation opener */}
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <label className="text-sm font-medium text-gray-700">Session opener</label>
+                <label className="text-sm font-medium text-gray-700">Conversation opener</label>
                 <LoadingButton variant="ghost" size="sm" loading={generateWelcome.isPending} loadingText="Generating..." onClick={async () => { const r = await generateWelcome.mutateAsync(project.id); setWelcomeMessage(r.welcome_message) }} icon={Sparkles}>
                   {welcomeMessage ? 'Regenerate' : 'Generate'}
                 </LoadingButton>
               </div>
-              <textarea value={welcomeMessage} onChange={(e) => setWelcomeMessage(e.target.value)} placeholder="The message the agent sends when the maker opens this session." rows={3} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy" />
+              <textarea value={welcomeMessage} onChange={(e) => setWelcomeMessage(e.target.value)} placeholder="The message the agent sends when the maker opens this conversation." rows={3} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy" />
             </div>
 
             {/* Nudge + create */}
@@ -1130,8 +1141,8 @@ function PrepNextSession({ project, projectId, sessionNumber }: {
                 <label className="text-sm font-medium text-gray-700 block mb-1.5">Note for {makerEmail} (optional)</label>
                 <textarea value={nudgeNote} onChange={(e) => setNudgeNote(e.target.value)} placeholder="This time we'll narrow down which data sources to use." rows={2} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy" />
               </div>
-              <LoadingButton variant="primary" size="sm" loading={updateProject.isPending || createSession.isPending} loadingText="Creating session..." onClick={handleCreate} icon={RotateCw}>
-                Create session {sessionNumber} & copy nudge
+              <LoadingButton variant="primary" size="sm" loading={updateProject.isPending || createSession.isPending} loadingText="Creating..." onClick={handleCreate} icon={RotateCw}>
+                Create conversation {sessionNumber} & copy nudge
               </LoadingButton>
               {(updateProject.error || createSession.error) && (
                 <StatusMessage type="error" message={(updateProject.error || createSession.error)?.message || 'Failed'} />
@@ -1144,75 +1155,12 @@ function PrepNextSession({ project, projectId, sessionNumber }: {
   )
 }
 
-function PastSessionConfigs({ sessions, allSessions }: { sessions: Session[]; allSessions: Session[] }) {
-  const [expandedId, setExpandedId] = useState<string | null>(null)
-
-  return (
-    <Card hover={false}>
-      <CardBody>
-        <h2 className="text-sm font-semibold text-brand-slate uppercase tracking-wide mb-2">
-          Past session configs
-        </h2>
-        <div className="space-y-1">
-          {sessions.map((session) => {
-            const num = allSessions.indexOf(session) + 1
-            const isExpanded = expandedId === session.id
-            const mode = session.session_mode || 'discover'
-            const questions = session.seed_questions || []
-            const dirs = session.builder_directives || []
-
-            return (
-              <div key={session.id}>
-                <button
-                  onClick={() => setExpandedId(isExpanded ? null : session.id)}
-                  className="w-full flex items-center justify-between py-2 px-2 rounded hover:bg-gray-50 text-sm"
-                >
-                  <span className="text-gray-700">Session {num} &middot; {mode}</span>
-                  <div className="flex items-center gap-2 text-gray-400">
-                    {session.token_usage_input != null && (
-                      <span className="text-[10px]">
-                        {((session.token_usage_input + (session.token_usage_output || 0)) / 1000).toFixed(1)}k tokens
-                      </span>
-                    )}
-                    {isExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-                  </div>
-                </button>
-                {isExpanded && (
-                  <div className="px-2 pb-3 space-y-2 text-sm text-gray-700">
-                    {mode === 'discover' && questions.length > 0 && (
-                      <div>
-                        <p className="text-xs font-medium text-gray-500 uppercase mb-1">Seed questions</p>
-                        <ul className="space-y-1">
-                          {questions.map((q, i) => <li key={i} className="bg-gray-50 rounded px-2.5 py-1.5 text-sm">{i + 1}. {q}</li>)}
-                        </ul>
-                      </div>
-                    )}
-                    {mode === 'converge' && dirs.length > 0 && (
-                      <div>
-                        <p className="text-xs font-medium text-gray-500 uppercase mb-1">Builder directives</p>
-                        <ul className="space-y-1">
-                          {dirs.map((d, i) => <li key={i} className="bg-gray-50 rounded px-2.5 py-1.5 text-sm">{i + 1}. {d}</li>)}
-                        </ul>
-                      </div>
-                    )}
-                    {session.model && <p className="text-xs text-gray-400">Model: {session.model}</p>}
-                  </div>
-                )}
-              </div>
-            )
-          })}
-        </div>
-      </CardBody>
-    </Card>
-  )
-}
-
 // --- Shared Components ---
 
 function SessionModeToggle({ mode, onChange }: { mode: 'discover' | 'converge'; onChange: (m: 'discover' | 'converge') => void }) {
   return (
     <div>
-      <label className="text-sm font-medium text-gray-700 block mb-1.5">Session mode</label>
+      <label className="text-sm font-medium text-gray-700 block mb-1.5">Mode</label>
       <div className="flex gap-2">
         <button
           onClick={() => onChange('discover')}
