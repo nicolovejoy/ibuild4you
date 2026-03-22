@@ -20,15 +20,18 @@ async function enrichProjects(
         .where('project_id', '==', project.id)
         .get()
 
-      // Get most recent user message across all sessions
+      // Get most recent message and most recent maker message across all sessions
       const sessionIds = sessionsSnap.docs.map((d) => d.id)
       let lastMessageAt: string | null = null
       let lastMessageBy: string | null = null
+      let lastMakerMessageAt: string | null = null
 
       if (sessionIds.length > 0) {
         // Firestore 'in' queries support up to 30 values
         for (let i = 0; i < sessionIds.length; i += 30) {
           const chunk = sessionIds.slice(i, i + 30)
+
+          // Most recent message overall
           const msgSnap = await db
             .collection('messages')
             .where('session_id', 'in', chunk)
@@ -43,6 +46,22 @@ async function enrichProjects(
               lastMessageBy = msg.role === 'user'
                 ? (msg.sender_email as string) || null
                 : 'agent'
+            }
+          }
+
+          // Most recent maker (user) message
+          const makerMsgSnap = await db
+            .collection('messages')
+            .where('session_id', 'in', chunk)
+            .where('role', '==', 'user')
+            .orderBy('created_at', 'desc')
+            .limit(1)
+            .get()
+
+          if (!makerMsgSnap.empty) {
+            const makerMsg = makerMsgSnap.docs[0].data()
+            if (!lastMakerMessageAt || makerMsg.created_at > lastMakerMessageAt) {
+              lastMakerMessageAt = makerMsg.created_at as string
             }
           }
         }
@@ -72,6 +91,7 @@ async function enrichProjects(
         session_count: sessionsSnap.size,
         last_message_at: lastMessageAt,
         last_message_by: lastMessageBy,
+        last_maker_message_at: lastMakerMessageAt,
         brief_version: briefVersion,
         brief_decision_count: briefDecisionCount,
         brief_feature_count: briefFeatureCount,
@@ -177,7 +197,7 @@ export async function PATCH(request: Request) {
   }
 
   // Only allow updating specific setup fields
-  const allowed = ['welcome_message', 'seed_questions', 'context', 'title', 'builder_directives', 'session_mode'] as const
+  const allowed = ['welcome_message', 'seed_questions', 'context', 'title', 'builder_directives', 'session_mode', 'requester_first_name', 'requester_last_name', 'last_nudged_at'] as const
   const patch: Record<string, unknown> = { updated_at: new Date().toISOString() }
   for (const key of allowed) {
     if (key in updates) {

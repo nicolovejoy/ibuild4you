@@ -40,10 +40,10 @@ export function useShareProject() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: async ({ project_id, email }: { project_id: string; email: string }) => {
+    mutationFn: async ({ project_id, email, first_name, last_name }: { project_id: string; email: string; first_name?: string; last_name?: string }) => {
       const res = await apiFetch('/api/projects/share', {
         method: 'POST',
-        body: JSON.stringify({ project_id, email }),
+        body: JSON.stringify({ project_id, email, first_name, last_name }),
       })
       if (!res.ok) {
         const data = await res.json()
@@ -106,6 +106,9 @@ export function useUpdateProject() {
       title?: string
       builder_directives?: string[]
       session_mode?: 'discover' | 'converge'
+      requester_first_name?: string
+      requester_last_name?: string
+      last_nudged_at?: string
     }) => {
       const res = await apiFetch('/api/projects', {
         method: 'PATCH',

@@ -28,6 +28,7 @@ import {
   useCreateSession,
 } from '@/lib/query/hooks'
 import { buildPrepPrompt } from '@/lib/agent/brief-prompt'
+import { copy } from '@/lib/copy'
 import { apiFetch } from '@/lib/firebase/api-fetch'
 import { useQueryClient } from '@tanstack/react-query'
 import type { Project, Session, BriefContent } from '@/lib/types'
@@ -762,6 +763,8 @@ function SetupTab({
 
 function ShareSection({ project }: { project: Project }) {
   const [email, setEmail] = useState(project.requester_email || '')
+  const [firstName, setFirstName] = useState(project.requester_first_name || '')
+  const [lastName, setLastName] = useState(project.requester_last_name || '')
   const [linkCopied, setLinkCopied] = useState(false)
   const [passcodeCopied, setPasscodeCopied] = useState(false)
   const [emailCopied, setEmailCopied] = useState(false)
@@ -780,30 +783,26 @@ function ShareSection({ project }: { project: Project }) {
   const handleShare = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!email.trim()) return
-    await shareProject.mutateAsync({ project_id: project.id, email: email.trim() })
+    await shareProject.mutateAsync({
+      project_id: project.id,
+      email: email.trim(),
+      first_name: firstName.trim() || undefined,
+      last_name: lastName.trim() || undefined,
+    })
   }
 
   const handleResetPasscode = async () => {
     const result = await resetPasscode.mutateAsync(project.id)
-    // After reset, the query will refetch. But show the new one immediately via shareProject-like state isn't available,
-    // so we rely on the query invalidation from the mutation hook.
     void result
   }
 
   const sharedEmail = alreadyShared ? project.requester_email! : email
 
-  const inviteEmailBody = `Hey! I've set up a project for you on iBuild4you — it's a tool that helps figure out exactly what you want built through a simple conversation.
-
-Here's your link:
-${shareLink}
-
-Sign in with Google, or use this passcode:
-Email: ${sharedEmail}
-Passcode: ${passcode || '(loading...)'}
-
-Answer a few questions about your idea and it'll start putting together a project brief.
-
-No rush — you can come back anytime to pick up where you left off.`
+  const inviteEmailBody = copy.invite.body({
+    shareLink,
+    email: sharedEmail,
+    passcode,
+  })
 
   return (
     <Card hover={false}>
@@ -850,20 +849,36 @@ No rush — you can come back anytime to pick up where you left off.`
             </div>
           </div>
         ) : (
-          <form onSubmit={handleShare} className="flex items-end gap-2">
-            <div className="flex-1">
+          <form onSubmit={handleShare} className="space-y-3">
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={firstName}
+                onChange={(e) => setFirstName(e.target.value)}
+                placeholder="First name"
+                className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
+              />
+              <input
+                type="text"
+                value={lastName}
+                onChange={(e) => setLastName(e.target.value)}
+                placeholder="Last name"
+                className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
+              />
+            </div>
+            <div className="flex items-end gap-2">
               <input
                 type="email"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="maker@email.com"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
+                className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
               />
+              <LoadingButton type="submit" variant="primary" size="sm" loading={shareProject.isPending} loadingText="Sharing..." disabled={!email.trim()} icon={Share2}>
+                Share
+              </LoadingButton>
             </div>
-            <LoadingButton type="submit" variant="primary" size="sm" loading={shareProject.isPending} loadingText="Sharing..." disabled={!email.trim()} icon={Share2}>
-              Share
-            </LoadingButton>
           </form>
         )}
         {shareProject.error && <StatusMessage type="error" message={shareProject.error.message} />}
@@ -1040,20 +1055,12 @@ function PrepNextSession({ project, projectId, sessionNumber }: {
     setCreated(true)
   }
 
-  const modeLabel = sessionMode === 'converge'
-    ? 'This time we want to narrow things down and lock in some decisions.'
-    : 'We want to dig deeper into a few things from last time.'
-
-  const nudgeMessage = [
-    `Hey! Thanks for the last conversation about ${project.title} — really helpful.`,
-    '',
-    nudgeNote || modeLabel,
-    '',
-    `Same link as before:`,
+  const nudgeMessage = copy.nudge.body({
+    projectTitle: project.title,
     shareLink,
-    '',
-    `Just sign in when you have a few minutes — there'll be a fresh chat ready to go.`,
-  ].join('\n')
+    note: nudgeNote || undefined,
+    sessionMode,
+  })
 
   if (created) {
     return (
@@ -1067,7 +1074,13 @@ function PrepNextSession({ project, projectId, sessionNumber }: {
             <p className="text-sm font-medium text-green-800">New session created. Send {makerEmail} this message:</p>
             <textarea readOnly value={nudgeMessage} rows={6} className="w-full px-2.5 py-1.5 bg-white border border-gray-300 rounded-md text-sm text-gray-700 resize-none" />
             <button
-              onClick={async () => { await navigator.clipboard.writeText(nudgeMessage); setNudgeCopied(true); setTimeout(() => setNudgeCopied(false), 2000) }}
+              onClick={async () => {
+                await navigator.clipboard.writeText(nudgeMessage)
+                setNudgeCopied(true)
+                setTimeout(() => setNudgeCopied(false), 2000)
+                // Track nudge as sent (copy = assumed sent)
+                updateProject.mutate({ project_id: project.id, last_nudged_at: new Date().toISOString() })
+              }}
               className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand-navy"
             >
               {nudgeCopied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}

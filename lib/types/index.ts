@@ -16,12 +16,16 @@ export interface ProjectMember extends BaseEntity {
   role: MemberRole
   added_by: string // email of who added them
   passcode?: string
+  first_name?: string
+  last_name?: string
 }
 
 // Users collection — pure identity, no global role
 export interface AppUser extends BaseEntity {
   email: string
   display_name?: string
+  first_name?: string
+  last_name?: string
 }
 
 // Projects collection — one per maker engagement
@@ -31,6 +35,10 @@ export interface Project extends BaseEntity {
   status: 'active' | 'paused' | 'completed'
   context?: string // admin-provided context about the project/maker
   requester_email?: string // email of the intended maker (for sharing)
+  requester_first_name?: string
+  requester_last_name?: string
+  shared_at?: string // when the project was shared with the maker
+  last_nudged_at?: string // when the builder last copied a nudge message
   welcome_message?: string // admin-reviewed welcome message for the maker
   seed_questions?: string[] // ordered questions the agent should weave in early
   builder_directives?: string[] // things agent should actively push toward
@@ -39,6 +47,7 @@ export interface Project extends BaseEntity {
   session_count?: number
   last_message_at?: string | null
   last_message_by?: string | null
+  last_maker_message_at?: string | null
   brief_version?: number | null
   brief_decision_count?: number | null
   brief_feature_count?: number | null

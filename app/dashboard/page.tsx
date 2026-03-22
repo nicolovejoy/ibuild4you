@@ -17,6 +17,7 @@ import { StatusMessage } from '@/components/ui/StatusMessage'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { Modal } from '@/components/ui/Modal'
 import type { Project } from '@/lib/types'
+import { copy, formatDisplayName } from '@/lib/copy'
 
 export default function DashboardPage() {
   const { user, loading: authLoading, isAuthenticated } = useAuth()
@@ -190,9 +191,7 @@ function ProjectList({ isAdmin }: { isAdmin: boolean }) {
       <EmptyState
         icon={FolderOpen}
         title="No projects yet"
-        description={isAdmin
-          ? "Create a project, set it up, and share it with a maker."
-          : "You don't have any projects yet. Check back soon!"}
+        description={isAdmin ? copy.dashboard.emptyAdmin : copy.dashboard.emptyMaker}
       />
     )
   }
@@ -219,7 +218,7 @@ function ProjectList({ isAdmin }: { isAdmin: boolean }) {
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-sm text-gray-500">
                       {project.requester_email && (
                         <span className="text-brand-slate">
-                          {project.requester_email}
+                          {makerDisplayName(project) || project.requester_email}
                         </span>
                       )}
                       {isAdmin && project.session_count !== undefined && project.session_count > 0 && (
@@ -239,11 +238,20 @@ function ProjectList({ isAdmin }: { isAdmin: boolean }) {
                         </span>
                       )}
                     </div>
-                    {project.last_message_at && (
-                      <p className="text-xs text-gray-400 mt-1">
-                        {formatActivityLine(project)}
-                      </p>
-                    )}
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-gray-400 mt-1">
+                      {project.last_maker_message_at && (
+                        <span>{makerShortName(project)} messaged {formatRelativeTime(project.last_maker_message_at)}</span>
+                      )}
+                      {project.last_message_at && project.last_message_by === 'agent' && (
+                        <span>{copy.dashboard.activityAgent(formatRelativeTime(project.last_message_at))}</span>
+                      )}
+                      {!project.last_maker_message_at && project.shared_at && (
+                        <span>{copy.dashboard.sharedAt(formatRelativeTime(project.shared_at))}</span>
+                      )}
+                      {project.last_nudged_at && (
+                        <span>{copy.dashboard.nudgedAt(formatRelativeTime(project.last_nudged_at))}</span>
+                      )}
+                    </div>
                   </div>
                   <div className="flex items-center gap-2">
                     {isAdmin && (
@@ -297,6 +305,8 @@ function ProjectList({ isAdmin }: { isAdmin: boolean }) {
 
 function ShareModal({ project, onClose }: { project: Project; onClose: () => void }) {
   const [email, setEmail] = useState('')
+  const [firstName, setFirstName] = useState('')
+  const [lastName, setLastName] = useState('')
   const [copied, setCopied] = useState(false)
   const [emailCopied, setEmailCopied] = useState(false)
   const shareProject = useShareProject()
@@ -304,21 +314,23 @@ function ShareModal({ project, onClose }: { project: Project; onClose: () => voi
     ? `${window.location.origin}/projects/${project.id}`
     : ''
 
-  const inviteEmailBody = `Hey! I've set up a project for you on iBuild4you — it's a tool that helps figure out exactly what you want built through a simple conversation.
-
-Here's your link:
-${shareLink}
-
-Just sign in with your email (${email}) and you'll see a chat waiting for you. Answer a few questions about your idea and it'll start putting together a project brief.
-
-No rush — you can come back anytime to pick up where you left off.`
+  const inviteEmailBody = copy.invite.body({
+    shareLink,
+    email,
+    passcode: shareProject.data?.passcode || null,
+  })
 
   const handleShare = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!email.trim()) return
 
     try {
-      await shareProject.mutateAsync({ project_id: project.id, email: email.trim() })
+      await shareProject.mutateAsync({
+        project_id: project.id,
+        email: email.trim(),
+        first_name: firstName.trim() || undefined,
+        last_name: lastName.trim() || undefined,
+      })
     } catch {
       // error shown via shareProject.error
     }
@@ -388,9 +400,38 @@ No rush — you can come back anytime to pick up where you left off.`
         </div>
       ) : (
         <form onSubmit={handleShare} className="space-y-4">
+          <div className="flex gap-3">
+            <div className="flex-1">
+              <label htmlFor="share-first-name" className="block text-sm font-medium text-gray-700 mb-1">
+                First name
+              </label>
+              <input
+                id="share-first-name"
+                type="text"
+                value={firstName}
+                onChange={(e) => setFirstName(e.target.value)}
+                placeholder="Jamie"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
+                autoFocus
+              />
+            </div>
+            <div className="flex-1">
+              <label htmlFor="share-last-name" className="block text-sm font-medium text-gray-700 mb-1">
+                Last name
+              </label>
+              <input
+                id="share-last-name"
+                type="text"
+                value={lastName}
+                onChange={(e) => setLastName(e.target.value)}
+                placeholder="Baker"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
+              />
+            </div>
+          </div>
           <div>
             <label htmlFor="share-email" className="block text-sm font-medium text-gray-700 mb-1">
-              Their email address
+              {copy.shareModal.emailLabel}
             </label>
             <input
               id="share-email"
@@ -398,12 +439,11 @@ No rush — you can come back anytime to pick up where you left off.`
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="jamie@example.com"
+              placeholder={copy.shareModal.emailPlaceholder}
               className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
-              autoFocus
             />
             <p className="text-xs text-gray-500 mt-1">
-              They&apos;ll be approved automatically. You&apos;ll get a link to send them.
+              {copy.shareModal.emailHelp}
             </p>
           </div>
 
@@ -499,25 +539,21 @@ function DeleteProjectModal({ project, onClose }: { project: Project; onClose: (
 
 function getTurnIndicator(project: Project): { label: string; className: string } {
   if (!project.requester_email || !project.session_count) {
-    return { label: 'Needs setup', className: 'bg-gray-100 text-gray-600' }
+    return { label: copy.dashboard.turnNeedsSetup, className: 'bg-gray-100 text-gray-600' }
   }
   if (!project.last_message_by || project.last_message_by === 'agent') {
-    const name = project.requester_email.split('@')[0]
-    return { label: `Waiting on ${name}`, className: 'bg-blue-100 text-blue-700' }
+    const name = makerShortName(project)
+    return { label: copy.dashboard.turnAwaitingMaker(name), className: 'bg-blue-100 text-blue-700' }
   }
-  return { label: 'Ready to review', className: 'bg-amber-100 text-amber-700' }
+  return { label: copy.dashboard.turnYourTurn, className: 'bg-amber-100 text-amber-700' }
 }
 
-function formatActivityLine(project: Project): string {
-  if (!project.last_message_at) return ''
-  const time = formatRelativeTime(project.last_message_at)
-  if (project.last_message_by === 'agent') {
-    return `Agent responded ${time}`
-  }
-  if (project.last_message_by) {
-    return `${project.last_message_by} sent a message ${time}`
-  }
-  return `Last active ${time}`
+function makerDisplayName(project: Project): string | null {
+  return formatDisplayName(project.requester_first_name, project.requester_last_name)
+}
+
+function makerShortName(project: Project): string {
+  return project.requester_first_name || project.requester_email?.split('@')[0] || 'maker'
 }
 
 function formatRelativeTime(iso: string): string {

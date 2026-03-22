@@ -18,7 +18,7 @@ export async function POST(request: Request) {
   if (auth.error) return auth.error
 
   const body = await request.json()
-  const { project_id, email, role: memberRole } = body
+  const { project_id, email, role: memberRole, first_name, last_name } = body
 
   if (!project_id || !email?.trim()) {
     return NextResponse.json(
@@ -63,7 +63,7 @@ export async function POST(request: Request) {
     .get()
 
   if (existingMember.empty) {
-    await db.collection('project_members').add({
+    const memberData: Record<string, unknown> = {
       project_id,
       user_id: '', // will be set on claim
       email: normalizedEmail,
@@ -72,21 +72,31 @@ export async function POST(request: Request) {
       added_by: auth.email,
       created_at: now,
       updated_at: now,
-    })
+    }
+    if (first_name) memberData.first_name = first_name.trim()
+    if (last_name) memberData.last_name = last_name.trim()
+    await db.collection('project_members').add(memberData)
   } else {
     // Update role and regenerate passcode if re-sharing
-    await existingMember.docs[0].ref.update({
+    const updateData: Record<string, unknown> = {
       role: assignedRole,
       passcode,
       updated_at: now,
-    })
+    }
+    if (first_name) updateData.first_name = first_name.trim()
+    if (last_name) updateData.last_name = last_name.trim()
+    await existingMember.docs[0].ref.update(updateData)
   }
 
-  // Keep requester_email on the project as convenience (for dashboard display)
-  await db.collection('projects').doc(project_id).update({
+  // Keep requester info on the project for dashboard display
+  const projectUpdate: Record<string, unknown> = {
     requester_email: normalizedEmail,
+    shared_at: now,
     updated_at: now,
-  })
+  }
+  if (first_name) projectUpdate.requester_first_name = first_name.trim()
+  if (last_name) projectUpdate.requester_last_name = last_name.trim()
+  await db.collection('projects').doc(project_id).update(projectUpdate)
 
   // Snapshot agent config onto the active session + add welcome message
   try {

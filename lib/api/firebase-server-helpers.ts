@@ -94,6 +94,7 @@ export function requireRole(
 type AuthSuccess = {
   uid: string
   email: string
+  displayName: string | null
   error: null
 }
 
@@ -120,6 +121,7 @@ export async function getAuthenticatedUser(request: Request): Promise<AuthSucces
     return {
       uid: decoded.uid,
       email: decoded.email ?? '',
+      displayName: (decoded.name as string) || null,
       error: null,
     }
   } catch {
