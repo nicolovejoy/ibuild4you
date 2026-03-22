@@ -79,6 +79,9 @@ function NewProjectButton() {
   const [showForm, setShowForm] = useState(false)
   const [mode, setMode] = useState<'form' | 'import'>('form')
   const [title, setTitle] = useState('')
+  const [firstName, setFirstName] = useState('')
+  const [lastName, setLastName] = useState('')
+  const [email, setEmail] = useState('')
   const [context, setContext] = useState('')
   const [jsonInput, setJsonInput] = useState('')
   const [jsonError, setJsonError] = useState<string | null>(null)
@@ -87,6 +90,9 @@ function NewProjectButton() {
 
   const resetAndClose = () => {
     setTitle('')
+    setFirstName('')
+    setLastName('')
+    setEmail('')
     setContext('')
     setJsonInput('')
     setJsonError(null)
@@ -101,7 +107,10 @@ function NewProjectButton() {
     try {
       const result = await createProject.mutateAsync({
         title: title.trim(),
-        context: context.trim() || undefined,
+        ...(firstName.trim() && { requester_first_name: firstName.trim() }),
+        ...(lastName.trim() && { requester_last_name: lastName.trim() }),
+        ...(email.trim() && { requester_email: email.trim() }),
+        ...(context.trim() && { context: context.trim() }),
       })
       resetAndClose()
       router.push(`/projects/${result.id}?tab=setup`)
@@ -195,6 +204,52 @@ function NewProjectButton() {
                 className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
                 autoFocus
               />
+            </div>
+
+            <div className="flex gap-3">
+              <div className="flex-1">
+                <label htmlFor="project-first-name" className="block text-sm font-medium text-gray-700 mb-1">
+                  Maker first name
+                </label>
+                <input
+                  id="project-first-name"
+                  type="text"
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                  placeholder="Jamie"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
+                />
+              </div>
+              <div className="flex-1">
+                <label htmlFor="project-last-name" className="block text-sm font-medium text-gray-700 mb-1">
+                  Last name
+                </label>
+                <input
+                  id="project-last-name"
+                  type="text"
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
+                  placeholder="Baker"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label htmlFor="project-email" className="block text-sm font-medium text-gray-700 mb-1">
+                Maker email
+              </label>
+              <input
+                id="project-email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="jamie@example.com"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Needed to share the project with them later.
+              </p>
             </div>
 
             <div>
