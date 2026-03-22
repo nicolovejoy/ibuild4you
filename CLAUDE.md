@@ -95,9 +95,8 @@ This is a learning project (Max, 19, college freshman, is contributing). Code sh
 
 ## Next Steps
 
-1. Test new prep workflow end-to-end: copy context → discuss in Claude → paste multi-field JSON back
-2. Test share flow end-to-end with Jamie (jamie@bakerylouise.com) and Owen
+1. Test wireframes in a live conversation (agent emitting wireframe blocks, maker seeing visual previews)
+2. Test share flow end-to-end with Jamie and Owen
 3. Set up Resend domain verification for ibuild4you.com (admin emails silently fail without it)
 4. Set up GitHub Actions CI/CD pipeline (type-check, lint, build, test → Vercel deploy)
-5. Display names instead of emails in chat sender labels
-6. Two-tier brief: simple friendly version for maker, detailed version (with complexity/challenges) for builder
+5. Two-tier brief: simple friendly version for maker, detailed version (with complexity/challenges) for builder
