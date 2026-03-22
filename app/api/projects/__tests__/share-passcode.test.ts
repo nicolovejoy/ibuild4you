@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { NextResponse } from 'next/server'
 import { GET, PATCH } from '../share/route'
 
 // Build chainable Firestore mock
@@ -30,7 +31,6 @@ vi.mock('@/lib/api/firebase-server-helpers', () => ({
   requireRole: (role: string | null, minimum: string) => {
     const levels: Record<string, number> = { maker: 0, apprentice: 1, builder: 2, owner: 3 }
     if (!role || levels[role] < levels[minimum]) {
-      const { NextResponse } = require('next/server')
       return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
     }
     return null
