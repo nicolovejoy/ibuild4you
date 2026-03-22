@@ -80,17 +80,20 @@ describe('GET /api/projects/share', () => {
     expect(data.passcode).toBe('XYZ789')
   })
 
-  it('returns null when member has no passcode', async () => {
+  it('auto-generates passcode when member has none', async () => {
     mockGet.mockResolvedValue({
       empty: false,
-      docs: [{ data: () => ({ email: 'maker@example.com' }) }],
+      docs: [{ ref: { update: mockUpdate }, data: () => ({ email: 'maker@example.com' }) }],
     })
 
     const req = new Request('http://localhost/api/projects/share?project_id=proj1')
     const res = await GET(req)
     expect(res.status).toBe(200)
     const data = await res.json()
-    expect(data.passcode).toBeNull()
+    expect(data.passcode).toMatch(/^[A-Z0-9_-]{6}$/)
+    expect(mockUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ passcode: data.passcode })
+    )
   })
 })
 

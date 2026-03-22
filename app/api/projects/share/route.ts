@@ -178,8 +178,17 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'No maker found for this project' }, { status: 404 })
   }
 
-  const member = memberSnap.docs[0].data()
-  return NextResponse.json({ passcode: member.passcode || null })
+  const memberDoc = memberSnap.docs[0]
+  const member = memberDoc.data()
+
+  // Auto-generate passcode for pre-existing shares that don't have one
+  if (!member.passcode) {
+    const passcode = generatePasscode()
+    await memberDoc.ref.update({ passcode, updated_at: new Date().toISOString() })
+    return NextResponse.json({ passcode })
+  }
+
+  return NextResponse.json({ passcode: member.passcode })
 }
 
 // PATCH /api/projects/share — reset passcode for the maker member (builder+)
