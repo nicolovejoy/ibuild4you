@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { ChevronUp, ChevronDown, Plus, X } from 'lucide-react'
 import { WireframePreview, SECTION_STYLES, SECTION_TYPES } from '@/components/ui/WireframePreview'
 import type { WireframeMockup, WireframeSection } from '@/lib/types'
+import { stripCodeFences } from '@/lib/utils'
 
 // --- Exported pure functions (tested) ---
 
@@ -24,7 +25,7 @@ export function moveSection(sections: WireframeSection[], index: number, directi
 
 export function parseJsonMockup(text: string): { mockup: WireframeMockup | null; error: string | null } {
   try {
-    const obj = JSON.parse(text)
+    const obj = JSON.parse(stripCodeFences(text))
     if (!obj || typeof obj.title !== 'string' || !Array.isArray(obj.sections)) {
       return { mockup: null, error: 'JSON must have "title" (string) and "sections" (array)' }
     }

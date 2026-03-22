@@ -18,6 +18,7 @@ import { Skeleton } from '@/components/ui/Skeleton'
 import { Modal } from '@/components/ui/Modal'
 import type { Project } from '@/lib/types'
 import { copy, formatDisplayName } from '@/lib/copy'
+import { stripCodeFences } from '@/lib/utils'
 
 export default function DashboardPage() {
   const { user, loading: authLoading, isAuthenticated } = useAuth()
@@ -113,7 +114,7 @@ function NewProjectButton() {
     setJsonError(null)
     let payload: Record<string, unknown>
     try {
-      payload = JSON.parse(jsonInput)
+      payload = JSON.parse(stripCodeFences(jsonInput))
     } catch {
       setJsonError('Invalid JSON')
       return
@@ -139,7 +140,7 @@ function NewProjectButton() {
   const jsonPreview = (() => {
     if (!jsonInput.trim()) return null
     try {
-      const obj = JSON.parse(jsonInput)
+      const obj = JSON.parse(stripCodeFences(jsonInput))
       if (!obj?.title) return null
       const fields: string[] = []
       if (obj.requester_email) fields.push(obj.requester_email)

@@ -15,6 +15,7 @@ import { LoadingButton } from '@/components/ui/LoadingButton'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { MessageContent } from '@/components/ui/MessageContent'
 import { MockupEditor } from './MockupEditor'
+import { stripCodeFences } from '@/lib/utils'
 import { Modal } from '@/components/ui/Modal'
 import {
   useProject,
@@ -603,7 +604,7 @@ function BriefTab({
     setPasteError(null)
     let parsed: Record<string, unknown>
     try {
-      parsed = JSON.parse(pasteJson)
+      parsed = JSON.parse(stripCodeFences(pasteJson))
     } catch {
       setPasteError('Invalid JSON — check the format and try again')
       return

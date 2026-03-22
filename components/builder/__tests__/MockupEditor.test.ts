@@ -88,6 +88,21 @@ describe('parseJsonMockup', () => {
     expect(result.mockup!.sections).toHaveLength(1)
   })
 
+  it('parses JSON wrapped in markdown code fences', () => {
+    const json = '```json\n{"title":"Fenced","sections":[{"type":"text","label":"A","description":"B"}]}\n```'
+    const result = parseJsonMockup(json)
+    expect(result.mockup).not.toBeNull()
+    expect(result.error).toBeNull()
+    expect(result.mockup!.title).toBe('Fenced')
+  })
+
+  it('parses JSON wrapped in plain code fences', () => {
+    const json = '```\n{"title":"Plain","sections":[]}\n```'
+    const result = parseJsonMockup(json)
+    expect(result.mockup).not.toBeNull()
+    expect(result.mockup!.title).toBe('Plain')
+  })
+
   it('returns error for invalid JSON', () => {
     const result = parseJsonMockup('not json')
     expect(result.mockup).toBeNull()
