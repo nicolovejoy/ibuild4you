@@ -89,8 +89,8 @@ This is a learning project (Max, 19, college freshman, is contributing). Code sh
 
 ## Next Steps
 
-1. Test share flow end-to-end with Jamie (jamie@bakerylouise.com) and Owen
-2. Set up Resend domain verification for ibuild4you.com (admin emails silently fail without it)
-3. Set up GitHub Actions CI/CD pipeline (type-check, lint, build, test → Vercel deploy)
-4. Refine agent conversation quality based on real user feedback
+1. Test new prep workflow end-to-end: copy context → discuss in Claude → paste multi-field JSON back
+2. Test share flow end-to-end with Jamie (jamie@bakerylouise.com) and Owen
+3. Set up Resend domain verification for ibuild4you.com (admin emails silently fail without it)
+4. Set up GitHub Actions CI/CD pipeline (type-check, lint, build, test → Vercel deploy)
 5. Display names instead of emails in chat sender labels
