@@ -49,12 +49,47 @@ export function useShareProject() {
         const data = await res.json()
         throw new Error(data.error || 'Failed to share project')
       }
-      return res.json()
+      return res.json() as Promise<{ email: string; project_id: string; passcode: string }>
     },
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['projects'] })
       queryClient.invalidateQueries({ queryKey: ['project', variables.project_id] })
       queryClient.invalidateQueries({ queryKey: ['sessions', variables.project_id] })
+      queryClient.invalidateQueries({ queryKey: ['passcode', variables.project_id] })
+    },
+  })
+}
+
+export function useProjectPasscode(projectId: string | undefined) {
+  return useQuery<string | null>({
+    queryKey: ['passcode', projectId],
+    queryFn: async () => {
+      const res = await apiFetch(`/api/projects/share?project_id=${projectId}`)
+      if (!res.ok) return null
+      const data = await res.json()
+      return data.passcode || null
+    },
+    enabled: !!projectId,
+  })
+}
+
+export function useResetPasscode() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (project_id: string) => {
+      const res = await apiFetch('/api/projects/share', {
+        method: 'PATCH',
+        body: JSON.stringify({ project_id }),
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || 'Failed to reset passcode')
+      }
+      return res.json() as Promise<{ passcode: string }>
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['passcode', variables] })
     },
   })
 }

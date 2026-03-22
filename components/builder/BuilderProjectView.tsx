@@ -23,6 +23,8 @@ import {
   useUpdateProject,
   useGenerateWelcome,
   useShareProject,
+  useProjectPasscode,
+  useResetPasscode,
   useCreateSession,
 } from '@/lib/query/hooks'
 import { buildBriefPrompt } from '@/lib/agent/brief-prompt'
@@ -743,9 +745,15 @@ function SetupTab({
 function ShareSection({ project }: { project: Project }) {
   const [email, setEmail] = useState(project.requester_email || '')
   const [linkCopied, setLinkCopied] = useState(false)
+  const [passcodeCopied, setPasscodeCopied] = useState(false)
   const [emailCopied, setEmailCopied] = useState(false)
   const shareProject = useShareProject()
   const alreadyShared = !!project.requester_email
+  const { data: fetchedPasscode } = useProjectPasscode(alreadyShared ? project.id : undefined)
+  const resetPasscode = useResetPasscode()
+
+  // Use passcode from share response if just shared, otherwise from fetch
+  const passcode = shareProject.data?.passcode || fetchedPasscode || null
 
   const shareLink = typeof window !== 'undefined'
     ? `${window.location.origin}/projects/${project.id}`
@@ -757,6 +765,13 @@ function ShareSection({ project }: { project: Project }) {
     await shareProject.mutateAsync({ project_id: project.id, email: email.trim() })
   }
 
+  const handleResetPasscode = async () => {
+    const result = await resetPasscode.mutateAsync(project.id)
+    // After reset, the query will refetch. But show the new one immediately via shareProject-like state isn't available,
+    // so we rely on the query invalidation from the mutation hook.
+    void result
+  }
+
   const sharedEmail = alreadyShared ? project.requester_email! : email
 
   const inviteEmailBody = `Hey! I've set up a project for you on iBuild4you — it's a tool that helps figure out exactly what you want built through a simple conversation.
@@ -764,7 +779,11 @@ function ShareSection({ project }: { project: Project }) {
 Here's your link:
 ${shareLink}
 
-Just sign in with your email (${sharedEmail}) and you'll see a chat waiting for you. Answer a few questions about your idea and it'll start putting together a project brief.
+Sign in with Google, or use this passcode:
+Email: ${sharedEmail}
+Passcode: ${passcode || '(loading...)'}
+
+Answer a few questions about your idea and it'll start putting together a project brief.
 
 No rush — you can come back anytime to pick up where you left off.`
 
@@ -788,12 +807,27 @@ No rush — you can come back anytime to pick up where you left off.`
                 </button>
               </div>
             </div>
+            {passcode && (
+              <div>
+                <p className="text-xs text-gray-600 mb-1 flex items-center gap-1"><Lock className="h-3.5 w-3.5" /> Maker passcode</p>
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 px-2.5 py-1.5 bg-white border border-gray-300 rounded-md text-lg tracking-widest font-mono text-brand-charcoal">{passcode}</code>
+                  <button onClick={async () => { await navigator.clipboard.writeText(passcode); setPasscodeCopied(true); setTimeout(() => setPasscodeCopied(false), 2000) }} className="p-1.5 text-gray-500 hover:text-brand-navy hover:bg-white rounded">
+                    {passcodeCopied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+                  </button>
+                  <button onClick={handleResetPasscode} disabled={resetPasscode.isPending} className="p-1.5 text-gray-500 hover:text-brand-navy hover:bg-white rounded" title="Reset passcode">
+                    <RotateCw className={`h-4 w-4 ${resetPasscode.isPending ? 'animate-spin' : ''}`} />
+                  </button>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">Share this passcode with the maker so they can sign in</p>
+              </div>
+            )}
             <div>
-              <p className="text-xs text-gray-600 mb-1 flex items-center gap-1"><Mail className="h-3.5 w-3.5" /> Invite email</p>
-              <textarea readOnly value={inviteEmailBody} rows={6} className="w-full px-2.5 py-1.5 bg-white border border-gray-300 rounded-md text-sm text-gray-700 resize-none" />
+              <p className="text-xs text-gray-600 mb-1 flex items-center gap-1"><Mail className="h-3.5 w-3.5" /> Invite message</p>
+              <textarea readOnly value={inviteEmailBody} rows={8} className="w-full px-2.5 py-1.5 bg-white border border-gray-300 rounded-md text-sm text-gray-700 resize-none" />
               <button onClick={async () => { await navigator.clipboard.writeText(inviteEmailBody); setEmailCopied(true); setTimeout(() => setEmailCopied(false), 2000) }} className="mt-1 flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand-navy">
                 {emailCopied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
-                {emailCopied ? 'Copied!' : 'Copy email'}
+                {emailCopied ? 'Copied!' : 'Copy message'}
               </button>
             </div>
           </div>
@@ -815,6 +849,7 @@ No rush — you can come back anytime to pick up where you left off.`
           </form>
         )}
         {shareProject.error && <StatusMessage type="error" message={shareProject.error.message} />}
+        {resetPasscode.error && <StatusMessage type="error" message={resetPasscode.error.message} />}
       </CardBody>
     </Card>
   )

@@ -15,6 +15,7 @@ export interface ProjectMember extends BaseEntity {
   email: string
   role: MemberRole
   added_by: string // email of who added them
+  passcode?: string
 }
 
 // Users collection — pure identity, no global role
