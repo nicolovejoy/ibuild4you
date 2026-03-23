@@ -2,7 +2,8 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Send, ChevronDown, ChevronUp, MessageSquare } from 'lucide-react'
+import Link from 'next/link'
+import { ArrowLeft, Send, ChevronDown, ChevronUp, MessageSquare, HelpCircle } from 'lucide-react'
 import { BuildTimestamp } from '@/components/build-timestamp'
 import { Card, CardBody } from '@/components/ui/Card'
 import { MessageContent } from '@/components/ui/MessageContent'
@@ -34,12 +35,15 @@ export function MakerProjectView({ projectId, userEmail }: { projectId: string; 
           <button onClick={() => router.push('/dashboard')} className="p-1 hover:bg-gray-100 rounded">
             <ArrowLeft className="h-5 w-5 text-gray-600" />
           </button>
-          <div className="group relative">
+          <div className="group relative flex-1">
             <span className="font-semibold text-brand-charcoal">
               {projectLoading ? '...' : project?.title}
             </span>
             <BuildTimestamp />
           </div>
+          <Link href="/about" className="p-1.5 hover:bg-gray-100 rounded text-gray-400 hover:text-gray-600">
+            <HelpCircle className="h-4 w-4" />
+          </Link>
         </div>
       </header>
 

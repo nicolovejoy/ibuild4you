@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
+import Link from 'next/link'
 import {
   signInWithPopup,
   signInWithCustomToken,
@@ -209,6 +210,13 @@ export default function LoginPage() {
             {passcodeForm}
           </>
         )}
+
+        <p className="text-center text-sm text-gray-500">
+          Not sure what this is?{' '}
+          <Link href="/about" className="underline hover:text-gray-700">
+            Learn more
+          </Link>
+        </p>
       </div>
     </div>
   )

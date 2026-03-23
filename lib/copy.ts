@@ -114,6 +114,8 @@ export const copy = {
     placeholder: 'Type a message...',
     makerEmptyState: 'Send a message to start the conversation.',
     builderEmptyState: 'No messages yet.',
+    defaultWelcomeMessage: (projectTitle: string) =>
+      `Hey! Welcome to ${projectTitle}. I'm here to help figure out what you're looking for — just a casual conversation, no technical knowledge needed.\n\nWhat's the idea you have in mind?`,
   },
 
   // --- Maker view ---
@@ -146,6 +148,16 @@ export const copy = {
     interestSubtitle: "We're invite-only right now. Let us know you're interested and we'll be in touch.",
     interestSuccess: 'Thanks for your interest!',
     interestSuccessDetail: "We'll be in touch when we have a spot for you.",
+  },
+
+  // --- About page ---
+  about: {
+    title: 'What is iBuild4you?',
+    intro: "Someone sent you a link because they want to help you build something. Here's what to expect.",
+    whatItIs: "iBuild4you is a tool that helps you describe your idea through a simple conversation. You chat with an AI assistant that asks questions about what you want to build — no technical knowledge needed. As you talk, it captures everything into a project brief that your builder can use to start building.",
+    whatHappensNext: "After your conversation, your builder reviews what you discussed and may set up a follow-up to dig deeper. You can come back anytime — your project brief grows with each conversation.",
+    privacy: "Your conversations are only visible to you and the builder who invited you.",
+    cta: 'Ready to get started?',
   },
 
   // --- Delete confirmation ---

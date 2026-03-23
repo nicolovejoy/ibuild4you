@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { NextResponse } from 'next/server'
 import { GET, POST } from '../route'
+import { copy } from '@/lib/copy'
 
 // =============================================================================
 // SESSION ROUTE TESTS
@@ -9,7 +10,7 @@ import { GET, POST } from '../route'
 //   1. Validates project_id and checks builder role
 //   2. Marks existing active sessions as completed (batch update)
 //   3. Snapshots config from the project onto the new session
-//   4. If the project has a welcome_message, adds it as the first agent message
+//   4. Adds welcome_message as first agent message (falls back to default)
 //   5. Returns the new session
 //
 // The Firestore mock here is more complex because the route uses:
@@ -219,14 +220,16 @@ describe('POST /api/sessions', () => {
     expect(msgSet!.data.role).toBe('agent')
   })
 
-  it('skips welcome message when project has none', async () => {
+  it('uses default welcome message when project has none configured', async () => {
     mockProjectData = { title: 'No Welcome' }
 
     await POST(makePostRequest({ project_id: 'proj1' }))
 
-    // Only 1 batch.set() — the session, no message
-    expect(batchSets).toHaveLength(1)
-    expect(batchSets[0].data.project_id).toBe('proj1')
+    // 2 batch.set() calls: session + default welcome message
+    expect(batchSets).toHaveLength(2)
+    const msgSet = batchSets.find((s) => s.data.role === 'agent')
+    expect(msgSet).toBeDefined()
+    expect(msgSet!.data.content).toBe(copy.chat.defaultWelcomeMessage('No Welcome'))
   })
 
   // --- Completing old sessions ---

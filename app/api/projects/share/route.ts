@@ -6,6 +6,7 @@ import {
   requireRole,
 } from '@/lib/api/firebase-server-helpers'
 import { generateWelcomeMessage } from '@/lib/agent/welcome-message'
+import { copy } from '@/lib/copy'
 import crypto from 'crypto'
 
 function generatePasscode(): string {
@@ -133,7 +134,8 @@ export async function POST(request: Request) {
           await generateWelcomeMessage(
             projectData.title as string,
             projectData.context as string | undefined
-          )
+          ) ||
+          copy.chat.defaultWelcomeMessage(projectData.title as string)
 
         if (welcomeText) {
           await db.collection('messages').add({

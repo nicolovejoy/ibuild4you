@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getAuthenticatedUser, getAdminDb, getProjectRole, requireRole } from '@/lib/api/firebase-server-helpers'
+import { copy } from '@/lib/copy'
 
 // GET /api/sessions?project_id=xxx — list sessions for a project
 export async function GET(request: Request) {
@@ -87,17 +88,16 @@ export async function POST(request: Request) {
   batch.set(docRef, sessionData)
 
   // Add welcome message as first message in the new session
-  const welcomeMessage = projectData.welcome_message as string | undefined
-  if (welcomeMessage) {
-    const msgRef = db.collection('messages').doc()
-    batch.set(msgRef, {
-      session_id: docRef.id,
-      role: 'agent',
-      content: welcomeMessage,
-      created_at: now,
-      updated_at: now,
-    })
-  }
+  const welcomeMessage = (projectData.welcome_message as string | undefined)
+    || copy.chat.defaultWelcomeMessage(projectData.title as string)
+  const msgRef = db.collection('messages').doc()
+  batch.set(msgRef, {
+    session_id: docRef.id,
+    role: 'agent',
+    content: welcomeMessage,
+    created_at: now,
+    updated_at: now,
+  })
 
   await batch.commit()
 

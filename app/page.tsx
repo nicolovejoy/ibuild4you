@@ -3,6 +3,7 @@
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import { ArrowRight, Send, CheckCircle } from 'lucide-react'
 import { ScaffoldIcon } from '@/components/ScaffoldIcon'
 import { LoadingButton } from '@/components/ui/LoadingButton'
@@ -48,6 +49,11 @@ export default function HomePage() {
           >
             Sign in
           </LoadingButton>
+          <p className="text-sm text-brand-slate">
+            <Link href="/about" className="underline hover:text-brand-charcoal">
+              Learn more about how it works
+            </Link>
+          </p>
         </div>
       </div>
 
