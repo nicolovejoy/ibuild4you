@@ -5,9 +5,7 @@ const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
   // Use the app's own domain for auth so the handler runs same-origin.
   // This avoids sessionStorage blocks in mobile in-app browsers.
-  authDomain: typeof window !== 'undefined'
-    ? window.location.host
-    : process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
   projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 }
