@@ -16,6 +16,7 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { MessageContent } from '@/components/ui/MessageContent'
 import { MockupEditor } from './MockupEditor'
 import { stripCodeFences } from '@/lib/utils'
+import { useEscapeBack } from '@/lib/hooks/useEscapeBack'
 import { Modal } from '@/components/ui/Modal'
 import {
   useProject,
@@ -46,6 +47,7 @@ export function BuilderProjectView({ projectId, userEmail }: { projectId: string
   const { data: sessions } = useSessions(projectId)
   const { data: brief } = useBrief(projectId)
 
+  useEscapeBack('/dashboard')
   const activeSession = sessions?.find((s) => s.status === 'active')
   const [showShareModal, setShowShareModal] = useState(false)
   const tabParam = searchParams.get('tab') as TabId | null

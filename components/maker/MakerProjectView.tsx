@@ -15,6 +15,7 @@ import {
   useCreateSession,
 } from '@/lib/query/hooks'
 import { apiFetch } from '@/lib/firebase/api-fetch'
+import { useEscapeBack } from '@/lib/hooks/useEscapeBack'
 import { useQueryClient } from '@tanstack/react-query'
 import type { Session } from '@/lib/types'
 
@@ -22,6 +23,7 @@ export function MakerProjectView({ projectId, userEmail }: { projectId: string; 
   const router = useRouter()
   const { data: project, isLoading: projectLoading } = useProject(projectId)
   const { data: sessions } = useSessions(projectId)
+  useEscapeBack('/dashboard')
   const activeSession = sessions?.find((s) => s.status === 'active')
   const completedSessions = sessions?.filter((s) => s.status === 'completed') || []
 
