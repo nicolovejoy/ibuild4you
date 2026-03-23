@@ -49,8 +49,12 @@ async function enrichProjects(
                 ? (msg.sender_email as string) || null
                 : 'agent'
             }
-            // Track last maker (user) message
-            if (msg.role === 'user' && (!lastMakerMessageAt || msg.created_at > lastMakerMessageAt)) {
+            // Track last maker (user) message — only count messages from the requester,
+            // not from builders who also chatted in the session
+            const senderEmail = msg.sender_email as string | undefined
+            const requesterEmail = project.requester_email as string | undefined
+            const isFromMaker = msg.role === 'user' && senderEmail && requesterEmail && senderEmail === requesterEmail
+            if (isFromMaker && (!lastMakerMessageAt || msg.created_at > lastMakerMessageAt)) {
               lastMakerMessageAt = msg.created_at as string
             }
           }
