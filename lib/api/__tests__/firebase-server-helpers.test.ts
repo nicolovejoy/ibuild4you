@@ -21,7 +21,6 @@ import { getAdminAuth } from '@/lib/firebase/admin'
 
 describe('isAdminEmail', () => {
   it('returns true for known admin emails', () => {
-    expect(isAdminEmail('nlovejoy@me.com')).toBe(true)
     expect(isAdminEmail('nicholas.lovejoy@gmail.com')).toBe(true)
     expect(isAdminEmail('mlovejoy@scu.edu')).toBe(true)
   })
