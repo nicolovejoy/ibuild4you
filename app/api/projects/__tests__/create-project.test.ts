@@ -17,11 +17,11 @@ import { POST } from '../route'
 // getAdminDb(), it gets our mock instead of real Firestore.
 // =============================================================================
 
-// Track every document that gets "added" to each collection.
-// Each call to collection('projects').add({...}) pushes to this map.
+// Track every document that gets "added" or "set" to each collection.
 const addedDocs: Record<string, Record<string, unknown>[]> = {}
+// Track doc().set() calls separately (keyed by collection, stores {docId, data})
+const setDocs: Record<string, { docId: string; data: Record<string, unknown> }[]> = {}
 
-// Track which collection was last accessed so add() knows where it's writing
 let lastCollectionName = ''
 
 const mockAdd = vi.fn(async (data: Record<string, unknown>) => {
@@ -30,9 +30,22 @@ const mockAdd = vi.fn(async (data: Record<string, unknown>) => {
   return { id: `mock-${lastCollectionName}-id` }
 })
 
+const mockSet = vi.fn(async (data: Record<string, unknown>) => {
+  if (!setDocs[lastCollectionName]) setDocs[lastCollectionName] = []
+  setDocs[lastCollectionName].push({ docId: lastDocId, data })
+})
+
+let lastDocId = ''
+
 const mockCollection = vi.fn((name: string) => {
   lastCollectionName = name
-  return { add: mockAdd }
+  return {
+    add: mockAdd,
+    doc: vi.fn((id: string) => {
+      lastDocId = id
+      return { set: mockSet }
+    }),
+  }
 })
 
 vi.mock('@/lib/api/firebase-server-helpers', () => ({
@@ -62,6 +75,7 @@ describe('POST /api/projects', () => {
     // Without this, data from test 1 leaks into test 2.
     vi.clearAllMocks()
     for (const key of Object.keys(addedDocs)) delete addedDocs[key]
+    for (const key of Object.keys(setDocs)) delete setDocs[key]
   })
 
   // --- Validation ---
@@ -152,15 +166,17 @@ describe('POST /api/projects', () => {
     expect(members[0].role).toBe('owner')
   })
 
-  it('approves the maker email so they can sign in', async () => {
+  it('approves the maker email using the email as doc ID', async () => {
     await POST(makeRequest({
       title: 'Test',
-      requester_email: 'jamie@example.com',
+      requester_email: 'Jamie@Example.com',
     }))
 
-    const approvals = addedDocs['approved_emails']
+    // Should use doc(email).set(), not add(), so the doc ID is the email
+    const approvals = setDocs['approved_emails']
     expect(approvals).toHaveLength(1)
-    expect(approvals[0].email).toBe('jamie@example.com')
+    expect(approvals[0].docId).toBe('jamie@example.com')
+    expect(approvals[0].data.email).toBe('jamie@example.com')
   })
 
   // --- Full setup payload ---

@@ -354,9 +354,9 @@ export async function POST(request: Request) {
     if (projectData.requester_last_name) makerData.last_name = projectData.requester_last_name
     await db.collection('project_members').add(makerData)
 
-    // Approve email so they can sign in
-    await db.collection('approved_emails').add({
-      email: requesterEmail,
+    // Approve email so they can sign in (doc ID must be the email)
+    await db.collection('approved_emails').doc(requesterEmail.toLowerCase()).set({
+      email: requesterEmail.toLowerCase(),
       approved_by: auth.email,
       created_at: now,
     })
