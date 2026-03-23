@@ -49,7 +49,7 @@ let mockSessionDocs: { id: string; data: () => Record<string, unknown> }[] = []
 const mockGet = vi.fn()
 const mockOrderBy = vi.fn(() => ({ get: mockGet }))
 const mockWhere2 = vi.fn(() => ({ get: vi.fn(async () => ({ docs: mockActiveSessionDocs })) }))
-const mockWhere = vi.fn((_field: string, _op: string, _value: string) => ({
+const mockWhere = vi.fn(() => ({
   where: mockWhere2,
   orderBy: mockOrderBy,
 }))

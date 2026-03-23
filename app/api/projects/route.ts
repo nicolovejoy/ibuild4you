@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import crypto from 'crypto'
 import {
   getAuthenticatedUser,
   getAdminDb,
@@ -334,6 +335,35 @@ export async function POST(request: Request) {
     created_at: now,
     updated_at: now,
   })
+
+  // If requester_email provided, create maker membership + approve email
+  const requesterEmail = projectData.requester_email as string | undefined
+  if (requesterEmail) {
+    const passcode = crypto.randomBytes(4).toString('base64url').slice(0, 6).toUpperCase()
+    const makerData: Record<string, unknown> = {
+      project_id: docRef.id,
+      user_id: '',
+      email: requesterEmail,
+      role: 'maker',
+      passcode,
+      added_by: auth.email,
+      created_at: now,
+      updated_at: now,
+    }
+    if (projectData.requester_first_name) makerData.first_name = projectData.requester_first_name
+    if (projectData.requester_last_name) makerData.last_name = projectData.requester_last_name
+    await db.collection('project_members').add(makerData)
+
+    // Approve email so they can sign in
+    await db.collection('approved_emails').add({
+      email: requesterEmail,
+      approved_by: auth.email,
+      created_at: now,
+    })
+
+    // Mark project as shared
+    projectData.shared_at = now
+  }
 
   // Create the first session, snapshotting any config provided
   const sessionData: Record<string, unknown> = {

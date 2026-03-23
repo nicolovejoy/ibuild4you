@@ -118,6 +118,51 @@ describe('POST /api/projects', () => {
     })
   })
 
+  it('creates maker membership when requester_email is provided', async () => {
+    await POST(makeRequest({
+      title: 'Test',
+      requester_email: 'jamie@example.com',
+      requester_first_name: 'Jamie',
+      requester_last_name: 'Baker',
+    }))
+
+    const members = addedDocs['project_members']
+    // Should have 2 members: owner + maker
+    expect(members).toHaveLength(2)
+    const maker = members.find((m) => m.role === 'maker')
+    expect(maker).toBeDefined()
+    expect(maker).toMatchObject({
+      project_id: 'mock-projects-id',
+      email: 'jamie@example.com',
+      role: 'maker',
+      first_name: 'Jamie',
+      last_name: 'Baker',
+    })
+    // Maker should have a passcode
+    expect(maker!.passcode).toBeDefined()
+    expect(typeof maker!.passcode).toBe('string')
+  })
+
+  it('does not create maker membership when requester_email is missing', async () => {
+    await POST(makeRequest({ title: 'Test' }))
+
+    const members = addedDocs['project_members']
+    // Only the owner
+    expect(members).toHaveLength(1)
+    expect(members[0].role).toBe('owner')
+  })
+
+  it('approves the maker email so they can sign in', async () => {
+    await POST(makeRequest({
+      title: 'Test',
+      requester_email: 'jamie@example.com',
+    }))
+
+    const approvals = addedDocs['approved_emails']
+    expect(approvals).toHaveLength(1)
+    expect(approvals[0].email).toBe('jamie@example.com')
+  })
+
   // --- Full setup payload ---
 
   it('saves all optional setup fields on the project', async () => {
