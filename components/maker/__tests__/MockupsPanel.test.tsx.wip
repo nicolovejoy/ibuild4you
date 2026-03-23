@@ -1,0 +1,77 @@
+// @vitest-environment happy-dom
+import React from 'react'
+import { describe, it, expect, vi } from 'vitest'
+import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import type { WireframeMockup } from '@/lib/types'
+
+// Mock Firebase client — MakerProjectView imports hooks that pull in Firebase
+vi.mock('@/lib/firebase/client', () => ({
+  app: {},
+  auth: { onAuthStateChanged: vi.fn() },
+}))
+
+vi.mock('@/lib/firebase/api-fetch', () => ({
+  apiFetch: vi.fn(),
+}))
+
+import { MockupsPanel } from '../MakerProjectView'
+
+const mockups: WireframeMockup[] = [
+  {
+    title: 'Homepage Layout',
+    sections: [
+      { type: 'hero', label: 'Welcome Banner', description: 'Main hero with tagline' },
+      { type: 'text', label: 'About Us', description: 'Company description' },
+    ],
+  },
+  {
+    title: 'Contact Page',
+    sections: [
+      { type: 'form', label: 'Contact Form', description: 'Name, email, message' },
+    ],
+  },
+]
+
+describe('MockupsPanel', () => {
+  it('shows count in header', () => {
+    render(<MockupsPanel mockups={mockups} />)
+    expect(screen.getByText('Layout ideas (2)')).toBeDefined()
+  })
+
+  it('is collapsed by default — mockup titles not visible', () => {
+    render(<MockupsPanel mockups={mockups} />)
+    expect(screen.queryByText('Homepage Layout')).toBeNull()
+    expect(screen.queryByText('Contact Page')).toBeNull()
+  })
+
+  it('expands on click and shows mockup titles and section labels', async () => {
+    const user = userEvent.setup()
+    render(<MockupsPanel mockups={mockups} />)
+
+    await user.click(screen.getByText('Layout ideas (2)'))
+
+    expect(screen.getByText('Homepage Layout')).toBeDefined()
+    expect(screen.getByText('Contact Page')).toBeDefined()
+    expect(screen.getByText('Welcome Banner')).toBeDefined()
+    expect(screen.getByText('About Us')).toBeDefined()
+    expect(screen.getByText('Contact Form')).toBeDefined()
+  })
+
+  it('collapses again on second click', async () => {
+    const user = userEvent.setup()
+    render(<MockupsPanel mockups={mockups} />)
+
+    const toggle = screen.getByText('Layout ideas (2)')
+    await user.click(toggle)
+    expect(screen.getByText('Homepage Layout')).toBeDefined()
+
+    await user.click(toggle)
+    expect(screen.queryByText('Homepage Layout')).toBeNull()
+  })
+
+  it('renders single mockup correctly', () => {
+    render(<MockupsPanel mockups={[mockups[0]]} />)
+    expect(screen.getByText('Layout ideas (1)')).toBeDefined()
+  })
+})

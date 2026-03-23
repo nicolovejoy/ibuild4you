@@ -265,7 +265,7 @@ function MakerChat({
   )
 }
 
-function MockupsPanel({ mockups }: { mockups: WireframeMockup[] }) {
+export function MockupsPanel({ mockups }: { mockups: WireframeMockup[] }) {
   const [expanded, setExpanded] = useState(false)
 
   return (
