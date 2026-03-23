@@ -7,6 +7,7 @@ import { ArrowLeft, Send, ChevronDown, ChevronUp, MessageSquare, HelpCircle } fr
 import { BuildTimestamp } from '@/components/build-timestamp'
 import { Card, CardBody } from '@/components/ui/Card'
 import { MessageContent } from '@/components/ui/MessageContent'
+import { WireframePreview } from '@/components/ui/WireframePreview'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { StatusMessage } from '@/components/ui/StatusMessage'
 import {
@@ -18,7 +19,7 @@ import {
 import { apiFetch } from '@/lib/firebase/api-fetch'
 import { useEscapeBack } from '@/lib/hooks/useEscapeBack'
 import { useQueryClient } from '@tanstack/react-query'
-import type { Session } from '@/lib/types'
+import type { Session, WireframeMockup } from '@/lib/types'
 
 export function MakerProjectView({ projectId, userEmail }: { projectId: string; userEmail: string }) {
   const router = useRouter()
@@ -55,6 +56,11 @@ export function MakerProjectView({ projectId, userEmail }: { projectId: string; 
           activeSession={activeSession || null}
           sessionsLoaded={!!sessions}
         />
+
+        {/* Layout mockups from the active session */}
+        {activeSession?.layout_mockups && activeSession.layout_mockups.length > 0 && (
+          <MockupsPanel mockups={activeSession.layout_mockups} />
+        )}
 
         {/* Previous conversations */}
         {completedSessions.length > 0 && (
@@ -256,6 +262,37 @@ function MakerChat({
         </div>
       )}
     </div>
+  )
+}
+
+function MockupsPanel({ mockups }: { mockups: WireframeMockup[] }) {
+  const [expanded, setExpanded] = useState(false)
+
+  return (
+    <Card hover={false}>
+      <CardBody>
+        <button
+          onClick={() => setExpanded(!expanded)}
+          className="w-full flex items-center justify-between text-left"
+        >
+          <h3 className="text-sm font-semibold text-brand-slate uppercase tracking-wide">
+            Layout ideas ({mockups.length})
+          </h3>
+          {expanded ? (
+            <ChevronUp className="h-4 w-4 text-gray-400" />
+          ) : (
+            <ChevronDown className="h-4 w-4 text-gray-400" />
+          )}
+        </button>
+        {expanded && (
+          <div className="mt-3 space-y-3">
+            {mockups.map((m, i) => (
+              <WireframePreview key={i} mockup={m} />
+            ))}
+          </div>
+        )}
+      </CardBody>
+    </Card>
   )
 }
 
