@@ -37,10 +37,18 @@ const mockSet = vi.fn(async (data: Record<string, unknown>) => {
 
 let lastDocId = ''
 
+// Mock .where().limit().get() chain for slug uniqueness check
+const mockWhere = vi.fn(() => ({
+  limit: vi.fn(() => ({
+    get: vi.fn(async () => ({ empty: true })),  // no slug collisions in tests
+  })),
+}))
+
 const mockCollection = vi.fn((name: string) => {
   lastCollectionName = name
   return {
     add: mockAdd,
+    where: mockWhere,
     doc: vi.fn((id: string) => {
       lastDocId = id
       return { set: mockSet }

@@ -95,8 +95,8 @@ This is a learning project (Max, 19, college freshman, is contributing). Code sh
 
 ## Next Steps
 
-1. Test wireframes in a live conversation (agent emitting wireframe blocks, maker seeing visual previews)
-2. Test share flow end-to-end with Jamie and Owen
+1. Implement real-time multi-user sync (Firestore onSnapshot for messages). Plan at `.claude/plans/sprightly-juggling-storm.md`. TDD: write `useRealtimeMessages` tests first, then hook, then integrate into maker/builder views.
+2. Run backfill-slugs.mjs to give existing projects URL slugs
 3. Set up Resend domain verification for ibuild4you.com (admin emails silently fail without it)
-4. Set up GitHub Actions CI/CD pipeline (type-check, lint, build, test → Vercel deploy)
+4. Wireframe diff highlighting (show what changed when agent emits updated wireframe)
 5. Two-tier brief: simple friendly version for maker, detailed version (with complexity/challenges) for builder
