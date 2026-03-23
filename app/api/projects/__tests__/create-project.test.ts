@@ -21,16 +21,19 @@ import { POST } from '../route'
 // Each call to collection('projects').add({...}) pushes to this map.
 const addedDocs: Record<string, Record<string, unknown>[]> = {}
 
-// Mock Firestore's collection().add() pattern
+// Track which collection was last accessed so add() knows where it's writing
+let lastCollectionName = ''
+
 const mockAdd = vi.fn(async (data: Record<string, unknown>) => {
-  // Record what was added, keyed by collection name
-  const collectionName = mockCollection.mock.calls[mockCollection.mock.calls.length - 1][0]
-  if (!addedDocs[collectionName]) addedDocs[collectionName] = []
-  addedDocs[collectionName].push(data)
-  return { id: `mock-${collectionName}-id` }
+  if (!addedDocs[lastCollectionName]) addedDocs[lastCollectionName] = []
+  addedDocs[lastCollectionName].push(data)
+  return { id: `mock-${lastCollectionName}-id` }
 })
 
-const mockCollection = vi.fn(() => ({ add: mockAdd }))
+const mockCollection = vi.fn((name: string) => {
+  lastCollectionName = name
+  return { add: mockAdd }
+})
 
 vi.mock('@/lib/api/firebase-server-helpers', () => ({
   // Every request is "authenticated" as this fake user
