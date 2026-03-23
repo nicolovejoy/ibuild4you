@@ -202,6 +202,20 @@ export function useProject(projectId: string | undefined) {
   })
 }
 
+// Resolve a slug or Firestore ID to a project. Used by the project page
+// where the URL param could be either format.
+export function useResolveProject(slugOrId: string | undefined) {
+  return useQuery<Project>({
+    queryKey: ['resolveProject', slugOrId],
+    queryFn: async () => {
+      const res = await apiFetch(`/api/projects?slug=${encodeURIComponent(slugOrId!)}`)
+      if (!res.ok) throw new Error('Project not found')
+      return res.json()
+    },
+    enabled: !!slugOrId,
+  })
+}
+
 export function useProjectRole(projectId: string | undefined) {
   return useQuery<MemberRole | null>({
     queryKey: ['projectRole', projectId],

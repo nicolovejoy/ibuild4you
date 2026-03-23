@@ -6,6 +6,7 @@ import { useRouter, useParams } from 'next/navigation'
 import { useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { apiFetch } from '@/lib/firebase/api-fetch'
+import { useResolveProject } from '@/lib/query/hooks'
 import { ArrowLeft, FileText } from 'lucide-react'
 import { Card, CardBody } from '@/components/ui/Card'
 import { EmptyState } from '@/components/ui/EmptyState'
@@ -18,7 +19,12 @@ export default function BriefPage() {
   const { approved, loading: approvalLoading } = useApproval()
   const router = useRouter()
   const params = useParams()
-  const projectId = params.id as string
+  const slugOrId = params.id as string
+
+  const { data: resolved, isLoading: resolving } = useResolveProject(
+    user && approved ? slugOrId : undefined
+  )
+  const projectId = resolved?.id
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) router.push('/auth/login')
@@ -42,7 +48,7 @@ export default function BriefPage() {
     enabled: !!projectId && !!user && !!approved,
   })
 
-  if (authLoading || approvalLoading || !user || !approved) {
+  if (authLoading || approvalLoading || !user || !approved || resolving || !projectId) {
     return (
       <div className="min-h-screen bg-brand-cream flex items-center justify-center">
         <div className="animate-pulse text-brand-slate">Loading...</div>
@@ -55,7 +61,7 @@ export default function BriefPage() {
       <header className="bg-white border-b border-gray-200">
         <div className="px-4 sm:px-6 h-14 flex items-center gap-3">
           <button
-            onClick={() => router.push(`/projects/${projectId}`)}
+            onClick={() => router.push(`/projects/${slugOrId}`)}
             className="p-1 hover:bg-gray-100 rounded"
           >
             <ArrowLeft className="h-5 w-5 text-gray-600" />

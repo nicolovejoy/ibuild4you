@@ -43,6 +43,7 @@ export interface Project extends BaseEntity {
   seed_questions?: string[] // ordered questions the agent should weave in early
   builder_directives?: string[] // things agent should actively push toward
   session_mode?: 'discover' | 'converge' // current operating mode (default: discover)
+  slug?: string // URL-friendly identifier derived from title
   layout_mockups?: WireframeMockup[] // wireframe layouts the agent can show in chat
   // Enriched by GET /api/projects
   session_count?: number

@@ -74,7 +74,7 @@ export async function POST(request: Request) {
           `${auth.email} sent a message in "${projectTitle}"`,
           '',
           `Time: ${now}`,
-          `Project: https://ibuild4you.com/projects/${projectId}`,
+          `Project: https://ibuild4you.com/projects/${projectData.slug || projectId}`,
         ].join('\n'),
       })
       .catch((err) => console.error('Failed to send chat notification:', err))

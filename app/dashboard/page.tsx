@@ -113,7 +113,7 @@ function NewProjectButton() {
         ...(context.trim() && { context: context.trim() }),
       })
       resetAndClose()
-      router.push(`/projects/${result.id}?tab=setup`)
+      router.push(`/projects/${result.slug || result.id}?tab=setup`)
     } catch {
       // error is available via createProject.error
     }
@@ -140,7 +140,7 @@ function NewProjectButton() {
     try {
       const result = await createProject.mutateAsync(payload as { title: string; [key: string]: unknown })
       resetAndClose()
-      router.push(`/projects/${result.id}?tab=setup`)
+      router.push(`/projects/${result.slug || result.id}?tab=setup`)
     } catch {
       // error is available via createProject.error
     }
@@ -391,7 +391,7 @@ function ProjectList({ isAdmin }: { isAdmin: boolean }) {
                 <div className="flex items-center justify-between">
                   <div
                     className="flex-1 cursor-pointer"
-                    onClick={() => router.push(`/projects/${project.id}`)}
+                    onClick={() => router.push(`/projects/${project.slug || project.id}`)}
                   >
                     <div className="flex items-center gap-2 mb-1">
                       <h3 className="font-medium text-gray-900">{project.title}</h3>
@@ -498,7 +498,7 @@ function ShareModal({ project, onClose }: { project: Project; onClose: () => voi
   const [emailCopied, setEmailCopied] = useState(false)
   const shareProject = useShareProject()
   const shareLink = typeof window !== 'undefined'
-    ? `${window.location.origin}/projects/${project.id}`
+    ? `${window.location.origin}/projects/${project.slug || project.id}`
     : ''
 
   const inviteEmailBody = copy.invite.body({

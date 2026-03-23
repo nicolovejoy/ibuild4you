@@ -48,8 +48,11 @@ export function BuilderProjectView({ projectId, userEmail }: { projectId: string
   const { data: brief } = useBrief(projectId)
 
   useEscapeBack('/dashboard')
+  const updateProject = useUpdateProject()
   const activeSession = sessions?.find((s) => s.status === 'active')
   const [showShareModal, setShowShareModal] = useState(false)
+  const [editingTitle, setEditingTitle] = useState(false)
+  const [titleDraft, setTitleDraft] = useState('')
   const tabParam = searchParams.get('tab') as TabId | null
   const defaultTab: TabId = (!project || !project.requester_email) ? 'setup' : 'sessions'
   const activeTab: TabId = tabParam && ['sessions', 'brief', 'setup'].includes(tabParam) ? tabParam : defaultTab
@@ -63,7 +66,7 @@ export function BuilderProjectView({ projectId, userEmail }: { projectId: string
     }
     params.delete('session') // clear session selection when changing tabs
     const qs = params.toString()
-    router.replace(`/projects/${projectId}${qs ? `?${qs}` : ''}`, { scroll: false })
+    router.replace(`/projects/${project?.slug || projectId}${qs ? `?${qs}` : ''}`, { scroll: false })
   }
 
   // Turn indicator
@@ -80,9 +83,33 @@ export function BuilderProjectView({ projectId, userEmail }: { projectId: string
                 <ArrowLeft className="h-5 w-5 text-gray-600" />
               </button>
               <div className="group relative">
-                <span className="font-semibold text-brand-charcoal">
-                  {projectLoading ? '...' : project?.title}
-                </span>
+                {editingTitle ? (
+                  <input
+                    type="text"
+                    value={titleDraft}
+                    onChange={(e) => setTitleDraft(e.target.value)}
+                    onBlur={() => {
+                      if (titleDraft.trim() && titleDraft.trim() !== project?.title) {
+                        updateProject.mutate({ project_id: projectId, title: titleDraft.trim() })
+                      }
+                      setEditingTitle(false)
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+                      if (e.key === 'Escape') setEditingTitle(false)
+                    }}
+                    className="font-semibold text-brand-charcoal bg-transparent border-b-2 border-brand-navy outline-none px-0 py-0"
+                    autoFocus
+                  />
+                ) : (
+                  <button
+                    onClick={() => { setTitleDraft(project?.title || ''); setEditingTitle(true) }}
+                    className="font-semibold text-brand-charcoal hover:text-brand-navy cursor-text"
+                    title="Click to rename"
+                  >
+                    {projectLoading ? '...' : project?.title}
+                  </button>
+                )}
                 <BuildTimestamp />
               </div>
             </div>
@@ -140,6 +167,7 @@ export function BuilderProjectView({ projectId, userEmail }: { projectId: string
         {activeTab === 'sessions' && (
           <SessionsTab
             projectId={projectId}
+            slug={project?.slug}
             userEmail={userEmail}
             sessions={sessions || []}
             sessionsLoaded={!!sessions}
@@ -170,11 +198,13 @@ export function BuilderProjectView({ projectId, userEmail }: { projectId: string
 
 function SessionsTab({
   projectId,
+  slug,
   userEmail,
   sessions,
   sessionsLoaded,
 }: {
   projectId: string
+  slug?: string
   userEmail: string
   sessions: Session[]
   sessionsLoaded: boolean
@@ -201,7 +231,7 @@ function SessionsTab({
     const params = new URLSearchParams(searchParams.toString())
     params.set('session', sessionId)
     params.delete('tab')
-    router.replace(`/projects/${projectId}?${params.toString()}`, { scroll: false })
+    router.replace(`/projects/${slug || projectId}?${params.toString()}`, { scroll: false })
   }
 
   const selectedSession = sessions.find((s) => s.id === selectedId)
@@ -849,7 +879,7 @@ function ShareModal({ project, onClose }: { project: Project; onClose: () => voi
   const passcode = shareProject.data?.passcode || fetchedPasscode || null
 
   const shareLink = typeof window !== 'undefined'
-    ? `${window.location.origin}/projects/${project.id}`
+    ? `${window.location.origin}/projects/${project.slug || project.id}`
     : ''
 
   const handleShare = async (e: React.FormEvent) => {
@@ -1111,7 +1141,7 @@ function PrepNextSession({ project, projectId, sessionNumber }: {
   const generateWelcome = useGenerateWelcome()
   const createSession = useCreateSession()
 
-  const shareLink = typeof window !== 'undefined' ? `${window.location.origin}/projects/${projectId}` : ''
+  const shareLink = typeof window !== 'undefined' ? `${window.location.origin}/projects/${project.slug || projectId}` : ''
   const makerEmail = project.requester_email || ''
 
   useEffect(() => {

@@ -7,6 +7,21 @@ import {
   requireRole,
   isAdminEmail,
 } from '@/lib/api/firebase-server-helpers'
+import { generateSlug } from '@/lib/utils'
+
+// Ensure slug is unique by appending -2, -3, etc. if needed
+async function ensureUniqueSlug(db: FirebaseFirestore.Firestore, slug: string, excludeProjectId?: string): Promise<string> {
+  let candidate = slug
+  let suffix = 1
+  while (true) {
+    const existing = await db.collection('projects').where('slug', '==', candidate).limit(1).get()
+    if (existing.empty) return candidate
+    // If the only match is the project we're updating, the slug is fine
+    if (excludeProjectId && existing.docs[0].id === excludeProjectId) return candidate
+    suffix++
+    candidate = `${slug}-${suffix}`
+  }
+}
 
 // Enrich project docs with last activity and session count
 async function enrichProjects(
@@ -104,12 +119,30 @@ async function enrichProjects(
   )
 }
 
-// GET /api/projects — list projects the current user has membership on
+// GET /api/projects — list projects, or look up a single project by slug/id
 export async function GET(request: Request) {
   const auth = await getAuthenticatedUser(request)
   if (auth.error) return auth.error
 
   const db = getAdminDb()
+  const { searchParams } = new URL(request.url)
+  const slugParam = searchParams.get('slug')
+
+  // Single project lookup by slug or Firestore ID
+  if (slugParam) {
+    // Try slug first
+    const bySlug = await db.collection('projects').where('slug', '==', slugParam).limit(1).get()
+    if (!bySlug.empty) {
+      const doc = bySlug.docs[0]
+      return NextResponse.json({ id: doc.id, ...doc.data() })
+    }
+    // Fall back to Firestore document ID (supports old bookmarked URLs)
+    const byId = await db.collection('projects').doc(slugParam).get()
+    if (byId.exists) {
+      return NextResponse.json({ id: byId.id, ...byId.data() })
+    }
+    return NextResponse.json({ error: 'Project not found' }, { status: 404 })
+  }
 
   // Admins see all projects
   if (isAdminEmail(auth.email)) {
@@ -209,6 +242,11 @@ export async function PATCH(request: Request) {
     }
   }
 
+  // Regenerate slug when title changes
+  if (patch.title && typeof patch.title === 'string') {
+    patch.slug = await ensureUniqueSlug(db, generateSlug(patch.title), project_id)
+  }
+
   await db.collection('projects').doc(project_id).update(patch)
 
   return NextResponse.json({ id: project_id, ...patch })
@@ -299,9 +337,12 @@ export async function POST(request: Request) {
   const db = getAdminDb()
   const now = new Date().toISOString()
 
+  const slug = await ensureUniqueSlug(db, generateSlug(title.trim()))
+
   const projectData: Record<string, unknown> = {
     requester_id: auth.uid,
     title: title.trim(),
+    slug,
     status: 'active',
     created_at: now,
     updated_at: now,

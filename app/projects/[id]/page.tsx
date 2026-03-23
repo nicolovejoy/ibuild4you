@@ -2,7 +2,7 @@
 
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useApproval } from '@/lib/hooks/useApproval'
-import { useClaimProject, useProjectRole } from '@/lib/query/hooks'
+import { useClaimProject, useProjectRole, useResolveProject } from '@/lib/query/hooks'
 import { useRouter, useParams } from 'next/navigation'
 import { useEffect } from 'react'
 import { BuilderProjectView } from '@/components/builder/BuilderProjectView'
@@ -13,10 +13,17 @@ export default function ProjectPage() {
   const { approved, loading: approvalLoading } = useApproval()
   const router = useRouter()
   const params = useParams()
-  const projectId = params.id as string
+  const slugOrId = params.id as string
+
+  // Resolve slug or Firestore ID to a project
+  const { data: resolved, isLoading: resolving } = useResolveProject(
+    user && approved ? slugOrId : undefined
+  )
+  const projectId = resolved?.id
+
   const claimProject = useClaimProject()
   const { data: role, isLoading: roleLoading } = useProjectRole(
-    user && approved ? projectId : undefined
+    projectId || undefined
   )
 
   useEffect(() => {
@@ -29,13 +36,13 @@ export default function ProjectPage() {
 
   // Auto-claim on mount
   useEffect(() => {
-    if (user && approved) {
+    if (user && approved && projectId) {
       claimProject.mutate(projectId)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, user, approved])
 
-  if (authLoading || approvalLoading || !user || !approved || roleLoading) {
+  if (authLoading || approvalLoading || !user || !approved || resolving || roleLoading || !projectId) {
     return (
       <div className="min-h-screen bg-brand-cream flex items-center justify-center">
         <div className="animate-pulse text-brand-slate">Loading...</div>
