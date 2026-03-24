@@ -54,12 +54,17 @@ export async function POST(request: Request) {
     const storagePath = `projects/${projectId}/${fileId}/${file.name}`
     const buffer = Buffer.from(await file.arrayBuffer())
 
-    await s3.send(new PutObjectCommand({
-      Bucket: S3_BUCKET,
-      Key: storagePath,
-      Body: buffer,
-      ContentType: file.type,
-    }))
+    try {
+      await s3.send(new PutObjectCommand({
+        Bucket: S3_BUCKET,
+        Key: storagePath,
+        Body: buffer,
+        ContentType: file.type,
+      }))
+    } catch (err) {
+      console.error('S3 upload failed:', err)
+      return NextResponse.json({ error: 'File upload failed' }, { status: 502 })
+    }
 
     const doc = {
       project_id: projectId,

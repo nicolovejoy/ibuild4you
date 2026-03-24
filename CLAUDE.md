@@ -42,6 +42,7 @@ npm run test:watch   # Run tests in watch mode
 - `app/` — Next.js App Router pages and API routes
 - `app/api/` — All data access goes through API routes using Firebase Admin SDK
 - `lib/firebase/` — Client SDK (`client.ts`), Admin SDK (`admin.ts`), `apiFetch()` helper
+- `lib/s3/` — S3 client for file storage (uploads go to `ibuild4you-files` bucket)
 - `lib/api/` — Server-side auth helpers (`getAuthenticatedUser`, `requireAdmin`)
 - `lib/hooks/` — React hooks (`useAuth`, `useDebounce`)
 - `lib/query/` — React Query client config and hooks
@@ -62,7 +63,8 @@ Key pattern: clients call `apiFetch()` which attaches the Firebase Bearer token.
 - **project_members** — role-based membership (owner, builder, apprentice, maker) with passcode for maker auth
 - **projects** — one per maker engagement, includes agent config (session_mode, directives, opener), requester name/email, tracking fields (shared_at, last_nudged_at)
 - **sessions** — each conversation between maker and agent, snapshots agent config at creation
-- **messages** — individual messages within a session, role (user/agent) and timestamp
+- **messages** — individual messages within a session, role (user/agent) and timestamp, optional file_ids
+- **files** — uploaded files (metadata in Firestore, bytes in S3 at `ibuild4you-files` bucket), scoped to project
 - **briefs** — living brief for a project, structured and versioned, updated after each session
 - **reviews** — builder annotations on a brief, feed back into agent context for next session
 
@@ -95,8 +97,8 @@ This is a learning project (Max, 19, college freshman, is contributing). Code sh
 
 ## Next Steps
 
-1. Test file sharing end-to-end in prod (upload via paperclip, paste screenshot, verify builder Files tab, download)
-2. Create Firestore composite index for `files` collection (`project_id` + `created_at desc`) — will auto-prompt on first query
-3. Finish MockupsPanel component test: install `@vitejs/plugin-react`, rename `.wip` → `.tsx`, verify. Test file at `components/maker/__tests__/MockupsPanel.test.tsx.wip`.
-4. Implement real-time multi-user sync (Firestore onSnapshot for messages). Plan at `.claude/plans/sprightly-juggling-storm.md`.
-5. Set up Resend domain verification for ibuild4you.com (admin emails silently fail without it)
+1. Verify file sharing in prod (upload, paste, builder Files tab, download) — in progress
+2. Finish MockupsPanel component test: install `@vitejs/plugin-react`, rename `.wip` → `.tsx`, verify. Test file at `components/maker/__tests__/MockupsPanel.test.tsx.wip`.
+3. Implement real-time multi-user sync (Firestore onSnapshot for messages). Plan at `.claude/plans/sprightly-juggling-storm.md`.
+4. Set up Resend domain verification for ibuild4you.com (admin emails silently fail without it)
+5. Two-tier brief: simple friendly version for maker, detailed version (with complexity/challenges) for builder

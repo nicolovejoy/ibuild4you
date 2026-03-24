@@ -25,18 +25,27 @@ export async function GET(
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
 
-  const result = await s3.send(new GetObjectCommand({
-    Bucket: S3_BUCKET,
-    Key: fileData.storage_path,
-  }))
+  try {
+    const result = await s3.send(new GetObjectCommand({
+      Bucket: S3_BUCKET,
+      Key: fileData.storage_path,
+    }))
 
-  const bytes = await result.Body!.transformToByteArray()
+    if (!result.Body) {
+      return NextResponse.json({ error: 'File data missing' }, { status: 502 })
+    }
 
-  return new Response(Buffer.from(bytes) as unknown as BodyInit, {
-    headers: {
-      'Content-Type': fileData.content_type,
-      'Content-Disposition': `inline; filename="${fileData.filename}"`,
-      'Cache-Control': 'private, max-age=3600',
-    },
-  })
+    const bytes = await result.Body.transformToByteArray()
+
+    return new Response(Buffer.from(bytes) as unknown as BodyInit, {
+      headers: {
+        'Content-Type': fileData.content_type,
+        'Content-Disposition': `inline; filename="${fileData.filename}"`,
+        'Cache-Control': 'private, max-age=3600',
+      },
+    })
+  } catch (err) {
+    console.error('S3 download failed:', err)
+    return NextResponse.json({ error: 'File download failed' }, { status: 502 })
+  }
 }
