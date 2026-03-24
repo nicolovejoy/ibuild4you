@@ -58,7 +58,7 @@ function FileCard({ file, onClick }: { file: ProjectFile; onClick: () => void })
       <div className="p-2">
         <p className="text-xs font-medium text-gray-700 truncate">{file.filename}</p>
         <p className="text-[10px] text-gray-400 mt-0.5">
-          {file.uploaded_by_email.split('@')[0]} &middot; {date}
+          {file.uploaded_by_name || file.uploaded_by_email.split('@')[0]} &middot; {date}
         </p>
       </div>
     </button>
@@ -110,7 +110,7 @@ function FilePreviewModal({ file, onClose }: { file: ProjectFile; onClose: () =>
           <div>
             <p className="font-medium text-gray-800">{file.filename}</p>
             <p className="text-sm text-gray-400">
-              {file.uploaded_by_email} &middot; {date} &middot; {formatFileSize(file.size_bytes)}
+              {file.uploaded_by_name || file.uploaded_by_email.split('@')[0]} &middot; {date} &middot; {formatFileSize(file.size_bytes)}
             </p>
           </div>
           <button

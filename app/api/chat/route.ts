@@ -1,4 +1,4 @@
-import { getAuthenticatedUser, getAdminDb, getProjectRole, isAdminEmail, ADMIN_EMAILS } from '@/lib/api/firebase-server-helpers'
+import { getAuthenticatedUser, getAdminDb, getProjectRole, getUserDisplayName, isAdminEmail, ADMIN_EMAILS } from '@/lib/api/firebase-server-helpers'
 import { buildSystemPrompt } from '@/lib/agent/system-prompt'
 import { AGENT_MODEL, AGENT_MAX_TOKENS, AGENT_TEMPERATURE } from '@/lib/agent/constants'
 import Anthropic from '@anthropic-ai/sdk'
@@ -51,6 +51,7 @@ export async function POST(request: Request) {
   }
 
   const now = new Date().toISOString()
+  const senderDisplayName = await getUserDisplayName(db, auth.uid, auth.email)
 
   // Store the user message
   await db.collection('messages').add({
@@ -58,6 +59,7 @@ export async function POST(request: Request) {
     role: 'user',
     content: content?.trim() || '',
     sender_email: auth.email,
+    sender_display_name: senderDisplayName,
     ...(file_ids?.length && { file_ids }),
     created_at: now,
     updated_at: now,

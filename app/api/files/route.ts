@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { getAuthenticatedUser, getAdminDb, getProjectRole } from '@/lib/api/firebase-server-helpers'
+import { getAuthenticatedUser, getAdminDb, getProjectRole, getUserDisplayName } from '@/lib/api/firebase-server-helpers'
 import { PutObjectCommand } from '@aws-sdk/client-s3'
 import { s3, S3_BUCKET } from '@/lib/s3/client'
 import crypto from 'crypto'
@@ -47,6 +47,7 @@ export async function POST(request: Request) {
   }
 
   const now = new Date().toISOString()
+  const uploaderName = await getUserDisplayName(db, auth.uid, auth.email)
   const results = []
 
   for (const file of files) {
@@ -75,6 +76,7 @@ export async function POST(request: Request) {
       storage_path: storagePath,
       uploaded_by_email: auth.email,
       uploaded_by_uid: auth.uid,
+      uploaded_by_name: uploaderName,
       created_at: now,
       updated_at: now,
     }

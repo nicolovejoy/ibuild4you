@@ -102,7 +102,7 @@ function MakerChat({
 
   const { data: savedMessages, isLoading: messagesLoading } = useMessages(sessionId)
 
-  type ChatMessage = { id?: string; role: 'user' | 'agent'; content: string; created_at?: string; sender_email?: string; file_ids?: string[] }
+  type ChatMessage = { id?: string; role: 'user' | 'agent'; content: string; created_at?: string; sender_email?: string; sender_display_name?: string; file_ids?: string[] }
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [pendingFiles, setPendingFiles] = useState<File[]>([])
@@ -117,7 +117,7 @@ function MakerChat({
     if (savedMessages) {
       setMessages(savedMessages.map((m) => ({
         id: m.id, role: m.role, content: m.content,
-        created_at: m.created_at, sender_email: m.sender_email,
+        created_at: m.created_at, sender_email: m.sender_email, sender_display_name: m.sender_display_name,
         file_ids: m.file_ids,
       })))
     }
@@ -390,7 +390,7 @@ function MakerChat({
                   : 'bg-white border border-gray-200 text-gray-800'
               }`}>
                 <p className={`text-[10px] mb-1 ${msg.role === 'user' ? 'text-blue-200' : 'text-gray-400'}`}>
-                  {msg.role === 'user' ? (msg.sender_email || userEmail) : 'iBuild4you assistant'}
+                  {msg.role === 'user' ? (msg.sender_display_name || msg.sender_email?.split('@')[0] || 'You') : 'iBuild4you assistant'}
                   {msg.created_at ? ` \u00b7 ${formatTimestamp(msg.created_at)}` : ''}
                 </p>
                 {/* Inline file attachments */}
@@ -545,7 +545,7 @@ function SessionAccordion({
                     : 'bg-gray-50 border border-gray-100 text-gray-700'
                 }`}>
                   <p className="text-[10px] text-gray-400 mb-0.5">
-                    {msg.role === 'user' ? (msg.sender_email || 'You') : 'Assistant'}
+                    {msg.role === 'user' ? (msg.sender_display_name || msg.sender_email?.split('@')[0] || 'You') : 'Assistant'}
                     {msg.created_at ? ` \u00b7 ${formatTimestamp(msg.created_at)}` : ''}
                   </p>
                   <MessageContent content={msg.content} />

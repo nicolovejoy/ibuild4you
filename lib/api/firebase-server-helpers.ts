@@ -133,6 +133,26 @@ export async function getAuthenticatedUser(request: Request): Promise<AuthSucces
   }
 }
 
+// Look up a user's display name from the users collection.
+// Returns "First L" format, or email prefix as fallback.
+export async function getUserDisplayName(
+  db: FirebaseFirestore.Firestore,
+  uid: string,
+  email: string
+): Promise<string> {
+  const userDoc = await db.collection('users').doc(uid).get()
+  if (userDoc.exists) {
+    const data = userDoc.data()!
+    const firstName = data.first_name as string | undefined
+    const lastName = data.last_name as string | undefined
+    if (firstName) {
+      return lastName ? `${firstName} ${lastName.charAt(0)}` : firstName
+    }
+  }
+  // Fallback: email prefix
+  return email.split('@')[0]
+}
+
 export async function isApprovedEmail(email: string): Promise<boolean> {
   if (isAdminEmail(email)) return true
 

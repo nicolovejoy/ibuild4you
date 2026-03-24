@@ -402,7 +402,7 @@ function ProjectList({ isAdmin }: { isAdmin: boolean }) {
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-sm text-gray-500">
                       {project.requester_email && (
                         <span className="text-brand-slate">
-                          {makerDisplayName(project) || project.requester_email}
+                          {makerDisplayName(project) || project.requester_email?.split('@')[0]}
                         </span>
                       )}
                       {isAdmin && project.session_count !== undefined && project.session_count > 0 && (

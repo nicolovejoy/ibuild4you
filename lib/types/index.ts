@@ -80,6 +80,7 @@ export interface Message extends BaseEntity {
   role: 'user' | 'agent'
   content: string
   sender_email?: string // who sent this message (for user messages)
+  sender_display_name?: string // cached display name at write time
   file_ids?: string[] // attached file IDs
 }
 
@@ -93,6 +94,7 @@ export interface ProjectFile extends BaseEntity {
   storage_path: string
   uploaded_by_email: string
   uploaded_by_uid: string
+  uploaded_by_name?: string // cached display name at write time
 }
 
 // Briefs collection — the living brief for a project

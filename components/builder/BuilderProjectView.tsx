@@ -132,7 +132,7 @@ export function BuilderProjectView({ projectId, userEmail }: { projectId: string
                   className="flex items-center gap-1.5 hover:text-brand-navy transition-colors"
                 >
                   <Share2 className="h-3.5 w-3.5" />
-                  <span>{project.requester_email}</span>
+                  <span>{project.requester_first_name ? `${project.requester_first_name}${project.requester_last_name ? ` ${project.requester_last_name.charAt(0)}` : ''}` : project.requester_email?.split('@')[0]}</span>
                 </button>
               ) : (
                 <button
@@ -321,7 +321,7 @@ function SessionChat({
   const { data: savedMessages, isLoading } = useMessages(sessionId)
   const deleteMessage = useDeleteMessage()
 
-  type ChatMessage = { id?: string; role: 'user' | 'agent'; content: string; created_at?: string; sender_email?: string }
+  type ChatMessage = { id?: string; role: 'user' | 'agent'; content: string; created_at?: string; sender_email?: string; sender_display_name?: string }
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [streaming, setStreaming] = useState(false)
@@ -332,7 +332,7 @@ function SessionChat({
     if (savedMessages) {
       setMessages(savedMessages.map((m) => ({
         id: m.id, role: m.role, content: m.content,
-        created_at: m.created_at, sender_email: m.sender_email,
+        created_at: m.created_at, sender_email: m.sender_email, sender_display_name: m.sender_display_name,
       })))
     }
   }, [savedMessages])
@@ -475,7 +475,7 @@ function SessionChat({
                   : 'bg-white border border-gray-200 text-gray-800'
               }`}>
                 <p className={`text-[10px] mb-1 ${msg.role === 'user' ? 'text-blue-200' : 'text-gray-400'}`}>
-                  {msg.role === 'user' ? (msg.sender_email || userEmail) : 'iBuild4you assistant'}
+                  {msg.role === 'user' ? (msg.sender_display_name || msg.sender_email?.split('@')[0] || 'You') : 'iBuild4you assistant'}
                   {msg.created_at ? ` \u00b7 ${formatTimestamp(msg.created_at)}` : ''}
                 </p>
                 <MessageContent content={msg.content} />
