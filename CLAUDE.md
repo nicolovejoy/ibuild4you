@@ -95,8 +95,8 @@ This is a learning project (Max, 19, college freshman, is contributing). Code sh
 
 ## Next Steps
 
-1. Finish MockupsPanel component test: install `@vitejs/plugin-react`, rename `.wip` → `.tsx`, verify. Test file at `components/maker/__tests__/MockupsPanel.test.tsx.wip`.
-2. Implement real-time multi-user sync (Firestore onSnapshot for messages). Plan at `.claude/plans/sprightly-juggling-storm.md`. TDD: write `useRealtimeMessages` tests first, then hook, then integrate into maker/builder views.
-3. Run backfill-slugs.mjs to give existing projects URL slugs
-4. Set up Resend domain verification for ibuild4you.com (admin emails silently fail without it)
-5. Two-tier brief: simple friendly version for maker, detailed version (with complexity/challenges) for builder
+1. Test file sharing end-to-end in prod (upload via paperclip, paste screenshot, verify builder Files tab, download)
+2. Create Firestore composite index for `files` collection (`project_id` + `created_at desc`) — will auto-prompt on first query
+3. Finish MockupsPanel component test: install `@vitejs/plugin-react`, rename `.wip` → `.tsx`, verify. Test file at `components/maker/__tests__/MockupsPanel.test.tsx.wip`.
+4. Implement real-time multi-user sync (Firestore onSnapshot for messages). Plan at `.claude/plans/sprightly-juggling-storm.md`.
+5. Set up Resend domain verification for ibuild4you.com (admin emails silently fail without it)
