@@ -5,7 +5,8 @@ import { useApproval } from '@/lib/hooks/useApproval'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { UserMenu } from '@/components/user-menu'
-import { Plus, FolderOpen, Share2, Copy, Check, Mail, Trash2 } from 'lucide-react'
+import Link from 'next/link'
+import { Plus, FolderOpen, Share2, Copy, Check, Mail, Trash2, Settings } from 'lucide-react'
 import { ScaffoldIcon } from '@/components/ScaffoldIcon'
 import { BuildTimestamp } from '@/components/build-timestamp'
 import { useProjects, useCreateProject, useShareProject, useDeleteProject } from '@/lib/query/hooks'
@@ -67,7 +68,18 @@ export default function DashboardPage() {
       <main className="max-w-4xl mx-auto px-4 py-8">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-2xl font-semibold text-gray-900">Your projects</h2>
-          {isAdmin && <NewProjectButton />}
+          {isAdmin && (
+            <div className="flex items-center gap-2">
+              <Link
+                href="/admin"
+                className="p-2 text-gray-400 hover:text-brand-navy hover:bg-gray-100 rounded-lg transition-colors"
+                title="Admin"
+              >
+                <Settings className="h-5 w-5" />
+              </Link>
+              <NewProjectButton />
+            </div>
+          )}
         </div>
         <ProjectList isAdmin={isAdmin} />
       </main>
