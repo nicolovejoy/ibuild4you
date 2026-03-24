@@ -40,7 +40,7 @@ export async function GET(
     return new Response(Buffer.from(bytes) as unknown as BodyInit, {
       headers: {
         'Content-Type': fileData.content_type,
-        'Content-Disposition': `inline; filename="${fileData.filename}"`,
+        'Content-Disposition': `inline; filename="${encodeURIComponent(fileData.filename)}"`,
         'Cache-Control': 'private, max-age=3600',
       },
     })
