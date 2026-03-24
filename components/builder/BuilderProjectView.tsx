@@ -742,7 +742,7 @@ function BriefTab({
                 value={pasteJson}
                 onChange={(e) => { setPasteJson(e.target.value); setPasteError(null) }}
                 placeholder='Paste JSON here (multi-field with brief/session_opener/directives/mode, or brief-only)...'
-                rows={4}
+                rows={10}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm font-mono focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
               />
               {pasteError && <StatusMessage type="error" message={pasteError} />}

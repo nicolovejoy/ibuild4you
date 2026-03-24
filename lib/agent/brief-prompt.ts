@@ -41,12 +41,12 @@ When I say "give me the output", produce ONLY valid JSON matching this schema (n
     "additional_context": "Any other relevant information that doesn't fit the above categories",
     "decisions": [{ "topic": "short label", "decision": "what was decided" }]
   },
-  "session_opener": "The message the agent sends to start the next session",
-  "builder_directives": ["Things the agent should push toward"],
-  "session_mode": "discover or converge",
+  "session_opener": "The welcome message the agent sends when the maker opens the next session — sets tone and picks up where we left off",
+  "builder_directives": ["Instructions injected into the agent's system prompt to steer the conversation — e.g. 'push toward a decision on auth flow'"],
+  "session_mode": "discover (broad exploration) or converge (narrow toward decisions)",
   "layout_mockups": [
     {
-      "title": "Strategy name",
+      "title": "Strategy name — shown to the maker as a visual wireframe layout",
       "sections": [
         { "type": "hero|text|cta|gallery|form|signup|nav|footer|map|video", "label": "Section label", "description": "What this section does" }
       ]
