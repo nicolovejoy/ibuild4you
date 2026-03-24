@@ -18,10 +18,10 @@ export async function POST(request: Request) {
   if (auth.error) return auth.error
 
   const body = await request.json()
-  const { session_id, content } = body
+  const { session_id, content, file_ids } = body
 
-  if (!session_id || !content?.trim()) {
-    return new Response(JSON.stringify({ error: 'session_id and content are required' }), {
+  if (!session_id || (!content?.trim() && (!file_ids || file_ids.length === 0))) {
+    return new Response(JSON.stringify({ error: 'session_id and content (or file_ids) are required' }), {
       status: 400,
       headers: { 'Content-Type': 'application/json' },
     })
@@ -56,8 +56,9 @@ export async function POST(request: Request) {
   await db.collection('messages').add({
     session_id,
     role: 'user',
-    content: content.trim(),
+    content: content?.trim() || '',
     sender_email: auth.email,
+    ...(file_ids?.length && { file_ids }),
     created_at: now,
     updated_at: now,
   })

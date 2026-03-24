@@ -80,6 +80,19 @@ export interface Message extends BaseEntity {
   role: 'user' | 'agent'
   content: string
   sender_email?: string // who sent this message (for user messages)
+  file_ids?: string[] // attached file IDs
+}
+
+// Files collection — uploaded files within a project
+export interface ProjectFile extends BaseEntity {
+  project_id: string
+  session_id?: string
+  filename: string
+  content_type: string
+  size_bytes: number
+  storage_path: string
+  uploaded_by_email: string
+  uploaded_by_uid: string
 }
 
 // Briefs collection — the living brief for a project

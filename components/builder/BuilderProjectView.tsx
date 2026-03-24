@@ -31,14 +31,16 @@ import {
   useProjectPasscode,
   useResetPasscode,
   useCreateSession,
+  useProjectFiles,
 } from '@/lib/query/hooks'
 import { buildPrepPrompt } from '@/lib/agent/brief-prompt'
 import { copy } from '@/lib/copy'
 import { apiFetch } from '@/lib/firebase/api-fetch'
 import { useQueryClient } from '@tanstack/react-query'
+import { FilesGrid } from '@/components/ui/FilesGrid'
 import type { Project, Session, BriefContent, WireframeMockup } from '@/lib/types'
 
-type TabId = 'sessions' | 'brief' | 'setup'
+type TabId = 'sessions' | 'brief' | 'files' | 'setup'
 
 export function BuilderProjectView({ projectId, userEmail }: { projectId: string; userEmail: string }) {
   const router = useRouter()
@@ -46,6 +48,7 @@ export function BuilderProjectView({ projectId, userEmail }: { projectId: string
   const { data: project, isLoading: projectLoading } = useProject(projectId)
   const { data: sessions } = useSessions(projectId)
   const { data: brief } = useBrief(projectId)
+  const { data: projectFiles } = useProjectFiles(projectId)
 
   useEscapeBack('/dashboard')
   const updateProject = useUpdateProject()
@@ -55,7 +58,7 @@ export function BuilderProjectView({ projectId, userEmail }: { projectId: string
   const [titleDraft, setTitleDraft] = useState('')
   const tabParam = searchParams.get('tab') as TabId | null
   const defaultTab: TabId = (!project || !project.requester_email) ? 'setup' : 'sessions'
-  const activeTab: TabId = tabParam && ['sessions', 'brief', 'setup'].includes(tabParam) ? tabParam : defaultTab
+  const activeTab: TabId = tabParam && ['sessions', 'brief', 'files', 'setup'].includes(tabParam) ? tabParam : defaultTab
 
   const setTab = (tab: TabId) => {
     const params = new URLSearchParams(searchParams.toString())
@@ -146,7 +149,7 @@ export function BuilderProjectView({ projectId, userEmail }: { projectId: string
 
           {/* Tabs */}
           <div className="flex gap-1">
-            {(['sessions', 'brief', 'setup'] as const).map((tab) => (
+            {(['sessions', 'brief', 'files', 'setup'] as const).map((tab) => (
               <button
                 key={tab}
                 onClick={() => setTab(tab)}
@@ -156,7 +159,7 @@ export function BuilderProjectView({ projectId, userEmail }: { projectId: string
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
               >
-                {tab === 'sessions' ? 'Conversations' : tab === 'brief' ? 'Brief' : 'Next Conversation'}
+                {tab === 'sessions' ? 'Conversations' : tab === 'brief' ? 'Brief' : tab === 'files' ? `Files${projectFiles?.length ? ` (${projectFiles.length})` : ''}` : 'Next Conversation'}
               </button>
             ))}
           </div>
@@ -175,6 +178,9 @@ export function BuilderProjectView({ projectId, userEmail }: { projectId: string
         )}
         {activeTab === 'brief' && (
           <BriefTab projectId={projectId} brief={brief} project={project} />
+        )}
+        {activeTab === 'files' && (
+          <FilesGrid files={projectFiles || []} />
         )}
         {activeTab === 'setup' && project && (
           <NextConversationTab

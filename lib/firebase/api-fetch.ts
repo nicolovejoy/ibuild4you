@@ -10,8 +10,12 @@ export async function apiFetch(url: string, options: FetchOptions = {}): Promise
   const token = user ? await user.getIdToken() : null
 
   const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
     ...options.headers,
+  }
+
+  // Let browser set Content-Type for FormData (multipart boundary)
+  if (!(options.body instanceof FormData)) {
+    headers['Content-Type'] = 'application/json'
   }
 
   if (token) {

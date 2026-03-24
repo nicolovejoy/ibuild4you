@@ -1,12 +1,14 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Send, ChevronDown, ChevronUp, MessageSquare, HelpCircle } from 'lucide-react'
+import { ArrowLeft, Send, ChevronDown, ChevronUp, MessageSquare, HelpCircle, Paperclip } from 'lucide-react'
 import { BuildTimestamp } from '@/components/build-timestamp'
 import { Card, CardBody } from '@/components/ui/Card'
 import { MessageContent } from '@/components/ui/MessageContent'
+import { UploadedFilePreview, LocalFilePreview } from '@/components/ui/FilePreview'
+import { FilesGrid } from '@/components/ui/FilesGrid'
 import { WireframePreview } from '@/components/ui/WireframePreview'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { StatusMessage } from '@/components/ui/StatusMessage'
@@ -15,16 +17,19 @@ import {
   useSessions,
   useMessages,
   useCreateSession,
+  useProjectFiles,
+  useUploadFiles,
 } from '@/lib/query/hooks'
 import { apiFetch } from '@/lib/firebase/api-fetch'
 import { useEscapeBack } from '@/lib/hooks/useEscapeBack'
 import { useQueryClient } from '@tanstack/react-query'
-import type { Session, WireframeMockup } from '@/lib/types'
+import type { Session, WireframeMockup, ProjectFile } from '@/lib/types'
 
 export function MakerProjectView({ projectId, userEmail }: { projectId: string; userEmail: string }) {
   const router = useRouter()
   const { data: project, isLoading: projectLoading } = useProject(projectId)
   const { data: sessions } = useSessions(projectId)
+  const { data: projectFiles } = useProjectFiles(projectId)
   useEscapeBack('/dashboard')
   const activeSession = sessions?.find((s) => s.status === 'active')
   const completedSessions = sessions?.filter((s) => s.status === 'completed') || []
@@ -55,11 +60,17 @@ export function MakerProjectView({ projectId, userEmail }: { projectId: string; 
           userEmail={userEmail}
           activeSession={activeSession || null}
           sessionsLoaded={!!sessions}
+          projectFiles={projectFiles || []}
         />
 
         {/* Layout mockups from the active session */}
         {activeSession?.layout_mockups && activeSession.layout_mockups.length > 0 && (
           <MockupsPanel mockups={activeSession.layout_mockups} />
+        )}
+
+        {/* Project files */}
+        {projectFiles && projectFiles.length > 0 && (
+          <FilesPanel files={projectFiles} />
         )}
 
         {/* Previous conversations */}
@@ -76,40 +87,78 @@ function MakerChat({
   userEmail,
   activeSession,
   sessionsLoaded,
+  projectFiles,
 }: {
   projectId: string
   userEmail: string
   activeSession: Session | null
   sessionsLoaded: boolean
+  projectFiles: ProjectFile[]
 }) {
   const queryClient = useQueryClient()
   const createSession = useCreateSession()
+  const uploadFiles = useUploadFiles()
   const sessionId = activeSession?.id
 
   const { data: savedMessages, isLoading: messagesLoading } = useMessages(sessionId)
 
-  type ChatMessage = { id?: string; role: 'user' | 'agent'; content: string; created_at?: string; sender_email?: string }
+  type ChatMessage = { id?: string; role: 'user' | 'agent'; content: string; created_at?: string; sender_email?: string; file_ids?: string[] }
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
+  const [pendingFiles, setPendingFiles] = useState<File[]>([])
   const [streaming, setStreaming] = useState(false)
+  const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [creatingSession, setCreatingSession] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (savedMessages) {
       setMessages(savedMessages.map((m) => ({
         id: m.id, role: m.role, content: m.content,
         created_at: m.created_at, sender_email: m.sender_email,
+        file_ids: m.file_ids,
       })))
     }
   }, [savedMessages])
 
+  const addFiles = useCallback((files: FileList | File[]) => {
+    const newFiles = Array.from(files)
+    const oversized = newFiles.filter((f) => f.size > 4 * 1024 * 1024)
+    if (oversized.length > 0) {
+      setError(`File "${oversized[0].name}" exceeds 4MB limit`)
+      return
+    }
+    setPendingFiles((prev) => [...prev, ...newFiles])
+  }, [])
+
+  // Handle paste for clipboard images
+  const handlePaste = useCallback((e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items
+    if (!items) return
+    const imageFiles: File[] = []
+    for (const item of items) {
+      if (item.type.startsWith('image/')) {
+        const file = item.getAsFile()
+        if (file) imageFiles.push(file)
+      }
+    }
+    if (imageFiles.length > 0) {
+      e.preventDefault()
+      addFiles(imageFiles)
+    }
+  }, [addFiles])
+
   const handleSend = async () => {
-    if (!input.trim() || streaming || creatingSession) return
+    const hasText = !!input.trim()
+    const hasFiles = pendingFiles.length > 0
+    if ((!hasText && !hasFiles) || streaming || creatingSession || uploading) return
 
     const userMessage = input.trim()
     setInput('')
+    const filesToUpload = [...pendingFiles]
+    setPendingFiles([])
     setError(null)
 
     // Auto-create session if none active
@@ -122,78 +171,125 @@ function MakerChat({
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to start session')
         setCreatingSession(false)
+        setPendingFiles(filesToUpload) // restore files
         return
       }
       setCreatingSession(false)
     }
 
-    const nowIso = new Date().toISOString()
-    setMessages((prev) => [...prev, { role: 'user', content: userMessage, created_at: nowIso, sender_email: userEmail }])
-    setMessages((prev) => [...prev, { role: 'agent', content: '', created_at: nowIso }])
-    setStreaming(true)
-
-    try {
-      const res = await apiFetch('/api/chat', {
-        method: 'POST',
-        body: JSON.stringify({ session_id: targetSessionId, content: userMessage }),
-      })
-
-      if (!res.ok) {
-        const data = await res.json()
-        throw new Error(data.error || 'Chat request failed')
+    // Upload files first if any
+    let fileIds: string[] = []
+    if (filesToUpload.length > 0) {
+      setUploading(true)
+      try {
+        const uploaded = await uploadFiles.mutateAsync({
+          projectId,
+          sessionId: targetSessionId,
+          files: filesToUpload,
+        })
+        fileIds = uploaded.map((f) => f.id)
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to upload files')
+        setPendingFiles(filesToUpload) // restore files
+        setUploading(false)
+        return
       }
+      setUploading(false)
+    }
 
-      const reader = res.body?.getReader()
-      if (!reader) throw new Error('No response stream')
+    const nowIso = new Date().toISOString()
+    setMessages((prev) => [...prev, {
+      role: 'user', content: userMessage, created_at: nowIso,
+      sender_email: userEmail, file_ids: fileIds.length > 0 ? fileIds : undefined,
+    }])
 
-      const decoder = new TextDecoder()
-      let buffer = ''
+    // Only stream agent response if there's text content
+    if (hasText) {
+      setMessages((prev) => [...prev, { role: 'agent', content: '', created_at: nowIso }])
+      setStreaming(true)
 
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
+      try {
+        const res = await apiFetch('/api/chat', {
+          method: 'POST',
+          body: JSON.stringify({
+            session_id: targetSessionId,
+            content: userMessage,
+            ...(fileIds.length > 0 && { file_ids: fileIds }),
+          }),
+        })
 
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop() || ''
+        if (!res.ok) {
+          const data = await res.json()
+          throw new Error(data.error || 'Chat request failed')
+        }
 
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue
-          const data = line.slice(6)
-          if (data === '[DONE]') break
+        const reader = res.body?.getReader()
+        if (!reader) throw new Error('No response stream')
 
-          try {
-            const parsed = JSON.parse(data)
-            if (parsed.text) {
-              setMessages((prev) => {
-                const updated = [...prev]
-                const last = updated[updated.length - 1]
-                if (last.role === 'agent') {
-                  updated[updated.length - 1] = { ...last, content: last.content + parsed.text }
-                }
-                return updated
-              })
+        const decoder = new TextDecoder()
+        let buffer = ''
+
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split('\n')
+          buffer = lines.pop() || ''
+
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue
+            const data = line.slice(6)
+            if (data === '[DONE]') break
+
+            try {
+              const parsed = JSON.parse(data)
+              if (parsed.text) {
+                setMessages((prev) => {
+                  const updated = [...prev]
+                  const last = updated[updated.length - 1]
+                  if (last.role === 'agent') {
+                    updated[updated.length - 1] = { ...last, content: last.content + parsed.text }
+                  }
+                  return updated
+                })
+              }
+            } catch {
+              // skip malformed chunks
             }
-          } catch {
-            // skip malformed chunks
           }
         }
-      }
 
-      queryClient.invalidateQueries({ queryKey: ['messages', targetSessionId] })
-      queryClient.invalidateQueries({ queryKey: ['sessions', projectId] })
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong')
-      setMessages((prev) => {
-        const updated = [...prev]
-        if (updated[updated.length - 1]?.role === 'agent' && !updated[updated.length - 1]?.content) {
-          updated.pop()
-        }
-        return updated
-      })
-    } finally {
-      setStreaming(false)
-      textareaRef.current?.focus()
+        queryClient.invalidateQueries({ queryKey: ['messages', targetSessionId] })
+        queryClient.invalidateQueries({ queryKey: ['sessions', projectId] })
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Something went wrong')
+        setMessages((prev) => {
+          const updated = [...prev]
+          if (updated[updated.length - 1]?.role === 'agent' && !updated[updated.length - 1]?.content) {
+            updated.pop()
+          }
+          return updated
+        })
+      } finally {
+        setStreaming(false)
+        textareaRef.current?.focus()
+      }
+    } else {
+      // Files only, no agent response — just save the message
+      try {
+        await apiFetch('/api/chat', {
+          method: 'POST',
+          body: JSON.stringify({
+            session_id: targetSessionId,
+            content: '',
+            file_ids: fileIds,
+          }),
+        })
+        queryClient.invalidateQueries({ queryKey: ['messages', targetSessionId] })
+      } catch {
+        // Message was already optimistically added, ignore save error
+      }
     }
   }
 
@@ -205,29 +301,71 @@ function MakerChat({
   }
 
   const isLoading = !sessionsLoaded || messagesLoading
+  const canSend = (!!input.trim() || pendingFiles.length > 0) && !streaming && !isLoading && !creatingSession && !uploading
   const displayMessages = [...messages].reverse()
+
+  // Build a lookup of file_id → ProjectFile for inline display
+  const fileMap = new Map(projectFiles.map((f) => [f.id, f]))
 
   return (
     <div className="space-y-3">
-      {/* Input always visible */}
-      <div className="flex gap-2">
-        <textarea
-          ref={textareaRef}
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="Type a message..."
-          rows={1}
-          disabled={streaming || isLoading || creatingSession}
-          className="flex-1 resize-none px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy disabled:bg-gray-50 disabled:text-gray-400"
-        />
-        <button
-          onClick={handleSend}
-          disabled={!input.trim() || streaming || isLoading || creatingSession}
-          className="p-2.5 bg-brand-navy text-white rounded-lg hover:bg-brand-navy-light disabled:bg-brand-slate disabled:cursor-not-allowed transition-colors"
-        >
-          <Send className="h-5 w-5" />
-        </button>
+      {/* Input area */}
+      <div className="space-y-2">
+        <div className="flex gap-2">
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={streaming || isLoading || uploading}
+            className="p-2.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg disabled:opacity-50 transition-colors"
+            title="Attach files"
+          >
+            <Paperclip className="h-5 w-5" />
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            className="hidden"
+            onChange={(e) => {
+              if (e.target.files) addFiles(e.target.files)
+              e.target.value = '' // reset so same file can be re-selected
+            }}
+          />
+          <textarea
+            ref={textareaRef}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            onPaste={handlePaste}
+            placeholder="Type a message..."
+            rows={1}
+            disabled={streaming || isLoading || creatingSession || uploading}
+            className="flex-1 resize-none px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy disabled:bg-gray-50 disabled:text-gray-400"
+          />
+          <button
+            onClick={handleSend}
+            disabled={!canSend}
+            className="p-2.5 bg-brand-navy text-white rounded-lg hover:bg-brand-navy-light disabled:bg-brand-slate disabled:cursor-not-allowed transition-colors"
+          >
+            <Send className="h-5 w-5" />
+          </button>
+        </div>
+
+        {/* Pending files preview */}
+        {pendingFiles.length > 0 && (
+          <div className="flex gap-2 flex-wrap pl-12">
+            {pendingFiles.map((file, i) => (
+              <LocalFilePreview
+                key={`${file.name}-${i}`}
+                file={file}
+                onRemove={() => setPendingFiles((prev) => prev.filter((_, j) => j !== i))}
+              />
+            ))}
+          </div>
+        )}
+
+        {uploading && (
+          <p className="text-xs text-gray-400 pl-12">Uploading files...</p>
+        )}
       </div>
 
       {error && <StatusMessage type="error" message={error} onDismiss={() => setError(null)} />}
@@ -255,7 +393,18 @@ function MakerChat({
                   {msg.role === 'user' ? (msg.sender_email || userEmail) : 'iBuild4you assistant'}
                   {msg.created_at ? ` \u00b7 ${formatTimestamp(msg.created_at)}` : ''}
                 </p>
-                <MessageContent content={msg.content} />
+                {/* Inline file attachments */}
+                {msg.file_ids && msg.file_ids.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    {msg.file_ids.map((fid) => {
+                      const pf = fileMap.get(fid)
+                      return pf ? (
+                        <UploadedFilePreview key={fid} file={pf} compact />
+                      ) : null
+                    })}
+                  </div>
+                )}
+                {msg.content && <MessageContent content={msg.content} />}
               </div>
             </div>
           ))}
@@ -289,6 +438,35 @@ export function MockupsPanel({ mockups }: { mockups: WireframeMockup[] }) {
             {mockups.map((m, i) => (
               <WireframePreview key={i} mockup={m} />
             ))}
+          </div>
+        )}
+      </CardBody>
+    </Card>
+  )
+}
+
+function FilesPanel({ files }: { files: ProjectFile[] }) {
+  const [expanded, setExpanded] = useState(false)
+
+  return (
+    <Card hover={false}>
+      <CardBody>
+        <button
+          onClick={() => setExpanded(!expanded)}
+          className="w-full flex items-center justify-between text-left"
+        >
+          <h3 className="text-sm font-semibold text-brand-slate uppercase tracking-wide">
+            Files ({files.length})
+          </h3>
+          {expanded ? (
+            <ChevronUp className="h-4 w-4 text-gray-400" />
+          ) : (
+            <ChevronDown className="h-4 w-4 text-gray-400" />
+          )}
+        </button>
+        {expanded && (
+          <div className="mt-3">
+            <FilesGrid files={files} />
           </div>
         )}
       </CardBody>

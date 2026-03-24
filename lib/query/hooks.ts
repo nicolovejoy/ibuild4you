@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiFetch } from '@/lib/firebase/api-fetch'
-import type { Project, Session, Message, Brief, MemberRole } from '@/lib/types'
+import type { Project, Session, Message, Brief, MemberRole, ProjectFile } from '@/lib/types'
 
 // --- Projects ---
 
@@ -331,5 +331,59 @@ export function useMessages(sessionId: string | undefined) {
       return res.json()
     },
     enabled: !!sessionId,
+  })
+}
+
+// --- Files ---
+
+export function useProjectFiles(projectId: string | undefined) {
+  return useQuery<ProjectFile[]>({
+    queryKey: ['files', projectId],
+    queryFn: async () => {
+      const res = await apiFetch(`/api/files?project_id=${projectId}`)
+      if (!res.ok) throw new Error('Failed to load files')
+      return res.json()
+    },
+    enabled: !!projectId,
+  })
+}
+
+export function useUploadFiles() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({ projectId, sessionId, files }: { projectId: string; sessionId?: string; files: File[] }) => {
+      const formData = new FormData()
+      formData.append('project_id', projectId)
+      if (sessionId) formData.append('session_id', sessionId)
+      files.forEach((f) => formData.append('files', f))
+
+      const res = await apiFetch('/api/files', {
+        method: 'POST',
+        body: formData,
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || 'Failed to upload files')
+      }
+      return res.json() as Promise<ProjectFile[]>
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['files', variables.projectId] })
+    },
+  })
+}
+
+export function useFileUrl(fileId: string | undefined) {
+  return useQuery<string>({
+    queryKey: ['fileUrl', fileId],
+    queryFn: async () => {
+      const res = await apiFetch(`/api/files/${fileId}`)
+      if (!res.ok) throw new Error('Failed to load file')
+      const blob = await res.blob()
+      return URL.createObjectURL(blob)
+    },
+    enabled: !!fileId,
+    staleTime: 1000 * 60 * 30, // 30 min — file content doesn't change
   })
 }
