@@ -97,8 +97,8 @@ This is a learning project (Max, 19, college freshman, is contributing). Code sh
 
 ## Next Steps
 
-1. Verify file sharing in prod (upload, paste, builder Files tab, download) — in progress
-2. Finish MockupsPanel component test: install `@vitejs/plugin-react`, rename `.wip` → `.tsx`, verify. Test file at `components/maker/__tests__/MockupsPanel.test.tsx.wip`.
-3. Implement real-time multi-user sync (Firestore onSnapshot for messages). Plan at `.claude/plans/sprightly-juggling-storm.md`.
-4. Set up Resend domain verification for ibuild4you.com (admin emails silently fail without it)
-5. Two-tier brief: simple friendly version for maker, detailed version (with complexity/challenges) for builder
+1. Users & roles Phase 2: Replace `ADMIN_EMAILS` with `system_role` on users doc. Plan at `docs/users-and-roles-plan.md`.
+2. Users & roles Phase 3: Names on `users` only, maker self-edit, remove names from `project_members`.
+3. Users & roles Phase 4: First-visit name prompt for nameless makers.
+4. Implement real-time multi-user sync (Firestore onSnapshot for messages). Plan at `.claude/plans/sprightly-juggling-storm.md`.
+5. Set up Resend domain verification for ibuild4you.com (admin emails silently fail without it)
