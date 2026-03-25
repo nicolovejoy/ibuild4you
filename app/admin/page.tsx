@@ -16,6 +16,9 @@ interface UserDoc {
   last_name?: string
   display_name?: string
   created_at?: string
+  source?: string
+  has_users_doc?: boolean
+  role?: string
 }
 
 export default function AdminPage() {
@@ -133,7 +136,7 @@ function UserRow({ user, onSaved }: { user: UserDoc; onSaved: (u: UserDoc) => vo
     try {
       const res = await apiFetch('/api/users', {
         method: 'PATCH',
-        body: JSON.stringify({ user_id: user.id, first_name: firstName, last_name: lastName }),
+        body: JSON.stringify({ user_id: user.id, email: user.email, first_name: firstName, last_name: lastName }),
       })
       if (!res.ok) throw new Error('Save failed')
       const updated = await res.json()
@@ -151,6 +154,11 @@ function UserRow({ user, onSaved }: { user: UserDoc; onSaved: (u: UserDoc) => vo
     <div className={`flex items-center gap-3 px-4 py-3 ${needsName ? 'bg-amber-50' : ''}`}>
       <div className="flex-1 min-w-0">
         <p className="text-sm text-gray-500 truncate">{user.email}</p>
+        {user.source && user.source !== 'users' && (
+          <p className="text-[10px] text-gray-400">
+            {user.source === 'project_member' ? `${user.role || 'member'} (no user doc)` : 'approved only'}
+          </p>
+        )}
       </div>
       <input
         type="text"
