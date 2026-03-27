@@ -1,4 +1,4 @@
-import { getAuthenticatedUser, getAdminDb, getProjectRole, getUserDisplayName, isAdminEmail, ADMIN_EMAILS } from '@/lib/api/firebase-server-helpers'
+import { getAuthenticatedUser, getAdminDb, getProjectRole, getUserDisplayName, hasSystemRole, ADMIN_EMAILS } from '@/lib/api/firebase-server-helpers'
 import { buildSystemPrompt } from '@/lib/agent/system-prompt'
 import { AGENT_MODEL, AGENT_MAX_TOKENS, AGENT_TEMPERATURE } from '@/lib/agent/constants'
 import Anthropic from '@anthropic-ai/sdk'
@@ -42,7 +42,7 @@ export async function POST(request: Request) {
   const projectDoc = await db.collection('projects').doc(projectId).get()
   const projectData = projectDoc.data() || {}
 
-  const role = await getProjectRole(db, projectId, auth.uid, auth.email)
+  const role = await getProjectRole(db, projectId, auth.uid, auth.email, auth.systemRoles)
   if (!projectDoc.exists || !role) {
     return new Response(JSON.stringify({ error: 'Not found' }), {
       status: 404,
@@ -66,7 +66,7 @@ export async function POST(request: Request) {
   })
 
   // Notify admin of non-admin chat activity (fire-and-forget)
-  if (!isAdminEmail(auth.email)) {
+  if (!hasSystemRole(auth, 'admin')) {
     const projectTitle = projectData.title || 'Untitled project'
     getResend()
       .emails.send({

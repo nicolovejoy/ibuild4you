@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { getAuthenticatedUser, getAdminDb, isAdminEmail } from '@/lib/api/firebase-server-helpers'
+import { getAuthenticatedUser, getAdminDb, hasSystemRole } from '@/lib/api/firebase-server-helpers'
 import { getAdminAuth } from '@/lib/firebase/admin'
 
 // GET /api/users — admin-only: list all known people
@@ -8,7 +8,7 @@ export async function GET(request: Request) {
   const auth = await getAuthenticatedUser(request)
   if (auth.error) return auth.error
 
-  if (!isAdminEmail(auth.email)) {
+  if (!hasSystemRole(auth, 'admin')) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
@@ -76,7 +76,7 @@ export async function PATCH(request: Request) {
   const auth = await getAuthenticatedUser(request)
   if (auth.error) return auth.error
 
-  if (!isAdminEmail(auth.email)) {
+  if (!hasSystemRole(auth, 'admin')) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 

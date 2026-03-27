@@ -5,7 +5,7 @@ import {
   getAdminDb,
   getProjectRole,
   requireRole,
-  isAdminEmail,
+  hasSystemRole,
 } from '@/lib/api/firebase-server-helpers'
 import { generateSlug } from '@/lib/utils'
 
@@ -145,7 +145,7 @@ export async function GET(request: Request) {
   }
 
   // Admins see all projects
-  if (isAdminEmail(auth.email)) {
+  if (hasSystemRole(auth, 'admin')) {
     const allSnap = await db
       .collection('projects')
       .orderBy('created_at', 'desc')
@@ -224,7 +224,7 @@ export async function PATCH(request: Request) {
   }
 
   const db = getAdminDb()
-  const role = await getProjectRole(db, project_id, auth.uid, auth.email)
+  const role = await getProjectRole(db, project_id, auth.uid, auth.email, auth.systemRoles)
   const roleCheck = requireRole(role, 'builder')
   if (roleCheck) return roleCheck
 
@@ -265,7 +265,7 @@ export async function DELETE(request: Request) {
   }
 
   const db = getAdminDb()
-  const role = await getProjectRole(db, projectId, auth.uid, auth.email)
+  const role = await getProjectRole(db, projectId, auth.uid, auth.email, auth.systemRoles)
   const roleCheck = requireRole(role, 'owner')
   if (roleCheck) return roleCheck
 

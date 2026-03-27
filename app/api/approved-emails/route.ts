@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import {
   getAuthenticatedUser,
   getAdminDb,
-  isAdminEmail,
+  hasSystemRole,
   isApprovedEmail,
 } from '@/lib/api/firebase-server-helpers'
 
@@ -12,7 +12,7 @@ export async function GET(request: Request) {
   const auth = await getAuthenticatedUser(request)
   if (auth.error) return auth.error
 
-  const approved = await isApprovedEmail(auth.email)
+  const approved = await isApprovedEmail(auth.email, auth.systemRoles)
 
   // Upsert user doc with name from auth provider (fire-and-forget)
   if (approved && auth.displayName) {
@@ -40,7 +40,7 @@ export async function POST(request: Request) {
   const auth = await getAuthenticatedUser(request)
   if (auth.error) return auth.error
 
-  if (!isAdminEmail(auth.email)) {
+  if (!hasSystemRole(auth, 'admin')) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 

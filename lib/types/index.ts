@@ -20,12 +20,16 @@ export interface ProjectMember extends BaseEntity {
   last_name?: string
 }
 
-// Users collection — pure identity, no global role
+// System-level roles — platform-wide capabilities (not project-scoped)
+export type SystemRole = 'admin' | 'support'
+
+// Users collection — identity + system roles
 export interface AppUser extends BaseEntity {
   email: string
   display_name?: string
   first_name?: string
   last_name?: string
+  system_roles?: SystemRole[]
 }
 
 // Projects collection — one per maker engagement

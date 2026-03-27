@@ -1,6 +1,20 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiFetch } from '@/lib/firebase/api-fetch'
-import type { Project, Session, Message, Brief, MemberRole, ProjectFile } from '@/lib/types'
+import type { Project, Session, Message, Brief, MemberRole, SystemRole, ProjectFile } from '@/lib/types'
+
+// --- Current user ---
+
+export function useCurrentUser() {
+  return useQuery<{ uid: string; email: string; system_roles: SystemRole[] }>({
+    queryKey: ['currentUser'],
+    queryFn: async () => {
+      const res = await apiFetch('/api/users/me')
+      if (!res.ok) throw new Error('Failed to load user')
+      return res.json()
+    },
+    staleTime: 1000 * 60 * 5, // 5 min — roles rarely change
+  })
+}
 
 // --- Projects ---
 

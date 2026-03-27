@@ -5,7 +5,7 @@ import { useApproval } from '@/lib/hooks/useApproval'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { ArrowLeft, Check, Save } from 'lucide-react'
-import { isAdminEmail } from '@/lib/constants'
+import { useCurrentUser } from '@/lib/query/hooks'
 import { apiFetch } from '@/lib/firebase/api-fetch'
 import { useEscapeBack } from '@/lib/hooks/useEscapeBack'
 
@@ -47,9 +47,19 @@ export default function AdminPage() {
     )
   }
 
+  const { data: currentUser, isLoading: roleLoading } = useCurrentUser()
+
   if (!user || !approved) return null
 
-  const isAdmin = isAdminEmail(user.email)
+  if (roleLoading) {
+    return (
+      <div className="min-h-screen bg-brand-cream flex items-center justify-center">
+        <div className="animate-pulse text-brand-slate">Loading...</div>
+      </div>
+    )
+  }
+
+  const isAdmin = currentUser?.system_roles?.includes('admin') ?? false
   if (!isAdmin) {
     router.push('/dashboard')
     return null

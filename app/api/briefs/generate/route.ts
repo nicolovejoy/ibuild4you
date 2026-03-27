@@ -24,7 +24,7 @@ export async function POST(request: Request) {
 
   const db = getAdminDb()
 
-  const role = await getProjectRole(db, project_id, auth.uid, auth.email)
+  const role = await getProjectRole(db, project_id, auth.uid, auth.email, auth.systemRoles)
   const roleCheck = requireRole(role, 'builder')
   if (roleCheck) return roleCheck
 

@@ -9,8 +9,7 @@ import Link from 'next/link'
 import { Plus, FolderOpen, Share2, Copy, Check, Mail, Trash2, Settings } from 'lucide-react'
 import { ScaffoldIcon } from '@/components/ScaffoldIcon'
 import { BuildTimestamp } from '@/components/build-timestamp'
-import { useProjects, useCreateProject, useShareProject, useDeleteProject } from '@/lib/query/hooks'
-import { isAdminEmail } from '@/lib/constants'
+import { useProjects, useCreateProject, useShareProject, useDeleteProject, useCurrentUser } from '@/lib/query/hooks'
 import { LoadingButton } from '@/components/ui/LoadingButton'
 import { Card, CardBody } from '@/components/ui/Card'
 import { EmptyState } from '@/components/ui/EmptyState'
@@ -46,9 +45,11 @@ export default function DashboardPage() {
     )
   }
 
+  const { data: currentUser } = useCurrentUser()
+
   if (!user || !approved) return null
 
-  const isAdmin = isAdminEmail(user.email)
+  const isAdmin = currentUser?.system_roles?.includes('admin') ?? false
 
   return (
     <div className="min-h-screen bg-brand-cream">

@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server'
 import { getAdminAuth, getAdminDb } from '@/lib/firebase/admin'
 import { ADMIN_EMAILS, isAdminEmail } from '@/lib/constants'
-import type { MemberRole } from '@/lib/types'
+import type { MemberRole, SystemRole } from '@/lib/types'
 
-export { ADMIN_EMAILS, isAdminEmail }
+export { ADMIN_EMAILS }
 
 // --- Permission ladder ---
 // owner > builder > apprentice > maker
@@ -33,16 +33,17 @@ export function canManage(role: MemberRole | null): boolean {
 }
 
 // Look up a user's role on a project via project_members collection.
-// Falls back to ADMIN_EMAILS → implicit owner.
+// Admins get implicit owner on all projects.
 // Returns null if no access.
 export async function getProjectRole(
   db: FirebaseFirestore.Firestore,
   projectId: string,
   userId: string,
-  email: string
+  email: string,
+  systemRoles: SystemRole[] = []
 ): Promise<MemberRole | null> {
   // Instance admins get implicit owner on all projects
-  if (isAdminEmail(email)) return 'owner'
+  if (systemRoles.includes('admin') || isAdminEmail(email)) return 'owner'
 
   // Check explicit membership
   const memberSnap = await db
@@ -95,6 +96,7 @@ type AuthSuccess = {
   uid: string
   email: string
   displayName: string | null
+  systemRoles: SystemRole[]
   error: null
 }
 
@@ -102,6 +104,11 @@ type AuthFailure = {
   uid: null
   email: null
   error: NextResponse
+}
+
+// Check if an authenticated user has a specific system role.
+export function hasSystemRole(auth: AuthSuccess, role: SystemRole): boolean {
+  return auth.systemRoles.includes(role)
 }
 
 export async function getAuthenticatedUser(request: Request): Promise<AuthSuccess | AuthFailure> {
@@ -118,10 +125,26 @@ export async function getAuthenticatedUser(request: Request): Promise<AuthSucces
 
   try {
     const decoded = await getAdminAuth().verifyIdToken(token)
+    const uid = decoded.uid
+    const email = decoded.email ?? ''
+
+    // Read system_roles from the users doc, fall back to ADMIN_EMAILS
+    const db = getAdminDb()
+    const userDoc = await db.collection('users').doc(uid).get()
+    const userData = userDoc.data()
+    let systemRoles: SystemRole[] = []
+    if (Array.isArray(userData?.system_roles)) {
+      systemRoles = userData.system_roles as SystemRole[]
+    } else if (isAdminEmail(email)) {
+      // Dead-man fallback: hardcoded list catches admins until backfill runs
+      systemRoles = ['admin']
+    }
+
     return {
-      uid: decoded.uid,
-      email: decoded.email ?? '',
+      uid,
+      email,
       displayName: (decoded.name as string) || null,
+      systemRoles,
       error: null,
     }
   } catch {
@@ -153,8 +176,8 @@ export async function getUserDisplayName(
   return email.split('@')[0]
 }
 
-export async function isApprovedEmail(email: string): Promise<boolean> {
-  if (isAdminEmail(email)) return true
+export async function isApprovedEmail(email: string, systemRoles: SystemRole[] = []): Promise<boolean> {
+  if (systemRoles.includes('admin') || isAdminEmail(email)) return true
 
   const db = getAdminDb()
   const doc = await db.collection('approved_emails').doc(email).get()
