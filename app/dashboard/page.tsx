@@ -23,6 +23,7 @@ import { stripCodeFences } from '@/lib/utils'
 export default function DashboardPage() {
   const { user, loading: authLoading, isAuthenticated } = useAuth()
   const { approved, loading: approvalLoading } = useApproval()
+  const { data: currentUser } = useCurrentUser()
   const router = useRouter()
 
   useEffect(() => {
@@ -44,8 +45,6 @@ export default function DashboardPage() {
       </div>
     )
   }
-
-  const { data: currentUser } = useCurrentUser()
 
   if (!user || !approved) return null
 

@@ -24,6 +24,7 @@ interface UserDoc {
 export default function AdminPage() {
   const { user, loading: authLoading, isAuthenticated } = useAuth()
   const { approved, loading: approvalLoading } = useApproval()
+  const { data: currentUser, isLoading: roleLoading } = useCurrentUser()
   const router = useRouter()
   useEscapeBack('/dashboard')
 
@@ -39,25 +40,15 @@ export default function AdminPage() {
     }
   }, [approvalLoading, approved, isAuthenticated, router])
 
-  if (authLoading || approvalLoading) {
+  if (authLoading || approvalLoading || roleLoading) {
     return (
       <div className="min-h-screen bg-brand-cream flex items-center justify-center">
         <div className="animate-pulse text-brand-slate">Loading...</div>
       </div>
     )
   }
-
-  const { data: currentUser, isLoading: roleLoading } = useCurrentUser()
 
   if (!user || !approved) return null
-
-  if (roleLoading) {
-    return (
-      <div className="min-h-screen bg-brand-cream flex items-center justify-center">
-        <div className="animate-pulse text-brand-slate">Loading...</div>
-      </div>
-    )
-  }
 
   const isAdmin = currentUser?.system_roles?.includes('admin') ?? false
   if (!isAdmin) {
