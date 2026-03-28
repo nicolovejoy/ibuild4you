@@ -97,8 +97,8 @@ This is a learning project (Max, 19, college freshman, is contributing). Code sh
 
 ## Next Steps
 
-1. Users & roles Phase 2: Replace `ADMIN_EMAILS` with `system_role` on users doc. Plan at `docs/users-and-roles-plan.md`.
-2. Users & roles Phase 3: Names on `users` only, maker self-edit, remove names from `project_members`.
-3. Users & roles Phase 4: First-visit name prompt for nameless makers.
-4. Implement real-time multi-user sync (Firestore onSnapshot for messages). Plan at `.claude/plans/sprightly-juggling-storm.md`.
-5. Set up Resend domain verification for ibuild4you.com (admin emails silently fail without it)
+1. Users & roles Phase 3: Names on `users` only, maker self-edit, remove names from `project_members`. Plan at `docs/users-and-roles-plan.md`.
+2. Users & roles Phase 4: First-visit name prompt for nameless makers.
+3. Fix turn indicator: role-aware labels (maker sees "Waiting for builder" / builder sees "Your turn"), and handle end-of-conversation state.
+4. Remove `ADMIN_EMAILS` fallback once both admins have signed in post-deploy (check Firebase Console for `system_roles` on Max's doc).
+5. Implement real-time multi-user sync (Firestore onSnapshot for messages). Plan at `.claude/plans/sprightly-juggling-storm.md`.
