@@ -180,7 +180,7 @@ export async function isApprovedEmail(email: string, systemRoles: SystemRole[] =
   if (systemRoles.includes('admin') || isAdminEmail(email)) return true
 
   const db = getAdminDb()
-  const doc = await db.collection('approved_emails').doc(email).get()
+  const doc = await db.collection('approved_emails').doc(email.toLowerCase()).get()
   return doc.exists
 }
 
