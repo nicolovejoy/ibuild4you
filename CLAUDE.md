@@ -99,3 +99,5 @@ This is a learning project (Max, 19, college freshman, is contributing). Code sh
 
 1. Remove `ADMIN_EMAILS` fallback once both admins have signed in post-deploy (check Firebase Console for `system_roles` on Max's doc).
 2. Implement real-time multi-user sync (Firestore onSnapshot for messages). Plan at `.claude/plans/sprightly-juggling-storm.md`.
+3. Add turn indicator to maker project view (currently only on builder view and dashboard).
+4. Investigate brother's approval issue if it persists (elovejoy5@gmail.com — check Firestore `approved_emails` collection).
