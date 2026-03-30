@@ -33,6 +33,8 @@ export const copy = {
         shareLink,
       ].join('\n')
     },
+    reminder: ({ projectTitle, shareLink }: { projectTitle: string; shareLink: string }) =>
+      [`Just a reminder — your conversation for ${projectTitle} is ready whenever you have a few minutes.`, '', shareLink].join('\n'),
   },
 
   // --- Dashboard ---

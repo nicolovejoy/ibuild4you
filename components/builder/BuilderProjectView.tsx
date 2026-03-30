@@ -858,14 +858,8 @@ function NextConversationTab({
         <EditableSetup project={project} />
       )}
 
-      {/* Prep next conversation — or prompt to share first */}
-      {project.requester_email ? (
-        <PrepNextSession
-          project={project}
-          projectId={projectId}
-          sessionNumber={sessions.length + 1}
-        />
-      ) : (
+      {/* Prep next conversation, re-nudge, or prompt to share */}
+      {!project.requester_email ? (
         <Card hover={false}>
           <CardBody>
             <h2 className="text-sm font-semibold text-brand-slate uppercase tracking-wide flex items-center gap-1.5 mb-3">
@@ -880,6 +874,14 @@ function NextConversationTab({
             </LoadingButton>
           </CardBody>
         </Card>
+      ) : activeSession && !hasUserMessages ? (
+        <RenudgeCard project={project} projectId={projectId} />
+      ) : (
+        <PrepNextSession
+          project={project}
+          projectId={projectId}
+          sessionNumber={sessions.length + 1}
+        />
       )}
     </div>
   )
@@ -1140,6 +1142,43 @@ function EditableSetup({ project }: { project: Project }) {
             {updateProject.error && <span className="text-xs text-red-500">{updateProject.error.message}</span>}
           </div>
         </div>
+      </CardBody>
+    </Card>
+  )
+}
+
+function RenudgeCard({ project, projectId }: { project: Project; projectId: string }) {
+  const [copied, setCopied] = useState(false)
+  const updateProject = useUpdateProject()
+
+  const shareLink = typeof window !== 'undefined' ? `${window.location.origin}/projects/${project.slug || projectId}` : ''
+  const reminderMessage = copy.nudge.reminder({ projectTitle: project.title, shareLink })
+  const makerName = project.requester_first_name || project.requester_email?.split('@')[0] || 'maker'
+
+  return (
+    <Card hover={false}>
+      <CardBody>
+        <h2 className="text-sm font-semibold text-brand-slate uppercase tracking-wide flex items-center gap-1.5 mb-3">
+          <Mail className="h-4 w-4" />
+          Waiting on {makerName}
+        </h2>
+        <p className="text-sm text-gray-600 mb-3">
+          {makerName} hasn&apos;t responded yet. Send a reminder:
+        </p>
+        <textarea readOnly value={reminderMessage} rows={3} className="w-full px-2.5 py-1.5 bg-gray-50 border border-gray-300 rounded-md text-sm text-gray-700 resize-none mb-2" />
+        <button
+          onClick={async () => {
+            await navigator.clipboard.writeText(reminderMessage)
+            setCopied(true)
+            setTimeout(() => setCopied(false), 2000)
+            const now = new Date().toISOString()
+            updateProject.mutate({ project_id: projectId, last_nudged_at: now, last_builder_activity_at: now })
+          }}
+          className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand-navy"
+        >
+          {copied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+          {copied ? 'Copied!' : 'Copy reminder'}
+        </button>
       </CardBody>
     </Card>
   )
