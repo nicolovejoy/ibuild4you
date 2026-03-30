@@ -38,6 +38,7 @@ import { copy } from '@/lib/copy'
 import { apiFetch } from '@/lib/firebase/api-fetch'
 import { useQueryClient } from '@tanstack/react-query'
 import { FilesGrid } from '@/components/ui/FilesGrid'
+import { getTurnIndicator } from '@/lib/turn-indicator'
 import type { Project, Session, BriefContent, WireframeMockup } from '@/lib/types'
 
 type TabId = 'sessions' | 'brief' | 'files' | 'setup'
@@ -72,8 +73,8 @@ export function BuilderProjectView({ projectId, userEmail }: { projectId: string
     router.replace(`/projects/${project?.slug || projectId}${qs ? `?${qs}` : ''}`, { scroll: false })
   }
 
-  // Turn indicator
-  const turn = getTurnIndicator(project)
+  // Turn indicator — builder view always sees builder perspective
+  const turn = getTurnIndicator(project, 'builder')
 
   return (
     <div className="min-h-screen bg-brand-cream">
@@ -1387,20 +1388,6 @@ function ListEditor({
 
 // --- Helpers ---
 
-function getTurnIndicator(project: Project | undefined): { label: string; className: string } | null {
-  if (!project) return null
-  if (!project.requester_email || !project.session_count) {
-    return { label: 'Needs setup', className: 'bg-gray-100 text-gray-600' }
-  }
-  const makerMessagedInCurrentSession = project.last_maker_message_at
-    && project.latest_session_created_at
-    && project.last_maker_message_at > project.latest_session_created_at
-  if (!makerMessagedInCurrentSession) {
-    const name = project.requester_first_name || project.requester_email.split('@')[0]
-    return { label: `Waiting on ${name}`, className: 'bg-blue-100 text-blue-700' }
-  }
-  return { label: 'Your turn', className: 'bg-amber-100 text-amber-700' }
-}
 
 function hasBriefContent(brief: BriefContent): boolean {
   return !!(

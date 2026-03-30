@@ -27,7 +27,8 @@ async function ensureUniqueSlug(db: FirebaseFirestore.Firestore, slug: string, e
 // Enrich project docs with last activity and session count
 async function enrichProjects(
   db: FirebaseFirestore.Firestore,
-  projectDocs: { id: string; [key: string]: unknown }[]
+  projectDocs: { id: string; [key: string]: unknown }[],
+  viewerRoles?: Map<string, string> // project_id → role
 ) {
   return Promise.all(
     projectDocs.map(async (project) => {
@@ -105,6 +106,8 @@ async function enrichProjects(
         }
       }
 
+      const hasActiveSession = sessionsSnap.docs.some((d) => d.data().status === 'active')
+
       return {
         ...project,
         session_count: sessionsSnap.size,
@@ -115,6 +118,8 @@ async function enrichProjects(
         brief_version: briefVersion,
         brief_decision_count: briefDecisionCount,
         brief_feature_count: briefFeatureCount,
+        viewer_role: viewerRoles?.get(project.id) ?? null,
+        has_active_session: hasActiveSession,
       }
     })
   )
@@ -152,7 +157,20 @@ export async function GET(request: Request) {
       .orderBy('created_at', 'desc')
       .get()
     const projects = allSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
-    return NextResponse.json(await enrichProjects(db, projects))
+
+    // Build viewer_role map for admin: check their memberships, default to 'admin'
+    const adminMemberSnap = await db
+      .collection('project_members')
+      .where('email', '==', auth.email)
+      .get()
+    const viewerRoles = new Map<string, string>()
+    for (const doc of projects) viewerRoles.set(doc.id, 'admin')
+    for (const doc of adminMemberSnap.docs) {
+      const d = doc.data()
+      viewerRoles.set(d.project_id as string, d.role as string)
+    }
+
+    return NextResponse.json(await enrichProjects(db, projects, viewerRoles))
   }
 
   // Get project IDs from membership
@@ -209,7 +227,20 @@ export async function GET(request: Request) {
   // Sort by created_at desc
   projects.sort((a, b) => (b.created_at as string).localeCompare(a.created_at as string))
 
-  return NextResponse.json(await enrichProjects(db, projects))
+  // Build viewer_role map from membership queries
+  const viewerRoles = new Map<string, string>()
+  for (const doc of memberSnap.docs) {
+    const d = doc.data()
+    viewerRoles.set(d.project_id as string, d.role as string)
+  }
+  for (const doc of memberByEmail.docs) {
+    const d = doc.data()
+    if (!viewerRoles.has(d.project_id as string)) {
+      viewerRoles.set(d.project_id as string, d.role as string)
+    }
+  }
+
+  return NextResponse.json(await enrichProjects(db, projects, viewerRoles))
 }
 
 // PATCH /api/projects — update project setup fields (builder+)

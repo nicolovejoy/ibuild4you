@@ -59,6 +59,8 @@ export interface Project extends BaseEntity {
   brief_version?: number | null
   brief_decision_count?: number | null
   brief_feature_count?: number | null
+  viewer_role?: MemberRole | 'admin' | null
+  has_active_session?: boolean
 }
 
 // Sessions collection — each conversation between requester and agent

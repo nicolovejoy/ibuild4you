@@ -17,6 +17,7 @@ import { StatusMessage } from '@/components/ui/StatusMessage'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { Modal } from '@/components/ui/Modal'
 import type { Project } from '@/lib/types'
+import { getTurnIndicator } from '@/lib/turn-indicator'
 import { copy, formatDisplayName } from '@/lib/copy'
 import { stripCodeFences } from '@/lib/utils'
 
@@ -396,7 +397,7 @@ function ProjectList({ isAdmin }: { isAdmin: boolean }) {
     <>
       <div className="space-y-3">
         {projects.map((project) => {
-          const turn = getTurnIndicator(project)
+          const turn = getTurnIndicator(project, project.viewer_role ?? null)
           return (
             <Card key={project.id}>
               <CardBody>
@@ -407,9 +408,11 @@ function ProjectList({ isAdmin }: { isAdmin: boolean }) {
                   >
                     <div className="flex items-center gap-2 mb-1">
                       <h3 className="font-medium text-gray-900">{project.title}</h3>
-                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${turn.className}`}>
-                        {turn.label}
-                      </span>
+                      {turn && (
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${turn.className}`}>
+                          {turn.label}
+                        </span>
+                      )}
                     </div>
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-sm text-gray-500">
                       {project.requester_email && (
@@ -734,21 +737,6 @@ function DeleteProjectModal({ project, onClose }: { project: Project; onClose: (
       </div>
     </Modal>
   )
-}
-
-function getTurnIndicator(project: Project): { label: string; className: string } {
-  if (!project.requester_email || !project.session_count) {
-    return { label: copy.dashboard.turnNeedsSetup, className: 'bg-gray-100 text-gray-600' }
-  }
-  // Maker must have messaged since the latest session was created
-  const makerMessagedInCurrentSession = project.last_maker_message_at
-    && project.latest_session_created_at
-    && project.last_maker_message_at > project.latest_session_created_at
-  if (!makerMessagedInCurrentSession) {
-    const name = makerShortName(project)
-    return { label: copy.dashboard.turnAwaitingMaker(name), className: 'bg-blue-100 text-blue-700' }
-  }
-  return { label: copy.dashboard.turnYourTurn, className: 'bg-amber-100 text-amber-700' }
 }
 
 function makerDisplayName(project: Project): string | null {
