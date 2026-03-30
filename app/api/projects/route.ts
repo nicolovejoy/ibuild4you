@@ -8,6 +8,7 @@ import {
   hasSystemRole,
 } from '@/lib/api/firebase-server-helpers'
 import { generateSlug } from '@/lib/utils'
+import { copy } from '@/lib/copy'
 
 // Ensure slug is unique by appending -2, -3, etc. if needed
 async function ensureUniqueSlug(db: FirebaseFirestore.Firestore, slug: string, excludeProjectId?: string): Promise<string> {
@@ -406,7 +407,8 @@ export async function POST(request: Request) {
       created_at: now,
     })
 
-    // Mark project as shared
+    // Mark project as shared (write back to Firestore since doc was already created)
+    await docRef.update({ shared_at: now })
     projectData.shared_at = now
   }
 
@@ -424,6 +426,17 @@ export async function POST(request: Request) {
     }
   }
   const sessionRef = await db.collection('sessions').add(sessionData)
+
+  // Add welcome message as first message so the maker sees a greeting
+  const welcomeMessage = (projectData.welcome_message as string | undefined)
+    || copy.chat.defaultWelcomeMessage(title.trim())
+  await db.collection('messages').add({
+    session_id: sessionRef.id,
+    role: 'agent',
+    content: welcomeMessage,
+    created_at: now,
+    updated_at: now,
+  })
 
   return NextResponse.json({ ...projectData, id: docRef.id, session_id: sessionRef.id }, { status: 201 })
 }

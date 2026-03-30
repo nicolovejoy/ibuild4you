@@ -188,6 +188,7 @@ export function BuilderProjectView({ projectId, userEmail }: { projectId: string
             projectId={projectId}
             sessions={sessions || []}
             activeSession={activeSession || null}
+            onShare={() => setShowShareModal(true)}
           />
         )}
       </main>
@@ -838,11 +839,13 @@ function NextConversationTab({
   projectId,
   sessions,
   activeSession,
+  onShare,
 }: {
   project: Project
   projectId: string
   sessions: Session[]
   activeSession: Session | null
+  onShare: () => void
 }) {
   const { data: activeMessages } = useMessages(activeSession?.id)
   const hasUserMessages = activeMessages?.some((m) => m.role === 'user') ?? false
@@ -854,13 +857,28 @@ function NextConversationTab({
         <EditableSetup project={project} />
       )}
 
-      {/* Prep next conversation */}
-      {project.requester_email && (
+      {/* Prep next conversation — or prompt to share first */}
+      {project.requester_email ? (
         <PrepNextSession
           project={project}
           projectId={projectId}
           sessionNumber={sessions.length + 1}
         />
+      ) : (
+        <Card hover={false}>
+          <CardBody>
+            <h2 className="text-sm font-semibold text-brand-slate uppercase tracking-wide flex items-center gap-1.5 mb-3">
+              <Share2 className="h-4 w-4" />
+              Invite a maker
+            </h2>
+            <p className="text-sm text-gray-600 mb-4">
+              Share this project with a maker to start the first conversation. You&apos;ll get a link and passcode to send them.
+            </p>
+            <LoadingButton variant="primary" icon={Share2} onClick={onShare}>
+              Share project
+            </LoadingButton>
+          </CardBody>
+        </Card>
       )}
     </div>
   )
