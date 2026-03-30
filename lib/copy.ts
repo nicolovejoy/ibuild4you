@@ -6,16 +6,13 @@ export const copy = {
   invite: {
     body: ({ shareLink, email, passcode }: { shareLink: string; email: string; passcode: string | null }) =>
       [
-        `Hey! I've set up a project for us to work on together — just a short conversation to figure out what you need.`,
+        `I set up a quick conversation for you — an AI assistant will ask about what you're looking for, and I'll use that to start building.`,
         '',
-        `Here's your link:`,
         shareLink,
         '',
-        `Sign in with Google, or use these credentials:`,
+        `Sign in with Google, or use:`,
         `Email: ${email}`,
         `Passcode: ${passcode || '(loading...)'}`,
-        '',
-        `No rush — you can come back anytime to pick up where you left off.`,
       ].join('\n'),
     emailLabel: 'Invite message',
   },
@@ -27,18 +24,13 @@ export const copy = {
       sessionMode?: 'discover' | 'converge'
     }) => {
       const modeHint = sessionMode === 'converge'
-        ? 'This time we want to narrow things down and lock in some decisions.'
-        : 'We want to dig deeper into a few things from last time.'
+        ? 'Ready to narrow things down and lock in a few decisions.'
+        : 'Want to dig into a few things from last time.'
 
       return [
-        `Hey! Thanks for the last conversation about ${projectTitle} — really helpful.`,
+        `New conversation ready for ${projectTitle}. ${note || modeHint}`,
         '',
-        note || modeHint,
-        '',
-        `Same link as before:`,
         shareLink,
-        '',
-        `Just sign in when you have a few minutes — there'll be a fresh chat ready to go.`,
       ].join('\n')
     },
   },
