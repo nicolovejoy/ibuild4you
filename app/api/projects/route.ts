@@ -417,7 +417,7 @@ export async function POST(request: Request) {
   const requesterEmail = projectData.requester_email as string | undefined
   if (requesterEmail) {
     const passcode = crypto.randomBytes(4).toString('base64url').slice(0, 6).toUpperCase()
-    const makerData: Record<string, unknown> = {
+    await db.collection('project_members').add({
       project_id: docRef.id,
       user_id: '',
       email: requesterEmail,
@@ -426,10 +426,7 @@ export async function POST(request: Request) {
       added_by: auth.email,
       created_at: now,
       updated_at: now,
-    }
-    if (projectData.requester_first_name) makerData.first_name = projectData.requester_first_name
-    if (projectData.requester_last_name) makerData.last_name = projectData.requester_last_name
-    await db.collection('project_members').add(makerData)
+    })
 
     // Approve email so they can sign in (doc ID must be the email)
     await db.collection('approved_emails').doc(requesterEmail.toLowerCase()).set({

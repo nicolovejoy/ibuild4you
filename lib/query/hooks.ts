@@ -4,8 +4,16 @@ import type { Project, Session, Message, Brief, MemberRole, SystemRole, ProjectF
 
 // --- Current user ---
 
+export type CurrentUser = {
+  uid: string
+  email: string
+  system_roles: SystemRole[]
+  first_name: string | null
+  last_name: string | null
+}
+
 export function useCurrentUser() {
-  return useQuery<{ uid: string; email: string; system_roles: SystemRole[] }>({
+  return useQuery<CurrentUser>({
     queryKey: ['currentUser'],
     queryFn: async () => {
       const res = await apiFetch('/api/users/me')
@@ -13,6 +21,25 @@ export function useCurrentUser() {
       return res.json()
     },
     staleTime: 1000 * 60 * 5, // 5 min — roles rarely change
+  })
+}
+
+export function useUpdateCurrentUser() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (data: { first_name: string; last_name?: string }) => {
+      const res = await apiFetch('/api/users/me', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      })
+      if (!res.ok) throw new Error('Failed to update user')
+      return res.json()
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['currentUser'] })
+      queryClient.invalidateQueries({ queryKey: ['projects'] })
+    },
   })
 }
 

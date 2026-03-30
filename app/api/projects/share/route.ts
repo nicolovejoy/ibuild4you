@@ -64,7 +64,7 @@ export async function POST(request: Request) {
     .get()
 
   if (existingMember.empty) {
-    const memberData: Record<string, unknown> = {
+    await db.collection('project_members').add({
       project_id,
       user_id: '', // will be set on claim
       email: normalizedEmail,
@@ -73,20 +73,14 @@ export async function POST(request: Request) {
       added_by: auth.email,
       created_at: now,
       updated_at: now,
-    }
-    if (first_name) memberData.first_name = first_name.trim()
-    if (last_name) memberData.last_name = last_name.trim()
-    await db.collection('project_members').add(memberData)
+    })
   } else {
     // Update role and regenerate passcode if re-sharing
-    const updateData: Record<string, unknown> = {
+    await existingMember.docs[0].ref.update({
       role: assignedRole,
       passcode,
       updated_at: now,
-    }
-    if (first_name) updateData.first_name = first_name.trim()
-    if (last_name) updateData.last_name = last_name.trim()
-    await existingMember.docs[0].ref.update(updateData)
+    })
   }
 
   // Keep requester info on the project for dashboard display

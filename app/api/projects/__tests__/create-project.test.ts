@@ -27,7 +27,7 @@ let lastCollectionName = ''
 const mockAdd = vi.fn(async (data: Record<string, unknown>) => {
   if (!addedDocs[lastCollectionName]) addedDocs[lastCollectionName] = []
   addedDocs[lastCollectionName].push(data)
-  return { id: `mock-${lastCollectionName}-id` }
+  return { id: `mock-${lastCollectionName}-id`, update: vi.fn(async () => {}) }
 })
 
 const mockSet = vi.fn(async (data: Record<string, unknown>) => {
@@ -51,7 +51,7 @@ const mockCollection = vi.fn((name: string) => {
     where: mockWhere,
     doc: vi.fn((id: string) => {
       lastDocId = id
-      return { set: mockSet }
+      return { set: mockSet, update: vi.fn(async () => {}) }
     }),
   }
 })
@@ -112,8 +112,8 @@ describe('POST /api/projects', () => {
     expect(data.id).toBe('mock-projects-id')
     expect(data.session_id).toBe('mock-sessions-id')
 
-    // Should have created 3 documents: project, member, session
-    expect(mockAdd).toHaveBeenCalledTimes(3)
+    // Should have created 4 documents: project, member, session, welcome message
+    expect(mockAdd).toHaveBeenCalledTimes(4)
   })
 
   it('creates owner membership for the creator', async () => {
@@ -157,9 +157,10 @@ describe('POST /api/projects', () => {
       project_id: 'mock-projects-id',
       email: 'jamie@example.com',
       role: 'maker',
-      first_name: 'Jamie',
-      last_name: 'Baker',
     })
+    // Names no longer written to project_members (Phase 3)
+    expect(maker!.first_name).toBeUndefined()
+    expect(maker!.last_name).toBeUndefined()
     // Maker should have a passcode
     expect(maker!.passcode).toBeDefined()
     expect(typeof maker!.passcode).toBe('string')

@@ -149,16 +149,14 @@ export async function PATCH(request: Request) {
     })
   }
 
-  // Also update project_members with this email so getUserDisplayName works
-  // until we fully migrate to users-only names
-  const memberSnap = await db.collection('project_members')
-    .where('email', '==', targetEmail)
-    .get()
-  for (const doc of memberSnap.docs) {
-    await doc.ref.update({
-      ...(uid && { user_id: uid }),
-      updated_at: now,
-    })
+  // Sync user_id onto project_members if we resolved a Firebase UID
+  if (uid) {
+    const memberSnap = await db.collection('project_members')
+      .where('email', '==', targetEmail)
+      .get()
+    for (const doc of memberSnap.docs) {
+      await doc.ref.update({ user_id: uid, updated_at: now })
+    }
   }
 
   const updated = (await userRef.get()).data()

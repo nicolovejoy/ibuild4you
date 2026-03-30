@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Send, ChevronDown, ChevronUp, MessageSquare, HelpCircle, Paperclip } from 'lucide-react'
+import { ArrowLeft, Send, ChevronDown, ChevronUp, MessageSquare, HelpCircle, Paperclip, Pencil } from 'lucide-react'
 import { BuildTimestamp } from '@/components/build-timestamp'
 import { Card, CardBody } from '@/components/ui/Card'
 import { MessageContent } from '@/components/ui/MessageContent'
@@ -19,7 +19,11 @@ import {
   useCreateSession,
   useProjectFiles,
   useUploadFiles,
+  useCurrentUser,
+  useUpdateCurrentUser,
 } from '@/lib/query/hooks'
+import { Modal } from '@/components/ui/Modal'
+import { LoadingButton } from '@/components/ui/LoadingButton'
 import { apiFetch } from '@/lib/firebase/api-fetch'
 import { useEscapeBack } from '@/lib/hooks/useEscapeBack'
 import { useQueryClient } from '@tanstack/react-query'
@@ -30,9 +34,25 @@ export function MakerProjectView({ projectId, userEmail }: { projectId: string; 
   const { data: project, isLoading: projectLoading } = useProject(projectId)
   const { data: sessions } = useSessions(projectId)
   const { data: projectFiles } = useProjectFiles(projectId)
+  const { data: currentUser, isLoading: userLoading } = useCurrentUser()
+  const updateUser = useUpdateCurrentUser()
+  const [editingName, setEditingName] = useState(false)
+  const [editFirst, setEditFirst] = useState('')
+  const [editLast, setEditLast] = useState('')
   useEscapeBack('/dashboard')
   const activeSession = sessions?.find((s) => s.status === 'active')
   const completedSessions = sessions?.filter((s) => s.status === 'completed') || []
+
+  // Show name prompt for nameless makers (Feature 4)
+  const needsName = !userLoading && currentUser && !currentUser.first_name
+
+  if (needsName) {
+    return <NamePromptModal onSave={updateUser.mutateAsync} saving={updateUser.isPending} />
+  }
+
+  const displayName = currentUser?.first_name
+    ? `${currentUser.first_name}${currentUser.last_name ? ` ${currentUser.last_name.charAt(0)}` : ''}`
+    : null
 
   return (
     <div className="min-h-screen bg-brand-cream">
@@ -47,6 +67,49 @@ export function MakerProjectView({ projectId, userEmail }: { projectId: string; 
             </span>
             <BuildTimestamp />
           </div>
+          {displayName && !editingName && (
+            <button
+              onClick={() => { setEditFirst(currentUser?.first_name || ''); setEditLast(currentUser?.last_name || ''); setEditingName(true) }}
+              className="flex items-center gap-1 text-sm text-gray-500 hover:text-brand-navy"
+              title="Edit your name"
+            >
+              {displayName}
+              <Pencil className="h-3 w-3" />
+            </button>
+          )}
+          {editingName && (
+            <div className="flex items-center gap-1.5">
+              <input
+                type="text"
+                value={editFirst}
+                onChange={(e) => setEditFirst(e.target.value)}
+                placeholder="First"
+                className="w-20 px-1.5 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-brand-navy"
+                autoFocus
+              />
+              <input
+                type="text"
+                value={editLast}
+                onChange={(e) => setEditLast(e.target.value)}
+                placeholder="Last"
+                className="w-20 px-1.5 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-brand-navy"
+              />
+              <LoadingButton
+                variant="ghost"
+                size="sm"
+                loading={updateUser.isPending}
+                onClick={async () => {
+                  if (editFirst.trim()) {
+                    await updateUser.mutateAsync({ first_name: editFirst.trim(), last_name: editLast.trim() })
+                    setEditingName(false)
+                  }
+                }}
+              >
+                Save
+              </LoadingButton>
+              <button onClick={() => setEditingName(false)} className="text-xs text-gray-500 hover:text-gray-700">Cancel</button>
+            </div>
+          )}
           <Link href="/about" className="p-1.5 hover:bg-gray-100 rounded text-gray-400 hover:text-gray-600">
             <HelpCircle className="h-4 w-4" />
           </Link>
@@ -566,4 +629,55 @@ function formatTimestamp(iso: string): string {
   const time = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
   if (isToday) return time
   return `${date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} ${time}`
+}
+
+// --- Name prompt for first-time makers ---
+
+function NamePromptModal({
+  onSave,
+  saving,
+}: {
+  onSave: (data: { first_name: string; last_name?: string }) => Promise<unknown>
+  saving: boolean
+}) {
+  const [first, setFirst] = useState('')
+  const [last, setLast] = useState('')
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!first.trim()) return
+    await onSave({ first_name: first.trim(), last_name: last.trim() || undefined })
+  }
+
+  return (
+    <div className="min-h-screen bg-brand-cream flex items-center justify-center">
+      <Card hover={false}>
+        <CardBody>
+          <form onSubmit={handleSubmit} className="space-y-4 w-72">
+            <h2 className="text-lg font-semibold text-brand-charcoal">What should we call you?</h2>
+            <p className="text-sm text-gray-600">Just so your builder knows who they&apos;re working with.</p>
+            <input
+              type="text"
+              value={first}
+              onChange={(e) => setFirst(e.target.value)}
+              placeholder="First name"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
+              autoFocus
+              required
+            />
+            <input
+              type="text"
+              value={last}
+              onChange={(e) => setLast(e.target.value)}
+              placeholder="Last name (optional)"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
+            />
+            <LoadingButton type="submit" variant="primary" loading={saving} disabled={!first.trim()}>
+              Continue
+            </LoadingButton>
+          </form>
+        </CardBody>
+      </Card>
+    </div>
+  )
 }

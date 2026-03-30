@@ -16,8 +16,6 @@ export interface ProjectMember extends BaseEntity {
   role: MemberRole
   added_by: string // email of who added them
   passcode?: string
-  first_name?: string
-  last_name?: string
 }
 
 // System-level roles — platform-wide capabilities (not project-scoped)
