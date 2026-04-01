@@ -97,7 +97,8 @@ This is a learning project (Max, 19, college freshman, is contributing). Code sh
 
 ## Next Steps
 
-1. Remove `ADMIN_EMAILS` fallback once both admins have signed in post-deploy (check Firebase Console for `system_roles` on Max's doc).
-2. Implement real-time multi-user sync (Firestore onSnapshot for messages). Plan at `.claude/plans/sprightly-juggling-storm.md`.
-3. Add turn indicator to maker project view (currently only on builder view and dashboard).
-4. Investigate brother's approval issue if it persists (elovejoy5@gmail.com — check Firestore `approved_emails` collection).
+1. Add turn indicator to maker project view (currently only on builder view and dashboard).
+2. Extract shared SSE streaming hook from MakerChat and SessionChat (~50 lines duplicated) — improves testability and DRY.
+3. Extend JSON import to accept `brief` and `session_opener` fields (currently requires manual field remapping).
+4. Upgrade message polling to Firestore onSnapshot for sub-second real-time sync (current: 5-second polling via React Query).
+5. Add tests for `/api/projects` PATCH and DELETE routes.
