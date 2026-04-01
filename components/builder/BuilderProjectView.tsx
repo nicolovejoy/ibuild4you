@@ -320,24 +320,27 @@ function SessionChat({
 }) {
   const queryClient = useQueryClient()
   const sessionId = session.id
-  const { data: savedMessages, isLoading } = useMessages(sessionId)
+  const [streaming, setStreaming] = useState(false)
+
+  const { data: savedMessages, isLoading } = useMessages(sessionId, {
+    refetchInterval: streaming ? false : 5000,
+  })
   const deleteMessage = useDeleteMessage()
 
   type ChatMessage = { id?: string; role: 'user' | 'agent'; content: string; created_at?: string; sender_email?: string; sender_display_name?: string }
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
-  const [streaming, setStreaming] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
-    if (savedMessages) {
+    if (savedMessages && !streaming) {
       setMessages(savedMessages.map((m) => ({
         id: m.id, role: m.role, content: m.content,
         created_at: m.created_at, sender_email: m.sender_email, sender_display_name: m.sender_display_name,
       })))
     }
-  }, [savedMessages])
+  }, [savedMessages, streaming])
 
   const handleSend = async () => {
     if (!input.trim() || streaming) return

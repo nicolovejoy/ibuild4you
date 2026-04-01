@@ -163,13 +163,16 @@ function MakerChat({
   const uploadFiles = useUploadFiles()
   const sessionId = activeSession?.id
 
-  const { data: savedMessages, isLoading: messagesLoading } = useMessages(sessionId)
+  const [streaming, setStreaming] = useState(false)
+
+  const { data: savedMessages, isLoading: messagesLoading } = useMessages(sessionId, {
+    refetchInterval: streaming ? false : 5000,
+  })
 
   type ChatMessage = { id?: string; role: 'user' | 'agent'; content: string; created_at?: string; sender_email?: string; sender_display_name?: string; file_ids?: string[] }
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [pendingFiles, setPendingFiles] = useState<File[]>([])
-  const [streaming, setStreaming] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [creatingSession, setCreatingSession] = useState(false)
@@ -177,14 +180,14 @@ function MakerChat({
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    if (savedMessages) {
+    if (savedMessages && !streaming) {
       setMessages(savedMessages.map((m) => ({
         id: m.id, role: m.role, content: m.content,
         created_at: m.created_at, sender_email: m.sender_email, sender_display_name: m.sender_display_name,
         file_ids: m.file_ids,
       })))
     }
-  }, [savedMessages])
+  }, [savedMessages, streaming])
 
   const addFiles = useCallback((files: FileList | File[]) => {
     const newFiles = Array.from(files)
