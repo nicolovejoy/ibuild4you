@@ -25,6 +25,8 @@ import {
 import { Modal } from '@/components/ui/Modal'
 import { LoadingButton } from '@/components/ui/LoadingButton'
 import { apiFetch } from '@/lib/firebase/api-fetch'
+import { useStreamingChat } from '@/lib/hooks/useStreamingChat'
+import { useRealtimeMessages } from '@/lib/hooks/useRealtimeMessages'
 import { useEscapeBack } from '@/lib/hooks/useEscapeBack'
 import { useQueryClient } from '@tanstack/react-query'
 import type { Session, WireframeMockup, ProjectFile } from '@/lib/types'
@@ -163,18 +165,14 @@ function MakerChat({
   const uploadFiles = useUploadFiles()
   const sessionId = activeSession?.id
 
-  const [streaming, setStreaming] = useState(false)
+  const { messages, setMessages, streaming, error, setError, streamMessage } = useStreamingChat({ projectId })
 
-  const { data: savedMessages, isLoading: messagesLoading } = useMessages(sessionId, {
-    refetchInterval: streaming ? false : 5000,
-  })
+  const { data: savedMessages, isLoading: messagesLoading } = useMessages(sessionId)
+  useRealtimeMessages(sessionId)
 
-  type ChatMessage = { id?: string; role: 'user' | 'agent'; content: string; created_at?: string; sender_email?: string; sender_display_name?: string; file_ids?: string[] }
-  const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [pendingFiles, setPendingFiles] = useState<File[]>([])
   const [uploading, setUploading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const [creatingSession, setCreatingSession] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -187,7 +185,7 @@ function MakerChat({
         file_ids: m.file_ids,
       })))
     }
-  }, [savedMessages, streaming])
+  }, [savedMessages, streaming, setMessages])
 
   const addFiles = useCallback((files: FileList | File[]) => {
     const newFiles = Array.from(files)
@@ -197,7 +195,7 @@ function MakerChat({
       return
     }
     setPendingFiles((prev) => [...prev, ...newFiles])
-  }, [])
+  }, [setError])
 
   // Handle paste for clipboard images
   const handlePaste = useCallback((e: React.ClipboardEvent) => {
@@ -271,76 +269,10 @@ function MakerChat({
 
     // Only stream agent response if there's text content
     if (hasText) {
-      setMessages((prev) => [...prev, { role: 'agent', content: '', created_at: nowIso }])
-      setStreaming(true)
-
-      try {
-        const res = await apiFetch('/api/chat', {
-          method: 'POST',
-          body: JSON.stringify({
-            session_id: targetSessionId,
-            content: userMessage,
-            ...(fileIds.length > 0 && { file_ids: fileIds }),
-          }),
-        })
-
-        if (!res.ok) {
-          const data = await res.json()
-          throw new Error(data.error || 'Chat request failed')
-        }
-
-        const reader = res.body?.getReader()
-        if (!reader) throw new Error('No response stream')
-
-        const decoder = new TextDecoder()
-        let buffer = ''
-
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
-
-          buffer += decoder.decode(value, { stream: true })
-          const lines = buffer.split('\n')
-          buffer = lines.pop() || ''
-
-          for (const line of lines) {
-            if (!line.startsWith('data: ')) continue
-            const data = line.slice(6)
-            if (data === '[DONE]') break
-
-            try {
-              const parsed = JSON.parse(data)
-              if (parsed.text) {
-                setMessages((prev) => {
-                  const updated = [...prev]
-                  const last = updated[updated.length - 1]
-                  if (last.role === 'agent') {
-                    updated[updated.length - 1] = { ...last, content: last.content + parsed.text }
-                  }
-                  return updated
-                })
-              }
-            } catch {
-              // skip malformed chunks
-            }
-          }
-        }
-
-        queryClient.invalidateQueries({ queryKey: ['messages', targetSessionId] })
-        queryClient.invalidateQueries({ queryKey: ['sessions', projectId] })
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Something went wrong')
-        setMessages((prev) => {
-          const updated = [...prev]
-          if (updated[updated.length - 1]?.role === 'agent' && !updated[updated.length - 1]?.content) {
-            updated.pop()
-          }
-          return updated
-        })
-      } finally {
-        setStreaming(false)
-        textareaRef.current?.focus()
-      }
+      await streamMessage(targetSessionId, userMessage, {
+        fileIds: fileIds.length > 0 ? fileIds : undefined,
+      })
+      textareaRef.current?.focus()
     } else {
       // Files only, no agent response — just save the message
       try {

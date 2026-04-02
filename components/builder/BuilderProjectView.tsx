@@ -36,6 +36,8 @@ import {
 import { buildPrepPrompt } from '@/lib/agent/brief-prompt'
 import { copy } from '@/lib/copy'
 import { apiFetch } from '@/lib/firebase/api-fetch'
+import { useStreamingChat } from '@/lib/hooks/useStreamingChat'
+import { useRealtimeMessages } from '@/lib/hooks/useRealtimeMessages'
 import { useQueryClient } from '@tanstack/react-query'
 import { FilesGrid } from '@/components/ui/FilesGrid'
 import { getTurnIndicator } from '@/lib/turn-indicator'
@@ -298,6 +300,7 @@ function SessionsTab({
           <SessionChat
             key={selectedSession.id}
             session={selectedSession}
+            projectId={projectId}
             userEmail={userEmail}
             isActive={selectedSession.status === 'active'}
           />
@@ -311,26 +314,23 @@ function SessionsTab({
 
 function SessionChat({
   session,
+  projectId,
   userEmail,
   isActive,
 }: {
   session: Session
+  projectId: string
   userEmail: string
   isActive: boolean
 }) {
-  const queryClient = useQueryClient()
   const sessionId = session.id
-  const [streaming, setStreaming] = useState(false)
+  const { messages, setMessages, streaming, error, setError, streamMessage } = useStreamingChat({ projectId })
 
-  const { data: savedMessages, isLoading } = useMessages(sessionId, {
-    refetchInterval: streaming ? false : 5000,
-  })
+  const { data: savedMessages, isLoading } = useMessages(sessionId)
+  useRealtimeMessages(sessionId)
   const deleteMessage = useDeleteMessage()
 
-  type ChatMessage = { id?: string; role: 'user' | 'agent'; content: string; created_at?: string; sender_email?: string; sender_display_name?: string }
-  const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
-  const [error, setError] = useState<string | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
@@ -340,7 +340,7 @@ function SessionChat({
         created_at: m.created_at, sender_email: m.sender_email, sender_display_name: m.sender_display_name,
       })))
     }
-  }, [savedMessages, streaming])
+  }, [savedMessages, streaming, setMessages])
 
   const handleSend = async () => {
     if (!input.trim() || streaming) return
@@ -351,67 +351,9 @@ function SessionChat({
 
     const nowIso = new Date().toISOString()
     setMessages((prev) => [...prev, { role: 'user', content: userMessage, created_at: nowIso, sender_email: userEmail }])
-    setMessages((prev) => [...prev, { role: 'agent', content: '', created_at: nowIso }])
-    setStreaming(true)
 
-    try {
-      const res = await apiFetch('/api/chat', {
-        method: 'POST',
-        body: JSON.stringify({ session_id: sessionId, content: userMessage }),
-      })
-
-      if (!res.ok) {
-        const data = await res.json()
-        throw new Error(data.error || 'Chat request failed')
-      }
-
-      const reader = res.body?.getReader()
-      if (!reader) throw new Error('No response stream')
-
-      const decoder = new TextDecoder()
-      let buffer = ''
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop() || ''
-
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue
-          const data = line.slice(6)
-          if (data === '[DONE]') break
-          try {
-            const parsed = JSON.parse(data)
-            if (parsed.text) {
-              setMessages((prev) => {
-                const updated = [...prev]
-                const last = updated[updated.length - 1]
-                if (last.role === 'agent') {
-                  updated[updated.length - 1] = { ...last, content: last.content + parsed.text }
-                }
-                return updated
-              })
-            }
-          } catch { /* skip */ }
-        }
-      }
-
-      queryClient.invalidateQueries({ queryKey: ['messages', sessionId] })
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong')
-      setMessages((prev) => {
-        const updated = [...prev]
-        if (updated[updated.length - 1]?.role === 'agent' && !updated[updated.length - 1]?.content) {
-          updated.pop()
-        }
-        return updated
-      })
-    } finally {
-      setStreaming(false)
-      textareaRef.current?.focus()
-    }
+    await streamMessage(sessionId, userMessage)
+    textareaRef.current?.focus()
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {

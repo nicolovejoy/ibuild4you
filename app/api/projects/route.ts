@@ -380,6 +380,11 @@ export async function POST(request: Request) {
     updated_at: now,
   }
 
+  // session_opener is an alias for welcome_message
+  if (typeof body.session_opener === 'string' && body.session_opener.trim() && !body.welcome_message) {
+    body.welcome_message = body.session_opener
+  }
+
   // Optional setup fields — include only if provided
   const optionalStrings = ['context', 'requester_first_name', 'requester_last_name', 'requester_email', 'welcome_message'] as const
   for (const field of optionalStrings) {
@@ -465,6 +470,26 @@ export async function POST(request: Request) {
     created_at: now,
     updated_at: now,
   })
+
+  // Create initial brief if provided in the payload
+  if (body.brief && typeof body.brief === 'object') {
+    const b = body.brief as Record<string, unknown>
+    const briefContent = {
+      problem: typeof b.problem === 'string' ? b.problem : '',
+      target_users: typeof b.target_users === 'string' ? b.target_users : '',
+      features: Array.isArray(b.features) ? b.features.filter((f: unknown) => typeof f === 'string') : [],
+      constraints: typeof b.constraints === 'string' ? b.constraints : '',
+      additional_context: typeof b.additional_context === 'string' ? b.additional_context : '',
+      ...(Array.isArray(b.decisions) && b.decisions.length > 0 && { decisions: b.decisions }),
+    }
+    await db.collection('briefs').add({
+      project_id: docRef.id,
+      version: 1,
+      content: briefContent,
+      created_at: now,
+      updated_at: now,
+    })
+  }
 
   return NextResponse.json({ ...projectData, id: docRef.id, session_id: sessionRef.id }, { status: 201 })
 }

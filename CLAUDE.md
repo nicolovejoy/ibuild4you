@@ -68,6 +68,58 @@ Key pattern: clients call `apiFetch()` which attaches the Firebase Bearer token.
 - **briefs** — living brief for a project, structured and versioned, updated after each session
 - **reviews** — builder annotations on a brief, feed back into agent context for next session
 
+## Project Setup JSON
+
+Projects can be created and updated via JSON payloads. The dashboard's "Import JSON" tab accepts the create payload directly.
+
+### Create (POST /api/projects)
+
+Only `title` is required. All other fields are optional.
+
+```json
+{
+  "title": "Jamie's Bakery App",
+  "requester_email": "jamie@example.com",
+  "requester_first_name": "Jamie",
+  "requester_last_name": "Baker",
+  "context": "Background info the agent uses to skip basic discovery questions.",
+  "welcome_message": "Hey Jamie — tell me about your bakery idea!",
+  "session_mode": "discover",
+  "seed_questions": [
+    "What problem are you trying to solve?",
+    "Who are your customers?"
+  ],
+  "builder_directives": [
+    "Focus on the ordering workflow",
+    "Do not suggest technologies"
+  ],
+  "layout_mockups": [
+    {
+      "title": "Homepage",
+      "sections": [
+        { "type": "hero", "label": "Welcome", "description": "Hero with bakery photos" },
+        { "type": "gallery", "label": "Menu", "description": "Cake portfolio with prices" }
+      ]
+    }
+  ],
+  "brief": {
+    "problem": "Customers can't order online",
+    "target_users": "Local bakery customers",
+    "features": ["Online ordering", "Pickup scheduling"],
+    "constraints": "Must work on mobile",
+    "additional_context": "",
+    "decisions": [{ "topic": "Payment", "decision": "Stripe only" }]
+  },
+  "session_opener": "Alias for welcome_message (either works)"
+}
+```
+
+Side effects on create: generates slug, creates owner membership, creates maker membership + approves email (if `requester_email`), creates first session (snapshots config), adds welcome message as first agent message, creates initial brief (if `brief` provided).
+
+### Update (PATCH /api/projects)
+
+Requires `project_id`. Only these fields are accepted: `title`, `context`, `welcome_message`, `session_mode`, `seed_questions`, `builder_directives`, `layout_mockups`, `requester_first_name`, `requester_last_name`, `last_nudged_at`, `last_builder_activity_at`. Changing `title` regenerates the slug.
+
 ## Agent Behavior Rules
 
 - Neutral, non-opinionated tone; slightly mirrors requester's writing style

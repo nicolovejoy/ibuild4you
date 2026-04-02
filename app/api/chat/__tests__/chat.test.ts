@@ -276,7 +276,8 @@ describe('POST /api/chat', () => {
     await readSSE(res)
 
     expect(mockUpdate).toHaveBeenCalled()
-    const updateArgs = mockUpdate.mock.calls[0][0]
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const updateArgs = (mockUpdate.mock.calls as any[][])[0][0] as Record<string, unknown>
     expect(updateArgs.token_usage_input).toBeDefined()
     expect(updateArgs.token_usage_output).toBeDefined()
   })

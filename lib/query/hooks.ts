@@ -363,7 +363,7 @@ export function useDeleteMessage() {
   })
 }
 
-export function useMessages(sessionId: string | undefined, options?: { refetchInterval?: number | false }) {
+export function useMessages(sessionId: string | undefined) {
   return useQuery<Message[]>({
     queryKey: ['messages', sessionId],
     queryFn: async () => {
@@ -372,7 +372,6 @@ export function useMessages(sessionId: string | undefined, options?: { refetchIn
       return res.json()
     },
     enabled: !!sessionId,
-    refetchInterval: options?.refetchInterval,
   })
 }
 

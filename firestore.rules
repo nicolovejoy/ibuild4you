@@ -1,7 +1,12 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Deny all direct client access — all reads/writes go through API routes
+    // Messages: authenticated users can read for real-time sync (invite-only app)
+    match /messages/{messageId} {
+      allow read: if request.auth != null;
+    }
+
+    // All other access goes through API routes using Admin SDK
     match /{document=**} {
       allow read, write: if false;
     }

@@ -153,7 +153,7 @@ function NewProjectButton() {
     try {
       const result = await createProject.mutateAsync(payload as { title: string; [key: string]: unknown })
       resetAndClose()
-      router.push(`/projects/${result.slug || result.id}?tab=setup`)
+      router.push(`/projects/${result.slug || result.id}?tab=conversations`)
     } catch {
       // error is available via createProject.error
     }
@@ -169,8 +169,9 @@ function NewProjectButton() {
       if (obj.session_mode) fields.push(obj.session_mode)
       if (Array.isArray(obj.seed_questions)) fields.push(`${obj.seed_questions.length} seed questions`)
       if (Array.isArray(obj.builder_directives)) fields.push(`${obj.builder_directives.length} directives`)
-      if (obj.welcome_message) fields.push('welcome message')
+      if (obj.welcome_message || obj.session_opener) fields.push('welcome message')
       if (Array.isArray(obj.layout_mockups)) fields.push(`${obj.layout_mockups.length} mockup${obj.layout_mockups.length === 1 ? '' : 's'}`)
+      if (obj.brief && typeof obj.brief === 'object') fields.push('brief seeded')
       return { title: obj.title, fields }
     } catch { return null }
   })()
