@@ -150,7 +150,6 @@ This is a learning project (Max, 19, college freshman, is contributing). Code sh
 ## Next Steps
 
 1. Add turn indicator to maker project view (currently only on builder view and dashboard).
-2. Extract shared SSE streaming hook from MakerChat and SessionChat (~50 lines duplicated) — improves testability and DRY.
-3. Extend JSON import to accept `brief` and `session_opener` fields (currently requires manual field remapping).
-4. Upgrade message polling to Firestore onSnapshot for sub-second real-time sync (current: 5-second polling via React Query).
-5. Add tests for `/api/projects` PATCH and DELETE routes.
+2. Add tests for `useStreamingChat` hook (needs React Testing Library setup).
+3. Clean up test projects from Firestore after import testing (remove test@example.com approved_emails, project_members, etc.).
+4. Consider Firestore composite index for messages (session_id + created_at) if onSnapshot performance degrades at scale.
