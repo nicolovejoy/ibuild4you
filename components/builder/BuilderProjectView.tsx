@@ -56,7 +56,7 @@ export function BuilderProjectView({ projectId, userEmail }: { projectId: string
   useEscapeBack('/dashboard')
   const updateProject = useUpdateProject()
   const activeSession = sessions?.find((s) => s.status === 'active')
-  const [showShareModal, setShowShareModal] = useState(false)
+  const [showShareModal, setShowShareModal] = useState(searchParams.get('share') === '1')
   const [editingTitle, setEditingTitle] = useState(false)
   const [titleDraft, setTitleDraft] = useState('')
   const tabParam = searchParams.get('tab') as TabId | null
