@@ -56,7 +56,7 @@ export function BuilderProjectView({ projectId, userEmail }: { projectId: string
   useEscapeBack('/dashboard')
   const updateProject = useUpdateProject()
   const activeSession = sessions?.find((s) => s.status === 'active')
-  const [showShareModal, setShowShareModal] = useState(searchParams.get('share') === '1')
+  const [showShareModal, setShowShareModal] = useState(false)
   const [editingTitle, setEditingTitle] = useState(false)
   const [titleDraft, setTitleDraft] = useState('')
   const tabParam = searchParams.get('tab') as TabId | null
@@ -796,8 +796,44 @@ function NextConversationTab({
   const { data: activeMessages } = useMessages(activeSession?.id)
   const hasUserMessages = activeMessages?.some((m) => m.role === 'user') ?? false
 
+  // First-conversation banner — project is configured but maker hasn't chatted yet
+  const isFirstSetup = !!project.requester_email && !!activeSession && !hasUserMessages
+
+  const setupSummary = (() => {
+    if (!isFirstSetup) return null
+    const chips: string[] = []
+    if (project.brief_version) chips.push('brief seeded')
+    const qCount = project.seed_questions?.length ?? 0
+    if (qCount > 0) chips.push(`${qCount} seed question${qCount > 1 ? 's' : ''}`)
+    const dCount = project.builder_directives?.length ?? 0
+    if (dCount > 0) chips.push(`${dCount} directive${dCount > 1 ? 's' : ''}`)
+    if (project.welcome_message) chips.push('welcome message')
+    return chips
+  })()
+
   return (
     <div className="space-y-6">
+      {/* First-conversation banner */}
+      {isFirstSetup && (
+        <Card hover={false}>
+          <CardBody>
+            <h2 className="text-sm font-semibold text-green-700 uppercase tracking-wide flex items-center gap-1.5 mb-2">
+              <Check className="h-4 w-4" />
+              Project ready
+            </h2>
+            {setupSummary && setupSummary.length > 0 && (
+              <p className="text-xs text-gray-500 mb-3">{setupSummary.join(' · ')}</p>
+            )}
+            <p className="text-sm text-gray-600 mb-4">
+              Review the setup below, then share with the maker to start the conversation.
+            </p>
+            <LoadingButton variant="primary" icon={Share2} onClick={onShare}>
+              Share with maker
+            </LoadingButton>
+          </CardBody>
+        </Card>
+      )}
+
       {/* Editable setup — shown when active conversation has no maker messages yet */}
       {!(activeSession && hasUserMessages) && (
         <EditableSetup project={project} />

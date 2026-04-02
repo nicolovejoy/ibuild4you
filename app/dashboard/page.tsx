@@ -153,7 +153,7 @@ function NewProjectButton() {
     try {
       const result = await createProject.mutateAsync(payload as { title: string; [key: string]: unknown })
       resetAndClose()
-      router.push(`/projects/${result.slug || result.id}?share=1`)
+      router.push(`/projects/${result.slug || result.id}?tab=setup`)
     } catch {
       // error is available via createProject.error
     }
