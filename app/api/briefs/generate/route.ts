@@ -107,6 +107,10 @@ export async function POST(request: Request) {
     briefContent.decisions = briefContent.decisions.filter(
       (d) => d && typeof d.topic === 'string' && typeof d.decision === 'string'
     )
+    if (!Array.isArray(briefContent.open_risks)) briefContent.open_risks = []
+    briefContent.open_risks = briefContent.open_risks.filter(
+      (r: unknown) => typeof r === 'string' && (r as string).trim()
+    )
 
     // Upsert the brief
     const result = await upsertBrief(db, project_id, briefContent)

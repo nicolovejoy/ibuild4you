@@ -73,6 +73,9 @@ export async function PUT(request: Request) {
           (d: unknown) => d && typeof (d as Record<string, unknown>).topic === 'string' && typeof (d as Record<string, unknown>).decision === 'string'
         )
       : [],
+    open_risks: Array.isArray(content.open_risks)
+      ? content.open_risks.filter((r: unknown) => typeof r === 'string' && (r as string).trim())
+      : [],
   }
 
   // Upsert: find existing brief or create new

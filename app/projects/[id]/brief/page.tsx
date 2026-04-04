@@ -113,10 +113,11 @@ function BriefView({ content }: { content: BriefContent }) {
   ]
 
   const decisions = content.decisions || []
+  const openRisks = content.open_risks || []
 
   const hasContent = sections.some((s) =>
     Array.isArray(s.value) ? s.value.length > 0 : !!s.value
-  ) || decisions.length > 0
+  ) || decisions.length > 0 || openRisks.length > 0
 
   if (!hasContent) {
     return (
@@ -169,6 +170,21 @@ function BriefView({ content }: { content: BriefContent }) {
                   <span className="font-medium text-gray-900">{d.topic}:</span>{' '}
                   <span className="text-gray-700">{d.decision}</span>
                 </li>
+              ))}
+            </ul>
+          </CardBody>
+        </Card>
+      )}
+
+      {openRisks.length > 0 && (
+        <Card hover={false}>
+          <CardBody>
+            <h3 className="text-sm font-semibold text-brand-slate uppercase tracking-wide mb-2">
+              Open risks
+            </h3>
+            <ul className="list-disc list-inside space-y-1">
+              {openRisks.map((risk, i) => (
+                <li key={i} className="text-gray-800 text-sm">{risk}</li>
               ))}
             </ul>
           </CardBody>
