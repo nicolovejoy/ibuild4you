@@ -732,6 +732,7 @@ function BriefView({ content }: { content: BriefContent }) {
   ]
 
   const decisions = content.decisions || []
+  const openRisks = content.open_risks || []
 
   return (
     <div className="space-y-4">
@@ -769,6 +770,21 @@ function BriefView({ content }: { content: BriefContent }) {
                   <span className="font-medium text-gray-900">{d.topic}:</span>{' '}
                   <span className="text-gray-700">{d.decision}</span>
                 </li>
+              ))}
+            </ul>
+          </CardBody>
+        </Card>
+      )}
+
+      {openRisks.length > 0 && (
+        <Card hover={false}>
+          <CardBody>
+            <h3 className="text-sm font-semibold text-brand-slate uppercase tracking-wide mb-2">
+              Open risks
+            </h3>
+            <ul className="list-disc list-inside space-y-1">
+              {openRisks.map((risk, i) => (
+                <li key={i} className="text-gray-800 text-sm">{risk}</li>
               ))}
             </ul>
           </CardBody>
@@ -1057,6 +1073,7 @@ function EditableSetup({ project }: { project: Project }) {
   const [directives, setDirectives] = useState<string[]>(project.builder_directives || [])
   const [newDirective, setNewDirective] = useState('')
   const [mockups, setMockups] = useState<WireframeMockup[]>(project.layout_mockups || [])
+  const [identity, setIdentity] = useState(project.identity || '')
   const [saved, setSaved] = useState(false)
 
   const updateProject = useUpdateProject()
@@ -1068,7 +1085,8 @@ function EditableSetup({ project }: { project: Project }) {
     setSessionMode(project.session_mode || 'discover')
     setDirectives(project.builder_directives || [])
     setMockups(project.layout_mockups || [])
-  }, [project.welcome_message, project.seed_questions, project.session_mode, project.builder_directives, project.layout_mockups])
+    setIdentity(project.identity || '')
+  }, [project.welcome_message, project.seed_questions, project.session_mode, project.builder_directives, project.layout_mockups, project.identity])
 
   const handleSave = async () => {
     await updateProject.mutateAsync({
@@ -1078,6 +1096,7 @@ function EditableSetup({ project }: { project: Project }) {
       session_mode: sessionMode,
       builder_directives: directives,
       layout_mockups: mockups,
+      identity: identity || undefined,
       last_builder_activity_at: new Date().toISOString(),
     })
     setSaved(true)
@@ -1115,6 +1134,13 @@ function EditableSetup({ project }: { project: Project }) {
 
           {/* Layout mockups */}
           <MockupEditor mockups={mockups} onUpdate={setMockups} />
+
+          {/* Agent identity */}
+          <div>
+            <label className="text-sm font-medium text-gray-700 block mb-1.5">Agent identity (optional)</label>
+            <textarea value={identity} onChange={(e) => setIdentity(e.target.value)} placeholder="Override the default agent persona. Leave blank for standard intake assistant." rows={2} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy" />
+            <p className="text-xs text-gray-400 mt-1">Changes how the agent introduces itself and frames its role.</p>
+          </div>
 
           <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
             <LoadingButton variant="secondary" size="sm" loading={updateProject.isPending} loadingText="Saving..." onClick={handleSave}>
@@ -1178,6 +1204,7 @@ function PrepNextSession({ project, projectId, sessionNumber }: {
   const [directives, setDirectives] = useState<string[]>(project.builder_directives || [])
   const [newDirective, setNewDirective] = useState('')
   const [mockups, setMockups] = useState<WireframeMockup[]>(project.layout_mockups || [])
+  const [identity, setIdentity] = useState(project.identity || '')
   const [nudgeNote, setNudgeNote] = useState('')
   const [created, setCreated] = useState(false)
   const [nudgeCopied, setNudgeCopied] = useState(false)
@@ -1195,7 +1222,8 @@ function PrepNextSession({ project, projectId, sessionNumber }: {
     setSessionMode(project.session_mode || 'discover')
     setDirectives(project.builder_directives || [])
     setMockups(project.layout_mockups || [])
-  }, [project.welcome_message, project.seed_questions, project.session_mode, project.builder_directives, project.layout_mockups])
+    setIdentity(project.identity || '')
+  }, [project.welcome_message, project.seed_questions, project.session_mode, project.builder_directives, project.layout_mockups, project.identity])
 
   const handleCreate = async () => {
     await updateProject.mutateAsync({
@@ -1205,6 +1233,7 @@ function PrepNextSession({ project, projectId, sessionNumber }: {
       session_mode: sessionMode,
       builder_directives: directives,
       layout_mockups: mockups,
+      identity: identity || undefined,
       last_builder_activity_at: new Date().toISOString(),
     })
     await createSession.mutateAsync({ project_id: projectId })
@@ -1272,6 +1301,13 @@ function PrepNextSession({ project, projectId, sessionNumber }: {
 
             {/* Layout mockups */}
             <MockupEditor mockups={mockups} onUpdate={setMockups} />
+
+            {/* Agent identity */}
+            <div>
+              <label className="text-sm font-medium text-gray-700 block mb-1.5">Agent identity (optional)</label>
+              <textarea value={identity} onChange={(e) => setIdentity(e.target.value)} placeholder="Override the default agent persona. Leave blank for standard intake assistant." rows={2} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy" />
+              <p className="text-xs text-gray-400 mt-1">Changes how the agent introduces itself and frames its role.</p>
+            </div>
 
             {/* Conversation opener */}
             <div>
@@ -1416,7 +1452,8 @@ function hasBriefContent(brief: BriefContent): boolean {
     (brief.features && brief.features.length > 0) ||
     brief.constraints ||
     brief.additional_context ||
-    (brief.decisions && brief.decisions.length > 0)
+    (brief.decisions && brief.decisions.length > 0) ||
+    (brief.open_risks && brief.open_risks.length > 0)
   )
 }
 

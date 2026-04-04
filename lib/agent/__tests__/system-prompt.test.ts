@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { buildSystemPrompt } from '../system-prompt'
-import { AGENT_BEHAVIOR_RULES, CONVERGE_BEHAVIOR_RULES } from '../constants'
+import { AGENT_BEHAVIOR_RULES, CONVERGE_BEHAVIOR_RULES, DEFAULT_IDENTITY } from '../constants'
 
 // =============================================================================
 // SYSTEM PROMPT TESTS
@@ -26,9 +26,18 @@ const minimalInput = {
 }
 
 describe('buildSystemPrompt', () => {
-  it('includes the assistant identity', () => {
+  it('includes the default identity when none provided', () => {
     const result = buildSystemPrompt(minimalInput)
-    expect(result).toContain('You are the iBuild4you project intake assistant.')
+    expect(result).toContain(DEFAULT_IDENTITY)
+  })
+
+  it('uses custom identity when provided', () => {
+    const result = buildSystemPrompt({
+      ...minimalInput,
+      identity: 'You are a format review assistant helping evaluate document structure.',
+    })
+    expect(result).toContain('You are a format review assistant')
+    expect(result).not.toContain(DEFAULT_IDENTITY)
   })
 
   it('uses discover behavior rules by default', () => {
@@ -209,6 +218,27 @@ describe('buildSystemPrompt', () => {
     expect(discover).not.toContain('Session gravity: converge')
     expect(converge).toContain('Session gravity: converge')
     expect(converge).not.toContain('Session gravity: discover')
+  })
+
+  it('includes open risks when brief has them', () => {
+    const result = buildSystemPrompt({
+      ...minimalInput,
+      briefContent: {
+        ...emptyBrief,
+        open_risks: ['No plan for getting first users', 'Pricing model undecided'],
+      },
+    })
+    expect(result).toContain('## Open risks')
+    expect(result).toContain('No plan for getting first users')
+    expect(result).toContain('Pricing model undecided')
+  })
+
+  it('omits open risks section when brief has none', () => {
+    const result = buildSystemPrompt({
+      ...minimalInput,
+      briefContent: emptyBrief,
+    })
+    expect(result).not.toContain('## Open risks')
   })
 
   it('uses quality gates instead of exchange count for closing', () => {

@@ -7,6 +7,8 @@ export const BRIEF_MODEL = 'claude-sonnet-4-20250514'
 export const BRIEF_MAX_TOKENS = 4096
 export const BRIEF_TEMPERATURE = 0.3
 
+export const DEFAULT_IDENTITY = 'You are the iBuild4you project intake assistant. Your job is to help the user describe their app or website idea clearly enough that a developer could start working on it.'
+
 // ---------------------------------------------------------------------------
 // Shared building blocks — composed into mode-specific behavior rules below
 // ---------------------------------------------------------------------------

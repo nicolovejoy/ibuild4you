@@ -46,6 +46,7 @@ export interface Project extends BaseEntity {
   builder_directives?: string[] // things agent should actively push toward
   session_mode?: 'discover' | 'converge' // current operating mode (default: discover)
   slug?: string // URL-friendly identifier derived from title
+  identity?: string // custom agent identity/persona (overrides default)
   layout_mockups?: WireframeMockup[] // wireframe layouts the agent can show in chat
   // Enriched by GET /api/projects
   session_count?: number
@@ -71,6 +72,7 @@ export interface Session extends BaseEntity {
   seed_questions?: string[]
   builder_directives?: string[]
   welcome_message?: string
+  identity?: string
   layout_mockups?: WireframeMockup[]
   // Usage tracking — accumulated across all exchanges in the session
   model?: string
@@ -139,6 +141,7 @@ export interface BriefContent {
   constraints: string
   additional_context: string
   decisions?: BriefDecision[]
+  open_risks?: string[]
 }
 
 export interface BriefDecision {
