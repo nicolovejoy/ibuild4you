@@ -165,4 +165,58 @@ describe('buildSystemPrompt', () => {
     expect(result).toContain('This is session #3')
     expect(result).toContain("pick up where things left off")
   })
+
+  // Posture model tests
+  it('includes posture vocabulary in discover mode', () => {
+    const result = buildSystemPrompt(minimalInput)
+    expect(result).toContain('Your postures:')
+    expect(result).toContain('**Curious**')
+    expect(result).toContain('**Deepening**')
+    expect(result).toContain('**Challenging**')
+    expect(result).toContain('**Confirming**')
+    expect(result).toContain('**Yielding**')
+    expect(result).toContain('**Closing**')
+  })
+
+  it('includes posture vocabulary in converge mode', () => {
+    const result = buildSystemPrompt({ ...minimalInput, sessionMode: 'converge' })
+    expect(result).toContain('Your postures:')
+    expect(result).toContain('**Curious**')
+    expect(result).toContain('**Challenging**')
+  })
+
+  it('includes signal-to-posture mapping', () => {
+    const result = buildSystemPrompt(minimalInput)
+    expect(result).toContain('Reading the user')
+    expect(result).toContain('Rich, specific answer → Deepen')
+    expect(result).toContain('Vague or optimistic answer → Challenge')
+  })
+
+  it('includes guardrails in both modes', () => {
+    const discover = buildSystemPrompt(minimalInput)
+    const converge = buildSystemPrompt({ ...minimalInput, sessionMode: 'converge' })
+    expect(discover).toContain('One question per message')
+    expect(discover).toContain('Two-strike rule')
+    expect(discover).toContain('Accuracy before restatement')
+    expect(converge).toContain('One question per message')
+    expect(converge).toContain('Two-strike rule')
+  })
+
+  it('uses discover gravity in discover mode and converge gravity in converge mode', () => {
+    const discover = buildSystemPrompt(minimalInput)
+    const converge = buildSystemPrompt({ ...minimalInput, sessionMode: 'converge' })
+    expect(discover).toContain('Session gravity: discover')
+    expect(discover).not.toContain('Session gravity: converge')
+    expect(converge).toContain('Session gravity: converge')
+    expect(converge).not.toContain('Session gravity: discover')
+  })
+
+  it('uses quality gates instead of exchange count for closing', () => {
+    const discover = buildSystemPrompt(minimalInput)
+    const converge = buildSystemPrompt({ ...minimalInput, sessionMode: 'converge' })
+    expect(discover).toContain('Do not close based on exchange count')
+    expect(converge).toContain('Do not close based on exchange count')
+    expect(discover).not.toContain('8–12 exchanges')
+    expect(converge).not.toContain('8–12 exchanges')
+  })
 })
