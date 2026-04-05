@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { buildSystemPrompt } from '../system-prompt'
-import { AGENT_BEHAVIOR_RULES, CONVERGE_BEHAVIOR_RULES } from '../constants'
+import { AGENT_BEHAVIOR_RULES, CONVERGE_BEHAVIOR_RULES, DEFAULT_IDENTITY } from '../constants'
 
 // =============================================================================
 // SYSTEM PROMPT TESTS
@@ -26,9 +26,18 @@ const minimalInput = {
 }
 
 describe('buildSystemPrompt', () => {
-  it('includes the assistant identity', () => {
+  it('includes the default identity when none provided', () => {
     const result = buildSystemPrompt(minimalInput)
-    expect(result).toContain('You are the iBuild4you project intake assistant.')
+    expect(result).toContain(DEFAULT_IDENTITY)
+  })
+
+  it('uses custom identity when provided', () => {
+    const result = buildSystemPrompt({
+      ...minimalInput,
+      identity: 'You are a format review assistant helping evaluate document structure.',
+    })
+    expect(result).toContain('You are a format review assistant')
+    expect(result).not.toContain(DEFAULT_IDENTITY)
   })
 
   it('uses discover behavior rules by default', () => {
@@ -164,5 +173,80 @@ describe('buildSystemPrompt', () => {
     const result = buildSystemPrompt({ ...minimalInput, sessionNumber: 3 })
     expect(result).toContain('This is session #3')
     expect(result).toContain("pick up where things left off")
+  })
+
+  // Posture model tests
+  it('includes posture vocabulary in discover mode', () => {
+    const result = buildSystemPrompt(minimalInput)
+    expect(result).toContain('Your postures:')
+    expect(result).toContain('**Curious**')
+    expect(result).toContain('**Deepening**')
+    expect(result).toContain('**Challenging**')
+    expect(result).toContain('**Confirming**')
+    expect(result).toContain('**Yielding**')
+    expect(result).toContain('**Closing**')
+  })
+
+  it('includes posture vocabulary in converge mode', () => {
+    const result = buildSystemPrompt({ ...minimalInput, sessionMode: 'converge' })
+    expect(result).toContain('Your postures:')
+    expect(result).toContain('**Curious**')
+    expect(result).toContain('**Challenging**')
+  })
+
+  it('includes signal-to-posture mapping', () => {
+    const result = buildSystemPrompt(minimalInput)
+    expect(result).toContain('Reading the user')
+    expect(result).toContain('Rich, specific answer → Deepen')
+    expect(result).toContain('Vague or optimistic answer → Challenge')
+  })
+
+  it('includes guardrails in both modes', () => {
+    const discover = buildSystemPrompt(minimalInput)
+    const converge = buildSystemPrompt({ ...minimalInput, sessionMode: 'converge' })
+    expect(discover).toContain('One question per message')
+    expect(discover).toContain('Two-strike rule')
+    expect(discover).toContain('Accuracy before restatement')
+    expect(converge).toContain('One question per message')
+    expect(converge).toContain('Two-strike rule')
+  })
+
+  it('uses discover gravity in discover mode and converge gravity in converge mode', () => {
+    const discover = buildSystemPrompt(minimalInput)
+    const converge = buildSystemPrompt({ ...minimalInput, sessionMode: 'converge' })
+    expect(discover).toContain('Session gravity: discover')
+    expect(discover).not.toContain('Session gravity: converge')
+    expect(converge).toContain('Session gravity: converge')
+    expect(converge).not.toContain('Session gravity: discover')
+  })
+
+  it('includes open risks when brief has them', () => {
+    const result = buildSystemPrompt({
+      ...minimalInput,
+      briefContent: {
+        ...emptyBrief,
+        open_risks: ['No plan for getting first users', 'Pricing model undecided'],
+      },
+    })
+    expect(result).toContain('## Open risks')
+    expect(result).toContain('No plan for getting first users')
+    expect(result).toContain('Pricing model undecided')
+  })
+
+  it('omits open risks section when brief has none', () => {
+    const result = buildSystemPrompt({
+      ...minimalInput,
+      briefContent: emptyBrief,
+    })
+    expect(result).not.toContain('## Open risks')
+  })
+
+  it('uses quality gates instead of exchange count for closing', () => {
+    const discover = buildSystemPrompt(minimalInput)
+    const converge = buildSystemPrompt({ ...minimalInput, sessionMode: 'converge' })
+    expect(discover).toContain('Do not close based on exchange count')
+    expect(converge).toContain('Do not close based on exchange count')
+    expect(discover).not.toContain('8–12 exchanges')
+    expect(converge).not.toContain('8–12 exchanges')
   })
 })

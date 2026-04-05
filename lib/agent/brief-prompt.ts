@@ -39,7 +39,8 @@ When I say "give me the output", produce ONLY valid JSON matching this schema (n
     "features": ["Feature 1", "Feature 2"],
     "constraints": "Any constraints, limitations, or things the user explicitly doesn't want",
     "additional_context": "Any other relevant information that doesn't fit the above categories",
-    "decisions": [{ "topic": "short label", "decision": "what was decided" }]
+    "decisions": [{ "topic": "short label", "decision": "what was decided" }],
+    "open_risks": ["plain-language description of something unresolved, unclear, or risky"]
   },
   "session_opener": "The welcome message the agent sends when the maker opens the next session — sets tone and picks up where we left off",
   "builder_directives": ["Instructions injected into the agent's system prompt to steer the conversation — e.g. 'push toward a decision on auth flow'"],
@@ -61,7 +62,8 @@ Rules for the brief:
 - Features should be distinct, actionable items (not vague goals).
 - If updating an existing brief, preserve information from it unless the conversation contradicts it.
 - A decision = the user committed to a specific choice (not just mentioned an option). Each decision has a short topic label and the decision itself.
-- Preserve prior decisions unless the user explicitly reversed one in the conversation.`)
+- Preserve prior decisions unless the user explicitly reversed one in the conversation.
+- Open risks = things that are unresolved, unclear, or risky based on the conversation. Extract from what the user actually said — don't invent risks. Examples: "no plan for getting first users", "pricing model undecided", "unclear how data gets into the system".`)
 
   return parts.join('\n\n')
 }

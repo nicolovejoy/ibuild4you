@@ -1,4 +1,4 @@
-import { AGENT_BEHAVIOR_RULES, CONVERGE_BEHAVIOR_RULES } from './constants'
+import { AGENT_BEHAVIOR_RULES, CONVERGE_BEHAVIOR_RULES, DEFAULT_IDENTITY } from './constants'
 import type { BriefContent, WireframeMockup } from '@/lib/types'
 
 interface SystemPromptInput {
@@ -9,12 +9,13 @@ interface SystemPromptInput {
   builderDirectives?: string[]
   sessionMode?: 'discover' | 'converge'
   layoutMockups?: WireframeMockup[]
+  identity?: string
 }
 
-export function buildSystemPrompt({ briefContent, projectContext, sessionNumber, seedQuestions, builderDirectives, sessionMode, layoutMockups }: SystemPromptInput): string {
+export function buildSystemPrompt({ briefContent, projectContext, sessionNumber, seedQuestions, builderDirectives, sessionMode, layoutMockups, identity }: SystemPromptInput): string {
   const parts: string[] = []
 
-  parts.push('You are the iBuild4you project intake assistant.')
+  parts.push(identity || DEFAULT_IDENTITY)
   parts.push(sessionMode === 'converge' ? CONVERGE_BEHAVIOR_RULES : AGENT_BEHAVIOR_RULES)
 
   if (projectContext) {
@@ -95,6 +96,16 @@ ${briefContent.decisions.map((d) => `- **${d.topic}:** ${d.decision}`).join('\n'
 `.trim())
   }
 
+  if (briefContent?.open_risks && briefContent.open_risks.length > 0) {
+    parts.push(`
+## Open risks
+
+These are unresolved or risky areas from prior sessions. Probe these when the opportunity arises — they're good candidates for Challenging or Deepening:
+
+${briefContent.open_risks.map((r) => `- ${r}`).join('\n')}
+`.trim())
+  }
+
   if (briefContent && hasBriefContent(briefContent)) {
     parts.push(`
 ## Current project brief
@@ -129,7 +140,8 @@ function hasBriefContent(brief: BriefContent): boolean {
     brief.features.length > 0 ||
     brief.constraints ||
     brief.additional_context ||
-    (brief.decisions && brief.decisions.length > 0)
+    (brief.decisions && brief.decisions.length > 0) ||
+    (brief.open_risks && brief.open_risks.length > 0)
   )
 }
 

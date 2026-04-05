@@ -134,6 +134,7 @@ export async function POST(request: Request) {
   const builderDirectives = (sessionData.builder_directives ?? projectData.builder_directives) as string[] | undefined
   const sessionMode = (sessionData.session_mode ?? projectData.session_mode) as 'discover' | 'converge' | undefined
   const layoutMockups = (sessionData.layout_mockups ?? projectData.layout_mockups) as import('@/lib/types').WireframeMockup[] | undefined
+  const identity = (sessionData.identity ?? projectData.identity) as string | undefined
   const systemPrompt = buildSystemPrompt({
     briefContent,
     projectContext,
@@ -142,6 +143,7 @@ export async function POST(request: Request) {
     builderDirectives,
     sessionMode,
     layoutMockups,
+    identity,
   })
 
   // Stream response from Claude
