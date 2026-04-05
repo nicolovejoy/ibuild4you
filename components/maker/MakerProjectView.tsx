@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, Send, ChevronDown, ChevronUp, MessageSquare, HelpCircle, Paperclip, Pencil } from 'lucide-react'
+import { getTurnIndicator } from '@/lib/turn-indicator'
 import { BuildTimestamp } from '@/components/build-timestamp'
 import { Card, CardBody } from '@/components/ui/Card'
 import { MessageContent } from '@/components/ui/MessageContent'
@@ -63,10 +64,11 @@ export function MakerProjectView({ projectId, userEmail }: { projectId: string; 
           <button onClick={() => router.push('/dashboard')} className="p-1 hover:bg-gray-100 rounded">
             <ArrowLeft className="h-5 w-5 text-gray-600" />
           </button>
-          <div className="group relative flex-1">
+          <div className="group relative flex-1 flex items-center gap-2">
             <span className="font-semibold text-brand-charcoal">
               {projectLoading ? '...' : project?.title}
             </span>
+            {(() => { const turn = getTurnIndicator(project, project?.viewer_role ?? null); return turn ? <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${turn.className}`}>{turn.label}</span> : null })()}
             <BuildTimestamp />
           </div>
           {displayName && !editingName && (
