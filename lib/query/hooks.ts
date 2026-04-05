@@ -187,6 +187,30 @@ export function useGenerateWelcome() {
   })
 }
 
+export function useGenerateOutboundMessage() {
+  return useMutation({
+    mutationFn: async (params: {
+      project_id: string
+      type: 'invite' | 'nudge' | 'reminder'
+      nudge_note?: string
+      session_mode?: 'discover' | 'converge'
+      session_number?: number
+      directives?: string[]
+      seed_questions?: string[]
+    }) => {
+      const res = await apiFetch('/api/projects/outbound-message', {
+        method: 'POST',
+        body: JSON.stringify(params),
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || 'Failed to generate message')
+      }
+      return res.json() as Promise<{ message: string }>
+    },
+  })
+}
+
 export function useDeleteProject() {
   const queryClient = useQueryClient()
 

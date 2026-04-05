@@ -9,7 +9,7 @@ import Link from 'next/link'
 import { Plus, FolderOpen, Share2, Copy, Check, Mail, Trash2, Settings } from 'lucide-react'
 import { ScaffoldIcon } from '@/components/ScaffoldIcon'
 import { BuildTimestamp } from '@/components/build-timestamp'
-import { useProjects, useCreateProject, useShareProject, useDeleteProject, useCurrentUser } from '@/lib/query/hooks'
+import { useProjects, useCreateProject, useShareProject, useDeleteProject, useCurrentUser, useGenerateOutboundMessage } from '@/lib/query/hooks'
 import { LoadingButton } from '@/components/ui/LoadingButton'
 import { Card, CardBody } from '@/components/ui/Card'
 import { EmptyState } from '@/components/ui/EmptyState'
@@ -506,6 +506,18 @@ function ProjectList({ isAdmin }: { isAdmin: boolean }) {
   )
 }
 
+function composeOutboundMessage(
+  aiText: string,
+  shareLink: string,
+  credentials?: { email: string; passcode: string | null }
+): string {
+  const parts = [aiText, '', shareLink]
+  if (credentials) {
+    parts.push('', 'Sign in with Google, or use:', `Email: ${credentials.email}`, `Passcode: ${credentials.passcode || '(loading...)'}`)
+  }
+  return parts.join('\n')
+}
+
 function ShareModal({ project, onClose }: { project: Project; onClose: () => void }) {
   const [email, setEmail] = useState('')
   const [firstName, setFirstName] = useState('')
@@ -513,15 +525,24 @@ function ShareModal({ project, onClose }: { project: Project; onClose: () => voi
   const [copied, setCopied] = useState(false)
   const [emailCopied, setEmailCopied] = useState(false)
   const shareProject = useShareProject()
+  const generateMessage = useGenerateOutboundMessage()
+  const [aiInvite, setAiInvite] = useState<string | null>(null)
   const shareLink = typeof window !== 'undefined'
     ? `${window.location.origin}/projects/${project.slug || project.id}`
     : ''
 
-  const inviteEmailBody = copy.invite.body({
-    shareLink,
-    email,
-    passcode: shareProject.data?.passcode || null,
-  })
+  // Generate AI invite message after share succeeds
+  useEffect(() => {
+    if (shareProject.isSuccess && !aiInvite && !generateMessage.isPending) {
+      generateMessage.mutateAsync({ project_id: project.id, type: 'invite' })
+        .then(({ message }) => setAiInvite(message))
+        .catch(() => {})
+    }
+  }, [shareProject.isSuccess]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const inviteEmailBody = aiInvite
+    ? composeOutboundMessage(aiInvite, shareLink, { email, passcode: shareProject.data?.passcode || null })
+    : copy.invite.body({ shareLink, email, passcode: shareProject.data?.passcode || null })
 
   const handleShare = async (e: React.FormEvent) => {
     e.preventDefault()

@@ -32,6 +32,7 @@ import {
   useResetPasscode,
   useCreateSession,
   useProjectFiles,
+  useGenerateOutboundMessage,
 } from '@/lib/query/hooks'
 import { buildPrepPrompt } from '@/lib/agent/brief-prompt'
 import { copy } from '@/lib/copy'
@@ -884,6 +885,18 @@ function NextConversationTab({
   )
 }
 
+function composeOutboundMessage(
+  aiText: string,
+  shareLink: string,
+  credentials?: { email: string; passcode: string | null }
+): string {
+  const parts = [aiText, '', shareLink]
+  if (credentials) {
+    parts.push('', 'Sign in with Google, or use:', `Email: ${credentials.email}`, `Passcode: ${credentials.passcode || '(loading...)'}`)
+  }
+  return parts.join('\n')
+}
+
 function ShareModal({ project, onClose }: { project: Project; onClose: () => void }) {
   const [email, setEmail] = useState(project.requester_email || '')
   const [firstName, setFirstName] = useState(project.requester_first_name || '')
@@ -896,6 +909,8 @@ function ShareModal({ project, onClose }: { project: Project; onClose: () => voi
   const [editLastName, setEditLastName] = useState(project.requester_last_name || '')
   const shareProject = useShareProject()
   const updateProject = useUpdateProject()
+  const generateMessage = useGenerateOutboundMessage()
+  const [aiInvite, setAiInvite] = useState<string | null>(null)
   const alreadyShared = !!project.requester_email
   const { data: fetchedPasscode } = useProjectPasscode(alreadyShared ? project.id : undefined)
   const resetPasscode = useResetPasscode()
@@ -905,6 +920,15 @@ function ShareModal({ project, onClose }: { project: Project; onClose: () => voi
   const shareLink = typeof window !== 'undefined'
     ? `${window.location.origin}/projects/${project.slug || project.id}`
     : ''
+
+  // Generate AI invite message when modal shows the shared state
+  useEffect(() => {
+    if ((alreadyShared || shareProject.isSuccess) && !aiInvite && !generateMessage.isPending) {
+      generateMessage.mutateAsync({ project_id: project.id, type: 'invite' })
+        .then(({ message }) => setAiInvite(message))
+        .catch(() => {}) // fallback to template on error
+    }
+  }, [alreadyShared, shareProject.isSuccess]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleShare = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -924,11 +948,9 @@ function ShareModal({ project, onClose }: { project: Project; onClose: () => voi
 
   const sharedEmail = alreadyShared ? project.requester_email! : email
 
-  const inviteEmailBody = copy.invite.body({
-    shareLink,
-    email: sharedEmail,
-    passcode,
-  })
+  const inviteEmailBody = aiInvite
+    ? composeOutboundMessage(aiInvite, shareLink, { email: sharedEmail, passcode })
+    : copy.invite.body({ shareLink, email: sharedEmail, passcode })
 
   return (
     <Modal isOpen onClose={onClose} title="Share with maker">
@@ -1157,10 +1179,22 @@ function EditableSetup({ project }: { project: Project }) {
 function RenudgeCard({ project, projectId }: { project: Project; projectId: string }) {
   const [copied, setCopied] = useState(false)
   const updateProject = useUpdateProject()
+  const generateMessage = useGenerateOutboundMessage()
+  const [aiReminder, setAiReminder] = useState<string | null>(null)
 
   const shareLink = typeof window !== 'undefined' ? `${window.location.origin}/projects/${project.slug || projectId}` : ''
-  const reminderMessage = copy.nudge.reminder({ projectTitle: project.title, shareLink })
+  const fallbackMessage = copy.nudge.reminder({ projectTitle: project.title, shareLink })
   const makerName = project.requester_first_name || project.requester_email?.split('@')[0] || 'maker'
+
+  useEffect(() => {
+    generateMessage.mutateAsync({ project_id: projectId, type: 'reminder' })
+      .then(({ message }) => setAiReminder(message))
+      .catch(() => {})
+  }, [projectId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const reminderMessage = aiReminder
+    ? composeOutboundMessage(aiReminder, shareLink)
+    : fallbackMessage
 
   return (
     <Card hover={false}>
@@ -1212,6 +1246,8 @@ function PrepNextSession({ project, projectId, sessionNumber }: {
   const updateProject = useUpdateProject()
   const generateWelcome = useGenerateWelcome()
   const createSession = useCreateSession()
+  const generateMessage = useGenerateOutboundMessage()
+  const [aiNudge, setAiNudge] = useState<string | null>(null)
 
   const shareLink = typeof window !== 'undefined' ? `${window.location.origin}/projects/${project.slug || projectId}` : ''
   const makerEmail = project.requester_email || ''
@@ -1238,14 +1274,29 @@ function PrepNextSession({ project, projectId, sessionNumber }: {
     })
     await createSession.mutateAsync({ project_id: projectId })
     setCreated(true)
+    // Generate AI nudge in the background
+    generateMessage.mutateAsync({
+      project_id: project.id,
+      type: 'nudge',
+      nudge_note: nudgeNote || undefined,
+      session_mode: sessionMode,
+      session_number: sessionNumber,
+      directives,
+      seed_questions: seedQuestions,
+    })
+      .then(({ message }) => setAiNudge(message))
+      .catch(() => {})
   }
 
-  const nudgeMessage = copy.nudge.body({
+  const fallbackNudge = copy.nudge.body({
     projectTitle: project.title,
     shareLink,
     note: nudgeNote || undefined,
     sessionMode,
   })
+  const nudgeMessage = aiNudge
+    ? composeOutboundMessage(aiNudge, shareLink)
+    : fallbackNudge
 
   if (created) {
     return (
