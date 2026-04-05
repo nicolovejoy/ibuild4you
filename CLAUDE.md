@@ -150,7 +150,7 @@ This is a learning project (Max, 19, college freshman, is contributing). Code sh
 ## Next Steps
 
 1. Add tests for `useStreamingChat` hook (needs React Testing Library setup).
-3. Clean up test projects from Firestore after import testing (remove test@example.com approved_emails, project_members, etc.).
-4. Consider Firestore composite index for messages (session_id + created_at) if onSnapshot performance degrades at scale.
-5. Validate posture model with real sessions — tune prompt language if agent over-challenges or misreads signals.
-6. Users & roles Phase 1: display names everywhere (see docs/users-and-roles-plan.md).
+2. Validate posture model with real sessions — tune prompt language if agent over-challenges or misreads signals.
+3. Users & roles Phase 1: display names everywhere (see docs/users-and-roles-plan.md).
+4. Clean up test projects from Firestore after import testing (remove test@example.com approved_emails, project_members, etc.).
+5. Consider Firestore composite index for messages (session_id + created_at) if onSnapshot performance degrades at scale.
