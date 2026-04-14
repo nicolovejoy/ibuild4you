@@ -38,6 +38,9 @@ yarn-error.log*
 # build info
 lib/build-info.json
 
+# local scratch / test fixtures
+/tmp
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
