@@ -4,7 +4,8 @@ import { useAuth } from '@/lib/hooks/useAuth'
 import { useApproval } from '@/lib/hooks/useApproval'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
-import { ArrowLeft, Check, Save } from 'lucide-react'
+import { ArrowLeft, Check, Save, Inbox } from 'lucide-react'
+import Link from 'next/link'
 import { useCurrentUser } from '@/lib/query/hooks'
 import { apiFetch } from '@/lib/firebase/api-fetch'
 import { useEscapeBack } from '@/lib/hooks/useEscapeBack'
@@ -67,7 +68,16 @@ export default function AdminPage() {
         </div>
       </header>
 
-      <main className="max-w-3xl mx-auto px-4 py-6">
+      <main className="max-w-3xl mx-auto px-4 py-6 space-y-6">
+        <nav className="flex flex-wrap gap-2">
+          <Link
+            href="/admin/interest"
+            className="inline-flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm text-brand-charcoal hover:border-brand-navy hover:text-brand-navy transition-colors"
+          >
+            <Inbox className="h-4 w-4" />
+            Interest submissions
+          </Link>
+        </nav>
         <UsersTable />
       </main>
     </div>

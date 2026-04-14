@@ -3,16 +3,19 @@
 import { auth } from '@/lib/firebase/client'
 import { signOut } from 'firebase/auth'
 import { useRouter } from 'next/navigation'
-import { User, LogOut } from 'lucide-react'
+import { User, LogOut, Shield } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import type { User as FirebaseUser } from 'firebase/auth'
 import { useQueryClient } from '@tanstack/react-query'
+import { useCurrentUser } from '@/lib/query/hooks'
 
 export function UserMenu() {
   const [user, setUser] = useState<FirebaseUser | null>(null)
   const [showDropdown, setShowDropdown] = useState(false)
   const router = useRouter()
   const queryClient = useQueryClient()
+  const { data: currentUser } = useCurrentUser()
+  const isAdmin = currentUser?.system_roles?.includes('admin') ?? false
 
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged((firebaseUser) => {
@@ -46,6 +49,18 @@ export function UserMenu() {
             <div className="px-4 py-2 text-sm text-gray-700 border-b border-gray-200">
               {user.email}
             </div>
+            {isAdmin && (
+              <button
+                onClick={() => {
+                  setShowDropdown(false)
+                  router.push('/admin')
+                }}
+                className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+              >
+                <Shield className="h-4 w-4" />
+                Admin
+              </button>
+            )}
             <button
               onClick={handleSignOut}
               className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getAdminDb } from '@/lib/firebase/admin'
 import { Resend } from 'resend'
-import { ADMIN_EMAILS } from '@/lib/constants'
+import { NOTIFICATION_EMAILS } from '@/lib/constants'
 
 function getResend() {
   return new Resend(process.env.RESEND_API_KEY)
@@ -34,7 +34,7 @@ export async function POST(request: Request) {
     try {
       await getResend().emails.send({
         from: 'iBuild4you <noreply@ibuild4you.com>',
-        to: ADMIN_EMAILS,
+        to: NOTIFICATION_EMAILS,
         subject: `New interest: ${name.trim()}`,
         text: [
           `New interest submission from ${name.trim()} (${email.trim()})`,
