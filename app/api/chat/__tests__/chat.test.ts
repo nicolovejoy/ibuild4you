@@ -277,8 +277,27 @@ describe('POST /api/chat', () => {
 
     expect(mockUpdate).toHaveBeenCalled()
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const updateArgs = (mockUpdate.mock.calls as any[][])[0][0] as Record<string, unknown>
+    const calls = mockUpdate.mock.calls as any[][]
+    const tokenCall = calls.find(
+      (c) => c[0] && typeof c[0] === 'object' && 'token_usage_input' in c[0]
+    )
+    expect(tokenCall).toBeDefined()
+    const updateArgs = tokenCall![0] as Record<string, unknown>
     expect(updateArgs.token_usage_input).toBeDefined()
     expect(updateArgs.token_usage_output).toBeDefined()
+  })
+
+  it('queues a debounced notification on the project after maker message', async () => {
+    await POST(makeRequest({ session_id: 's1', content: 'Hello' }))
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const calls = mockUpdate.mock.calls as any[][]
+    const notifyCall = calls.find(
+      (c) => c[0] && typeof c[0] === 'object' && 'notify_after' in c[0]
+    )
+    expect(notifyCall).toBeDefined()
+    const args = notifyCall![0] as Record<string, unknown>
+    expect(typeof args.notify_after).toBe('string')
+    expect(args.notify_pending_since).toBeDefined()
   })
 })

@@ -154,5 +154,12 @@ This is a learning project (Max, 19, college freshman, is contributing). Code sh
 3. Users & roles Phase 1: display names everywhere (see docs/users-and-roles-plan.md).
 4. Clean up test projects from Firestore after import testing (remove test@example.com approved_emails, project_members, etc.).
 5. Consider Firestore composite index for messages (session_id + created_at) if onSnapshot performance degrades at scale.
-6. "Your turn" email notifications — trigger from `app/api/chat/route.ts` after a maker message persists, email the builder(s) on the project. Guard against spam (rate-limit per project, e.g. only email on maker-turn transitions or if no email sent in last hour). Use `NOTIFICATION_EMAILS` or per-builder preferences.
-7. Project folders for the dashboard — group stale projects into folders, show a badge on each folder with count of projects where it's the builder's turn. Design questions open: per-builder vs shared, one folder vs many, default folder, drag-drop vs menu.
+6. Project folders for the dashboard — group stale projects into folders, show a badge on each folder with count of projects where it's the builder's turn. Design questions open: per-builder vs shared, one folder vs many, default folder, drag-drop vs menu.
+7. Model upgrade: `AGENT_MODEL` and `BRIEF_MODEL` in `lib/agent/constants.ts` still point at `claude-sonnet-4-20250514`, which Anthropic retires June 15, 2026. Switch to `claude-sonnet-4-6` (drop-in, same price).
+
+## Env vars
+
+Production (Vercel):
+- `CRON_SECRET` — required. Vercel auto-sends this as `Authorization: Bearer <CRON_SECRET>` to cron routes. `/api/cron/notify` rejects without it.
+- `RESEND_API_KEY` — for transactional email (interest form, notify cron).
+- `ANTHROPIC_API_KEY` — for the agent.

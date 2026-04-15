@@ -1,16 +1,15 @@
-import { getAuthenticatedUser, getAdminDb, getProjectRole, getUserDisplayName, hasSystemRole, ADMIN_EMAILS } from '@/lib/api/firebase-server-helpers'
+import { getAuthenticatedUser, getAdminDb, getProjectRole, getUserDisplayName, hasSystemRole } from '@/lib/api/firebase-server-helpers'
 import { buildSystemPrompt } from '@/lib/agent/system-prompt'
 import { AGENT_MODEL, AGENT_MAX_TOKENS, AGENT_TEMPERATURE } from '@/lib/agent/constants'
 import Anthropic from '@anthropic-ai/sdk'
-import { Resend } from 'resend'
 import type { BriefContent } from '@/lib/types'
+
+// Debounce window for maker-activity notifications. The cron at /api/cron/notify
+// sends a digest email only once notify_after has passed with no new messages.
+const NOTIFY_DEBOUNCE_MS = 5 * 60 * 1000
 
 function getAnthropic() {
   return new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-}
-
-function getResend() {
-  return new Resend(process.env.RESEND_API_KEY)
 }
 
 export async function POST(request: Request) {
@@ -65,22 +64,16 @@ export async function POST(request: Request) {
     updated_at: now,
   })
 
-  // Notify admin of non-admin chat activity (fire-and-forget)
+  // Queue a debounced notification. The cron at /api/cron/notify picks up projects
+  // where notify_after has passed and sends a single digest email.
   if (!hasSystemRole(auth, 'admin')) {
-    const projectTitle = projectData.title || 'Untitled project'
-    getResend()
-      .emails.send({
-        from: 'iBuild4you <noreply@ibuild4you.com>',
-        to: ADMIN_EMAILS,
-        subject: `New chat: ${projectTitle}`,
-        text: [
-          `${auth.email} sent a message in "${projectTitle}"`,
-          '',
-          `Time: ${now}`,
-          `Project: https://ibuild4you.com/projects/${projectData.slug || projectId}`,
-        ].join('\n'),
-      })
-      .catch((err) => console.error('Failed to send chat notification:', err))
+    const notifyAfter = new Date(Date.now() + NOTIFY_DEBOUNCE_MS).toISOString()
+    const existingPending = projectData.notify_pending_since as string | undefined | null
+    await db.collection('projects').doc(projectId).update({
+      notify_after: notifyAfter,
+      notify_pending_since: existingPending || now,
+      updated_at: now,
+    })
   }
 
   // Load conversation history for this session

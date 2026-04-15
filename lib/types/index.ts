@@ -48,6 +48,10 @@ export interface Project extends BaseEntity {
   slug?: string // URL-friendly identifier derived from title
   identity?: string // custom agent identity/persona (overrides default)
   layout_mockups?: WireframeMockup[] // wireframe layouts the agent can show in chat
+  // Debounced maker-activity notifications — cron at /api/cron/notify reads these
+  notify_after?: string | null // ISO timestamp; cron sends email once this passes
+  notify_pending_since?: string | null // ISO timestamp of first unnotified maker message
+  notify_last_sent_at?: string | null // ISO timestamp of last notification email
   // Enriched by GET /api/projects
   session_count?: number
   last_message_at?: string | null
