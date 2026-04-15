@@ -1,9 +1,9 @@
-export const AGENT_MODEL = 'claude-sonnet-4-20250514'
+export const AGENT_MODEL = 'claude-sonnet-4-6'
 export const AGENT_MAX_TOKENS = 2048
 export const AGENT_TEMPERATURE = 0.7
 
 // Used for brief generation too
-export const BRIEF_MODEL = 'claude-sonnet-4-20250514'
+export const BRIEF_MODEL = 'claude-sonnet-4-6'
 export const BRIEF_MAX_TOKENS = 4096
 export const BRIEF_TEMPERATURE = 0.3
 

@@ -155,7 +155,6 @@ This is a learning project (Max, 19, college freshman, is contributing). Code sh
 4. Clean up test projects from Firestore after import testing (remove test@example.com approved_emails, project_members, etc.).
 5. Consider Firestore composite index for messages (session_id + created_at) if onSnapshot performance degrades at scale.
 6. Project folders for the dashboard — group stale projects into folders, show a badge on each folder with count of projects where it's the builder's turn. Design questions open: per-builder vs shared, one folder vs many, default folder, drag-drop vs menu.
-7. Model upgrade: `AGENT_MODEL` and `BRIEF_MODEL` in `lib/agent/constants.ts` still point at `claude-sonnet-4-20250514`, which Anthropic retires June 15, 2026. Switch to `claude-sonnet-4-6` (drop-in, same price).
 
 ## Env vars
 
