@@ -429,8 +429,20 @@ export function useUploadFiles() {
         body: formData,
       })
       if (!res.ok) {
-        const data = await res.json()
-        throw new Error(data.error || 'Failed to upload files')
+        // Body may be JSON (our route) or plain text/HTML (Vercel platform error
+        // before the route runs, e.g. 413 for oversized request body).
+        let message = `Upload failed (${res.status})`
+        try {
+          const data = await res.json()
+          if (data?.error) message = data.error
+        } catch {
+          const text = await res.text().catch(() => '')
+          if (text) message = `${message}: ${text.slice(0, 200)}`
+        }
+        if (res.status === 413) {
+          message = 'File too large for upload — try a smaller file or fewer at once.'
+        }
+        throw new Error(message)
       }
       return res.json() as Promise<ProjectFile[]>
     },

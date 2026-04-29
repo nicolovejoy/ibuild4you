@@ -193,6 +193,9 @@ function MakerChat({
     const newFiles = Array.from(files)
     const oversized = newFiles.filter((f) => f.size > 4 * 1024 * 1024)
     if (oversized.length > 0) {
+      console.warn('upload_rejected_too_large', oversized.map((f) => ({
+        filename: f.name, size: f.size, content_type: f.type,
+      })))
       setError(`File "${oversized[0].name}" exceeds 4MB limit`)
       return
     }

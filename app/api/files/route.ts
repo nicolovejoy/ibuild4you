@@ -39,6 +39,13 @@ export async function POST(request: Request) {
   // Validate sizes
   for (const file of files) {
     if (file.size > MAX_FILE_SIZE) {
+      console.warn('upload_rejected_too_large', {
+        filename: file.name,
+        size: file.size,
+        content_type: file.type,
+        project_id: projectId,
+        uid: auth.uid,
+      })
       return NextResponse.json(
         { error: `File "${file.name}" exceeds 4MB limit` },
         { status: 400 }
@@ -63,8 +70,20 @@ export async function POST(request: Request) {
         ContentType: file.type,
       }))
     } catch (err) {
-      console.error('S3 upload failed:', err)
-      return NextResponse.json({ error: 'File upload failed' }, { status: 502 })
+      const awsError = err instanceof Error ? err.name : 'UnknownError'
+      console.error('upload_failed_s3', {
+        filename: file.name,
+        size: file.size,
+        content_type: file.type,
+        project_id: projectId,
+        uid: auth.uid,
+        aws_error: awsError,
+        message: err instanceof Error ? err.message : String(err),
+      })
+      return NextResponse.json(
+        { error: `Storage upload failed (${awsError})` },
+        { status: 502 }
+      )
     }
 
     const doc = {
