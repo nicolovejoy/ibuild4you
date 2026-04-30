@@ -149,14 +149,14 @@ This is a learning project (Max, 19, college freshman, is contributing). Code sh
 
 ## Next Steps
 
-1. Add tests for `useStreamingChat` hook (needs React Testing Library setup).
-2. Validate posture model with real sessions on claude-sonnet-4-6 — watch first few conversations for behavior shifts vs 4.0, tune prompts if agent over-challenges or misreads signals.
-3. Users & roles Phase 1: display names everywhere (see docs/users-and-roles-plan.md).
-4. Clean up test projects from Firestore after import testing (remove test@example.com approved_emails, project_members, etc.).
-5. Consider Firestore composite index for messages (session_id + created_at) if onSnapshot performance degrades at scale.
-6. Project folders for the dashboard — group stale projects into folders, show a badge on each folder with count of projects where it's the builder's turn. Design questions open: per-builder vs shared, one folder vs many, default folder, drag-drop vs menu.
-7. Verify `/api/cron/notify` is firing in prod — check Vercel cron dashboard and confirm first debounced email lands after a maker session.
-8. Project delete should clean up files. Today DELETE `/api/projects` removes sessions/messages/briefs/members but leaves the `files` Firestore docs and S3 objects orphaned. Extend the delete handler to also delete `files` docs and the matching `s3://ibuild4you-files/projects/<id>/` prefix.
+1. Validate Phase 3 PDF support with Matt's real NWMLS forms — watch the first conversation, confirm the agent quotes/references content correctly. Tune system prompt if the agent ignores or hallucinates from PDFs. See `docs/file-upload-plan.md`.
+2. Verify `/api/cron/notify` is firing in prod — Hobby plan was silently blocking deploys via the 5-minute cron until we upgraded to Pro on Apr 29. Confirm first debounced email lands after a maker session.
+3. Project delete should clean up files. Today DELETE `/api/projects` removes sessions/messages/briefs/members but leaves the `files` Firestore docs and S3 objects orphaned. Extend the delete handler to also delete `files` docs and the matching `s3://ibuild4you-files/projects/<id>/` prefix.
+4. Clean up test projects + their S3 files from Firestore after import testing (test@example.com approved_emails, project_members, files docs, S3 prefix).
+5. Validate posture model with real sessions on claude-sonnet-4-6 — watch first few conversations for behavior shifts vs 4.0, tune prompts if agent over-challenges or misreads signals.
+6. Users & roles Phase 1: display names everywhere (see `docs/users-and-roles-plan.md`).
+7. Add tests for `useStreamingChat` hook (needs React Testing Library setup).
+8. Project folders for the dashboard — group stale projects into folders, show a badge on each folder with count of projects where it's the builder's turn. Design questions open: per-builder vs shared, one folder vs many, default folder, drag-drop vs menu.
 
 ## Env vars
 
