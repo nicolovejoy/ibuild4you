@@ -156,6 +156,7 @@ This is a learning project (Max, 19, college freshman, is contributing). Code sh
 5. Consider Firestore composite index for messages (session_id + created_at) if onSnapshot performance degrades at scale.
 6. Project folders for the dashboard — group stale projects into folders, show a badge on each folder with count of projects where it's the builder's turn. Design questions open: per-builder vs shared, one folder vs many, default folder, drag-drop vs menu.
 7. Verify `/api/cron/notify` is firing in prod — check Vercel cron dashboard and confirm first debounced email lands after a maker session.
+8. Project delete should clean up files. Today DELETE `/api/projects` removes sessions/messages/briefs/members but leaves the `files` Firestore docs and S3 objects orphaned. Extend the delete handler to also delete `files` docs and the matching `s3://ibuild4you-files/projects/<id>/` prefix.
 
 ## Env vars
 

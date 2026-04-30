@@ -1,5 +1,6 @@
 import { getAuthenticatedUser, getAdminDb, getProjectRole, getUserDisplayName, hasSystemRole } from '@/lib/api/firebase-server-helpers'
 import { buildSystemPrompt } from '@/lib/agent/system-prompt'
+import { loadAttachmentBlocks, type AttachmentBlock } from '@/lib/agent/attachments'
 import { AGENT_MODEL, AGENT_MAX_TOKENS, AGENT_TEMPERATURE } from '@/lib/agent/constants'
 import Anthropic from '@anthropic-ai/sdk'
 import type { BriefContent } from '@/lib/types'
@@ -83,15 +84,48 @@ export async function POST(request: Request) {
     .orderBy('created_at', 'asc')
     .get()
 
-  const messages = messagesSnap.docs.map((doc) => ({
-    role: doc.data().role as 'user' | 'assistant',
-    content: doc.data().content as string,
-  }))
-  // Map our 'agent' role to Claude's 'assistant' role
-  const claudeMessages = messages.map((m) => ({
-    role: m.role === 'user' ? ('user' as const) : ('assistant' as const),
-    content: m.content,
-  }))
+  const storedMessages = messagesSnap.docs.map((doc) => {
+    const data = doc.data()
+    return {
+      role: data.role as 'user' | 'agent',
+      content: (data.content as string) || '',
+      file_ids: (data.file_ids as string[] | undefined) || [],
+    }
+  })
+
+  // For user messages with attachments, fetch each file from S3 and inline it
+  // into the Claude content array as a document/image block. Files attached
+  // to earlier turns stay in context on every subsequent turn (Anthropic
+  // prompt caching, set per-block in the helper, keeps this affordable).
+  type ClaudeMessage = {
+    role: 'user' | 'assistant'
+    content: string | Array<AttachmentBlock | { type: 'text'; text: string }>
+  }
+  let claudeMessages: ClaudeMessage[]
+  try {
+    claudeMessages = await Promise.all(
+      storedMessages.map(async (m): Promise<ClaudeMessage> => {
+        const role = m.role === 'user' ? 'user' : 'assistant'
+        if (role === 'user' && m.file_ids.length > 0) {
+          const blocks = await loadAttachmentBlocks(db, m.file_ids, projectId)
+          if (blocks.length > 0) {
+            const contentBlocks: Array<AttachmentBlock | { type: 'text'; text: string }> = [...blocks]
+            contentBlocks.push({ type: 'text', text: m.content || '(file attached)' })
+            return { role, content: contentBlocks }
+          }
+        }
+        return { role, content: m.content }
+      }),
+    )
+  } catch (err) {
+    if (err instanceof Error && err.message.startsWith('attachments_too_large')) {
+      return new Response(
+        JSON.stringify({ error: 'Attachments exceed the 25MB per-message limit.' }),
+        { status: 413, headers: { 'Content-Type': 'application/json' } },
+      )
+    }
+    throw err
+  }
 
   // Claude requires conversations to start with a user message.
   // With a welcome message, the first stored message is 'assistant'.
