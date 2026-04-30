@@ -191,12 +191,12 @@ function MakerChat({
 
   const addFiles = useCallback((files: FileList | File[]) => {
     const newFiles = Array.from(files)
-    const oversized = newFiles.filter((f) => f.size > 4 * 1024 * 1024)
+    const oversized = newFiles.filter((f) => f.size > 25 * 1024 * 1024)
     if (oversized.length > 0) {
       console.warn('upload_rejected_too_large', oversized.map((f) => ({
         filename: f.name, size: f.size, content_type: f.type,
       })))
-      setError(`File "${oversized[0].name}" exceeds 4MB limit`)
+      setError(`File "${oversized[0].name}" exceeds 25MB limit`)
       return
     }
     setPendingFiles((prev) => [...prev, ...newFiles])

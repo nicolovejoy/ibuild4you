@@ -41,6 +41,9 @@ lib/build-info.json
 # local scratch / test fixtures
 /tmp
 
+# infra config — not source of truth, lives in AWS
+cors.json
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

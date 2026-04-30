@@ -25,6 +25,12 @@ export async function GET(
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
 
+  // Pending files have no S3 object yet (init succeeded, confirm not called).
+  // Treat as not-found instead of attempting an S3 fetch that would 502.
+  if (fileData.status === 'pending') {
+    return NextResponse.json({ error: 'File not ready' }, { status: 404 })
+  }
+
   try {
     const result = await s3.send(new GetObjectCommand({
       Bucket: S3_BUCKET,

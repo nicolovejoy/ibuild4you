@@ -414,37 +414,50 @@ export function useProjectFiles(projectId: string | undefined) {
   })
 }
 
+// Three-step upload flow (bypasses Vercel's ~4.5MB function-body cap):
+//   1. POST /api/files/init   → { file_id, upload_url } and a pending Firestore doc
+//   2. PUT  upload_url        → bytes go straight to S3
+//   3. POST /api/files/:id/confirm → flips status to 'ready', returns ProjectFile
+async function uploadOne(file: File, projectId: string, sessionId?: string): Promise<ProjectFile> {
+  const initRes = await apiFetch('/api/files/init', {
+    method: 'POST',
+    body: JSON.stringify({
+      project_id: projectId,
+      session_id: sessionId,
+      filename: file.name,
+      content_type: file.type || 'application/octet-stream',
+      size_bytes: file.size,
+    }),
+  })
+  if (!initRes.ok) {
+    const data = await initRes.json().catch(() => ({}))
+    throw new Error(data?.error || `Upload init failed (${initRes.status})`)
+  }
+  const { file_id, upload_url } = await initRes.json()
+
+  const putRes = await fetch(upload_url, {
+    method: 'PUT',
+    body: file,
+    headers: { 'Content-Type': file.type || 'application/octet-stream' },
+  })
+  if (!putRes.ok) {
+    throw new Error(`Direct S3 upload failed (${putRes.status})`)
+  }
+
+  const confirmRes = await apiFetch(`/api/files/${file_id}/confirm`, { method: 'POST' })
+  if (!confirmRes.ok) {
+    const data = await confirmRes.json().catch(() => ({}))
+    throw new Error(data?.error || `Upload confirm failed (${confirmRes.status})`)
+  }
+  return confirmRes.json() as Promise<ProjectFile>
+}
+
 export function useUploadFiles() {
   const queryClient = useQueryClient()
 
   return useMutation({
     mutationFn: async ({ projectId, sessionId, files }: { projectId: string; sessionId?: string; files: File[] }) => {
-      const formData = new FormData()
-      formData.append('project_id', projectId)
-      if (sessionId) formData.append('session_id', sessionId)
-      files.forEach((f) => formData.append('files', f))
-
-      const res = await apiFetch('/api/files', {
-        method: 'POST',
-        body: formData,
-      })
-      if (!res.ok) {
-        // Body may be JSON (our route) or plain text/HTML (Vercel platform error
-        // before the route runs, e.g. 413 for oversized request body).
-        let message = `Upload failed (${res.status})`
-        try {
-          const data = await res.json()
-          if (data?.error) message = data.error
-        } catch {
-          const text = await res.text().catch(() => '')
-          if (text) message = `${message}: ${text.slice(0, 200)}`
-        }
-        if (res.status === 413) {
-          message = 'File too large for upload — try a smaller file or fewer at once.'
-        }
-        throw new Error(message)
-      }
-      return res.json() as Promise<ProjectFile[]>
+      return Promise.all(files.map((f) => uploadOne(f, projectId, sessionId)))
     },
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['files', variables.projectId] })

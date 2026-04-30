@@ -105,6 +105,10 @@ export interface ProjectFile extends BaseEntity {
   uploaded_by_email: string
   uploaded_by_uid: string
   uploaded_by_name?: string // cached display name at write time
+  // Phase 2 upload flow: 'pending' until the client confirms direct-to-S3
+  // upload completed, then 'ready'. Files written before this field existed
+  // are treated as ready by the UI.
+  status?: 'pending' | 'ready'
 }
 
 // Briefs collection — the living brief for a project
