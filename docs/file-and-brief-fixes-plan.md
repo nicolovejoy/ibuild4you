@@ -82,16 +82,21 @@ then say so to the maker rather than going silent.
 Lower priority than A3-A5 because the more common multi-PDF failure is now
 covered by A0.
 
-### A3 — Atomic upload semantics in `MakerProjectView`
+### A3 — Atomic upload semantics in `MakerProjectView`  (SHIPPED)
 
-Today `uploadFiles.mutateAsync` runs all uploads in `Promise.all`. If any
-single file fails, the throw aborts the message-save, but the successful
-uploads are already `ready` in Firestore. They appear in the Files tab but
-aren't attached to any chat message — agent never sees them.
-
-Fix: on partial failure, save the message with the successful subset and
-surface a visible warning ("3 of 5 files failed to upload — try those again").
-Don't lose the work that succeeded.
+- `useUploadFiles` switched from `Promise.all` to `Promise.allSettled` and
+  now returns `{ uploaded: ProjectFile[], failed: { file, error }[] }` —
+  always resolves, never throws on per-file failures.
+- `MakerProjectView.handleSend` consumes the new shape: on partial failure,
+  it sends the message with the successful subset, surfaces
+  `"N of M files failed to upload — try those again."`, and restores the
+  failed `File` objects to the picker. On total failure, the typed text +
+  all files are restored so nothing is lost.
+- Tests inverted in `lib/query/__tests__/use-upload-files.test.tsx`: the
+  former "rejects the whole batch" test is now
+  "returns partial results when one upload fails (does not throw)" and
+  asserts the new contract. Single-file failure tests now read
+  `failed[0].error` instead of awaiting a throw.
 
 ### A4 — Pre-upload size budgeting
 
@@ -135,7 +140,7 @@ Manual "Regenerate" button stays available as a forced refresh.
 
 1. ~~A0 — cache_control fix~~  ✅ shipped
 2. ~~B1 — idle brief regen~~  ✅ shipped
-3. A3 — atomic upload semantics
+3. ~~A3 — atomic upload semantics~~  ✅ shipped
 4. A4 — pre-upload size budget
 5. A5 — per-attachment status pill
 6. A2 — graceful skip on cap

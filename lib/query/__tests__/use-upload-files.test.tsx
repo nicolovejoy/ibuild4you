@@ -58,8 +58,10 @@ describe('useUploadFiles', () => {
       .mockResolvedValueOnce(jsonResponse({ id: 'f1', filename: 'a.pdf', status: 'ready' }, { status: 200 }))
 
     const { result } = renderHook(() => useUploadFiles(), { wrapper: makeWrapper() })
-    await result.current.mutateAsync({ projectId: 'p1', files: [makeFile()] })
+    const out = await result.current.mutateAsync({ projectId: 'p1', files: [makeFile()] })
 
+    expect(out.uploaded).toHaveLength(1)
+    expect(out.failed).toHaveLength(0)
     expect(fetchMock).toHaveBeenCalledTimes(3)
     expect(fetchMock.mock.calls[0][0]).toBe('/api/files/init')
     expect(fetchMock.mock.calls[1][0]).toBe('https://s3.example/upload-1')
@@ -68,14 +70,15 @@ describe('useUploadFiles', () => {
     expect(fetchMock.mock.calls[2][0]).toBe('/api/files/f1/confirm')
   })
 
-  it('surfaces the server error message when init fails', async () => {
+  it('captures the server error message in failed[].error when init fails', async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse({ error: 'File too big' }, { status: 413 }))
 
     const { result } = renderHook(() => useUploadFiles(), { wrapper: makeWrapper() })
-    await expect(
-      result.current.mutateAsync({ projectId: 'p1', files: [makeFile('big.pdf', 999999)] }),
-    ).rejects.toThrow(/File too big/)
+    const file = makeFile('big.pdf', 999999)
+    const out = await result.current.mutateAsync({ projectId: 'p1', files: [file] })
 
+    expect(out.uploaded).toHaveLength(0)
+    expect(out.failed).toEqual([{ file, error: 'File too big' }])
     // S3 PUT and confirm never fire when init rejects.
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
@@ -84,35 +87,37 @@ describe('useUploadFiles', () => {
     fetchMock.mockResolvedValueOnce(new Response('Bad gateway', { status: 502 }))
 
     const { result } = renderHook(() => useUploadFiles(), { wrapper: makeWrapper() })
-    await expect(
-      result.current.mutateAsync({ projectId: 'p1', files: [makeFile()] }),
-    ).rejects.toThrow(/Upload init failed.*502/)
+    const out = await result.current.mutateAsync({ projectId: 'p1', files: [makeFile()] })
+
+    expect(out.uploaded).toHaveLength(0)
+    expect(out.failed[0].error).toMatch(/Upload init failed.*502/)
   })
 
-  it('surfaces a clear error when the S3 PUT fails', async () => {
+  it('reports a failed entry when the S3 PUT fails', async () => {
     fetchMock
       .mockResolvedValueOnce(jsonResponse({ file_id: 'f1', upload_url: 'https://s3.example/u' }, { status: 201 }))
       .mockResolvedValueOnce(new Response(null, { status: 403 }))
 
     const { result } = renderHook(() => useUploadFiles(), { wrapper: makeWrapper() })
-    await expect(
-      result.current.mutateAsync({ projectId: 'p1', files: [makeFile()] }),
-    ).rejects.toThrow(/Direct S3 upload failed.*403/)
+    const out = await result.current.mutateAsync({ projectId: 'p1', files: [makeFile()] })
 
+    expect(out.uploaded).toHaveLength(0)
+    expect(out.failed[0].error).toMatch(/Direct S3 upload failed.*403/)
     // Confirm doesn't run when S3 fails.
     expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 
-  it('surfaces a clear error when confirm fails', async () => {
+  it('reports a failed entry when confirm fails', async () => {
     fetchMock
       .mockResolvedValueOnce(jsonResponse({ file_id: 'f1', upload_url: 'https://s3.example/u' }, { status: 201 }))
       .mockResolvedValueOnce(new Response(null, { status: 200 }))
       .mockResolvedValueOnce(jsonResponse({ error: 'doc not found' }, { status: 404 }))
 
     const { result } = renderHook(() => useUploadFiles(), { wrapper: makeWrapper() })
-    await expect(
-      result.current.mutateAsync({ projectId: 'p1', files: [makeFile()] }),
-    ).rejects.toThrow(/doc not found/)
+    const out = await result.current.mutateAsync({ projectId: 'p1', files: [makeFile()] })
+
+    expect(out.uploaded).toHaveLength(0)
+    expect(out.failed[0].error).toMatch(/doc not found/)
   })
 
   it('uploads multiple files in parallel and returns all of them', async () => {
@@ -134,20 +139,20 @@ describe('useUploadFiles', () => {
     })
 
     const { result } = renderHook(() => useUploadFiles(), { wrapper: makeWrapper() })
-    const uploaded = await result.current.mutateAsync({
+    const out = await result.current.mutateAsync({
       projectId: 'p1',
       files: [makeFile('a.pdf'), makeFile('b.pdf')],
     })
 
-    expect(uploaded).toHaveLength(2)
-    expect(uploaded.map((f) => f.id).sort()).toEqual(['f-1', 'f-2'])
+    expect(out.uploaded).toHaveLength(2)
+    expect(out.failed).toHaveLength(0)
+    expect(out.uploaded.map((f) => f.id).sort()).toEqual(['f-1', 'f-2'])
   })
 
-  it('rejects the whole batch when one upload fails (current Promise.all behavior)', async () => {
-    // This test documents the partial-failure behavior we plan to fix in A3
-    // of docs/file-and-brief-fixes-plan.md. Today: any failed upload aborts
-    // the whole mutation, but successful uploads are already 'ready' in
-    // Firestore — orphaned because no message references them.
+  it('returns partial results when one upload fails (does not throw)', async () => {
+    // A3 contract: a single bad file does not abort the whole batch. The
+    // mutation resolves with whatever uploads succeeded plus a `failed`
+    // entry per failure. The caller decides how to surface that.
     let initCalls = 0
     fetchMock.mockImplementation((url: string) => {
       if (url === '/api/files/init') {
@@ -166,19 +171,22 @@ describe('useUploadFiles', () => {
       return Promise.reject(new Error(`unexpected url: ${url}`))
     })
 
+    const fileA = makeFile('a.pdf')
+    const fileB = makeFile('b.pdf')
     const { result } = renderHook(() => useUploadFiles(), { wrapper: makeWrapper() })
-    await expect(
-      result.current.mutateAsync({
-        projectId: 'p1',
-        files: [makeFile('a.pdf'), makeFile('b.pdf')],
-      }),
-    ).rejects.toThrow(/simulated init failure/)
+    const out = await result.current.mutateAsync({
+      projectId: 'p1',
+      files: [fileA, fileB],
+    })
+
+    expect(out.uploaded).toHaveLength(1)
+    expect(out.uploaded[0].id).toBe('f1')
+    expect(out.failed).toHaveLength(1)
+    expect(out.failed[0]).toMatchObject({ file: fileB, error: expect.stringMatching(/simulated init failure/) })
 
     await waitFor(() => {
-      // The first file's confirm fired (it succeeded) before the batch threw —
-      // demonstrating the orphan we want to clean up in A3.
       const confirmCalls = fetchMock.mock.calls.filter((c) => String(c[0]).includes('/confirm'))
-      expect(confirmCalls.length).toBeGreaterThanOrEqual(1)
+      expect(confirmCalls.length).toBe(1)
     })
   })
 

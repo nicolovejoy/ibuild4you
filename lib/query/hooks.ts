@@ -452,12 +452,45 @@ async function uploadOne(file: File, projectId: string, sessionId?: string): Pro
   return confirmRes.json() as Promise<ProjectFile>
 }
 
+// Atomic upload semantics: every file runs to completion independently. The
+// mutation always resolves with both lists; one bad file no longer aborts the
+// batch and orphans the successful uploads. Callers decide how to surface
+// `failed` (typically: send the message with the successful subset, restore
+// the failed files to the picker for retry).
+export type UploadFilesResult = {
+  uploaded: ProjectFile[]
+  failed: { file: File; error: string }[]
+}
+
 export function useUploadFiles() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: async ({ projectId, sessionId, files }: { projectId: string; sessionId?: string; files: File[] }) => {
-      return Promise.all(files.map((f) => uploadOne(f, projectId, sessionId)))
+    mutationFn: async ({
+      projectId,
+      sessionId,
+      files,
+    }: {
+      projectId: string
+      sessionId?: string
+      files: File[]
+    }): Promise<UploadFilesResult> => {
+      const settled = await Promise.allSettled(
+        files.map((f) => uploadOne(f, projectId, sessionId)),
+      )
+      const uploaded: ProjectFile[] = []
+      const failed: { file: File; error: string }[] = []
+      settled.forEach((s, i) => {
+        if (s.status === 'fulfilled') {
+          uploaded.push(s.value)
+        } else {
+          failed.push({
+            file: files[i],
+            error: s.reason instanceof Error ? s.reason.message : String(s.reason),
+          })
+        }
+      })
+      return { uploaded, failed }
     },
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['files', variables.projectId] })

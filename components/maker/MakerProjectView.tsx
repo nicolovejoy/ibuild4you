@@ -246,17 +246,34 @@ function MakerChat({
       setCreatingSession(false)
     }
 
-    // Upload files first if any
+    // Upload files first if any. Atomic semantics: every file runs to
+    // completion. If some succeed and some fail, send the message with the
+    // successful subset, surface a warning, and restore the failed files to
+    // the picker so the maker can retry. If everything fails, abort the send
+    // and put the typed text + files back so nothing is lost.
     let fileIds: string[] = []
     if (filesToUpload.length > 0) {
       setUploading(true)
       try {
-        const uploaded = await uploadFiles.mutateAsync({
+        const { uploaded, failed } = await uploadFiles.mutateAsync({
           projectId,
           sessionId: targetSessionId,
           files: filesToUpload,
         })
         fileIds = uploaded.map((f) => f.id)
+        if (failed.length > 0) {
+          setPendingFiles(failed.map((f) => f.file))
+          setError(
+            uploaded.length === 0
+              ? `Failed to upload ${filesToUpload.length === 1 ? 'file' : 'files'}: ${failed[0].error}`
+              : `${failed.length} of ${filesToUpload.length} files failed to upload — try those again.`,
+          )
+        }
+        if (uploaded.length === 0) {
+          setInput(userMessage) // restore typed text alongside the failed files
+          setUploading(false)
+          return
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to upload files')
         setPendingFiles(filesToUpload) // restore files
