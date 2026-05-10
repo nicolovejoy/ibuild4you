@@ -149,15 +149,14 @@ This is a learning project (Max, 19, college freshman, is contributing). Code sh
 
 ## Next Steps
 
-1. Validate Phase 3 PDF support with Matt's real NWMLS forms — the cache_control batch-limit fix shipped May 9 (commit `a8d9c94`); confirm the agent now references PDF content correctly on Matt's next reply. Tune system prompt if the agent ignores or hallucinates from PDFs. See `docs/file-and-brief-fixes-plan.md` (follow-on plan) and `docs/file-upload-plan.md` (original Phases 1-3).
-2. Verify idle brief auto-regeneration in prod (B1, shipped May 9). `/api/cron/notify` now also regenerates briefs for projects idle ≥10 min with stale briefs. Watch the next session's brief get populated automatically (instead of needing a manual builder click). If it doesn't fire, check that `last_maker_message_at` is being written to the project doc on maker turns. See `docs/file-and-brief-fixes-plan.md` § B1.
-3. Verify `/api/cron/notify` is firing in prod — Hobby plan was silently blocking deploys via the 5-minute cron until we upgraded to Pro on Apr 29. Confirm first debounced email lands after a maker session.
-4. Project delete should clean up files. Today DELETE `/api/projects` removes sessions/messages/briefs/members but leaves the `files` Firestore docs and S3 objects orphaned. Extend the delete handler to also delete `files` docs and the matching `s3://ibuild4you-files/projects/<id>/` prefix.
-5. Clean up test projects + their S3 files from Firestore after import testing (test@example.com approved_emails, project_members, files docs, S3 prefix).
-6. Validate posture model with real sessions on claude-sonnet-4-6 — watch first few conversations for behavior shifts vs 4.0, tune prompts if agent over-challenges or misreads signals.
-7. Users & roles Phase 1: display names everywhere (see `docs/users-and-roles-plan.md`).
-8. Add tests for `useStreamingChat` hook (needs React Testing Library setup).
-9. Project folders for the dashboard — group stale projects into folders, show a badge on each folder with count of projects where it's the builder's turn. Design questions open: per-builder vs shared, one folder vs many, default folder, drag-drop vs menu.
+1. Validate Matt's PDF flow end-to-end. Cache_control fix (`a8d9c94`) is live but unverified against real Matt traffic — need to see his next chat return 200 AND the agent reference actual PDF content (form name, clause), not just acknowledge files exist. Tune `lib/agent/system-prompt.ts` if it ignores/hallucinates. Cron + B1 idle brief regen are firing cleanly with no errors but also pending Matt activity for full confirmation.
+2. A4 — pre-upload batch size budgeting. `addFiles` currently checks per-file >25MB; extend to running batch total so the picker rejects before the init round-trip. See `docs/file-and-brief-fixes-plan.md` § A4. (A3 atomic upload semantics shipped 2026-05-09 in commit `5ce0c52`.)
+3. Project delete should clean up files. Today DELETE `/api/projects` removes sessions/messages/briefs/members but leaves the `files` Firestore docs and S3 objects orphaned. Extend the delete handler to also delete `files` docs and the matching `s3://ibuild4you-files/projects/<id>/` prefix.
+4. Clean up test projects + their S3 files from Firestore after import testing (test@example.com approved_emails, project_members, files docs, S3 prefix).
+5. Validate posture model with real sessions on claude-sonnet-4-6 — watch first few conversations for behavior shifts vs 4.0, tune prompts if agent over-challenges or misreads signals.
+6. Users & roles Phase 1: display names everywhere (see `docs/users-and-roles-plan.md`).
+7. Add tests for `useStreamingChat` hook (needs React Testing Library setup).
+8. Project folders for the dashboard — group stale projects into folders, show a badge on each folder with count of projects where it's the builder's turn. Design questions open: per-builder vs shared, one folder vs many, default folder, drag-drop vs menu.
 
 ## Env vars
 
