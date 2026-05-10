@@ -149,14 +149,15 @@ This is a learning project (Max, 19, college freshman, is contributing). Code sh
 
 ## Next Steps
 
-1. Validate Phase 3 PDF support with Matt's real NWMLS forms — watch the first conversation, confirm the agent quotes/references content correctly. Tune system prompt if the agent ignores or hallucinates from PDFs. See `docs/file-upload-plan.md`.
-2. Verify `/api/cron/notify` is firing in prod — Hobby plan was silently blocking deploys via the 5-minute cron until we upgraded to Pro on Apr 29. Confirm first debounced email lands after a maker session.
-3. Project delete should clean up files. Today DELETE `/api/projects` removes sessions/messages/briefs/members but leaves the `files` Firestore docs and S3 objects orphaned. Extend the delete handler to also delete `files` docs and the matching `s3://ibuild4you-files/projects/<id>/` prefix.
-4. Clean up test projects + their S3 files from Firestore after import testing (test@example.com approved_emails, project_members, files docs, S3 prefix).
-5. Validate posture model with real sessions on claude-sonnet-4-6 — watch first few conversations for behavior shifts vs 4.0, tune prompts if agent over-challenges or misreads signals.
-6. Users & roles Phase 1: display names everywhere (see `docs/users-and-roles-plan.md`).
-7. Add tests for `useStreamingChat` hook (needs React Testing Library setup).
-8. Project folders for the dashboard — group stale projects into folders, show a badge on each folder with count of projects where it's the builder's turn. Design questions open: per-builder vs shared, one folder vs many, default folder, drag-drop vs menu.
+1. Validate Phase 3 PDF support with Matt's real NWMLS forms — the cache_control batch-limit fix shipped May 9 (commit `a8d9c94`); confirm the agent now references PDF content correctly on Matt's next reply. Tune system prompt if the agent ignores or hallucinates from PDFs. See `docs/file-and-brief-fixes-plan.md` (follow-on plan) and `docs/file-upload-plan.md` (original Phases 1-3).
+2. Auto-regenerate the brief when a session goes idle (≥10 min) — currently a manual builder-dashboard click, so briefs go stale across sessions and the agent loses structure. Plan in `docs/file-and-brief-fixes-plan.md` § B1: extend `/api/cron/notify` to also enqueue brief-regen for projects with stale briefs. Same cron tick, no new infrastructure.
+3. Verify `/api/cron/notify` is firing in prod — Hobby plan was silently blocking deploys via the 5-minute cron until we upgraded to Pro on Apr 29. Confirm first debounced email lands after a maker session.
+4. Project delete should clean up files. Today DELETE `/api/projects` removes sessions/messages/briefs/members but leaves the `files` Firestore docs and S3 objects orphaned. Extend the delete handler to also delete `files` docs and the matching `s3://ibuild4you-files/projects/<id>/` prefix.
+5. Clean up test projects + their S3 files from Firestore after import testing (test@example.com approved_emails, project_members, files docs, S3 prefix).
+6. Validate posture model with real sessions on claude-sonnet-4-6 — watch first few conversations for behavior shifts vs 4.0, tune prompts if agent over-challenges or misreads signals.
+7. Users & roles Phase 1: display names everywhere (see `docs/users-and-roles-plan.md`).
+8. Add tests for `useStreamingChat` hook (needs React Testing Library setup).
+9. Project folders for the dashboard — group stale projects into folders, show a badge on each folder with count of projects where it's the builder's turn. Design questions open: per-builder vs shared, one folder vs many, default folder, drag-drop vs menu.
 
 ## Env vars
 

@@ -45,27 +45,27 @@ if (!bySlug.empty) {
   }
 }
 
-const snap = await db
-  .collection('files')
-  .where('project_id', '==', projectId)
-  .orderBy('created_at', 'asc')
-  .get()
+// No orderBy — Firestore needs a composite index for where+orderBy and we
+// only have one for descending (used by /api/files). Sort client-side.
+const snap = await db.collection('files').where('project_id', '==', projectId).get()
 
 console.log(`\nProject: ${projectTitle} (${projectId})`)
 console.log(`Files: ${snap.size}\n`)
 
 const fmtSize = (n) => (n < 1024 ? `${n}B` : n < 1024 * 1024 ? `${(n / 1024).toFixed(0)}KB` : `${(n / (1024 * 1024)).toFixed(1)}MB`)
 
-const rows = snap.docs.map((d) => {
-  const f = d.data()
-  return {
-    filename: f.filename,
-    size: fmtSize(f.size_bytes || 0),
-    status: f.status || 'ready',
-    uploaded_by: f.uploaded_by_name || f.uploaded_by_email,
-    created_at: f.created_at,
-  }
-})
+const rows = snap.docs
+  .map((d) => {
+    const f = d.data()
+    return {
+      filename: f.filename,
+      size: fmtSize(f.size_bytes || 0),
+      status: f.status || 'ready',
+      uploaded_by: f.uploaded_by_name || f.uploaded_by_email,
+      created_at: f.created_at,
+    }
+  })
+  .sort((a, b) => (a.created_at || '').localeCompare(b.created_at || ''))
 
 for (const r of rows) {
   console.log(`  ${r.filename}  ·  ${r.size}  ·  ${r.status}  ·  ${r.uploaded_by}  ·  ${r.created_at}`)
