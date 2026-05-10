@@ -9,16 +9,20 @@ const SUPPORTED_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', '
 
 export type ImageMediaType = 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp'
 
+// cache_control is optional on each block. The chat route places at most one
+// marker (on the last block of the most recent attachment-bearing user message)
+// because Anthropic caps cache_control at 4 markers per request — tagging
+// every block 400s the whole request once you cross 4 attachments.
 export type AttachmentBlock =
   | {
       type: 'document'
       source: { type: 'base64'; media_type: 'application/pdf'; data: string }
-      cache_control: { type: 'ephemeral' }
+      cache_control?: { type: 'ephemeral' }
     }
   | {
       type: 'image'
       source: { type: 'base64'; media_type: ImageMediaType; data: string }
-      cache_control: { type: 'ephemeral' }
+      cache_control?: { type: 'ephemeral' }
     }
 
 type FileMeta = {
@@ -81,7 +85,6 @@ export async function loadAttachmentBlocks(
           return {
             type: 'document',
             source: { type: 'base64', media_type: 'application/pdf', data },
-            cache_control: { type: 'ephemeral' },
           }
         }
         return {
@@ -91,7 +94,6 @@ export async function loadAttachmentBlocks(
             media_type: file.content_type as ImageMediaType,
             data,
           },
-          cache_control: { type: 'ephemeral' },
         }
       } catch (err) {
         console.error('attachment_fetch_failed', {

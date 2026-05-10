@@ -97,9 +97,11 @@ export async function POST(request: Request) {
   // into the Claude content array as a document/image block. Files attached
   // to earlier turns stay in context on every subsequent turn (Anthropic
   // prompt caching, set per-block in the helper, keeps this affordable).
+  type TextBlock = { type: 'text'; text: string; cache_control?: { type: 'ephemeral' } }
+  type ContentBlock = AttachmentBlock | TextBlock
   type ClaudeMessage = {
     role: 'user' | 'assistant'
-    content: string | Array<AttachmentBlock | { type: 'text'; text: string }>
+    content: string | ContentBlock[]
   }
   let claudeMessages: ClaudeMessage[]
   try {
@@ -109,7 +111,7 @@ export async function POST(request: Request) {
         if (role === 'user' && m.file_ids.length > 0) {
           const blocks = await loadAttachmentBlocks(db, m.file_ids, projectId)
           if (blocks.length > 0) {
-            const contentBlocks: Array<AttachmentBlock | { type: 'text'; text: string }> = [...blocks]
+            const contentBlocks: ContentBlock[] = [...blocks]
             contentBlocks.push({ type: 'text', text: m.content || '(file attached)' })
             return { role, content: contentBlocks }
           }
@@ -131,6 +133,21 @@ export async function POST(request: Request) {
   // With a welcome message, the first stored message is 'assistant'.
   if (claudeMessages.length > 0 && claudeMessages[0].role === 'assistant') {
     claudeMessages.unshift({ role: 'user', content: 'Hi' })
+  }
+
+  // Anthropic caps cache_control markers at 4 per request. Place ONE marker
+  // on the last block of the most recent user message that has attachments.
+  // The cache then covers the entire prefix (history + all attachments) and
+  // is reused on subsequent turns. With 16+ attachments, tagging each block
+  // 400s the request — see attachments.ts.
+  for (let i = claudeMessages.length - 1; i >= 0; i--) {
+    const m = claudeMessages[i]
+    if (m.role !== 'user' || !Array.isArray(m.content) || m.content.length === 0) continue
+    const hasAttachment = m.content.some((b) => b.type === 'document' || b.type === 'image')
+    if (!hasAttachment) continue
+    const lastBlock = m.content[m.content.length - 1]
+    lastBlock.cache_control = { type: 'ephemeral' }
+    break
   }
 
   // Count sessions for this project to determine session number
@@ -224,7 +241,21 @@ export async function POST(request: Request) {
         controller.enqueue(encoder.encode('data: [DONE]\n\n'))
         controller.close()
       } catch (err) {
-        console.error('Stream error:', err)
+        // Surface Anthropic's status + message body so future failures are
+        // diagnosable from runtime logs alone, not just the SDK error name.
+        const anthropicStatus =
+          err && typeof err === 'object' && 'status' in err ? (err as { status: number }).status : undefined
+        const anthropicError =
+          err && typeof err === 'object' && 'error' in err
+            ? (err as { error: unknown }).error
+            : undefined
+        console.error('chat_stream_error', {
+          session_id,
+          project_id: projectId,
+          anthropic_status: anthropicStatus,
+          anthropic_error: anthropicError,
+          message: err instanceof Error ? err.message : String(err),
+        })
         controller.error(err)
       }
     },

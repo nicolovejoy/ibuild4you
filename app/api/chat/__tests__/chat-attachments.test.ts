@@ -156,15 +156,99 @@ describe('POST /api/chat with attachments', () => {
     }
     expect(userMsg.role).toBe('user')
     expect(Array.isArray(userMsg.content)).toBe(true)
+    // Document block carries no cache_control marker — the chat route places
+    // exactly one marker on the last block of the most recent attachment-
+    // bearing message (Anthropic caps cache_control at 4 per request).
     expect(userMsg.content[0]).toMatchObject({
       type: 'document',
       source: { media_type: 'application/pdf' },
-      cache_control: { type: 'ephemeral' },
     })
+    expect(userMsg.content[0]).not.toHaveProperty('cache_control')
     expect(userMsg.content[1]).toMatchObject({
       type: 'text',
       text: 'Look at this PDF',
+      cache_control: { type: 'ephemeral' },
     })
+  })
+
+  it('places at most one cache_control marker even with many attachments', async () => {
+    // Anthropic 400s with "A maximum of 4 blocks with cache_control may be
+    // provided" when we tag every block. Repro: 5 PDFs in one user message.
+    docData.files = {
+      exists: true,
+      data: () => ({
+        project_id: 'p1',
+        content_type: 'application/pdf',
+        storage_path: 'projects/p1/file-x/a.pdf',
+        size_bytes: 1024,
+        status: 'ready',
+      }),
+    }
+    queryResults.messages = [
+      {
+        id: 'old-1',
+        data: () => ({
+          role: 'user',
+          content: 'all of these',
+          file_ids: ['f1', 'f2', 'f3', 'f4', 'f5'],
+          created_at: '2026-01-01T00:00:00Z',
+        }),
+      },
+    ]
+    const res = await POST(makeRequest({ session_id: 's1', content: 'go' }))
+    await drain(res)
+
+    const userMsg = streamCalls[0].messages[0] as {
+      content: Array<{ type: string; cache_control?: unknown }>
+    }
+    const tagged = userMsg.content.filter((b) => b.cache_control !== undefined)
+    expect(tagged).toHaveLength(1)
+    // Marker lives on the last block (the text trailer).
+    expect(userMsg.content[userMsg.content.length - 1].cache_control).toEqual({ type: 'ephemeral' })
+  })
+
+  it('puts the cache_control marker on the most recent attachment-bearing message', async () => {
+    queryResults.messages = [
+      {
+        id: 'old-1',
+        data: () => ({
+          role: 'user',
+          content: 'first batch',
+          file_ids: ['file-1'],
+          created_at: '2026-01-01T00:00:00Z',
+        }),
+      },
+      {
+        id: 'old-2',
+        data: () => ({
+          role: 'agent',
+          content: 'got it',
+          created_at: '2026-01-01T00:01:00Z',
+        }),
+      },
+      {
+        id: 'old-3',
+        data: () => ({
+          role: 'user',
+          content: 'second batch',
+          file_ids: ['file-1'],
+          created_at: '2026-01-01T00:02:00Z',
+        }),
+      },
+    ]
+    const res = await POST(makeRequest({ session_id: 's1', content: 'now?' }))
+    await drain(res)
+
+    const msgs = streamCalls[0].messages as Array<{
+      role: string
+      content: string | Array<{ type: string; cache_control?: unknown }>
+    }>
+    // First user message: no cache_control anywhere
+    const first = msgs[0].content as Array<{ cache_control?: unknown }>
+    expect(first.every((b) => b.cache_control === undefined)).toBe(true)
+    // Third user message (most recent w/ attachments): one marker on last block
+    const third = msgs[2].content as Array<{ cache_control?: unknown }>
+    expect(third[third.length - 1].cache_control).toEqual({ type: 'ephemeral' })
   })
 
   it('keeps text-only messages as plain string content', async () => {

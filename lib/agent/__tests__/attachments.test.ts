@@ -5,9 +5,11 @@ import { loadAttachmentBlocks, MAX_ATTACHMENT_BYTES_PER_MESSAGE } from '../attac
 // ATTACHMENTS — turns file_ids into Claude content blocks
 //
 // PDFs become `document` blocks, images become `image` blocks. Unsupported
-// types and `pending` files are filtered out. Each block is marked with
-// cache_control: ephemeral so repeat turns hit the prompt cache. A per-message
-// byte cap protects against runaway costs and Anthropic's 32MB PDF limit.
+// types and `pending` files are filtered out. Blocks are NOT individually
+// tagged with cache_control — Anthropic caps cache_control at 4 markers per
+// request and we'd 400 with >4 attachments. The chat route places one marker
+// on the last block of the most recent attachment-bearing user message.
+// A per-message byte cap protects against Anthropic's 32MB PDF limit.
 // =============================================================================
 
 const mockS3Send = vi.fn()
@@ -68,8 +70,9 @@ describe('loadAttachmentBlocks', () => {
     expect(blocks[0]).toMatchObject({
       type: 'document',
       source: { type: 'base64', media_type: 'application/pdf' },
-      cache_control: { type: 'ephemeral' },
     })
+    // No cache_control on individual blocks — chat route adds one strategically.
+    expect(blocks[0]).not.toHaveProperty('cache_control')
     // base64 of [1,2,3] = "AQID"
     expect((blocks[0] as { source: { data: string } }).source.data).toBe('AQID')
   })
@@ -88,8 +91,8 @@ describe('loadAttachmentBlocks', () => {
     expect(blocks[0]).toMatchObject({
       type: 'image',
       source: { type: 'base64', media_type: 'image/png' },
-      cache_control: { type: 'ephemeral' },
     })
+    expect(blocks[0]).not.toHaveProperty('cache_control')
   })
 
   it('skips files belonging to a different project', async () => {
