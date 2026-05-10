@@ -300,4 +300,17 @@ describe('POST /api/chat', () => {
     expect(typeof args.notify_after).toBe('string')
     expect(args.notify_pending_since).toBeDefined()
   })
+
+  it('records last_maker_message_at on the project for idle-brief-regen', async () => {
+    await POST(makeRequest({ session_id: 's1', content: 'Hello' }))
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const calls = mockUpdate.mock.calls as any[][]
+    const projectUpdate = calls.find(
+      (c) => c[0] && typeof c[0] === 'object' && 'last_maker_message_at' in c[0]
+    )
+    expect(projectUpdate).toBeDefined()
+    const args = projectUpdate![0] as Record<string, unknown>
+    expect(typeof args.last_maker_message_at).toBe('string')
+  })
 })

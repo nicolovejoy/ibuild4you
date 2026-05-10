@@ -65,14 +65,18 @@ export async function POST(request: Request) {
     updated_at: now,
   })
 
-  // Queue a debounced notification. The cron at /api/cron/notify picks up projects
-  // where notify_after has passed and sends a single digest email.
+  // Queue a debounced notification + record the maker timestamp for idle-based
+  // brief regeneration. The cron at /api/cron/notify picks up projects where
+  // notify_after has passed and sends a single digest email; the same cron
+  // also auto-regenerates the brief when last_maker_message_at is older than
+  // 10 minutes and the brief is stale.
   if (!hasSystemRole(auth, 'admin')) {
     const notifyAfter = new Date(Date.now() + NOTIFY_DEBOUNCE_MS).toISOString()
     const existingPending = projectData.notify_pending_since as string | undefined | null
     await db.collection('projects').doc(projectId).update({
       notify_after: notifyAfter,
       notify_pending_since: existingPending || now,
+      last_maker_message_at: now,
       updated_at: now,
     })
   }

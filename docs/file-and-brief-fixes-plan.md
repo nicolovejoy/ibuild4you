@@ -106,24 +106,25 @@ agent processed them. Add a state per file: `shared` / `skipped (too large)`
 / `failed`. Requires threading this back from the chat-stream response —
 small protocol change.
 
-### B1 — Auto-regenerate brief after session goes idle
+### B1 — Auto-regenerate brief after session goes idle  (SHIPPED)
 
-Brief regeneration runs only on builder-click today. Extend the existing
-`/api/cron/notify` cron (already runs every 5 min on Pro) to also scan for
-projects where:
+- Extracted brief generation into `regenerateBriefForProject(db, projectId)`
+  in `lib/api/briefs.ts`. The manual route now delegates to it.
+- `/api/chat` records `last_maker_message_at` on the project doc for every
+  maker turn (skipped for admin posts).
+- `/api/cron/notify` extended: after handling notification digests, scans
+  for projects where `last_maker_message_at < now - 10min`, then for each
+  loads the latest brief and skips if it's already fresher than the last
+  maker turn. Otherwise calls `regenerateBriefForProject` synchronously
+  inside the cron tick. Errors are logged per project; one failure doesn't
+  stop the loop.
+- Tests cover: stale brief regenerated, fresh brief skipped, missing brief
+  triggers regen, partial-failure batch, no-idle-projects no-op.
 
-1. Latest message is from a maker
-2. Last message timestamp ≥ 10 minutes ago
-3. `brief.updated_at < latest_message.created_at`
-
-For each match, enqueue a brief regeneration (same code path as the manual
-button — `POST /api/briefs/generate` with admin-equivalent credentials).
-Fire-and-forget, don't block the cron loop.
-
-Why not a Vercel Queue: at our scale the durability isn't needed and adding
-queue infrastructure for one use case is overkill. The existing cron is
-already there. If we downgrade off Pro, both notify-debounce and idle-brief-
-regen lose their 5-min granularity together — graceful degradation.
+No Vercel Queue: at our scale the durability isn't needed and adding queue
+infrastructure for one use case is overkill. The existing cron is already
+there. If we downgrade off Pro, both notify-debounce and idle-brief-regen
+lose their 5-min granularity together — graceful degradation.
 
 ### B2 — Stale-brief indicator in builder dashboard
 
@@ -133,7 +134,7 @@ Manual "Regenerate" button stays available as a forced refresh.
 ## Order of operations
 
 1. ~~A0 — cache_control fix~~  ✅ shipped
-2. B1 — idle brief regen
+2. ~~B1 — idle brief regen~~  ✅ shipped
 3. A3 — atomic upload semantics
 4. A4 — pre-upload size budget
 5. A5 — per-attachment status pill
