@@ -42,6 +42,8 @@ export interface Project extends BaseEntity {
   shared_at?: string // when the project was shared with the maker
   last_nudged_at?: string // when the builder last copied a nudge message
   welcome_message?: string // admin-reviewed welcome message for the maker
+  nudge_message?: string // builder-authored outbound nudge; used verbatim when set
+  voice_sample?: string // builder's voice anchor for AI-generated outbound copy
   seed_questions?: string[] // ordered questions the agent should weave in early
   builder_directives?: string[] // things agent should actively push toward
   session_mode?: 'discover' | 'converge' // current operating mode (default: discover)

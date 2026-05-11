@@ -84,6 +84,8 @@ Only `title` is required. All other fields are optional.
   "requester_last_name": "Baker",
   "context": "Background info the agent uses to skip basic discovery questions.",
   "welcome_message": "Hey Jamie — tell me about your bakery idea!",
+  "nudge_message": "Optional. When set, used verbatim as the outbound nudge text for the next session and skips AI generation. Leave blank to let the AI draft.",
+  "voice_sample": "Optional. One paragraph showing how you'd text this person by hand. Used as a style anchor for AI-generated outbound copy (nudge/invite/reminder). Ignored when nudge_message is set.",
   "session_mode": "discover",
   "seed_questions": [
     "What problem are you trying to solve?",
@@ -118,7 +120,7 @@ Side effects on create: generates slug, creates owner membership, creates maker 
 
 ### Update (PATCH /api/projects)
 
-Requires `project_id`. Only these fields are accepted: `title`, `context`, `welcome_message`, `session_mode`, `seed_questions`, `builder_directives`, `layout_mockups`, `requester_first_name`, `requester_last_name`, `last_nudged_at`, `last_builder_activity_at`. Changing `title` regenerates the slug.
+Requires `project_id`. Only these fields are accepted: `title`, `context`, `welcome_message`, `nudge_message`, `voice_sample`, `session_mode`, `seed_questions`, `builder_directives`, `layout_mockups`, `requester_first_name`, `requester_last_name`, `last_nudged_at`, `last_builder_activity_at`, `identity`. Changing `title` regenerates the slug.
 
 ## Agent Behavior Rules
 
@@ -157,6 +159,7 @@ This is a learning project (Max, 19, college freshman, is contributing). Code sh
 6. Users & roles Phase 1: display names everywhere (see `docs/users-and-roles-plan.md`).
 7. Add tests for `useStreamingChat` hook (needs React Testing Library setup).
 8. Project folders for the dashboard — group stale projects into folders, show a badge on each folder with count of projects where it's the builder's turn. Design questions open: per-builder vs shared, one folder vs many, default folder, drag-drop vs menu.
+9. "Copy prep context" button should embed the current, complete Import-JSON schema so the receiving Claude returns a payload the Brief tab can actually consume. Today `buildPrepPrompt` in `lib/agent/brief-prompt.ts` documents `session_opener` only; it's missing `welcome_message`, `nudge_message`, `voice_sample`, `builder_directives`, `session_mode`, `layout_mockups`, `identity`, and the `brief` sub-shape (problem/target_users/features/constraints/additional_context/decisions/open_risks). It also doesn't reflect what `handleImportJson` in `BuilderProjectView.tsx` actually accepts. Fix: derive the schema string from a single source of truth (or at minimum keep both in sync) so adding a field updates the prep prompt automatically.
 
 ## Env vars
 

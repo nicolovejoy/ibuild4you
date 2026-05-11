@@ -266,7 +266,7 @@ export async function PATCH(request: Request) {
   }
 
   // Only allow updating specific setup fields
-  const allowed = ['welcome_message', 'seed_questions', 'context', 'title', 'builder_directives', 'session_mode', 'requester_first_name', 'requester_last_name', 'last_nudged_at', 'last_builder_activity_at', 'layout_mockups', 'identity'] as const
+  const allowed = ['welcome_message', 'nudge_message', 'voice_sample', 'seed_questions', 'context', 'title', 'builder_directives', 'session_mode', 'requester_first_name', 'requester_last_name', 'last_nudged_at', 'last_builder_activity_at', 'layout_mockups', 'identity'] as const
   const patch: Record<string, unknown> = { updated_at: new Date().toISOString() }
   for (const key of allowed) {
     if (key in updates) {
@@ -386,7 +386,7 @@ export async function POST(request: Request) {
   }
 
   // Optional setup fields — include only if provided
-  const optionalStrings = ['context', 'requester_first_name', 'requester_last_name', 'requester_email', 'welcome_message', 'identity'] as const
+  const optionalStrings = ['context', 'requester_first_name', 'requester_last_name', 'requester_email', 'welcome_message', 'nudge_message', 'voice_sample', 'identity'] as const
   for (const field of optionalStrings) {
     if (typeof body[field] === 'string' && body[field].trim()) {
       projectData[field] = body[field].trim()

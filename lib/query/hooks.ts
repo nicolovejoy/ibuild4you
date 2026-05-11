@@ -142,6 +142,8 @@ export function useUpdateProject() {
     mutationFn: async (data: {
       project_id: string
       welcome_message?: string
+      nudge_message?: string
+      voice_sample?: string
       seed_questions?: string[]
       context?: string
       title?: string
@@ -195,7 +197,7 @@ export function useGenerateOutboundMessage() {
       nudge_note?: string
       session_mode?: 'discover' | 'converge'
       session_number?: number
-      directives?: string[]
+      // invite-only — seed questions inform invite copy
       seed_questions?: string[]
     }) => {
       const res = await apiFetch('/api/projects/outbound-message', {

@@ -6,7 +6,6 @@ import {
   requireRole,
 } from '@/lib/api/firebase-server-helpers'
 import { generateInviteMessage, generateNudgeMessage, generateReminderMessage } from '@/lib/agent/outbound-messages'
-import type { BriefContent } from '@/lib/types'
 
 // POST /api/projects/outbound-message — generate a contextual invite/nudge/reminder (builder+)
 export async function POST(request: Request) {
@@ -38,7 +37,6 @@ export async function POST(request: Request) {
   const projectTitle = projectData.title as string
   const projectContext = (projectData.context as string) || null
   const makerFirstName = (projectData.requester_first_name as string) || null
-  const identity = (projectData.identity as string) || null
 
   try {
     let message: string
@@ -52,22 +50,10 @@ export async function POST(request: Request) {
         sessionMode: (body.session_mode ?? projectData.session_mode) as 'discover' | 'converge' | undefined,
       })
     } else if (type === 'nudge') {
-      // Fetch brief for summary and open risks
-      let briefSummary: string | null = null
-      let openRisks: string[] = []
-      const briefSnap = await db
-        .collection('briefs')
-        .where('project_id', '==', project_id)
-        .orderBy('version', 'desc')
-        .limit(1)
-        .get()
-      if (!briefSnap.empty) {
-        const brief = briefSnap.docs[0].data().content as BriefContent
-        const parts: string[] = []
-        if (brief.problem) parts.push(brief.problem)
-        if (brief.features?.length) parts.push(`Features: ${brief.features.join(', ')}`)
-        if (parts.length) briefSummary = parts.join('. ')
-        openRisks = brief.open_risks || []
+      // Builder-authored override wins — return verbatim, skip LLM call entirely.
+      const override = (projectData.nudge_message as string | undefined)?.trim()
+      if (override) {
+        return NextResponse.json({ message: override })
       }
 
       message = await generateNudgeMessage({
@@ -75,12 +61,9 @@ export async function POST(request: Request) {
         projectContext,
         makerFirstName,
         sessionMode: (body.session_mode ?? projectData.session_mode) as 'discover' | 'converge' | undefined,
-        directives: (body.directives ?? projectData.builder_directives) as string[] | undefined,
-        seedQuestions: (body.seed_questions ?? projectData.seed_questions) as string[] | undefined,
         builderNote: (body.nudge_note as string) || null,
         sessionNumber: (body.session_number as number) || 2,
-        briefSummary,
-        openRisks,
+        voiceSample: (projectData.voice_sample as string | undefined) || null,
       })
     } else {
       message = await generateReminderMessage({

@@ -602,9 +602,13 @@ function BriefTab({
         await updateBrief.mutateAsync({ project_id: projectId, content: parsed.brief })
         const projectUpdate: Record<string, unknown> = { project_id: projectId }
         if (parsed.session_opener !== undefined) projectUpdate.welcome_message = parsed.session_opener
+        if (parsed.welcome_message !== undefined) projectUpdate.welcome_message = parsed.welcome_message
+        if (parsed.nudge_message !== undefined) projectUpdate.nudge_message = parsed.nudge_message
+        if (parsed.voice_sample !== undefined) projectUpdate.voice_sample = parsed.voice_sample
         if (parsed.builder_directives !== undefined) projectUpdate.builder_directives = parsed.builder_directives
         if (parsed.session_mode !== undefined) projectUpdate.session_mode = parsed.session_mode
         if (parsed.layout_mockups !== undefined) projectUpdate.layout_mockups = parsed.layout_mockups
+        if (parsed.identity !== undefined) projectUpdate.identity = parsed.identity
         if (Object.keys(projectUpdate).length > 1) {
           await updateProject.mutateAsync(projectUpdate as Parameters<typeof updateProject.mutateAsync>[0])
         }
@@ -1096,6 +1100,8 @@ function EditableSetup({ project }: { project: Project }) {
   const [newDirective, setNewDirective] = useState('')
   const [mockups, setMockups] = useState<WireframeMockup[]>(project.layout_mockups || [])
   const [identity, setIdentity] = useState(project.identity || '')
+  const [voiceSample, setVoiceSample] = useState(project.voice_sample || '')
+  const [nudgeMessageOverride, setNudgeMessageOverride] = useState(project.nudge_message || '')
   const [saved, setSaved] = useState(false)
 
   const updateProject = useUpdateProject()
@@ -1108,7 +1114,9 @@ function EditableSetup({ project }: { project: Project }) {
     setDirectives(project.builder_directives || [])
     setMockups(project.layout_mockups || [])
     setIdentity(project.identity || '')
-  }, [project.welcome_message, project.seed_questions, project.session_mode, project.builder_directives, project.layout_mockups, project.identity])
+    setVoiceSample(project.voice_sample || '')
+    setNudgeMessageOverride(project.nudge_message || '')
+  }, [project.welcome_message, project.seed_questions, project.session_mode, project.builder_directives, project.layout_mockups, project.identity, project.voice_sample, project.nudge_message])
 
   const handleSave = async () => {
     await updateProject.mutateAsync({
@@ -1119,6 +1127,8 @@ function EditableSetup({ project }: { project: Project }) {
       builder_directives: directives,
       layout_mockups: mockups,
       identity: identity || undefined,
+      voice_sample: voiceSample || undefined,
+      nudge_message: nudgeMessageOverride || undefined,
       last_builder_activity_at: new Date().toISOString(),
     })
     setSaved(true)
@@ -1162,6 +1172,20 @@ function EditableSetup({ project }: { project: Project }) {
             <label className="text-sm font-medium text-gray-700 block mb-1.5">Agent identity (optional)</label>
             <textarea value={identity} onChange={(e) => setIdentity(e.target.value)} placeholder="Override the default agent persona. Leave blank for standard intake assistant." rows={2} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy" />
             <p className="text-xs text-gray-400 mt-1">Changes how the agent introduces itself and frames its role.</p>
+          </div>
+
+          {/* Voice sample (drives AI-generated outbound copy) */}
+          <div>
+            <label className="text-sm font-medium text-gray-700 block mb-1.5">Voice sample (optional)</label>
+            <textarea value={voiceSample} onChange={(e) => setVoiceSample(e.target.value)} placeholder="Paste a paragraph showing how you'd text this person by hand. The AI uses this as a style anchor when drafting nudges." rows={3} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy" />
+            <p className="text-xs text-gray-400 mt-1">Anchors the voice of AI-generated nudge/invite/reminder copy. Ignored if you write the nudge yourself below.</p>
+          </div>
+
+          {/* Nudge override */}
+          <div>
+            <label className="text-sm font-medium text-gray-700 block mb-1.5">Nudge override (optional)</label>
+            <textarea value={nudgeMessageOverride} onChange={(e) => setNudgeMessageOverride(e.target.value)} placeholder="Leave blank to let the AI draft a nudge each session. Fill this in to send a specific message verbatim." rows={3} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy" />
+            <p className="text-xs text-gray-400 mt-1">When set, the next nudge uses this text verbatim and skips AI generation.</p>
           </div>
 
           <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
@@ -1239,6 +1263,7 @@ function PrepNextSession({ project, projectId, sessionNumber }: {
   const [newDirective, setNewDirective] = useState('')
   const [mockups, setMockups] = useState<WireframeMockup[]>(project.layout_mockups || [])
   const [identity, setIdentity] = useState(project.identity || '')
+  const [nudgeMessageOverride, setNudgeMessageOverride] = useState(project.nudge_message || '')
   const [nudgeNote, setNudgeNote] = useState('')
   const [created, setCreated] = useState(false)
   const [nudgeCopied, setNudgeCopied] = useState(false)
@@ -1259,7 +1284,8 @@ function PrepNextSession({ project, projectId, sessionNumber }: {
     setDirectives(project.builder_directives || [])
     setMockups(project.layout_mockups || [])
     setIdentity(project.identity || '')
-  }, [project.welcome_message, project.seed_questions, project.session_mode, project.builder_directives, project.layout_mockups, project.identity])
+    setNudgeMessageOverride(project.nudge_message || '')
+  }, [project.welcome_message, project.seed_questions, project.session_mode, project.builder_directives, project.layout_mockups, project.identity, project.nudge_message])
 
   const handleCreate = async () => {
     await updateProject.mutateAsync({
@@ -1270,19 +1296,19 @@ function PrepNextSession({ project, projectId, sessionNumber }: {
       builder_directives: directives,
       layout_mockups: mockups,
       identity: identity || undefined,
+      nudge_message: nudgeMessageOverride || undefined,
       last_builder_activity_at: new Date().toISOString(),
     })
     await createSession.mutateAsync({ project_id: projectId })
     setCreated(true)
-    // Generate AI nudge in the background
+    // Generate AI nudge in the background (route honors nudge_message override
+    // server-side; we still call so the override flows back into aiNudge).
     generateMessage.mutateAsync({
       project_id: project.id,
       type: 'nudge',
       nudge_note: nudgeNote || undefined,
       session_mode: sessionMode,
       session_number: sessionNumber,
-      directives,
-      seed_questions: seedQuestions,
     })
       .then(({ message }) => setAiNudge(message))
       .catch(() => {})
@@ -1376,6 +1402,11 @@ function PrepNextSession({ project, projectId, sessionNumber }: {
               <div>
                 <label className="text-sm font-medium text-gray-700 block mb-1.5">Note for {makerEmail} (optional)</label>
                 <textarea value={nudgeNote} onChange={(e) => setNudgeNote(e.target.value)} placeholder="This time we'll narrow down which data sources to use." rows={2} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy" />
+                <p className="text-xs text-gray-400 mt-1">A single hook for the AI-generated nudge. Ignored if you fill in the override below.</p>
+              </div>
+              <div>
+                <label className="text-sm font-medium text-gray-700 block mb-1.5">Nudge override (optional)</label>
+                <textarea value={nudgeMessageOverride} onChange={(e) => setNudgeMessageOverride(e.target.value)} placeholder="Leave blank to let the AI draft a nudge. Fill this in to send a specific message verbatim." rows={3} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy" />
               </div>
               <LoadingButton variant="primary" size="sm" loading={updateProject.isPending || createSession.isPending} loadingText="Creating..." onClick={handleCreate} icon={RotateCw}>
                 Create conversation {sessionNumber} & copy nudge

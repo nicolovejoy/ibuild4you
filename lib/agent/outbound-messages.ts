@@ -55,48 +55,42 @@ interface NudgeParams {
   projectContext?: string | null
   makerFirstName?: string | null
   sessionMode?: 'discover' | 'converge'
-  directives?: string[]
-  seedQuestions?: string[]
   builderNote?: string | null
   sessionNumber: number
-  briefSummary?: string | null
-  openRisks?: string[]
+  voiceSample?: string | null
 }
 
-const NUDGE_SYSTEM_PROMPT = `You are writing a short text/email from a project builder to someone who has an ongoing conversation about their app or website idea. A new conversation session is ready.
+const NUDGE_SYSTEM_PROMPT_BASE = `You are writing a short text/email from a project builder to someone who has an ongoing conversation about their app or website idea. A new conversation session is ready.
 
 Rules:
 - 2-3 sentences maximum
-- Mention what this session will focus on — be specific based on the directives, risks, or mode
 - Reference the person by name if provided
 - Do NOT include any links — those are added separately
-- Keep it casual and short — this is a text message
+- Keep it casual and short — this is a text message, not corporate copy
+- Do NOT list multiple topics; pick a single hook (the builder's note, otherwise something specific from the project) and lead with that
 - Do NOT use jargon like "user journeys", "microservices", "tech stack", "MVP", etc.`
+
+function buildNudgeSystemPrompt(voiceSample?: string | null): string {
+  if (voiceSample && voiceSample.trim()) {
+    return `${NUDGE_SYSTEM_PROMPT_BASE}\n\nVoice anchor — mimic this builder's voice, register, and sentence shape. Match their cadence, not just their vocabulary:\n${voiceSample.trim()}`
+  }
+  return NUDGE_SYSTEM_PROMPT_BASE
+}
 
 export async function generateNudgeMessage(params: NudgeParams): Promise<string> {
   const parts = [`Generate a nudge message for session ${params.sessionNumber} of "${params.projectTitle}".`]
   if (params.makerFirstName) parts.push(`The person's name is ${params.makerFirstName}.`)
-  if (params.builderNote) parts.push(`Builder's note for this session: ${params.builderNote}`)
+  if (params.builderNote) parts.push(`Builder's note — use this as the single hook for the nudge: ${params.builderNote}`)
   if (params.sessionMode === 'converge') {
     parts.push('This session is about narrowing down and making decisions.')
   } else {
     parts.push('This session is about exploring and discovering more about the idea.')
   }
-  if (params.directives?.length) {
-    parts.push(`This session should cover: ${params.directives.join('; ')}`)
-  }
-  if (params.seedQuestions?.length) {
-    parts.push(`Questions to explore: ${params.seedQuestions.slice(0, 3).join('; ')}`)
-  }
-  if (params.openRisks?.length) {
-    parts.push(`Open risks to address: ${params.openRisks.join('; ')}`)
-  }
-  if (params.briefSummary) parts.push(`Brief so far: ${params.briefSummary}`)
   if (params.projectContext) parts.push(`Background: ${params.projectContext}`)
 
   const response = await getAnthropic().messages.create({
     model: AGENT_MODEL,
-    system: NUDGE_SYSTEM_PROMPT,
+    system: buildNudgeSystemPrompt(params.voiceSample),
     messages: [{ role: 'user', content: parts.join('\n') }],
     max_tokens: 512,
     temperature: AGENT_TEMPERATURE,

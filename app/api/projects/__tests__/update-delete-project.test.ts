@@ -148,6 +148,21 @@ describe('PATCH /api/projects', () => {
     expect(data.id).toBe('proj-1')
   })
 
+  it('updates nudge_message and voice_sample', async () => {
+    const res = await PATCH(
+      makePatchRequest({
+        project_id: 'proj-1',
+        nudge_message: 'Hand-written nudge text.',
+        voice_sample: 'Short. Direct. No filler.',
+      })
+    )
+    expect(res.status).toBe(200)
+
+    const data = await res.json()
+    expect(data.nudge_message).toBe('Hand-written nudge text.')
+    expect(data.voice_sample).toBe('Short. Direct. No filler.')
+  })
+
   it('regenerates slug when title changes', async () => {
     const res = await PATCH(
       makePatchRequest({
