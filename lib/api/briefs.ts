@@ -1,5 +1,5 @@
 import type { BriefContent } from '@/lib/types'
-import { buildPrepPrompt } from '@/lib/agent/brief-prompt'
+import { buildNextConvoPrompt } from '@/lib/agent/next-convo-prompt'
 import { BRIEF_MODEL, BRIEF_MAX_TOKENS, BRIEF_TEMPERATURE } from '@/lib/agent/constants'
 import Anthropic from '@anthropic-ai/sdk'
 
@@ -50,7 +50,7 @@ export async function regenerateBriefForProject(
   const projectDoc = await db.collection('projects').doc(projectId).get()
   const projectTitle = (projectDoc.data()?.title as string) || 'Untitled'
 
-  const prompt = buildPrepPrompt({
+  const prompt = buildNextConvoPrompt({
     currentBrief,
     conversationHistory: allMessages,
     projectTitle,

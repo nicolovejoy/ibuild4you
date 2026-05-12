@@ -481,6 +481,9 @@ export async function POST(request: Request) {
       constraints: typeof b.constraints === 'string' ? b.constraints : '',
       additional_context: typeof b.additional_context === 'string' ? b.additional_context : '',
       ...(Array.isArray(b.decisions) && b.decisions.length > 0 && { decisions: b.decisions }),
+      ...(Array.isArray(b.open_risks) && b.open_risks.length > 0 && {
+        open_risks: b.open_risks.filter((r: unknown) => typeof r === 'string' && r.trim()),
+      }),
     }
     await db.collection('briefs').add({
       project_id: docRef.id,

@@ -333,4 +333,47 @@ describe('POST /api/projects', () => {
     expect(sessions[0].seed_questions).toBeUndefined()
     expect(sessions[0].welcome_message).toBeUndefined()
   })
+
+  // --- Brief seeding ---
+
+  it('seeds the initial brief and preserves open_risks', async () => {
+    await POST(makeRequest({
+      title: 'With Brief',
+      brief: {
+        problem: 'no online ordering',
+        target_users: 'bakery customers',
+        features: ['catalog', 'checkout'],
+        constraints: 'mobile-first',
+        additional_context: '',
+        decisions: [{ topic: 'payments', decision: 'Stripe only' }],
+        open_risks: ['unclear how inventory syncs', 'no plan for refunds'],
+      },
+    }))
+
+    const briefs = addedDocs['briefs']
+    expect(briefs).toHaveLength(1)
+    expect(briefs[0].content).toMatchObject({
+      problem: 'no online ordering',
+      target_users: 'bakery customers',
+      features: ['catalog', 'checkout'],
+      constraints: 'mobile-first',
+      decisions: [{ topic: 'payments', decision: 'Stripe only' }],
+      open_risks: ['unclear how inventory syncs', 'no plan for refunds'],
+    })
+  })
+
+  it('filters non-string open_risks entries when seeding', async () => {
+    await POST(makeRequest({
+      title: 'Risks Test',
+      brief: {
+        problem: 'p',
+        open_risks: ['valid risk', 42, '', null, 'another valid'],
+      },
+    }))
+
+    const briefs = addedDocs['briefs']
+    expect(briefs[0].content).toMatchObject({
+      open_risks: ['valid risk', 'another valid'],
+    })
+  })
 })

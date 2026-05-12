@@ -67,7 +67,7 @@ Each type gets a distinct color and icon so sections are visually distinguishabl
 - `components/ui/MessageContent.tsx` — Parser that splits message content into text and wireframe segments
 - `components/ui/__tests__/MessageContent.test.ts` — 9 unit tests for the parser
 - `lib/agent/system-prompt.ts` — Teaches the agent the wireframe format
-- `lib/agent/brief-prompt.ts` — Includes layout_mockups in prep workflow output schema
+- `lib/agent/next-convo-prompt.ts` and `lib/agent/new-project-prompt.ts` — Both include `layout_mockups` in their JSON output schema
 - `lib/types/index.ts` — WireframeMockup and WireframeSection types
 
 ### Streaming behavior
@@ -76,7 +76,7 @@ During SSE streaming, wireframe blocks arrive character by character. The parser
 
 ### Prep workflow integration
 
-The "Copy prep context" prompt includes `layout_mockups` in its JSON output schema. When you discuss layout strategies with Claude and say "give me the output," the JSON includes a `layout_mockups` array. Pasting it back into the Brief tab import field saves mockups alongside the brief and directives.
+Both prep prompts (`new-project` and `next-convo` — see `lib/agent/new-project-prompt.ts` and `lib/agent/next-convo-prompt.ts` for the full schemas) include `layout_mockups` in their JSON output. When you discuss layout strategies with Claude and ask for the output, the returned JSON includes a `layout_mockups` array. Pasting it back into the matching import field saves mockups alongside the rest of the project setup.
 
 ## Potential improvements
 

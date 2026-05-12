@@ -19,7 +19,9 @@ import { Modal } from '@/components/ui/Modal'
 import type { Project } from '@/lib/types'
 import { getTurnIndicator } from '@/lib/turn-indicator'
 import { copy, formatDisplayName } from '@/lib/copy'
+import { parseNewProjectPayload } from '@/lib/api/import-payload'
 import { stripCodeFences } from '@/lib/utils'
+import { buildNewProjectPrompt } from '@/lib/agent/new-project-prompt'
 
 export default function DashboardPage() {
   const { user, loading: authLoading, isAuthenticated } = useAuth()
@@ -98,8 +100,15 @@ function NewProjectButton() {
   const [context, setContext] = useState('')
   const [jsonInput, setJsonInput] = useState('')
   const [jsonError, setJsonError] = useState<string | null>(null)
+  const [prepCopied, setPrepCopied] = useState(false)
   const createProject = useCreateProject()
   const router = useRouter()
+
+  const handleCopyPrep = async () => {
+    await navigator.clipboard.writeText(buildNewProjectPrompt())
+    setPrepCopied(true)
+    setTimeout(() => setPrepCopied(false), 2000)
+  }
 
   const resetAndClose = () => {
     setTitle('')
@@ -109,6 +118,7 @@ function NewProjectButton() {
     setContext('')
     setJsonInput('')
     setJsonError(null)
+    setPrepCopied(false)
     setMode('form')
     setShowForm(false)
   }
@@ -134,24 +144,14 @@ function NewProjectButton() {
 
   const handleImport = async () => {
     setJsonError(null)
-    let payload: Record<string, unknown>
-    try {
-      payload = JSON.parse(stripCodeFences(jsonInput))
-    } catch {
-      setJsonError('Invalid JSON')
-      return
-    }
-    if (!payload || typeof payload !== 'object') {
-      setJsonError('JSON must be an object')
-      return
-    }
-    if (!payload.title || typeof payload.title !== 'string' || !payload.title.trim()) {
-      setJsonError('JSON must include a "title" field')
+    const parsed = parseNewProjectPayload(jsonInput)
+    if (!parsed.ok) {
+      setJsonError(parsed.error)
       return
     }
 
     try {
-      const result = await createProject.mutateAsync(payload as { title: string; [key: string]: unknown })
+      const result = await createProject.mutateAsync(parsed.value)
       resetAndClose()
       router.push(`/projects/${result.slug || result.id}?tab=setup`)
     } catch {
@@ -309,20 +309,28 @@ function NewProjectButton() {
         ) : (
           <div className="space-y-4">
             <div>
+              <button
+                type="button"
+                onClick={handleCopyPrep}
+                className="flex items-center gap-1.5 text-xs text-gray-600 hover:text-brand-navy mb-2"
+              >
+                {prepCopied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+                {prepCopied ? 'Copied!' : 'Copy new-project prep'}
+              </button>
               <label htmlFor="project-json" className="block text-sm font-medium text-gray-700 mb-1">
-                Paste setup JSON
+                Paste new-project JSON
               </label>
               <textarea
                 id="project-json"
                 value={jsonInput}
                 onChange={(e) => { setJsonInput(e.target.value); setJsonError(null) }}
-                placeholder={'{\n  "title": "Jamie\'s Bakery App",\n  "requester_email": "jamie@example.com",\n  "seed_questions": [...],\n  ...\n}'}
+                placeholder={'{\n  "_payload_type": "new-project",\n  "title": "Jamie\'s Bakery App",\n  "requester_email": "jamie@example.com",\n  ...\n}'}
                 rows={10}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-xs font-mono focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
                 autoFocus
               />
               <p className="text-xs text-gray-500 mt-1">
-                Full setup payload from your prep workflow. Only &quot;title&quot; is required.
+                Copy the new-project prep, paste into Claude to discuss the setup, then paste the returned JSON here. Only &quot;title&quot; is required.
               </p>
             </div>
 

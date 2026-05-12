@@ -15,7 +15,7 @@ import { LoadingButton } from '@/components/ui/LoadingButton'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { MessageContent } from '@/components/ui/MessageContent'
 import { MockupEditor } from './MockupEditor'
-import { stripCodeFences } from '@/lib/utils'
+import { parseNextConvoPayload } from '@/lib/api/import-payload'
 import { useEscapeBack } from '@/lib/hooks/useEscapeBack'
 import { Modal } from '@/components/ui/Modal'
 import {
@@ -34,7 +34,7 @@ import {
   useProjectFiles,
   useGenerateOutboundMessage,
 } from '@/lib/query/hooks'
-import { buildPrepPrompt } from '@/lib/agent/brief-prompt'
+import { buildNextConvoPrompt } from '@/lib/agent/next-convo-prompt'
 import { copy } from '@/lib/copy'
 import { apiFetch } from '@/lib/firebase/api-fetch'
 import { useStreamingChat } from '@/lib/hooks/useStreamingChat'
@@ -569,7 +569,7 @@ function BriefTab({
       }
 
       // Build the prompt
-      const prompt = buildPrepPrompt({
+      const prompt = buildNextConvoPrompt({
         currentBrief,
         conversationHistory: allMessages,
         projectTitle: project?.title || 'Untitled',
@@ -588,33 +588,23 @@ function BriefTab({
 
   const handleImportJson = async () => {
     setPasteError(null)
-    let parsed: Record<string, unknown>
-    try {
-      parsed = JSON.parse(stripCodeFences(pasteJson))
-    } catch {
-      setPasteError('Invalid JSON — check the format and try again')
+    const result = parseNextConvoPayload(pasteJson)
+    if (!result.ok) {
+      setPasteError(result.error)
       return
     }
 
     try {
-      if (parsed.brief) {
-        // Multi-field format: save brief + project config
-        await updateBrief.mutateAsync({ project_id: projectId, content: parsed.brief })
-        const projectUpdate: Record<string, unknown> = { project_id: projectId }
-        if (parsed.session_opener !== undefined) projectUpdate.welcome_message = parsed.session_opener
-        if (parsed.welcome_message !== undefined) projectUpdate.welcome_message = parsed.welcome_message
-        if (parsed.nudge_message !== undefined) projectUpdate.nudge_message = parsed.nudge_message
-        if (parsed.voice_sample !== undefined) projectUpdate.voice_sample = parsed.voice_sample
-        if (parsed.builder_directives !== undefined) projectUpdate.builder_directives = parsed.builder_directives
-        if (parsed.session_mode !== undefined) projectUpdate.session_mode = parsed.session_mode
-        if (parsed.layout_mockups !== undefined) projectUpdate.layout_mockups = parsed.layout_mockups
-        if (parsed.identity !== undefined) projectUpdate.identity = parsed.identity
-        if (Object.keys(projectUpdate).length > 1) {
-          await updateProject.mutateAsync(projectUpdate as Parameters<typeof updateProject.mutateAsync>[0])
+      if (result.value.mode === 'multi') {
+        await updateBrief.mutateAsync({ project_id: projectId, content: result.value.brief })
+        if (Object.keys(result.value.projectUpdate).length > 0) {
+          await updateProject.mutateAsync({
+            project_id: projectId,
+            ...result.value.projectUpdate,
+          } as Parameters<typeof updateProject.mutateAsync>[0])
         }
       } else {
-        // Legacy brief-only format
-        await updateBrief.mutateAsync({ project_id: projectId, content: parsed })
+        await updateBrief.mutateAsync({ project_id: projectId, content: result.value.brief as BriefContent })
       }
       setPasteJson('')
     } catch (err) {
@@ -673,7 +663,7 @@ function BriefTab({
                 onClick={handleCopyPayload}
                 icon={ClipboardCopy}
               >
-                {payloadCopied ? 'Copied!' : 'Copy prep context'}
+                {payloadCopied ? 'Copied!' : 'Copy next-convo prep'}
               </LoadingButton>
               <LoadingButton
                 variant="ghost"
@@ -687,13 +677,13 @@ function BriefTab({
               </LoadingButton>
             </div>
             <p className="text-xs text-gray-500">
-              Copy the prep context, paste into Claude to discuss strategy, then ask for output and paste the JSON below.
+              Copy the next-convo prep, paste into Claude to discuss strategy, then ask for output and paste the JSON below.
             </p>
             <div className="space-y-2">
               <textarea
                 value={pasteJson}
                 onChange={(e) => { setPasteJson(e.target.value); setPasteError(null) }}
-                placeholder='Paste JSON here (multi-field with brief/session_opener/directives/mode, or brief-only)...'
+                placeholder='Paste the "next-convo" JSON here (full payload with brief + agent config, or brief-only)...'
                 rows={10}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm font-mono focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
               />
