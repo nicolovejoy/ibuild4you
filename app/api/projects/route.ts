@@ -8,6 +8,7 @@ import {
   hasSystemRole,
 } from '@/lib/api/firebase-server-helpers'
 import { enrichProjects } from '@/lib/api/enrich-projects'
+import { sortProjectsByActivity } from '@/lib/api/sort-projects-by-activity'
 import { generateSlug } from '@/lib/utils'
 import { copy } from '@/lib/copy'
 
@@ -85,7 +86,8 @@ export async function GET(request: Request) {
       viewerRoles.set(d.project_id as string, d.role as string)
     }
 
-    return NextResponse.json(await enrichProjects(db, projects, viewerRoles))
+    const enriched = await enrichProjects(db, projects, viewerRoles)
+    return NextResponse.json(sortProjectsByActivity(enriched))
   }
 
   // Get project IDs from membership
@@ -139,9 +141,6 @@ export async function GET(request: Request) {
     }
   }
 
-  // Sort by created_at desc
-  projects.sort((a, b) => (b.created_at as string).localeCompare(a.created_at as string))
-
   // Build viewer_role map from membership queries
   const viewerRoles = new Map<string, string>()
   for (const doc of memberSnap.docs) {
@@ -155,7 +154,8 @@ export async function GET(request: Request) {
     }
   }
 
-  return NextResponse.json(await enrichProjects(db, projects, viewerRoles))
+  const enriched = await enrichProjects(db, projects, viewerRoles)
+  return NextResponse.json(sortProjectsByActivity(enriched))
 }
 
 // PATCH /api/projects — update project setup fields (builder+)
