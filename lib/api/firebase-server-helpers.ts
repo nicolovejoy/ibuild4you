@@ -147,7 +147,8 @@ export async function getAuthenticatedUser(request: Request): Promise<AuthSucces
       systemRoles,
       error: null,
     }
-  } catch {
+  } catch (err) {
+    console.error('[auth] verifyIdToken failed:', err)
     return {
       uid: null,
       email: null,
