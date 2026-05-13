@@ -8,6 +8,7 @@ import {
   getAuthenticatedUser,
   hasSystemRole,
 } from '../firebase-server-helpers'
+import { _resetAuthCache } from '../auth-cache'
 import { isAdminEmail } from '@/lib/constants'
 import type { SystemRole } from '@/lib/types'
 
@@ -61,18 +62,26 @@ describe('isAdminEmail', () => {
 })
 
 describe('hasSystemRole', () => {
+  const baseAuth = {
+    uid: '1',
+    email: 'a@b.com',
+    displayName: null,
+    userData: null,
+    roleCache: new Map<string, never>(),
+    cacheStatus: 'miss' as const,
+    error: null,
+  }
+
   it('returns true when role is in array', () => {
-    const auth = { uid: '1', email: 'a@b.com', displayName: null, systemRoles: ['admin' as const], error: null }
-    expect(hasSystemRole(auth, 'admin')).toBe(true)
+    expect(hasSystemRole({ ...baseAuth, systemRoles: ['admin' as const] }, 'admin')).toBe(true)
   })
 
   it('returns false when role is not in array', () => {
-    const auth = { uid: '1', email: 'a@b.com', displayName: null, systemRoles: [] as SystemRole[], error: null }
-    expect(hasSystemRole(auth, 'admin')).toBe(false)
+    expect(hasSystemRole({ ...baseAuth, systemRoles: [] as SystemRole[] }, 'admin')).toBe(false)
   })
 
   it('supports multiple roles', () => {
-    const auth = { uid: '1', email: 'a@b.com', displayName: null, systemRoles: ['admin' as const, 'support' as const], error: null }
+    const auth = { ...baseAuth, systemRoles: ['admin' as const, 'support' as const] }
     expect(hasSystemRole(auth, 'admin')).toBe(true)
     expect(hasSystemRole(auth, 'support')).toBe(true)
   })
@@ -135,6 +144,7 @@ describe('permission helpers', () => {
 describe('getAuthenticatedUser', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    _resetAuthCache()
     mockUserDoc = { exists: false, data: () => undefined }
   })
 

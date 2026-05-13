@@ -14,7 +14,7 @@ export async function GET(request: Request) {
   }
 
   const db = getAdminDb()
-  const role = await getProjectRole(db, projectId, auth.uid, auth.email, auth.systemRoles)
+  const role = await getProjectRole(db, projectId, auth.uid, auth.email, auth.systemRoles, auth)
 
   return NextResponse.json({ role })
 }

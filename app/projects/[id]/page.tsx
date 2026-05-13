@@ -2,7 +2,7 @@
 
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useApproval } from '@/lib/hooks/useApproval'
-import { useClaimProject, useProjectRole, useResolveProject } from '@/lib/query/hooks'
+import { useClaimProject, useResolveProject } from '@/lib/query/hooks'
 import { useRouter, useParams } from 'next/navigation'
 import { useEffect } from 'react'
 import { BuilderProjectView } from '@/components/builder/BuilderProjectView'
@@ -15,16 +15,15 @@ export default function ProjectPage() {
   const params = useParams()
   const slugOrId = params.id as string
 
-  // Resolve slug or Firestore ID to a project
+  // Resolve slug or Firestore ID to a project. Response includes viewer_role —
+  // no separate /api/projects/role round-trip.
   const { data: resolved, isLoading: resolving } = useResolveProject(
     user && approved ? slugOrId : undefined
   )
   const projectId = resolved?.id
+  const role = resolved?.viewer_role ?? null
 
   const claimProject = useClaimProject()
-  const { data: role, isLoading: roleLoading } = useProjectRole(
-    projectId || undefined
-  )
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) router.push('/auth/login')
@@ -42,7 +41,7 @@ export default function ProjectPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, user, approved])
 
-  if (authLoading || approvalLoading || !user || !approved || resolving || roleLoading || !projectId) {
+  if (authLoading || approvalLoading || !user || !approved || resolving || !projectId) {
     return (
       <div className="min-h-screen bg-brand-cream flex items-center justify-center">
         <div className="animate-pulse text-brand-slate">Loading...</div>
@@ -51,8 +50,8 @@ export default function ProjectPage() {
   }
 
   const userEmail = user.email || ''
-  // builder+ gets the builder view, everyone else gets maker view
-  const isBuilder = role === 'owner' || role === 'builder'
+  // builder+ (or admin) gets the builder view, everyone else gets maker view
+  const isBuilder = role === 'owner' || role === 'builder' || role === 'admin'
 
   if (isBuilder) {
     return <BuilderProjectView projectId={projectId} userEmail={userEmail} />

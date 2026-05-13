@@ -2,8 +2,37 @@ import { NextResponse } from 'next/server'
 import { getAdminAuth, getAdminDb } from '@/lib/firebase/admin'
 import { ADMIN_EMAILS, isAdminEmail } from '@/lib/constants'
 import type { MemberRole, SystemRole } from '@/lib/types'
+import { getCachedUser, setCachedUser } from './auth-cache'
 
 export { ADMIN_EMAILS }
+
+// User doc fields we cache alongside auth so callers don't re-read users/<uid>.
+export type CachedUserData = {
+  first_name: string | null
+  last_name: string | null
+}
+
+// Firestore Admin error codes we care about for HTTP-status mapping.
+// 8 = RESOURCE_EXHAUSTED (quota), 14 = UNAVAILABLE.
+export function classifyFirestoreError(err: unknown): 503 | 500 {
+  const code = (err as { code?: number } | null)?.code
+  if (code === 8 || code === 14) return 503
+  return 500
+}
+
+function firestoreErrorResponse(err: unknown, context: string): NextResponse {
+  const status = classifyFirestoreError(err)
+  const code = (err as { code?: number } | null)?.code
+  if (status === 503) {
+    console.error(`[quota] ${context} (firestore code=${code}):`, err)
+    return NextResponse.json(
+      { error: 'Service unavailable' },
+      { status: 503, headers: { 'Retry-After': '60' } }
+    )
+  }
+  console.error(`[firestore] ${context}:`, err)
+  return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+}
 
 // --- Permission ladder ---
 // owner > builder > apprentice > maker
@@ -35,15 +64,24 @@ export function canManage(role: MemberRole | null): boolean {
 // Look up a user's role on a project via project_members collection.
 // Admins get implicit owner on all projects.
 // Returns null if no access.
+//
+// Pass `ctx.roleCache` (from getAuthenticatedUser) to memoize within a request
+// — multiple handlers in the same request reuse the result, including the
+// "no access" answer (cached as null).
 export async function getProjectRole(
   db: FirebaseFirestore.Firestore,
   projectId: string,
   userId: string,
   email: string,
-  systemRoles: SystemRole[] = []
+  systemRoles: SystemRole[] = [],
+  ctx?: { roleCache: Map<string, MemberRole | null> }
 ): Promise<MemberRole | null> {
   // Instance admins get implicit owner on all projects
   if (systemRoles.includes('admin') || isAdminEmail(email)) return 'owner'
+
+  if (ctx?.roleCache.has(projectId)) {
+    return ctx.roleCache.get(projectId) ?? null
+  }
 
   // Check explicit membership
   const memberSnap = await db
@@ -54,7 +92,9 @@ export async function getProjectRole(
     .get()
 
   if (!memberSnap.empty) {
-    return memberSnap.docs[0].data().role as MemberRole
+    const role = memberSnap.docs[0].data().role as MemberRole
+    ctx?.roleCache.set(projectId, role)
+    return role
   }
 
   // Also check by email (for users who haven't claimed yet — user_id may differ)
@@ -66,7 +106,9 @@ export async function getProjectRole(
     .get()
 
   if (!emailSnap.empty) {
-    return emailSnap.docs[0].data().role as MemberRole
+    const role = emailSnap.docs[0].data().role as MemberRole
+    ctx?.roleCache.set(projectId, role)
+    return role
   }
 
   // Legacy fallback: check requester_id / requester_email on the project doc
@@ -74,10 +116,12 @@ export async function getProjectRole(
   if (projectDoc.exists) {
     const data = projectDoc.data()!
     if (data.requester_id === userId || data.requester_email === email) {
+      ctx?.roleCache.set(projectId, 'maker')
       return 'maker'
     }
   }
 
+  ctx?.roleCache.set(projectId, null)
   return null
 }
 
@@ -92,15 +136,20 @@ export function requireRole(
   return null
 }
 
-type AuthSuccess = {
+export type AuthSuccess = {
   uid: string
   email: string
   displayName: string | null
   systemRoles: SystemRole[]
+  userData: CachedUserData | null
+  // Per-request memoization of project_members lookups. Threaded into
+  // getProjectRole so multiple handlers in the same request reuse the result.
+  roleCache: Map<string, MemberRole | null>
+  cacheStatus: 'hit' | 'miss'
   error: null
 }
 
-type AuthFailure = {
+export type AuthFailure = {
   uid: null
   email: null
   error: NextResponse
@@ -123,30 +172,10 @@ export async function getAuthenticatedUser(request: Request): Promise<AuthSucces
     }
   }
 
+  // Step 1: token verification. Errors here are auth failures → 401.
+  let decoded
   try {
-    const decoded = await getAdminAuth().verifyIdToken(token)
-    const uid = decoded.uid
-    const email = decoded.email ?? ''
-
-    // Read system_roles from the users doc, fall back to ADMIN_EMAILS
-    const db = getAdminDb()
-    const userDoc = await db.collection('users').doc(uid).get()
-    const userData = userDoc.data()
-    let systemRoles: SystemRole[] = []
-    if (Array.isArray(userData?.system_roles)) {
-      systemRoles = userData.system_roles as SystemRole[]
-    } else if (isAdminEmail(email)) {
-      // Dead-man fallback: hardcoded list catches admins until backfill runs
-      systemRoles = ['admin']
-    }
-
-    return {
-      uid,
-      email,
-      displayName: (decoded.name as string) || null,
-      systemRoles,
-      error: null,
-    }
+    decoded = await getAdminAuth().verifyIdToken(token)
   } catch (err) {
     console.error('[auth] verifyIdToken failed:', err)
     return {
@@ -154,6 +183,61 @@ export async function getAuthenticatedUser(request: Request): Promise<AuthSucces
       email: null,
       error: NextResponse.json({ error: 'Invalid token' }, { status: 401 }),
     }
+  }
+
+  const uid = decoded.uid
+  const email = decoded.email ?? ''
+
+  // Step 2: load user doc (with cache). Firestore errors here are infra failures,
+  // NOT auth failures — return 503 so the client doesn't kick the user to the
+  // not-approved gate on a quota blip.
+  const cached = getCachedUser(uid)
+  let systemRoles: SystemRole[]
+  let userData: CachedUserData | null
+  let cacheStatus: 'hit' | 'miss'
+
+  if (cached) {
+    systemRoles = cached.systemRoles
+    userData = cached.userData
+    cacheStatus = 'hit'
+  } else {
+    cacheStatus = 'miss'
+    try {
+      const db = getAdminDb()
+      const userDoc = await db.collection('users').doc(uid).get()
+      const raw = userDoc.data()
+      if (Array.isArray(raw?.system_roles)) {
+        systemRoles = raw.system_roles as SystemRole[]
+      } else if (isAdminEmail(email)) {
+        systemRoles = ['admin']
+      } else {
+        systemRoles = []
+      }
+      userData = raw
+        ? {
+            first_name: (raw.first_name as string | undefined) ?? null,
+            last_name: (raw.last_name as string | undefined) ?? null,
+          }
+        : null
+      setCachedUser(uid, { systemRoles, userData })
+    } catch (err) {
+      return {
+        uid: null,
+        email: null,
+        error: firestoreErrorResponse(err, 'getAuthenticatedUser user-doc read'),
+      }
+    }
+  }
+
+  return {
+    uid,
+    email,
+    displayName: (decoded.name as string) || null,
+    systemRoles,
+    userData,
+    roleCache: new Map(),
+    cacheStatus,
+    error: null,
   }
 }
 

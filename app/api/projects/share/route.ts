@@ -30,7 +30,7 @@ export async function POST(request: Request) {
 
   const db = getAdminDb()
 
-  const callerRole = await getProjectRole(db, project_id, auth.uid, auth.email, auth.systemRoles)
+  const callerRole = await getProjectRole(db, project_id, auth.uid, auth.email, auth.systemRoles, auth)
   const roleCheck = requireRole(callerRole, 'builder')
   if (roleCheck) return roleCheck
 
@@ -168,7 +168,7 @@ export async function GET(request: Request) {
 
   const db = getAdminDb()
 
-  const callerRole = await getProjectRole(db, project_id, auth.uid, auth.email, auth.systemRoles)
+  const callerRole = await getProjectRole(db, project_id, auth.uid, auth.email, auth.systemRoles, auth)
   const roleCheck = requireRole(callerRole, 'builder')
   if (roleCheck) return roleCheck
 
@@ -211,7 +211,7 @@ export async function PATCH(request: Request) {
 
   const db = getAdminDb()
 
-  const callerRole = await getProjectRole(db, project_id, auth.uid, auth.email, auth.systemRoles)
+  const callerRole = await getProjectRole(db, project_id, auth.uid, auth.email, auth.systemRoles, auth)
   const roleCheck = requireRole(callerRole, 'builder')
   if (roleCheck) return roleCheck
 
