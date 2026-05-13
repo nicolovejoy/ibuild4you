@@ -47,3 +47,4 @@ cors.json
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+.playwright-mcp/
