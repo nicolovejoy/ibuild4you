@@ -50,6 +50,7 @@ export interface Project extends BaseEntity {
   slug?: string // URL-friendly identifier derived from title
   identity?: string // custom agent identity/persona (overrides default)
   layout_mockups?: WireframeMockup[] // wireframe layouts the agent can show in chat
+  github_repo?: string // "owner/name" — destination for FeedbackWidget "Convert to GitHub Issue"
   // Debounced maker-activity notifications — cron at /api/cron/notify reads these
   notify_after?: string | null // ISO timestamp; cron sends email once this passes
   notify_pending_since?: string | null // ISO timestamp of first unnotified maker message
@@ -141,6 +142,38 @@ export interface InterestSubmission extends BaseEntity {
   how_found: string
   want_to_try: boolean
   what_for: string
+}
+
+// Feedback submissions from the FeedbackWidget embedded on client sites.
+// projectId is the slug of a `projects` doc — widget submissions are rejected
+// when the slug doesn't match an existing project.
+export type FeedbackType = 'bug' | 'idea' | 'other'
+export type FeedbackStatus = 'new' | 'acknowledged' | 'in_progress' | 'done' | 'wontfix'
+
+export interface Feedback extends BaseEntity {
+  project_id: string // matches projects.slug
+  type: FeedbackType
+  body: string
+  submitter_email: string | null
+  submitter_uid: string | null // set only when submitter is signed into ibuild4you
+  page_url: string
+  user_agent: string
+  viewport: string
+  status: FeedbackStatus
+  internal_notes: string | null
+  github_issue_url: string | null
+  // Subcollection: feedback/{id}/replies — see FeedbackReply below.
+}
+
+// Replies live under feedback/{id}/replies and capture the back-and-forth.
+// Inbound mail (Resend webhook) appends `from: 'submitter', via_email: true`
+// replies; admin notes added through the dashboard set `from: 'admin'`.
+export interface FeedbackReply extends BaseEntity {
+  feedback_id: string
+  from: 'submitter' | 'admin'
+  from_email: string // denormalized for display without lookups
+  body: string
+  via_email: boolean // true if this reply arrived via inbound mail
 }
 
 // Structured brief content sections
