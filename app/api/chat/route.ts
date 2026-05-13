@@ -42,7 +42,7 @@ export async function POST(request: Request) {
   const projectDoc = await db.collection('projects').doc(projectId).get()
   const projectData = projectDoc.data() || {}
 
-  const role = await getProjectRole(db, projectId, auth.uid, auth.email, auth.systemRoles)
+  const role = await getProjectRole(db, projectId, auth.uid, auth.email, auth.systemRoles, auth)
   if (!projectDoc.exists || !role) {
     return new Response(JSON.stringify({ error: 'Not found' }), {
       status: 404,

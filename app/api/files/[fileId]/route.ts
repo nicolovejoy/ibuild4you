@@ -20,7 +20,7 @@ export async function GET(
   }
 
   const fileData = fileDoc.data()!
-  const role = await getProjectRole(db, fileData.project_id, auth.uid, auth.email, auth.systemRoles)
+  const role = await getProjectRole(db, fileData.project_id, auth.uid, auth.email, auth.systemRoles, auth)
   if (!role) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }

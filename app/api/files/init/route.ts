@@ -35,7 +35,7 @@ export async function POST(request: Request) {
   }
 
   const db = getAdminDb()
-  const role = await getProjectRole(db, project_id, auth.uid, auth.email, auth.systemRoles)
+  const role = await getProjectRole(db, project_id, auth.uid, auth.email, auth.systemRoles, auth)
   if (!role) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }

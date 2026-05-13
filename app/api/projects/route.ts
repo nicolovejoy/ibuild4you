@@ -7,6 +7,7 @@ import {
   requireRole,
   hasSystemRole,
 } from '@/lib/api/firebase-server-helpers'
+import { enrichProjects } from '@/lib/api/enrich-projects'
 import { generateSlug } from '@/lib/utils'
 import { copy } from '@/lib/copy'
 
@@ -24,107 +25,6 @@ async function ensureUniqueSlug(db: FirebaseFirestore.Firestore, slug: string, e
   }
 }
 
-// Enrich project docs with last activity and session count
-async function enrichProjects(
-  db: FirebaseFirestore.Firestore,
-  projectDocs: { id: string; [key: string]: unknown }[],
-  viewerRoles?: Map<string, string> // project_id → role
-) {
-  return Promise.all(
-    projectDocs.map(async (project) => {
-      // Get session count
-      const sessionsSnap = await db
-        .collection('sessions')
-        .where('project_id', '==', project.id)
-        .get()
-
-      // Get recent messages to derive last activity and last maker message
-      const sessionIds = sessionsSnap.docs.map((d) => d.id)
-      let lastMessageAt: string | null = null
-      let lastMessageBy: string | null = null
-      let lastMakerMessageAt: string | null = null
-
-      if (sessionIds.length > 0) {
-        // Firestore 'in' queries support up to 30 values
-        for (let i = 0; i < sessionIds.length; i += 30) {
-          const chunk = sessionIds.slice(i, i + 30)
-
-          // Fetch recent messages (enough to find the last maker message)
-          const msgSnap = await db
-            .collection('messages')
-            .where('session_id', 'in', chunk)
-            .orderBy('created_at', 'desc')
-            .limit(10)
-            .get()
-
-          for (const doc of msgSnap.docs) {
-            const msg = doc.data()
-            // Track overall last message
-            if (!lastMessageAt || msg.created_at > lastMessageAt) {
-              lastMessageAt = msg.created_at as string
-              lastMessageBy = msg.role === 'user'
-                ? (msg.sender_email as string) || null
-                : 'agent'
-            }
-            // Track last maker (user) message — only count messages from the requester,
-            // not from builders who also chatted in the session
-            const senderEmail = msg.sender_email as string | undefined
-            const requesterEmail = project.requester_email as string | undefined
-            const isFromMaker = msg.role === 'user' && senderEmail && requesterEmail && senderEmail === requesterEmail
-            if (isFromMaker && (!lastMakerMessageAt || msg.created_at > lastMakerMessageAt)) {
-              lastMakerMessageAt = msg.created_at as string
-            }
-          }
-        }
-      }
-
-      // Get latest brief
-      const briefSnap = await db
-        .collection('briefs')
-        .where('project_id', '==', project.id)
-        .orderBy('version', 'desc')
-        .limit(1)
-        .get()
-
-      let briefVersion: number | null = null
-      let briefDecisionCount: number | null = null
-      let briefFeatureCount: number | null = null
-      if (!briefSnap.empty) {
-        const briefData = briefSnap.docs[0].data()
-        briefVersion = (briefData.version as number) || null
-        const content = briefData.content as { decisions?: unknown[]; features?: unknown[] } | undefined
-        briefDecisionCount = Array.isArray(content?.decisions) ? content.decisions.length : 0
-        briefFeatureCount = Array.isArray(content?.features) ? content.features.length : 0
-      }
-
-      // Find latest session created_at
-      let latestSessionCreatedAt: string | null = null
-      for (const doc of sessionsSnap.docs) {
-        const createdAt = doc.data().created_at as string
-        if (!latestSessionCreatedAt || createdAt > latestSessionCreatedAt) {
-          latestSessionCreatedAt = createdAt
-        }
-      }
-
-      const hasActiveSession = sessionsSnap.docs.some((d) => d.data().status === 'active')
-
-      return {
-        ...project,
-        session_count: sessionsSnap.size,
-        last_message_at: lastMessageAt,
-        last_message_by: lastMessageBy,
-        last_maker_message_at: lastMakerMessageAt,
-        latest_session_created_at: latestSessionCreatedAt,
-        brief_version: briefVersion,
-        brief_decision_count: briefDecisionCount,
-        brief_feature_count: briefFeatureCount,
-        viewer_role: viewerRoles?.get(project.id) ?? null,
-        has_active_session: hasActiveSession,
-      }
-    })
-  )
-}
-
 // GET /api/projects — list projects, or look up a single project by slug/id
 export async function GET(request: Request) {
   const auth = await getAuthenticatedUser(request)
@@ -134,20 +34,35 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const slugParam = searchParams.get('slug')
 
-  // Single project lookup by slug or Firestore ID
+  // Single project lookup by slug or Firestore ID. Includes viewer_role so
+  // callers (useResolveProject) don't need a separate /api/projects/role hit.
   if (slugParam) {
     // Try slug first
     const bySlug = await db.collection('projects').where('slug', '==', slugParam).limit(1).get()
+    let docId: string | null = null
+    let docData: Record<string, unknown> | null = null
     if (!bySlug.empty) {
       const doc = bySlug.docs[0]
-      return NextResponse.json({ id: doc.id, ...doc.data() })
+      docId = doc.id
+      docData = doc.data() as Record<string, unknown>
+    } else {
+      // Fall back to Firestore document ID (supports old bookmarked URLs)
+      const byId = await db.collection('projects').doc(slugParam).get()
+      if (byId.exists) {
+        docId = byId.id
+        docData = byId.data() as Record<string, unknown>
+      }
     }
-    // Fall back to Firestore document ID (supports old bookmarked URLs)
-    const byId = await db.collection('projects').doc(slugParam).get()
-    if (byId.exists) {
-      return NextResponse.json({ id: byId.id, ...byId.data() })
+
+    if (!docId || !docData) {
+      return NextResponse.json({ error: 'Project not found' }, { status: 404 })
     }
-    return NextResponse.json({ error: 'Project not found' }, { status: 404 })
+
+    const viewerRole = hasSystemRole(auth, 'admin')
+      ? 'admin'
+      : await getProjectRole(db, docId, auth.uid, auth.email, auth.systemRoles, auth)
+
+    return NextResponse.json({ id: docId, ...docData, viewer_role: viewerRole })
   }
 
   // Admins see all projects
@@ -256,7 +171,7 @@ export async function PATCH(request: Request) {
   }
 
   const db = getAdminDb()
-  const role = await getProjectRole(db, project_id, auth.uid, auth.email, auth.systemRoles)
+  const role = await getProjectRole(db, project_id, auth.uid, auth.email, auth.systemRoles, auth)
   const roleCheck = requireRole(role, 'builder')
   if (roleCheck) return roleCheck
 
@@ -297,7 +212,7 @@ export async function DELETE(request: Request) {
   }
 
   const db = getAdminDb()
-  const role = await getProjectRole(db, projectId, auth.uid, auth.email, auth.systemRoles)
+  const role = await getProjectRole(db, projectId, auth.uid, auth.email, auth.systemRoles, auth)
   const roleCheck = requireRole(role, 'owner')
   if (roleCheck) return roleCheck
 

@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiFetch } from '@/lib/firebase/api-fetch'
-import type { Project, Session, Message, Brief, MemberRole, SystemRole, ProjectFile } from '@/lib/types'
+import { queryKeys } from './keys'
+import type { Project, Session, Message, Brief, SystemRole, ProjectFile } from '@/lib/types'
 
 // --- Current user ---
 
@@ -14,7 +15,7 @@ export type CurrentUser = {
 
 export function useCurrentUser() {
   return useQuery<CurrentUser>({
-    queryKey: ['currentUser'],
+    queryKey: queryKeys.currentUser(),
     queryFn: async () => {
       const res = await apiFetch('/api/users/me')
       if (!res.ok) throw new Error('Failed to load user')
@@ -37,8 +38,8 @@ export function useUpdateCurrentUser() {
       return res.json()
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['currentUser'] })
-      queryClient.invalidateQueries({ queryKey: ['projects'] })
+      queryClient.invalidateQueries({ queryKey: queryKeys.currentUser() })
+      queryClient.invalidateQueries({ queryKey: queryKeys.projects() })
     },
   })
 }
@@ -47,12 +48,13 @@ export function useUpdateCurrentUser() {
 
 export function useProjects() {
   return useQuery<Project[]>({
-    queryKey: ['projects'],
+    queryKey: queryKeys.projects(),
     queryFn: async () => {
       const res = await apiFetch('/api/projects')
       if (!res.ok) throw new Error('Failed to load projects')
       return res.json()
     },
+    staleTime: 60 * 1000, // 60s — list-level data
   })
 }
 
@@ -72,7 +74,7 @@ export function useCreateProject() {
       return res.json()
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['projects'] })
+      queryClient.invalidateQueries({ queryKey: queryKeys.projects() })
     },
   })
 }
@@ -93,17 +95,18 @@ export function useShareProject() {
       return res.json() as Promise<{ email: string; project_id: string; passcode: string }>
     },
     onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['projects'] })
-      queryClient.invalidateQueries({ queryKey: ['project', variables.project_id] })
-      queryClient.invalidateQueries({ queryKey: ['sessions', variables.project_id] })
-      queryClient.invalidateQueries({ queryKey: ['passcode', variables.project_id] })
+      queryClient.invalidateQueries({ queryKey: queryKeys.projects() })
+      queryClient.invalidateQueries({ queryKey: queryKeys.project(variables.project_id) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.resolveProject(variables.project_id) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.sessions(variables.project_id) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.passcode(variables.project_id) })
     },
   })
 }
 
 export function useProjectPasscode(projectId: string | undefined) {
   return useQuery<string | null>({
-    queryKey: ['passcode', projectId],
+    queryKey: queryKeys.passcode(projectId),
     queryFn: async () => {
       const res = await apiFetch(`/api/projects/share?project_id=${projectId}`)
       if (!res.ok) return null
@@ -130,7 +133,7 @@ export function useResetPasscode() {
       return res.json() as Promise<{ passcode: string }>
     },
     onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['passcode', variables] })
+      queryClient.invalidateQueries({ queryKey: queryKeys.passcode(variables) })
     },
   })
 }
@@ -167,8 +170,9 @@ export function useUpdateProject() {
       return res.json()
     },
     onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['projects'] })
-      queryClient.invalidateQueries({ queryKey: ['project', variables.project_id] })
+      queryClient.invalidateQueries({ queryKey: queryKeys.projects() })
+      queryClient.invalidateQueries({ queryKey: queryKeys.project(variables.project_id) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.resolveProject(variables.project_id) })
     },
   })
 }
@@ -228,7 +232,7 @@ export function useDeleteProject() {
       return res.json()
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['projects'] })
+      queryClient.invalidateQueries({ queryKey: queryKeys.projects() })
     },
   })
 }
@@ -249,57 +253,35 @@ export function useClaimProject() {
       return res.json()
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['projects'] })
+      queryClient.invalidateQueries({ queryKey: queryKeys.projects() })
     },
   })
 }
 
-export function useProject(projectId: string | undefined) {
-  return useQuery<Project>({
-    queryKey: ['project', projectId],
-    queryFn: async () => {
-      // Fetch from the list endpoint and find the one we want
-      const res = await apiFetch('/api/projects')
-      if (!res.ok) throw new Error('Failed to load project')
-      const projects: Project[] = await res.json()
-      const project = projects.find((p) => p.id === projectId)
-      if (!project) throw new Error('Project not found')
-      return project
-    },
-    enabled: !!projectId,
-  })
-}
-
-// Resolve a slug or Firestore ID to a project. Used by the project page
-// where the URL param could be either format.
+// Resolve a slug or Firestore ID to a single project. The response includes
+// `viewer_role`, so callers no longer need a separate /api/projects/role hit.
 export function useResolveProject(slugOrId: string | undefined) {
   return useQuery<Project>({
-    queryKey: ['resolveProject', slugOrId],
+    queryKey: queryKeys.resolveProject(slugOrId),
     queryFn: async () => {
       const res = await apiFetch(`/api/projects?slug=${encodeURIComponent(slugOrId!)}`)
       if (!res.ok) throw new Error('Project not found')
       return res.json()
     },
     enabled: !!slugOrId,
+    staleTime: 60 * 1000,
   })
 }
 
-export function useProjectRole(projectId: string | undefined) {
-  return useQuery<MemberRole | null>({
-    queryKey: ['projectRole', projectId],
-    queryFn: async () => {
-      const res = await apiFetch(`/api/projects/role?project_id=${projectId}`)
-      if (!res.ok) throw new Error('Failed to load role')
-      const data = await res.json()
-      return data.role as MemberRole | null
-    },
-    enabled: !!projectId,
-  })
+// Single-project lookup by ID. Delegates to useResolveProject — the endpoint
+// accepts either a slug or a Firestore doc ID.
+export function useProject(projectId: string | undefined) {
+  return useResolveProject(projectId)
 }
 
 export function useBrief(projectId: string | undefined) {
   return useQuery<Brief | null>({
-    queryKey: ['brief', projectId],
+    queryKey: queryKeys.brief(projectId),
     queryFn: async () => {
       const res = await apiFetch(`/api/briefs?project_id=${projectId}`)
       if (!res.ok) throw new Error('Failed to load brief')
@@ -325,8 +307,8 @@ export function useUpdateBrief() {
       return res.json()
     },
     onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['brief', variables.project_id] })
-      queryClient.invalidateQueries({ queryKey: ['projects'] })
+      queryClient.invalidateQueries({ queryKey: queryKeys.brief(variables.project_id) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.projects() })
     },
   })
 }
@@ -349,16 +331,17 @@ export function useCreateSession() {
       return res.json() as Promise<Session>
     },
     onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['sessions', variables.project_id] })
-      queryClient.invalidateQueries({ queryKey: ['project', variables.project_id] })
-      queryClient.invalidateQueries({ queryKey: ['projects'] })
+      queryClient.invalidateQueries({ queryKey: queryKeys.sessions(variables.project_id) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.project(variables.project_id) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.resolveProject(variables.project_id) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.projects() })
     },
   })
 }
 
 export function useSessions(projectId: string | undefined) {
   return useQuery<Session[]>({
-    queryKey: ['sessions', projectId],
+    queryKey: queryKeys.sessions(projectId),
     queryFn: async () => {
       const res = await apiFetch(`/api/sessions?project_id=${projectId}`)
       if (!res.ok) throw new Error('Failed to load sessions')
@@ -385,20 +368,21 @@ export function useDeleteMessage() {
       return res.json()
     },
     onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['messages', variables.sessionId] })
+      queryClient.invalidateQueries({ queryKey: queryKeys.messages(variables.sessionId) })
     },
   })
 }
 
 export function useMessages(sessionId: string | undefined) {
   return useQuery<Message[]>({
-    queryKey: ['messages', sessionId],
+    queryKey: queryKeys.messages(sessionId),
     queryFn: async () => {
       const res = await apiFetch(`/api/messages?session_id=${sessionId}`)
       if (!res.ok) throw new Error('Failed to load messages')
       return res.json()
     },
     enabled: !!sessionId,
+    staleTime: 0, // realtime listener (useRealtimeMessages) owns freshness
   })
 }
 
@@ -406,7 +390,7 @@ export function useMessages(sessionId: string | undefined) {
 
 export function useProjectFiles(projectId: string | undefined) {
   return useQuery<ProjectFile[]>({
-    queryKey: ['files', projectId],
+    queryKey: queryKeys.files(projectId),
     queryFn: async () => {
       const res = await apiFetch(`/api/files?project_id=${projectId}`)
       if (!res.ok) throw new Error('Failed to load files')
@@ -495,14 +479,14 @@ export function useUploadFiles() {
       return { uploaded, failed }
     },
     onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['files', variables.projectId] })
+      queryClient.invalidateQueries({ queryKey: queryKeys.files(variables.projectId) })
     },
   })
 }
 
 export function useFileUrl(fileId: string | undefined) {
   return useQuery<string>({
-    queryKey: ['fileUrl', fileId],
+    queryKey: queryKeys.fileUrl(fileId),
     queryFn: async () => {
       const res = await apiFetch(`/api/files/${fileId}`)
       if (!res.ok) throw new Error('Failed to load file')
