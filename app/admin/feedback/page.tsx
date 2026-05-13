@@ -4,7 +4,7 @@ import { useAuth } from '@/lib/hooks/useAuth'
 import { useApproval } from '@/lib/hooks/useApproval'
 import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowLeft, ExternalLink, Save, Check } from 'lucide-react'
+import { ArrowLeft, ExternalLink, Save, Check, Github } from 'lucide-react'
 import { useCurrentUser } from '@/lib/query/hooks'
 import { apiFetch } from '@/lib/firebase/api-fetch'
 import { useEscapeBack } from '@/lib/hooks/useEscapeBack'
@@ -183,6 +183,26 @@ function FeedbackRow({ item, onUpdated }: { item: Feedback; onUpdated: (f: Feedb
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+  const [convertingGh, setConvertingGh] = useState(false)
+  const [ghErr, setGhErr] = useState<string | null>(null)
+
+  const handleConvertToGithub = async () => {
+    setConvertingGh(true)
+    setGhErr(null)
+    try {
+      const res = await apiFetch(`/api/admin/feedback/${item.id}/to-github`, { method: 'POST' })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error || 'GitHub conversion failed')
+      }
+      const updated = (await res.json()) as Feedback
+      onUpdated(updated)
+    } catch (e) {
+      setGhErr(e instanceof Error ? e.message : 'GitHub conversion failed')
+    } finally {
+      setConvertingGh(false)
+    }
+  }
 
   const isDirty = status !== item.status || (notes || '') !== (item.internal_notes ?? '')
 
@@ -245,17 +265,6 @@ function FeedbackRow({ item, onUpdated }: { item: Feedback; onUpdated: (f: Feedb
           </a>
         )}
         {item.viewport && <span>{item.viewport}</span>}
-        {item.github_issue_url && (
-          <a
-            href={item.github_issue_url}
-            target="_blank"
-            rel="noreferrer noopener"
-            className="text-brand-navy hover:underline inline-flex items-center gap-1"
-          >
-            <ExternalLink className="h-3 w-3" />
-            GitHub issue
-          </a>
-        )}
       </div>
 
       <div className="grid sm:grid-cols-[auto,1fr,auto] gap-2 items-start pt-2 border-t border-gray-100">
@@ -292,6 +301,31 @@ function FeedbackRow({ item, onUpdated }: { item: Feedback; onUpdated: (f: Feedb
             </button>
           )}
         </div>
+      </div>
+      <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
+        {item.github_issue_url ? (
+          <a
+            href={item.github_issue_url}
+            target="_blank"
+            rel="noreferrer noopener"
+            className="inline-flex items-center gap-1 text-xs text-brand-navy hover:underline"
+          >
+            <Github className="h-3 w-3" />
+            Open GitHub issue
+          </a>
+        ) : (
+          <button
+            type="button"
+            onClick={handleConvertToGithub}
+            disabled={convertingGh}
+            className="inline-flex items-center gap-1 px-2 py-1 text-xs border border-gray-200 rounded text-brand-charcoal hover:border-brand-navy hover:text-brand-navy disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            title="Create a GitHub issue from this feedback"
+          >
+            <Github className="h-3 w-3" />
+            {convertingGh ? 'Creating…' : 'Convert to GitHub issue'}
+          </button>
+        )}
+        {ghErr && <span className="text-xs text-red-500">{ghErr}</span>}
       </div>
       {err && <p className="text-xs text-red-500">{err}</p>}
     </div>
