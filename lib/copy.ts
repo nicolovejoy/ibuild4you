@@ -127,6 +127,8 @@ export const copy = {
     notApprovedTitle: 'Hang tight!',
     notApprovedMessage: (email: string) =>
       `Thanks for signing up. Your account (${email}) isn't approved yet. We'll let you know when you're in.`,
+    notApprovedWrongAccount: 'Signed in with the wrong account? Sign out and try again.',
+    signOut: 'Sign out',
   },
 
   // --- Landing page ---
