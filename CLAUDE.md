@@ -151,19 +151,27 @@ This is a learning project (Max, 19, college freshman, is contributing). Code sh
 
 ## Next Steps
 
-1. **Feedback widget — finish issue #3.** Done end-to-end (verified in prod 2026-05-13): (a) admin UI at `/admin/feedback` with project/status/type filters + inline status/notes edit; (b) `<FeedbackWidget>` at `components/FeedbackWidget.tsx`, shared validator/payload helper at `lib/feedback/payload.ts`, RTL smoke tests, wire-contract spec at `lib/feedback/README.md`; (c) `POST /api/admin/feedback/[id]/to-github` route + per-row Convert button, idempotent via `github_issue_url`; (e) embedded on `bakerylouise-v1` (PR #15 there) gated by `?feedback=on` localStorage flag. (d) **Resend inbound webhook code-complete (2026-05-14): `/api/webhooks/resend/inbound` with svix signature verification, plus-addressing parser (`lib/feedback/inbound.ts`), `feedback/{id}/replies` subcollection writes, parent-status-bump-to-`new`, dashboard thread rendering under each row. Outbound notifications now set `Reply-To: feedback+{id}@inbox.ibuild4you.com`. Needs manual Resend dashboard + DNS setup before going live — see `docs/feedback-replies-plan.md` § Verified setup (rewritten 2026-05-14).** Small known-issues: (i) deleted GitHub issues leave a stale `github_issue_url` showing "Open GitHub issue" pointing at a 404 — add a "Clear linked issue" admin action when this bites; (ii) `github_repo` is only editable via Firebase console — add to PATCH allowlist + setup UI when it gets annoying.
-3. Validate Matt's PDF flow end-to-end. Cache_control fix (`a8d9c94`) is live but unverified against real Matt traffic — need to see his next chat return 200 AND the agent reference actual PDF content (form name, clause), not just acknowledge files exist. Tune `lib/agent/system-prompt.ts` if it ignores/hallucinates.
-4. A4 — pre-upload batch size budgeting. `addFiles` currently checks per-file >25MB; extend to running batch total so the picker rejects before the init round-trip. See `docs/file-and-brief-fixes-plan.md` § A4.
-5. Project delete should clean up files. Today DELETE `/api/projects` removes sessions/messages/briefs/members but leaves the `files` Firestore docs and S3 objects orphaned. Reference: `scripts/cleanup-test-data.mjs` — factor its S3+Firestore delete steps into a shared helper.
-6. Plan P4/P5 (denormalized session counters + retire `requester_*` legacy fields). Plan file: `~/.claude/plans/zesty-tumbling-fountain.md`. Both gated on telemetry — only worth doing if post-PR-#4 dashboard reads are still high. Check Firestore usage before committing time.
-7. Validate posture model with real sessions on claude-sonnet-4-6 — watch first few conversations for behavior shifts vs 4.0, tune prompts if agent over-challenges or misreads signals.
-8. Users & roles Phase 1: display names everywhere (see `docs/users-and-roles-plan.md`).
-9. Add tests for `useStreamingChat` hook. RTL setup is now proven (see `components/__tests__/FeedbackWidget.test.tsx`): use `// @vitest-environment jsdom` pragma, `import '@testing-library/jest-dom/vitest'`, and call `cleanup()` in `afterEach` (RTL doesn't auto-clean with our vitest config).
-10. Project folders for the dashboard — group stale projects into folders, badge on each folder with count of projects where it's the builder's turn. Design questions open: per-builder vs shared, one folder vs many, default folder, drag-drop vs menu.
-11. Smoke-test the prep-prompts split in prod (commit `21f4c10`). Eight cases listed in prior conversation: happy paths for both flows, mismatch rejection both ways, backward-compat with no `_payload_type`, `seed_questions` round-trip, `open_risks` preservation, code-fence tolerance.
-12. Maker experience design exploration. `docs/maker-experience-functionality.md` is the implementation-agnostic functional spec. Next: hand to one or two design agents to propose interface concepts. Open questions in §8.
-13. Maker re-engagement flow — signed-token email action links (3/7/14/30 day snooze + opt-out → feedback page). See `docs/maker-re-engagement-plan.md`. Blocked on conversation with Ryan re: snooze values, feedback chips, cadence.
-14. Validate Session 4 with Matt using new `voice_sample` + `nudge_message` override. First real test of voice-anchored AI outbound copy and verbatim override.
+1. **URGENT — confirm new ANTHROPIC_API_KEY works in prod.** Old key was invalid (Nico rotated to new workspace 2026-05-14 ~12:00 PT after suspicious usage scare). At session close: deploy `dpl_4zSP9DLzHwAw8hvTkE9BEjrPoj57` was Ready but cron at 19:00 UTC still 401'd — could be cron lag picking up old deploy, OR new key is also bad. Send one chat message in browser, confirm 200 + streaming. If it 401s, recheck key/workspace/env.
+2. **Productionize — ship the defensive chat fixes + flip CLAUDE.md "Production-first testing" stance.** Ryan's `<!DOCTYPE` bug was a config error (rotated key) but the user-facing symptom is unacceptable. Open tasks #7–11 (see TaskList): top-level try/catch on `/api/chat` → JSON 500 envelope, client `useStreamingChat` tolerance for non-JSON errors, structured `chat_request_start/done/failed` logging, defensive-behavior tests. **Open question: ship via PR + preview-test (new workflow) or direct-to-main (old).** Nico hasn't decided yet — this is the philosophical fork.
+3. **Feedback widget v2 — element picker** (issue #3 follow-up). Plan locked in chat: additive `targetElement` field (Approach #2 semantic snapshot — tag/text/alt/nearestHeading), single-launcher → crosshair overlay → Esc bails to general form, ≤15-word UX-vocab label on hover. Needs commit as a doc (`docs/feedback-widget-v2-element-picker.md`) so the bakery agent can act. Effort: ~half day in ibuild4you canonical + ~30 min on bakery resync.
+4. **Sub-task 2(d) Resend inbound webhook — manual setup remaining.** Code shipped 2026-05-14 (commit `1799395`). Still needed: Resend dashboard inbound config on `inbox.ibuild4you.com`, MX records for that subdomain pointing at Resend (apex `ibuild4you.com` MX stays on iCloud), `RESEND_INBOUND_SECRET` on Vercel. Punch list at `docs/feedback-replies-plan.md`. Reply-To is already live on outbound — minor bounce risk until DNS is up.
+5. **Cross-project telemetry & feedback v1 proposal.** Plan draft in `~/.claude/plans/ok-here-s-my-v1-functional-rossum.md` with critique. Nico revising; circulates to repo agents after. Architectural fork (in-ibuild4you vs separate telemetry project) still unstated.
+
+## Backlog (deeper queue)
+
+- Validate Matt's PDF flow end-to-end (cache_control fix `a8d9c94` unverified). Tune `lib/agent/system-prompt.ts` if agent ignores/hallucinates PDF content.
+- A4 — pre-upload batch size budgeting in `addFiles` (see `docs/file-and-brief-fixes-plan.md` § A4).
+- Project delete should clean up files (S3 + Firestore orphans). Factor from `scripts/cleanup-test-data.mjs`.
+- Plan P4/P5 — denormalized session counters + retire `requester_*` legacy fields. `~/.claude/plans/zesty-tumbling-fountain.md`. Telemetry-gated.
+- Users & roles Phase 1: display names everywhere (`docs/users-and-roles-plan.md`).
+- Add tests for `useStreamingChat` hook (RTL setup proven, see `components/__tests__/FeedbackWidget.test.tsx`).
+- Project folders for the dashboard — group stale projects, badge with builder-turn count.
+- Smoke-test prep-prompts split in prod (commit `21f4c10`) — eight cases queued.
+- Maker experience design exploration (`docs/maker-experience-functionality.md`). Next: hand to design agents.
+- Maker re-engagement flow — signed-token email links, snooze/opt-out (`docs/maker-re-engagement-plan.md`). Blocked on Ryan.
+- Validate Session 4 with Matt using new `voice_sample` + `nudge_message` override.
+- Posture model validation on claude-sonnet-4-6.
+- Known issues on feedback admin: stale `github_issue_url` after issue deletion needs "Clear linked issue" action; `github_repo` only editable via Firebase console (add to PATCH allowlist when annoying).
 
 ## Env vars
 
