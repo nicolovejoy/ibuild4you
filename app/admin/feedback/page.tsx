@@ -4,11 +4,11 @@ import { useAuth } from '@/lib/hooks/useAuth'
 import { useApproval } from '@/lib/hooks/useApproval'
 import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowLeft, ExternalLink, Save, Check, Github } from 'lucide-react'
+import { ArrowLeft, ExternalLink, Save, Check, Github, MessageCircle } from 'lucide-react'
 import { useCurrentUser } from '@/lib/query/hooks'
 import { apiFetch } from '@/lib/firebase/api-fetch'
 import { useEscapeBack } from '@/lib/hooks/useEscapeBack'
-import type { Feedback, FeedbackStatus, FeedbackType } from '@/lib/types'
+import type { Feedback, FeedbackReply, FeedbackStatus, FeedbackType } from '@/lib/types'
 
 const STATUSES: FeedbackStatus[] = ['new', 'acknowledged', 'in_progress', 'done', 'wontfix']
 const TYPES: FeedbackType[] = ['bug', 'idea', 'other']
@@ -328,6 +328,75 @@ function FeedbackRow({ item, onUpdated }: { item: Feedback; onUpdated: (f: Feedb
         {ghErr && <span className="text-xs text-red-500">{ghErr}</span>}
       </div>
       {err && <p className="text-xs text-red-500">{err}</p>}
+      <RepliesThread feedbackId={item.id} />
+    </div>
+  )
+}
+
+function RepliesThread({ feedbackId }: { feedbackId: string }) {
+  const [replies, setReplies] = useState<FeedbackReply[]>([])
+  const [loading, setLoading] = useState(true)
+  const [err, setErr] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    ;(async () => {
+      try {
+        const res = await apiFetch(`/api/admin/feedback/${feedbackId}/replies`)
+        if (!res.ok) throw new Error('Failed to load replies')
+        const data = (await res.json()) as FeedbackReply[]
+        if (!cancelled) setReplies(data)
+      } catch (e) {
+        if (!cancelled) setErr(e instanceof Error ? e.message : 'Failed to load')
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [feedbackId])
+
+  // Quiet UI when there's nothing to show — no spinner, no empty state.
+  // Replies are the exception, not the norm.
+  if (loading) return null
+  if (err) {
+    return <p className="text-xs text-red-500 mt-2">Replies: {err}</p>
+  }
+  if (replies.length === 0) return null
+
+  return (
+    <div className="pt-3 mt-1 border-t border-gray-100 space-y-2">
+      <div className="flex items-center gap-1.5 text-xs text-brand-slate">
+        <MessageCircle className="h-3.5 w-3.5" />
+        <span className="font-medium">
+          {replies.length} {replies.length === 1 ? 'reply' : 'replies'}
+        </span>
+      </div>
+      <ul className="space-y-2">
+        {replies.map((r) => (
+          <li
+            key={r.id}
+            className={`text-sm rounded border px-3 py-2 ${
+              r.from === 'submitter'
+                ? 'bg-blue-50/40 border-blue-100'
+                : 'bg-gray-50 border-gray-200'
+            }`}
+          >
+            <div className="flex items-baseline justify-between gap-2 text-xs text-gray-500 mb-1">
+              <span>
+                <span className="font-medium text-brand-charcoal">
+                  {r.from === 'submitter' ? r.from_email || 'submitter' : 'admin'}
+                </span>
+                {r.via_email && <span className="ml-1 text-gray-400">via email</span>}
+              </span>
+              <span>{formatDate(r.created_at)}</span>
+            </div>
+            <p className="text-brand-charcoal whitespace-pre-wrap">{r.body}</p>
+          </li>
+        ))}
+      </ul>
     </div>
   )
 }

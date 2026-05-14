@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { Resend } from 'resend'
 import { getAuthenticatedUser, getAdminDb, hasSystemRole } from '@/lib/api/firebase-server-helpers'
+import { feedbackReplyAddress } from '@/lib/feedback/inbound'
 import type { FeedbackStatus } from '@/lib/types'
 
 const ALLOWED_STATUSES: FeedbackStatus[] = ['new', 'acknowledged', 'in_progress', 'done', 'wontfix']
@@ -76,6 +77,9 @@ export async function PATCH(
       const resend = new Resend(process.env.RESEND_API_KEY)
       await resend.emails.send({
         from: 'iBuild4you <noreply@ibuild4you.com>',
+        // Plus-addressing on Reply-To routes submitter replies back to the
+        // inbound webhook, which appends them to feedback/{id}/replies.
+        replyTo: feedbackReplyAddress(id),
         to: [submitterEmail],
         subject: `Update on your feedback`,
         text: [
