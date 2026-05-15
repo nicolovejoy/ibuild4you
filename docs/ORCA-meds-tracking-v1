@@ -1,0 +1,97 @@
+# ORCA Medication Tracking — Working Notes
+
+Callan and Nico have been sketching the buprenorphine medication tracking workflow at ORCA. This is a snapshot for shared reference — problem, current-state cartoon, draft user stories, a vocabulary sketch, and open questions. Meant to be edited.
+
+---
+
+## 1. Problem statement
+
+ORCA tracks buprenorphine medications — long-acting injectables, tablets, and films — through a fully paper-based process. Kelley-Ross delivers; ORCA staff sign meds in on paper Controlled Substance Records (CSRs) using two-signature authentication, file them in cabinets and drawers organized alphabetically by patient last name, and sign them back out as patients arrive or as staff transport them to permanent supportive housing (PSH) sites.
+
+The workflow functions, but several things are hard:
+
+- **Knowing where a given medication is** — at ORCA, at one of several PSH sites, or in transit
+- **Reconciling two paper records** — meds signed out at ORCA must also be signed into a separate paper CSR at the PSH site
+- **Knowing when to reorder** — currently triggered by an empty folder, or by Kelley-Ross prompting for injectables
+- **Keeping the CSR usable for non-clinical frontline staff** — providers, nurses, MAs, and milieu specialists all interact with it
+- **Meeting DEA and pharmacy regulatory requirements** — any electronic replacement has to satisfy these
+
+ORCA has no functional EHR for this purpose. Orders are placed through MD Toolbox embedded in Chasers; Kelley-Ross can see the Chasers record for injectables but not for tablets/films.
+
+---
+
+## 2. Cartoon of the current workflow
+
+![Current workflow at ORCA — six scenes](workflow-cartoon.png)
+
+1. Pharmacy partner delivers meds.
+2. Two-signature sign-in, by hand, on paper.
+3. Filed by patient last name.
+4. Empty folder = time to reorder. Maybe.
+5. Meds travel to supportive housing sites.
+6. Where is this one? Did it go to housing? Was it signed out?
+
+---
+
+## 3. User stories — drafts
+
+Classic "As a [role], I want to [action], so that [outcome]" format. Add, edit, push back.
+
+1. **As a nurse signing in a delivery**, I want to record receipt with prescription number, type, dose, count, and a second staff signature, so that the CSR is complete and the medications are accounted for.
+
+2. **As an ORCA staff member dispensing on-site**, I want to find a patient's medication quickly and record the dispense with a second signature, so that the patient is served without delay and the count stays accurate.
+
+3. **As an ORCA staff member transporting medications to a PSH site**, I want to sign out at ORCA and sign in at the PSH log on arrival, so that both records reflect the medication's current location.
+
+4. **As a staff member responsible for reordering**, I want to know when a patient's supply is running low _before_ it hits zero, so that there's no gap in treatment.
+
+5. **As a provider**, I want refill activity tied to a clinical review checkpoint at least every six months, so that ongoing prescriptions remain clinically indicated.
+
+---
+
+## 4. Vocabulary sketch
+
+A first cut at the nouns the system would track. Not a data model — just naming things so we're using the same words.
+
+- **Medication Unit** — a physical thing that gets signed in, stored, dispensed, or transported. A box of LAI, a bubble pack of tablets, a baggie of films.
+- **Patient** — the person the medication is prescribed for. Has a current location (ORCA / a specific PSH site).
+- **Prescription** — the clinical authorization tying a patient to a medication, with refill count and a clinical-review expiration.
+- **Location** — ORCA medication room, ORCA drawers, a specific PSH site, "in transit."
+- **Event** — sign-in, dispense, transport-out, transport-in, administration. Each event has timestamp, medication unit, location, and two signers.
+- **Person** — staff member with a role (provider, nurse, MA, milieu specialist) and permissions for which events they can participate in.
+
+---
+
+## 5. Architecture question
+
+Building inside the existing Microsoft ecosystem (Power Apps / Power Automate) versus building outside it is a real fork — the first is gentler on patient-data regulatory exposure but constrains custom functionality; the second opens up capability but raises the compliance bar. This packet doesn't take a position. Worth thinking through together: which user stories actually need custom functionality, and which would Power Apps handle cleanly?
+
+---
+
+## 6. Open questions
+
+**Regulatory and policy**
+
+- What do DEA and Washington state pharmacy regulations require of an electronic CSR beyond two-signature authentication?
+- DESC-internal policy constraints on digital tracking?
+- Audit trail requirements?
+
+**Workflow and volume**
+
+- How many patients in the program? Doses/week?
+- How often do medications move between ORCA and PSH? How many PSH sites?
+- What happens today when a count doesn't match, a medication can't be found, or a transport happens but the patient isn't available?
+
+**Roles and permissions**
+
+- Who can sign in vs. out, transport, reorder? Same structure on-site and off-site?
+- After-hours coverage?
+
+**Existing systems**
+
+- What's in scope for MD Toolbox and Chasers?
+- What does the Kelley-Ross portal already do that's worth keeping?
+
+**Failure modes**
+
+- When the current workflow breaks down, what does that look like? Lost meds, miscounts, reorder delays, compliance gaps?
