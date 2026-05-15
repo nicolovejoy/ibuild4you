@@ -70,7 +70,7 @@ export default function DashboardPage() {
 
       <main className="max-w-4xl mx-auto px-4 py-8">
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-2xl font-semibold text-gray-900">Your projects</h2>
+          <h2 className="text-2xl font-semibold text-gray-900">{copy.dashboard.title}</h2>
           {isAdmin && (
             <div className="flex items-center gap-2">
               <Link
@@ -179,10 +179,10 @@ function NewProjectButton() {
   return (
     <>
       <LoadingButton variant="primary" icon={Plus} onClick={() => setShowForm(true)}>
-        New project
+        New brief
       </LoadingButton>
 
-      <Modal isOpen={showForm} onClose={resetAndClose} title="New project">
+      <Modal isOpen={showForm} onClose={resetAndClose} title="New brief">
         {/* Mode toggle */}
         <div className="flex gap-1 mb-4">
           <button
@@ -262,7 +262,7 @@ function NewProjectButton() {
                 className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
               />
               <p className="text-xs text-gray-500 mt-1">
-                Needed to share the project with them later.
+                Needed to share the brief with them later.
               </p>
             </div>
 
@@ -302,7 +302,7 @@ function NewProjectButton() {
                 loadingText="Creating..."
                 disabled={!title.trim()}
               >
-                Create project
+                Create brief
               </LoadingButton>
             </div>
           </form>
@@ -315,10 +315,10 @@ function NewProjectButton() {
                 className="flex items-center gap-1.5 text-xs text-gray-600 hover:text-brand-navy mb-2"
               >
                 {prepCopied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
-                {prepCopied ? 'Copied!' : 'Copy new-project prep'}
+                {prepCopied ? 'Copied!' : 'Copy new-brief prep'}
               </button>
               <label htmlFor="project-json" className="block text-sm font-medium text-gray-700 mb-1">
-                Paste new-project JSON
+                Paste new-brief JSON
               </label>
               <textarea
                 id="project-json"
@@ -330,7 +330,7 @@ function NewProjectButton() {
                 autoFocus
               />
               <p className="text-xs text-gray-500 mt-1">
-                Copy the new-project prep, paste into Claude to discuss the setup, then paste the returned JSON here. Only &quot;title&quot; is required.
+                Copy the new-brief prep, paste into Claude to discuss the setup, then paste the returned JSON here. Only &quot;title&quot; is required.
               </p>
             </div>
 
@@ -389,14 +389,14 @@ function ProjectList({ isAdmin }: { isAdmin: boolean }) {
   }
 
   if (error) {
-    return <StatusMessage type="error" message="Failed to load projects. Please try again." />
+    return <StatusMessage type="error" message="Failed to load briefs. Please try again." />
   }
 
   if (!projects?.length) {
     return (
       <EmptyState
         icon={FolderOpen}
-        title="No projects yet"
+        title="No briefs yet"
         description={isAdmin ? copy.dashboard.emptyAdmin : copy.dashboard.emptyMaker}
       />
     )
@@ -483,7 +483,7 @@ function ProjectList({ isAdmin }: { isAdmin: boolean }) {
                             setDeletingProject(project)
                           }}
                           className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded"
-                          title="Delete project"
+                          title="Delete brief"
                         >
                           <Trash2 className="h-4 w-4" />
                         </button>
@@ -584,7 +584,7 @@ function ShareModal({ project, onClose }: { project: Project; onClose: () => voi
     <Modal isOpen onClose={onClose} title={`Share "${project.title}"`}>
       {shareProject.isSuccess ? (
         <div className="space-y-4">
-          <StatusMessage type="success" message={`${email} has been approved and linked to this project.`} />
+          <StatusMessage type="success" message={copy.shareModal.successMessage(email)} />
           <div>
             <p className="text-sm text-gray-700 mb-2">Send them this link:</p>
             <div className="flex items-center gap-2">
@@ -718,7 +718,7 @@ function DeleteProjectModal({ project, onClose }: { project: Project; onClose: (
     <Modal isOpen onClose={onClose} title={`Delete "${project.title}"?`}>
       <div className="space-y-4">
         <p className="text-sm text-gray-700">
-          This permanently deletes the project, all conversations, and the brief. This can&apos;t be undone.
+          {copy.deleteProject.warning}
         </p>
         <div>
           <label htmlFor="delete-confirm" className="block text-sm font-medium text-gray-700 mb-1">

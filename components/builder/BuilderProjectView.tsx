@@ -80,15 +80,19 @@ export function BuilderProjectView({ projectId, userEmail }: { projectId: string
   const turn = getTurnIndicator(project, 'builder')
 
   return (
-    <div className="min-h-screen bg-brand-cream">
+    // Builder view: cooler tool-like background to distinguish from the maker view (warm cream).
+    <div className="min-h-screen bg-stone-50">
       {/* Header */}
-      <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
+      <header className="bg-white border-b-2 border-brand-navy/30 sticky top-0 z-10">
         <div className="px-4 sm:px-6">
           <div className="flex items-center justify-between h-14">
             <div className="flex items-center gap-3">
               <button onClick={() => router.push('/dashboard')} className="p-1 hover:bg-gray-100 rounded">
                 <ArrowLeft className="h-5 w-5 text-gray-600" />
               </button>
+              <span className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded bg-brand-navy text-white">
+                Builder
+              </span>
               <div className="group relative">
                 {editingTitle ? (
                   <input

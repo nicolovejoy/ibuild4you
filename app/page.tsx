@@ -38,7 +38,7 @@ export default function HomePage() {
           <h1 className="text-4xl font-bold text-brand-charcoal">iBuild4you</h1>
           <p className="text-lg text-brand-slate leading-relaxed">
             Have an idea for an app or website but not sure where to start? Our AI guides you through
-            the details and turns your idea into a clear project brief — no technical knowledge
+            the details and turns your idea into a clear brief — no technical knowledge
             needed.
           </p>
           <LoadingButton
@@ -70,7 +70,7 @@ export default function HomePage() {
             {
               step: '2',
               title: 'We build a brief',
-              desc: "As you talk, we create a structured project brief that captures everything you've described.",
+              desc: "As you talk, we create a structured brief that captures everything you've described.",
             },
             {
               step: '3',

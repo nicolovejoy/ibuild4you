@@ -38,10 +38,14 @@ export const copy = {
   },
 
   // --- Dashboard ---
+  // NOTE: in the UI the umbrella construct is called "brief". The internal data
+  // model + API + collection are still named `project` / `projects` (avoiding a
+  // sweeping rename across types, routes, tests). User-facing strings here use
+  // "brief".
   dashboard: {
-    title: 'Your projects',
-    emptyAdmin: 'Create a project, set it up, and share it with a maker.',
-    emptyMaker: "You don't have any projects yet. Check back soon!",
+    title: 'Your briefs',
+    emptyAdmin: 'Create a brief, set it up, and share it with a maker.',
+    emptyMaker: "You don't have any briefs yet. Check back soon!",
     turnNeedsSetup: 'Needs setup',
     turnAwaitingMaker: (name: string) => `Waiting on ${name}`,
     turnYourTurn: 'Your turn',
@@ -53,7 +57,7 @@ export const copy = {
     sharedAt: (time: string) => `Shared ${time}`,
   },
 
-  // --- New project modal ---
+  // --- New brief modal (internal key kept as `newProject` to match data model) ---
   newProject: {
     titlePlaceholder: "Jamie's Bakery Website",
     contextLabel: 'Context for the agent',
@@ -66,7 +70,7 @@ export const copy = {
     emailLabel: 'Their email address',
     emailPlaceholder: 'jamie@example.com',
     emailHelp: "They'll be approved automatically. You'll get a link to send them.",
-    successMessage: (email: string) => `${email} has been approved and linked to this project.`,
+    successMessage: (email: string) => `${email} has been approved and linked to this brief.`,
     sendLinkPrompt: 'Send them this link:',
   },
 
@@ -150,15 +154,15 @@ export const copy = {
   about: {
     title: 'What is iBuild4you?',
     intro: "Someone sent you a link because they want to help you build something. Here's what to expect.",
-    whatItIs: "iBuild4you is a tool that helps you describe your idea through a simple conversation. You chat with an AI assistant that asks questions about what you want to build — no technical knowledge needed. As you talk, it captures everything into a project brief that your builder can use to start building.",
-    whatHappensNext: "After your conversation, your builder reviews what you discussed and may set up a follow-up to dig deeper. You can come back anytime — your project brief grows with each conversation.",
+    whatItIs: "iBuild4you is a tool that helps you describe your idea through a simple conversation. You chat with an AI assistant that asks questions about what you want to build — no technical knowledge needed. As you talk, it captures everything into a brief that your builder can use to start building.",
+    whatHappensNext: "After your conversation, your builder reviews what you discussed and may set up a follow-up to dig deeper. You can come back anytime — your brief grows with each conversation.",
     privacy: "Your conversations are only visible to you and the builder who invited you.",
     cta: 'Ready to get started?',
   },
 
   // --- Delete confirmation ---
   deleteProject: {
-    warning: "This permanently deletes the project, all conversations, and the brief. This can't be undone.",
+    warning: "This permanently deletes this brief and all its conversations. This can't be undone.",
     confirmLabel: 'Type "delete" to confirm',
   },
 

@@ -58,12 +58,16 @@ export function MakerProjectView({ projectId, userEmail }: { projectId: string; 
     : null
 
   return (
+    // Maker view: keeps warm brand-cream as the guest/recipient surface (builder view uses bg-stone-50).
     <div className="min-h-screen bg-brand-cream">
-      <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
+      <header className="bg-white border-b-2 border-amber-300/50 sticky top-0 z-10">
         <div className="px-4 sm:px-6 h-14 flex items-center gap-3">
           <button onClick={() => router.push('/dashboard')} className="p-1 hover:bg-gray-100 rounded">
             <ArrowLeft className="h-5 w-5 text-gray-600" />
           </button>
+          <span className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded bg-amber-500 text-white">
+            Maker
+          </span>
           <div className="group relative flex-1 flex items-center gap-2">
             <span className="font-semibold text-brand-charcoal">
               {projectLoading ? '...' : project?.title}

@@ -30,7 +30,11 @@ export interface AppUser extends BaseEntity {
   system_roles?: SystemRole[]
 }
 
-// Projects collection — one per maker engagement
+// Projects collection — one per maker engagement.
+// UI-LEVEL NAMING: this construct is called "brief" in user-facing copy
+// (dashboard, modals, share text). The data model + API + routes keep the
+// `project` / `projects` name to avoid a sweeping rename. When in doubt,
+// "Project" in code === "Brief" in UI.
 export interface Project extends BaseEntity {
   requester_id: string
   title: string
