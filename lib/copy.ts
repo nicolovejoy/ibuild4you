@@ -158,6 +158,51 @@ export const copy = {
     whatHappensNext: "After your conversation, your builder reviews what you discussed and may set up a follow-up to dig deeper. You can come back anytime — your brief grows with each conversation.",
     privacy: "Your conversations are only visible to you and the builder who invited you.",
     cta: 'Ready to get started?',
+    rolesIntro: "iBuild4you has two roles. The same app shows a different surface depending on which role you're in.",
+    twoRoles: 'Two roles',
+    glossaryHeading: 'Words we use',
+  },
+
+  // --- Glossary — single source of truth for terminology ---
+  // Used by the About page and as tooltip text across the app.
+  // Keep `short` ≤ 90 chars so it works as a hover tooltip.
+  glossary: {
+    brief: {
+      term: 'Brief',
+      short: 'Your living document of what you want to build — grows with each conversation.',
+    },
+    maker: {
+      term: 'Maker',
+      short: 'The person with the idea, chatting with the AI assistant. (That might be you.)',
+    },
+    builder: {
+      term: 'Builder',
+      short: 'The person who turns the brief into the built thing — sets context, reviews, follows up.',
+    },
+    agent: {
+      term: 'iBuild4you assistant',
+      short: 'The AI that asks questions, captures what you say, and updates the brief.',
+    },
+    conversation: {
+      term: 'Conversation',
+      short: 'One chat between maker and assistant. You can come back across many.',
+    },
+    setup: {
+      term: 'Setup',
+      short: 'Builder-side: context, seed questions, and directives that shape the next conversation.',
+    },
+    files: {
+      term: 'Files',
+      short: 'Anything attached to this brief — PDFs, images, docs the assistant can reference.',
+    },
+    nextConversation: {
+      term: 'Next Conversation',
+      short: 'Builder-side: shape what the assistant should open with for the next session.',
+    },
+    needsSetup: {
+      term: 'Needs setup',
+      short: "This brief hasn't been shared with a maker yet — builder still needs to send the link.",
+    },
   },
 
   // --- Delete confirmation ---
