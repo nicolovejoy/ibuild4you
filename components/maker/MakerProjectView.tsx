@@ -29,6 +29,7 @@ import { apiFetch } from '@/lib/firebase/api-fetch'
 import { useStreamingChat } from '@/lib/hooks/useStreamingChat'
 import { useRealtimeMessages } from '@/lib/hooks/useRealtimeMessages'
 import { useEscapeBack } from '@/lib/hooks/useEscapeBack'
+import { copy } from '@/lib/copy'
 import { useQueryClient } from '@tanstack/react-query'
 import type { Session, WireframeMockup, ProjectFile } from '@/lib/types'
 
@@ -57,34 +58,38 @@ export function MakerProjectView({ projectId, userEmail }: { projectId: string; 
     ? `${currentUser.first_name}${currentUser.last_name ? ` ${currentUser.last_name.charAt(0)}` : ''}`
     : null
 
+  // Maker view: phone-first chat surface. Two-row header keeps the brief title
+  // on its own line and uses a subline for role + context + status — so the
+  // maker always has a sense of "what you're doing here" even before they look
+  // at the chat. Turn indicator only appears for meaningful states (no
+  // "Needs setup" — that's filtered out in getTurnIndicator for makers).
+  const turn = getTurnIndicator(project, project?.viewer_role ?? null)
+
   return (
-    // Maker view: keeps warm brand-cream as the guest/recipient surface (builder view uses bg-stone-50).
     <div className="min-h-screen bg-brand-cream">
       <header className="bg-white border-b-2 border-amber-300/50 sticky top-0 z-10">
-        <div className="px-4 sm:px-6 h-14 flex items-center gap-3">
-          <button onClick={() => router.push('/dashboard')} className="p-1 hover:bg-gray-100 rounded">
-            <ArrowLeft className="h-5 w-5 text-gray-600" />
-          </button>
-          <span className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded bg-amber-500 text-white">
-            Maker
-          </span>
-          <div className="group relative flex-1 flex items-center gap-2">
-            <span className="font-semibold text-brand-charcoal">
-              {projectLoading ? '...' : project?.title}
-            </span>
-            {(() => { const turn = getTurnIndicator(project, project?.viewer_role ?? null); return turn ? <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${turn.className}`}>{turn.label}</span> : null })()}
-            <BuildTimestamp />
-          </div>
-          {displayName && !editingName && (
-            <button
-              onClick={() => { setEditFirst(currentUser?.first_name || ''); setEditLast(currentUser?.last_name || ''); setEditingName(true) }}
-              className="flex items-center gap-1 text-sm text-gray-500 hover:text-brand-navy"
-              title="Edit your name"
-            >
-              {displayName}
-              <Pencil className="h-3 w-3" />
+        <div className="px-4 sm:px-6 pt-2 sm:pt-3 pb-2">
+          {/* Row 1: nav + title + identity */}
+          <div className="flex items-center gap-2 sm:gap-3">
+            <button onClick={() => router.push('/dashboard')} className="p-1 hover:bg-gray-100 rounded shrink-0">
+              <ArrowLeft className="h-5 w-5 text-gray-600" />
             </button>
-          )}
+            <div className="group relative flex-1 min-w-0 flex items-center gap-2">
+              <span className="font-semibold text-brand-charcoal truncate">
+                {projectLoading ? '...' : project?.title}
+              </span>
+              <BuildTimestamp />
+            </div>
+            {displayName && !editingName && (
+              <button
+                onClick={() => { setEditFirst(currentUser?.first_name || ''); setEditLast(currentUser?.last_name || ''); setEditingName(true) }}
+                className="flex items-center gap-1 text-sm text-gray-500 hover:text-brand-navy shrink-0"
+                title="Edit your name"
+              >
+                <span className="hidden sm:inline">{displayName}</span>
+                <Pencil className="h-3 w-3" />
+              </button>
+            )}
           {editingName && (
             <div className="flex items-center gap-1.5">
               <input
@@ -118,9 +123,30 @@ export function MakerProjectView({ projectId, userEmail }: { projectId: string; 
               <button onClick={() => setEditingName(false)} className="text-xs text-gray-500 hover:text-gray-700">Cancel</button>
             </div>
           )}
-          <Link href="/about" className="p-1.5 hover:bg-gray-100 rounded text-gray-400 hover:text-gray-600">
-            <HelpCircle className="h-4 w-4" />
-          </Link>
+            <Link
+              href="/about"
+              className="p-1.5 hover:bg-gray-100 rounded text-gray-400 hover:text-gray-600 shrink-0"
+              title="What is iBuild4you?"
+            >
+              <HelpCircle className="h-4 w-4" />
+            </Link>
+          </div>
+
+          {/* Row 2: role + context + status. "What you're doing here." */}
+          <div className="flex items-center gap-2 mt-1.5 text-xs text-brand-slate">
+            <span
+              className="text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-500 text-white shrink-0"
+              title={copy.glossary.maker.short}
+            >
+              Maker
+            </span>
+            <span className="truncate">Chatting with the iBuild4you assistant</span>
+            {turn && (
+              <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium shrink-0 ${turn.className}`}>
+                {turn.label}
+              </span>
+            )}
+          </div>
         </div>
       </header>
 

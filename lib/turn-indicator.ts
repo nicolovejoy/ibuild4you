@@ -18,6 +18,9 @@ export function getTurnIndicator(
   }
 
   if (!project.requester_email || !project.session_count) {
+    // "Needs setup" is a builder-side concern — the maker can't act on it,
+    // so hide the badge entirely in maker contexts.
+    if (viewerRole === 'maker') return null
     return { label: 'Needs setup', className: 'bg-gray-100 text-gray-600' }
   }
 
