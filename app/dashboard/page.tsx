@@ -415,7 +415,23 @@ function ProjectList({ isAdmin }: { isAdmin: boolean }) {
                     className="flex-1 cursor-pointer"
                     onClick={() => router.push(`/projects/${project.slug || project.id}`)}
                   >
-                    <div className="flex items-center gap-2 mb-1">
+                    <div className="flex flex-wrap items-center gap-2 mb-1">
+                      {project.viewer_role && (
+                        <span
+                          className={`text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded shrink-0 ${
+                            project.viewer_role === 'maker'
+                              ? 'bg-amber-500 text-white'
+                              : 'bg-brand-navy text-white'
+                          }`}
+                          title={
+                            project.viewer_role === 'maker'
+                              ? 'You are the maker on this brief'
+                              : 'You are the builder on this brief'
+                          }
+                        >
+                          {project.viewer_role === 'maker' ? 'Maker' : 'Builder'}
+                        </span>
+                      )}
                       <h3 className="font-medium text-gray-900">{project.title}</h3>
                       {turn && (
                         <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${turn.className}`}>
