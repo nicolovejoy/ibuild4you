@@ -43,8 +43,8 @@ export default function DashboardPage() {
 
   if (authLoading || approvalLoading) {
     return (
-      <div className="min-h-screen bg-brand-cream flex items-center justify-center">
-        <div className="animate-pulse text-brand-slate">Loading...</div>
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
+        <div className="animate-pulse text-slate-400">Loading...</div>
       </div>
     )
   }
@@ -54,13 +54,16 @@ export default function DashboardPage() {
   const isAdmin = currentUser?.system_roles?.includes('admin') ?? false
 
   return (
-    <div className="min-h-screen bg-brand-cream">
-      <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
+    // Dashboard uses the same dark slate as the builder side rail — signals
+    // "operator console / cross-role launching point", and lets the white
+    // brief cards pop against it.
+    <div className="min-h-screen bg-slate-900">
+      <header className="bg-slate-900 border-b border-slate-800 sticky top-0 z-10">
         <div className="px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-3 group relative">
-              <ScaffoldIcon className="h-7 w-7 text-brand-navy" />
-              <h1 className="text-xl font-bold text-brand-charcoal">iBuild4you</h1>
+              <ScaffoldIcon className="h-7 w-7 text-white" />
+              <h1 className="text-xl font-bold text-white">iBuild4you</h1>
               <BuildTimestamp />
             </div>
             <UserMenu />
@@ -70,12 +73,12 @@ export default function DashboardPage() {
 
       <main className="max-w-4xl mx-auto px-4 py-8">
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-2xl font-semibold text-gray-900">{copy.dashboard.title}</h2>
+          <h2 className="text-2xl font-semibold text-white">{copy.dashboard.title}</h2>
           {isAdmin && (
             <div className="flex items-center gap-2">
               <Link
                 href="/admin"
-                className="p-2 text-gray-400 hover:text-brand-navy hover:bg-gray-100 rounded-lg transition-colors"
+                className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
                 title="Admin"
               >
                 <Settings className="h-5 w-5" />
