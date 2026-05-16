@@ -43,8 +43,8 @@ export default function DashboardPage() {
 
   if (authLoading || approvalLoading) {
     return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
-        <div className="animate-pulse text-slate-400">Loading...</div>
+      <div className="min-h-screen bg-brand-cream flex items-center justify-center">
+        <div className="animate-pulse text-brand-slate">Loading...</div>
       </div>
     )
   }
@@ -53,17 +53,26 @@ export default function DashboardPage() {
 
   const isAdmin = currentUser?.system_roles?.includes('admin') ?? false
 
+  // Theme dashboard by who's looking at it. Admin/builders get the dark
+  // slate "operator console" that matches the builder side rail. Pure makers
+  // keep the warm cream — their dashboard is just "briefs I was invited into".
+  const pageBg = isAdmin ? 'bg-slate-900' : 'bg-brand-cream'
+  const headerBg = isAdmin ? 'bg-slate-900 border-slate-800' : 'bg-white border-gray-200'
+  const logoColor = isAdmin ? 'text-white' : 'text-brand-navy'
+  const titleColor = isAdmin ? 'text-white' : 'text-brand-charcoal'
+  const headingColor = isAdmin ? 'text-white' : 'text-gray-900'
+  const adminBtnColor = isAdmin
+    ? 'text-slate-400 hover:text-white hover:bg-slate-800'
+    : 'text-gray-400 hover:text-brand-navy hover:bg-gray-100'
+
   return (
-    // Dashboard uses the same dark slate as the builder side rail — signals
-    // "operator console / cross-role launching point", and lets the white
-    // brief cards pop against it.
-    <div className="min-h-screen bg-slate-900">
-      <header className="bg-slate-900 border-b border-slate-800 sticky top-0 z-10">
+    <div className={`min-h-screen ${pageBg}`}>
+      <header className={`border-b sticky top-0 z-10 ${headerBg}`}>
         <div className="px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-3 group relative">
-              <ScaffoldIcon className="h-7 w-7 text-white" />
-              <h1 className="text-xl font-bold text-white">iBuild4you</h1>
+              <ScaffoldIcon className={`h-7 w-7 ${logoColor}`} />
+              <h1 className={`text-xl font-bold ${titleColor}`}>iBuild4you</h1>
               <BuildTimestamp />
             </div>
             <UserMenu />
@@ -73,12 +82,12 @@ export default function DashboardPage() {
 
       <main className="max-w-4xl mx-auto px-4 py-8">
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-2xl font-semibold text-white">{copy.dashboard.title}</h2>
+          <h2 className={`text-2xl font-semibold ${headingColor}`}>{copy.dashboard.title}</h2>
           {isAdmin && (
             <div className="flex items-center gap-2">
               <Link
                 href="/admin"
-                className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
+                className={`p-2 rounded-lg transition-colors ${adminBtnColor}`}
                 title="Admin"
               >
                 <Settings className="h-5 w-5" />
