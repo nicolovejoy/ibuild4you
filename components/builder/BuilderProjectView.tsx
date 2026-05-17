@@ -40,7 +40,7 @@ import { apiFetch } from '@/lib/firebase/api-fetch'
 import { useStreamingChat } from '@/lib/hooks/useStreamingChat'
 import { useRealtimeMessages } from '@/lib/hooks/useRealtimeMessages'
 import { useQueryClient } from '@tanstack/react-query'
-import { FilesGrid } from '@/components/ui/FilesGrid'
+import { BuilderFilesTab } from './BuilderFilesTab'
 import { getTurnIndicator } from '@/lib/turn-indicator'
 import type { Project, Session, BriefContent, WireframeMockup } from '@/lib/types'
 
@@ -229,7 +229,7 @@ export function BuilderProjectView({ projectId, userEmail }: { projectId: string
             <BriefTab projectId={projectId} brief={brief} project={project} />
           )}
           {activeTab === 'files' && (
-            <FilesGrid files={projectFiles || []} />
+            <BuilderFilesTab projectId={projectId} files={projectFiles || []} />
           )}
           {activeTab === 'setup' && project && (
             <NextConversationTab
