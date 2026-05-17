@@ -206,6 +206,7 @@ function MakerChat({
   const [pendingFiles, setPendingFiles] = useState<File[]>([])
   const [uploading, setUploading] = useState(false)
   const [creatingSession, setCreatingSession] = useState(false)
+  const [dragOver, setDragOver] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -231,6 +232,24 @@ function MakerChat({
     }
     setPendingFiles((prev) => [...prev, ...newFiles])
   }, [setError])
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    if (e.dataTransfer.types.includes('Files')) {
+      e.preventDefault()
+      setDragOver(true)
+    }
+  }, [])
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    // Only clear when leaving the container, not when moving between children
+    if (e.currentTarget === e.target) setDragOver(false)
+  }, [])
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    setDragOver(false)
+    if (e.dataTransfer.files.length > 0) addFiles(e.dataTransfer.files)
+  }, [addFiles])
 
   // Handle paste for clipboard images
   const handlePaste = useCallback((e: React.ClipboardEvent) => {
@@ -360,7 +379,12 @@ function MakerChat({
   return (
     <div className="space-y-3">
       {/* Input area */}
-      <div className="space-y-2">
+      <div
+        className={`space-y-2 rounded-lg transition-colors ${dragOver ? 'ring-2 ring-brand-navy ring-offset-2 bg-brand-navy/5' : ''}`}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+      >
         <div className="flex gap-2">
           <button
             onClick={() => fileInputRef.current?.click()}
