@@ -79,17 +79,77 @@ export function BuilderProjectView({ projectId, userEmail }: { projectId: string
   // Turn indicator — builder view always sees builder perspective
   const turn = getTurnIndicator(project, 'builder')
 
+  // Tab definitions used by both the desktop sidebar and mobile bottom tab bar.
+  const tabs: { id: TabId; label: string; shortLabel: string; Icon: typeof MessageSquare; tooltip: string }[] = [
+    { id: 'sessions', label: 'Conversations', shortLabel: 'Chats', Icon: MessageSquare, tooltip: copy.glossary.conversation.short },
+    { id: 'brief', label: 'Brief', shortLabel: 'Brief', Icon: FileText, tooltip: copy.glossary.brief.short },
+    { id: 'files', label: `Files${projectFiles?.length ? ` (${projectFiles.length})` : ''}`, shortLabel: 'Files', Icon: Upload, tooltip: copy.glossary.files.short },
+    { id: 'setup', label: 'Next Conversation', shortLabel: 'Next', Icon: Settings, tooltip: copy.glossary.nextConversation.short },
+  ]
+
   return (
-    <div className="min-h-screen bg-brand-cream">
-      {/* Header */}
-      <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
-        <div className="px-4 sm:px-6">
-          <div className="flex items-center justify-between h-14">
-            <div className="flex items-center gap-3">
+    // Builder view: operator-console layout. Dark slate side rail on desktop,
+    // bottom tab bar on phone. The chrome itself is the loudest signal that
+    // this is a different surface from the maker chat view.
+    <div className="min-h-screen bg-stone-50 md:flex">
+      {/* Desktop side rail */}
+      <aside className="hidden md:flex md:flex-col w-[200px] bg-slate-900 text-slate-100 sticky top-0 h-screen shrink-0 z-10">
+        <div className="p-4 space-y-3 border-b border-slate-800">
+          <button
+            onClick={() => router.push('/dashboard')}
+            className="flex items-center gap-2 text-slate-300 hover:text-white transition-colors text-sm"
+            title="Back to dashboard"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            <span>Dashboard</span>
+          </button>
+          <span
+            className="inline-block text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded bg-brand-navy text-white"
+            title={copy.glossary.builder.short}
+          >
+            Builder
+          </span>
+        </div>
+        <nav className="flex-1 p-2 space-y-1">
+          {tabs.map(({ id, label, Icon, tooltip }) => (
+            <button
+              key={id}
+              onClick={() => setTab(id)}
+              title={tooltip}
+              className={`w-full flex items-center gap-3 px-3 py-2 rounded text-sm transition-colors ${
+                activeTab === id
+                  ? 'bg-slate-700 text-white'
+                  : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+              }`}
+            >
+              <Icon className="h-4 w-4 shrink-0" />
+              <span className="truncate">{label}</span>
+            </button>
+          ))}
+        </nav>
+      </aside>
+
+      {/* Main column */}
+      <div className="flex-1 min-w-0 pb-20 md:pb-0">
+        {/* Top sub-header (per-brief context: title, share, status) */}
+        <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
+          <div className="px-4 sm:px-6 py-3 space-y-2">
+            {/* Mobile-only: back + Builder chip on its own row */}
+            <div className="md:hidden flex items-center gap-2">
               <button onClick={() => router.push('/dashboard')} className="p-1 hover:bg-gray-100 rounded">
                 <ArrowLeft className="h-5 w-5 text-gray-600" />
               </button>
-              <div className="group relative">
+              <span
+                className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded bg-brand-navy text-white"
+                title={copy.glossary.builder.short}
+              >
+                Builder
+              </span>
+            </div>
+
+            {/* Title + turn indicator */}
+            <div className="flex items-center justify-between gap-3">
+              <div className="group relative min-w-0 flex items-center gap-2">
                 {editingTitle ? (
                   <input
                     type="text"
@@ -105,13 +165,13 @@ export function BuilderProjectView({ projectId, userEmail }: { projectId: string
                       if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
                       if (e.key === 'Escape') setEditingTitle(false)
                     }}
-                    className="font-semibold text-brand-charcoal bg-transparent border-b-2 border-brand-navy outline-none px-0 py-0"
+                    className="font-semibold text-brand-charcoal bg-transparent border-b-2 border-brand-navy outline-none px-0 py-0 min-w-0 flex-1"
                     autoFocus
                   />
                 ) : (
                   <button
                     onClick={() => { setTitleDraft(project?.title || ''); setEditingTitle(true) }}
-                    className="font-semibold text-brand-charcoal hover:text-brand-navy cursor-text"
+                    className="font-semibold text-brand-charcoal hover:text-brand-navy cursor-text truncate"
                     title="Click to rename"
                   >
                     {projectLoading ? '...' : project?.title}
@@ -119,83 +179,85 @@ export function BuilderProjectView({ projectId, userEmail }: { projectId: string
                 )}
                 <BuildTimestamp />
               </div>
+              {turn && (
+                <span
+                  className={`text-xs px-2.5 py-1 rounded-full font-medium shrink-0 ${turn.className}`}
+                  title={turn.label === 'Needs setup' ? copy.glossary.needsSetup.short : undefined}
+                >
+                  {turn.label}
+                </span>
+              )}
             </div>
-            {turn && (
-              <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${turn.className}`}>
-                {turn.label}
-              </span>
+
+            {/* Meta line: share + count */}
+            {project && (
+              <div className="flex items-center gap-3 text-sm text-gray-500">
+                {project.requester_email ? (
+                  <button
+                    onClick={() => setShowShareModal(true)}
+                    className="flex items-center gap-1.5 hover:text-brand-navy transition-colors"
+                  >
+                    <Share2 className="h-3.5 w-3.5" />
+                    <span>{project.requester_first_name ? `${project.requester_first_name}${project.requester_last_name ? ` ${project.requester_last_name.charAt(0)}` : ''}` : project.requester_email?.split('@')[0]}</span>
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => setShowShareModal(true)}
+                    className="flex items-center gap-1.5 text-brand-navy hover:text-brand-navy-light transition-colors font-medium"
+                  >
+                    <Share2 className="h-3.5 w-3.5" />
+                    Share
+                  </button>
+                )}
+                {sessions && <span>{sessions.length} conversation{sessions.length === 1 ? '' : 's'}</span>}
+              </div>
             )}
           </div>
+        </header>
 
-          {/* Project meta line with share */}
-          {project && (
-            <div className="flex items-center gap-3 pb-2 text-sm text-gray-500">
-              {project.requester_email ? (
-                <button
-                  onClick={() => setShowShareModal(true)}
-                  className="flex items-center gap-1.5 hover:text-brand-navy transition-colors"
-                >
-                  <Share2 className="h-3.5 w-3.5" />
-                  <span>{project.requester_first_name ? `${project.requester_first_name}${project.requester_last_name ? ` ${project.requester_last_name.charAt(0)}` : ''}` : project.requester_email?.split('@')[0]}</span>
-                </button>
-              ) : (
-                <button
-                  onClick={() => setShowShareModal(true)}
-                  className="flex items-center gap-1.5 text-brand-navy hover:text-brand-navy-light transition-colors font-medium"
-                >
-                  <Share2 className="h-3.5 w-3.5" />
-                  Share
-                </button>
-              )}
-              {sessions && <span>{sessions.length} conversation{sessions.length === 1 ? '' : 's'}</span>}
-            </div>
+        <main className="max-w-4xl mx-auto px-4 py-6">
+          {activeTab === 'sessions' && (
+            <SessionsTab
+              projectId={projectId}
+              slug={project?.slug}
+              userEmail={userEmail}
+              sessions={sessions || []}
+              sessionsLoaded={!!sessions}
+            />
           )}
+          {activeTab === 'brief' && (
+            <BriefTab projectId={projectId} brief={brief} project={project} />
+          )}
+          {activeTab === 'files' && (
+            <FilesGrid files={projectFiles || []} />
+          )}
+          {activeTab === 'setup' && project && (
+            <NextConversationTab
+              project={project}
+              projectId={projectId}
+              sessions={sessions || []}
+              activeSession={activeSession || null}
+              onShare={() => setShowShareModal(true)}
+            />
+          )}
+        </main>
+      </div>
 
-          {/* Tabs */}
-          <div className="flex gap-1">
-            {(['sessions', 'brief', 'files', 'setup'] as const).map((tab) => (
-              <button
-                key={tab}
-                onClick={() => setTab(tab)}
-                className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-                  activeTab === tab
-                    ? 'border-brand-navy text-brand-navy'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                {tab === 'sessions' ? 'Conversations' : tab === 'brief' ? 'Brief' : tab === 'files' ? `Files${projectFiles?.length ? ` (${projectFiles.length})` : ''}` : 'Next Conversation'}
-              </button>
-            ))}
-          </div>
-        </div>
-      </header>
-
-      <main className="max-w-4xl mx-auto px-4 py-6">
-        {activeTab === 'sessions' && (
-          <SessionsTab
-            projectId={projectId}
-            slug={project?.slug}
-            userEmail={userEmail}
-            sessions={sessions || []}
-            sessionsLoaded={!!sessions}
-          />
-        )}
-        {activeTab === 'brief' && (
-          <BriefTab projectId={projectId} brief={brief} project={project} />
-        )}
-        {activeTab === 'files' && (
-          <FilesGrid files={projectFiles || []} />
-        )}
-        {activeTab === 'setup' && project && (
-          <NextConversationTab
-            project={project}
-            projectId={projectId}
-            sessions={sessions || []}
-            activeSession={activeSession || null}
-            onShare={() => setShowShareModal(true)}
-          />
-        )}
-      </main>
+      {/* Mobile bottom tab bar */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-slate-900 text-slate-100 border-t border-slate-800 grid grid-cols-4 z-20">
+        {tabs.map(({ id, shortLabel, Icon }) => (
+          <button
+            key={id}
+            onClick={() => setTab(id)}
+            className={`flex flex-col items-center justify-center py-2 text-[11px] gap-0.5 transition-colors ${
+              activeTab === id ? 'text-white' : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Icon className={`h-5 w-5 ${activeTab === id ? 'text-white' : ''}`} />
+            <span>{shortLabel}</span>
+          </button>
+        ))}
+      </nav>
 
       {/* Share modal */}
       {project && showShareModal && (

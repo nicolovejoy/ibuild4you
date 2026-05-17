@@ -39,6 +39,15 @@ describe('getTurnIndicator', () => {
     expect(result?.label).toBe('Needs setup')
   })
 
+  it('hides the Needs setup badge from makers (builder-side concern)', () => {
+    expect(
+      getTurnIndicator(makeProject({ requester_email: undefined }), 'maker')
+    ).toBeNull()
+    expect(
+      getTurnIndicator(makeProject({ session_count: 0 }), 'maker')
+    ).toBeNull()
+  })
+
   describe('maker has NOT messaged in current session', () => {
     const project = makeProject({ last_maker_message_at: null })
 
