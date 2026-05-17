@@ -1,6 +1,7 @@
 import type { BriefContent } from '@/lib/types'
 import { buildNextConvoPrompt } from '@/lib/agent/next-convo-prompt'
 import { BRIEF_MODEL, BRIEF_MAX_TOKENS, BRIEF_TEMPERATURE } from '@/lib/agent/constants'
+import { logAnthropicCall } from '@/lib/observability/anthropic'
 import Anthropic from '@anthropic-ai/sdk'
 
 // Regenerates the living brief for a project from the full conversation
@@ -58,12 +59,28 @@ export async function regenerateBriefForProject(
   })
 
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+  const callStart = Date.now()
   const response = await client.messages.create({
     model: BRIEF_MODEL,
     max_tokens: BRIEF_MAX_TOKENS,
     temperature: BRIEF_TEMPERATURE,
     messages: [{ role: 'user', content: prompt }],
   })
+
+  if (response.usage) {
+    void logAnthropicCall({
+      project_id: projectId,
+      route: 'brief.generate',
+      model: BRIEF_MODEL,
+      usage: {
+        input_tokens: response.usage.input_tokens,
+        output_tokens: response.usage.output_tokens,
+        cache_read_input_tokens: response.usage.cache_read_input_tokens ?? 0,
+        cache_creation_input_tokens: response.usage.cache_creation_input_tokens ?? 0,
+      },
+      duration_ms: Date.now() - callStart,
+    })
+  }
 
   const text = response.content
     .filter((block) => block.type === 'text')
