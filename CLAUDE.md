@@ -152,12 +152,13 @@ This is a learning project (Max, 19, college freshman, is contributing). Code sh
 
 ## Next Steps
 
-1. **PR #14 — UI overhaul on `rename-project-to-brief`** (preview live at `preview.ibuild4you.com`). Bundles: "project"→"brief" UI rename, About page with Two Roles + Glossary, maker phone-first header, builder operator-console layout (dark slate side rail desktop / bottom tabs phone), dashboard themed by role (dark for admins, warm for makers), per-card role chips, "Needs setup" badge suppressed for makers. Closes #13. Smoke-tested on Chrome (builder) + Safari (maker) at preview domain. **Decision needed:** merge to main, or one more iteration first?
-2. **Build #11 — Anthropic cost tracking per project.** Detailed plan posted as a comment on the issue (helper at `lib/observability/anthropic.ts`, Firestore `api_usage` collection, instrument ~5 call sites, admin page deferred to PR 2). Effort: ~1 day. Logical prereq for #10 economize.
-3. **Productionize `/api/chat`.** Top-level try/catch → JSON 500 envelope, client `useStreamingChat` tolerance for non-JSON errors, structured logging, defensive tests. Now that the PR+preview workflow is wired (and used successfully on PR #14), the philosophical fork is resolved — ship future risky changes via PR+preview.
-4. **Feedback widget v2 — element picker.** Commit as `docs/feedback-widget-v2-element-picker.md` (explicit that launcher attaches to `document.body` — bakery's `FeedbackLauncher.tsx` is conformant; correct that false-non-conformance claim). ~half day ibuild4you + ~30 min bakery resync.
-5. **Resend inbound webhook — manual setup.** Resend dashboard inbound config on `inbox.ibuild4you.com`, MX records for that subdomain pointing at Resend, `RESEND_INBOUND_SECRET` on Vercel. Punch list at `docs/feedback-replies-plan.md`.
-6. **Cross-project telemetry & feedback v1.** Plan draft in `~/.claude/plans/ok-here-s-my-v1-functional-rossum.md`. Nico revising. Once #11 ships, the api_usage collection is a candidate for inclusion.
+1. **Productionize `/api/chat`.** Top-level try/catch → JSON 500 envelope, client `useStreamingChat` tolerance for non-JSON errors, structured logging, defensive tests. PR+preview pattern proven on PRs #14, #15, #17, #18.
+2. **Feedback widget — single living doc.** Create `docs/feedback-widget.md` covering: overview, architecture, integration recipe for a new "host app", v2 element-picker design, known-hosts changelog. Terminology: "host apps" (bakery louise, offer-builder), not "client projects". ~half day ibuild4you + ~30 min bakery resync + 1–2h offer-builder install.
+3. **Resend inbound webhook — manual setup.** Resend dashboard inbound config on `inbox.ibuild4you.com`, MX records for that subdomain pointing at Resend, `RESEND_INBOUND_SECRET` on Vercel. Punch list at `docs/feedback-replies-plan.md`.
+4. **#16 Brief folders + archive.** Phase 1 = add `status: 'archived'` to projects, dashboard hides archived by default. Phase 2 = folders proper. Folds in the old "Project folders" backlog item.
+5. **PR 2 of cost tracking** — admin `/admin/usage` rollup page over the `api_usage` collection. Deferred until a few days of data accumulate. Once enough data, also a candidate for cross-project rollup per the v1 telemetry plan (`~/.claude/plans/ok-here-s-my-v1-functional-rossum.md`).
+
+**Shipped 2026-05-17:** PR #15 (Anthropic cost tracking), PR #17 (drag-and-drop in chat input), PR #18 (builder uploads on Files tab). S3 bucket CORS updated to allow `preview.ibuild4you.com` — was the root cause of 403 preflight on browser→S3 uploads from preview.
 
 ## Backlog (deeper queue)
 
