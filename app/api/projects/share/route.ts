@@ -127,7 +127,9 @@ export async function POST(request: Request) {
         const welcomeText = (projectData.welcome_message as string) ||
           await generateWelcomeMessage(
             projectData.title as string,
-            projectData.context as string | undefined
+            projectData.context as string | undefined,
+            undefined,
+            { project_id }
           ) ||
           copy.chat.defaultWelcomeMessage(projectData.title as string)
 

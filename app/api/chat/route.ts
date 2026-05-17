@@ -2,6 +2,7 @@ import { getAuthenticatedUser, getAdminDb, getProjectRole, getUserDisplayName, h
 import { buildSystemPrompt } from '@/lib/agent/system-prompt'
 import { loadAttachmentBlocks, type AttachmentBlock } from '@/lib/agent/attachments'
 import { AGENT_MODEL, AGENT_MAX_TOKENS, AGENT_TEMPERATURE } from '@/lib/agent/constants'
+import { logAnthropicCall } from '@/lib/observability/anthropic'
 import Anthropic from '@anthropic-ai/sdk'
 import type { BriefContent } from '@/lib/types'
 
@@ -205,6 +206,7 @@ export async function POST(request: Request) {
 
   const encoder = new TextEncoder()
   let fullResponse = ''
+  const streamStart = Date.now()
 
   const readable = new ReadableStream({
     async start(controller) {
@@ -239,6 +241,20 @@ export async function POST(request: Request) {
             token_usage_output: prevOutput + finalMessage.usage.output_tokens,
             model: AGENT_MODEL,
             updated_at: responseTime,
+          })
+
+          void logAnthropicCall({
+            project_id: projectId,
+            route: 'chat',
+            model: AGENT_MODEL,
+            usage: {
+              input_tokens: finalMessage.usage.input_tokens,
+              output_tokens: finalMessage.usage.output_tokens,
+              cache_read_input_tokens: finalMessage.usage.cache_read_input_tokens ?? 0,
+              cache_creation_input_tokens: finalMessage.usage.cache_creation_input_tokens ?? 0,
+            },
+            duration_ms: Date.now() - streamStart,
+            session_id,
           })
         }
 

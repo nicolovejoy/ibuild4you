@@ -48,6 +48,7 @@ export async function POST(request: Request) {
         makerFirstName,
         seedQuestions: (body.seed_questions ?? projectData.seed_questions) as string[] | undefined,
         sessionMode: (body.session_mode ?? projectData.session_mode) as 'discover' | 'converge' | undefined,
+        projectId: project_id,
       })
     } else if (type === 'nudge') {
       // Builder-authored override wins — return verbatim, skip LLM call entirely.
@@ -64,6 +65,7 @@ export async function POST(request: Request) {
         builderNote: (body.nudge_note as string) || null,
         sessionNumber: (body.session_number as number) || 2,
         voiceSample: (projectData.voice_sample as string | undefined) || null,
+        projectId: project_id,
       })
     } else {
       message = await generateReminderMessage({
@@ -71,6 +73,7 @@ export async function POST(request: Request) {
         projectContext,
         makerFirstName,
         sharedAt: (projectData.shared_at as string) || null,
+        projectId: project_id,
       })
     }
 

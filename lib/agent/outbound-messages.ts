@@ -1,5 +1,22 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { AGENT_MODEL, AGENT_TEMPERATURE } from './constants'
+import { logAnthropicCall, type AnthropicRoute } from '@/lib/observability/anthropic'
+
+function track(route: AnthropicRoute, projectId: string | undefined, response: Anthropic.Message, startedAt: number) {
+  if (!projectId || !response.usage) return
+  void logAnthropicCall({
+    project_id: projectId,
+    route,
+    model: AGENT_MODEL,
+    usage: {
+      input_tokens: response.usage.input_tokens,
+      output_tokens: response.usage.output_tokens,
+      cache_read_input_tokens: response.usage.cache_read_input_tokens ?? 0,
+      cache_creation_input_tokens: response.usage.cache_creation_input_tokens ?? 0,
+    },
+    duration_ms: Date.now() - startedAt,
+  })
+}
 
 function getAnthropic() {
   return new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
@@ -13,6 +30,7 @@ interface InviteParams {
   makerFirstName?: string | null
   seedQuestions?: string[]
   sessionMode?: 'discover' | 'converge'
+  projectId?: string
 }
 
 const INVITE_SYSTEM_PROMPT = `You are writing a short text/email from a project builder to someone they're inviting to a guided conversation about their app or website idea.
@@ -36,6 +54,7 @@ export async function generateInviteMessage(params: InviteParams): Promise<strin
     parts.push('This session is about narrowing down specifics and making decisions.')
   }
 
+  const startedAt = Date.now()
   const response = await getAnthropic().messages.create({
     model: AGENT_MODEL,
     system: INVITE_SYSTEM_PROMPT,
@@ -43,6 +62,7 @@ export async function generateInviteMessage(params: InviteParams): Promise<strin
     max_tokens: 512,
     temperature: AGENT_TEMPERATURE,
   })
+  track('outbound.invite', params.projectId, response, startedAt)
 
   const textBlock = response.content.find((b) => b.type === 'text')
   return textBlock?.text || ''
@@ -58,6 +78,7 @@ interface NudgeParams {
   builderNote?: string | null
   sessionNumber: number
   voiceSample?: string | null
+  projectId?: string
 }
 
 const NUDGE_SYSTEM_PROMPT_BASE = `You are writing a short text/email from a project builder to someone who has an ongoing conversation about their app or website idea. A new conversation session is ready.
@@ -88,6 +109,7 @@ export async function generateNudgeMessage(params: NudgeParams): Promise<string>
   }
   if (params.projectContext) parts.push(`Background: ${params.projectContext}`)
 
+  const startedAt = Date.now()
   const response = await getAnthropic().messages.create({
     model: AGENT_MODEL,
     system: buildNudgeSystemPrompt(params.voiceSample),
@@ -95,6 +117,7 @@ export async function generateNudgeMessage(params: NudgeParams): Promise<string>
     max_tokens: 512,
     temperature: AGENT_TEMPERATURE,
   })
+  track('outbound.nudge', params.projectId, response, startedAt)
 
   const textBlock = response.content.find((b) => b.type === 'text')
   return textBlock?.text || ''
@@ -107,6 +130,7 @@ interface ReminderParams {
   projectContext?: string | null
   makerFirstName?: string | null
   sharedAt?: string | null
+  projectId?: string
 }
 
 const REMINDER_SYSTEM_PROMPT = `You are writing a brief, friendly reminder to someone who was invited to a guided conversation about their app or website idea but hasn't started yet.
@@ -130,6 +154,7 @@ export async function generateReminderMessage(params: ReminderParams): Promise<s
   }
   if (params.projectContext) parts.push(`Background: ${params.projectContext}`)
 
+  const startedAt = Date.now()
   const response = await getAnthropic().messages.create({
     model: AGENT_MODEL,
     system: REMINDER_SYSTEM_PROMPT,
@@ -137,6 +162,7 @@ export async function generateReminderMessage(params: ReminderParams): Promise<s
     max_tokens: 256,
     temperature: AGENT_TEMPERATURE,
   })
+  track('outbound.reminder', params.projectId, response, startedAt)
 
   const textBlock = response.content.find((b) => b.type === 'text')
   return textBlock?.text || ''
