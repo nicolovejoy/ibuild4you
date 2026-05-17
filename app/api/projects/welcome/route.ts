@@ -33,7 +33,9 @@ export async function POST(request: Request) {
   const projectData = projectDoc.data()!
   const welcomeMessage = await generateWelcomeMessage(
     projectData.title as string,
-    projectData.context as string | undefined
+    projectData.context as string | undefined,
+    undefined,
+    { project_id }
   )
 
   return NextResponse.json({ welcome_message: welcomeMessage })
