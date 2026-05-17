@@ -138,8 +138,9 @@ NOT in MVP: process flow diagrams, data architecture drafts, microservice sketch
 
 ## Testing & Deployment
 
-- **Production-first testing**: We test in prod. No staging environment. This is fine while the app is invite-only and low-stakes — revisit when risk profile changes (payments, sensitive data, larger user base).
-- **CI/CD**: GitHub Actions runs `type-check`, `lint`, `build`, `test` before deploying to Vercel.
+- **Preview environment**: Stable URL at `preview.ibuild4you.com`, aliased to the `preview` git branch. To eyeball any feature branch on preview: `git push origin <branch>:preview --force`. Vercel rebuilds within ~1–2 min. Wired 2026-05-15 (DNS via Cloudflare → Vercel; Firebase Auth + GCP OAuth domains authorized; Vercel Deployment Protection off for previews).
+- **Production-first testing has been retired** for risky changes — ship via PR + preview-test instead. Trivial / doc-only changes can still go direct-to-main.
+- **CI/CD**: GitHub Actions runs `type-check`, `lint`, `build`, `test` on PRs and pushes to main. Vercel handles deploys (preview per branch, prod on main).
 - **TDD when possible**: Write tests before implementation. Skip only when it genuinely doesn't fit (pure UI layout, exploratory prototyping).
 
 ## Code Style
@@ -151,11 +152,12 @@ This is a learning project (Max, 19, college freshman, is contributing). Code sh
 
 ## Next Steps
 
-1. **Productionize — ship the defensive chat fixes + flip CLAUDE.md "Production-first testing" stance.** Ryan's `<!DOCTYPE` bug was a config error (rotated key) but the user-facing symptom is unacceptable. Open tasks: top-level try/catch on `/api/chat` → JSON 500 envelope, client `useStreamingChat` tolerance for non-JSON errors, structured `chat_request_start/done/failed` logging, defensive-behavior tests. **Open question: ship via PR + preview-test (new workflow) or direct-to-main (old).** Nico hasn't decided — philosophical fork.
-2. **Feedback widget v2 — element picker** (issue #3 follow-up). Plan locked in chat: additive `targetElement` field (Approach #2 semantic snapshot — tag/text/alt/nearestHeading), single-launcher → crosshair overlay → Esc bails to general form, ≤15-word UX-vocab label on hover. Needs commit as a doc (`docs/feedback-widget-v2-element-picker.md`) so the bakery agent can act — and the doc should be explicit that the launcher attaches to `document.body` (bakery's `FeedbackLauncher.tsx` is in fact conformant; correct that false-non-conformance claim). Effort: ~half day in ibuild4you canonical + ~30 min on bakery resync.
-3. **Sub-task 2(d) Resend inbound webhook — manual setup remaining.** Code shipped 2026-05-14 (commit `1799395`). Still needed: Resend dashboard inbound config on `inbox.ibuild4you.com`, MX records for that subdomain pointing at Resend (apex `ibuild4you.com` MX stays on iCloud), `RESEND_INBOUND_SECRET` on Vercel. Punch list at `docs/feedback-replies-plan.md`.
-4. **Cross-project telemetry & feedback v1 proposal.** Plan draft in `~/.claude/plans/ok-here-s-my-v1-functional-rossum.md` with critique. Nico revising; circulates to repo agents after. Architectural fork (in-ibuild4you vs separate telemetry project) still unstated. **Natural home for #11 cost-tracking** — same plumbing.
-5. **Anthropic spend** (filed 2026-05-15): #10 economize tokens (prompt-cache audit, context-size diet, Haiku for low-stakes routes — welcome-gen / outbound nudge / brief regen); #11 track cost per project. ANTHROPIC_API_KEY rotation on 2026-05-14 was a false alarm — usage was real (Nico working the project heavily), not a leak. New key working fine.
+1. **PR #14 — UI overhaul on `rename-project-to-brief`** (preview live at `preview.ibuild4you.com`). Bundles: "project"→"brief" UI rename, About page with Two Roles + Glossary, maker phone-first header, builder operator-console layout (dark slate side rail desktop / bottom tabs phone), dashboard themed by role (dark for admins, warm for makers), per-card role chips, "Needs setup" badge suppressed for makers. Closes #13. Smoke-tested on Chrome (builder) + Safari (maker) at preview domain. **Decision needed:** merge to main, or one more iteration first?
+2. **Build #11 — Anthropic cost tracking per project.** Detailed plan posted as a comment on the issue (helper at `lib/observability/anthropic.ts`, Firestore `api_usage` collection, instrument ~5 call sites, admin page deferred to PR 2). Effort: ~1 day. Logical prereq for #10 economize.
+3. **Productionize `/api/chat`.** Top-level try/catch → JSON 500 envelope, client `useStreamingChat` tolerance for non-JSON errors, structured logging, defensive tests. Now that the PR+preview workflow is wired (and used successfully on PR #14), the philosophical fork is resolved — ship future risky changes via PR+preview.
+4. **Feedback widget v2 — element picker.** Commit as `docs/feedback-widget-v2-element-picker.md` (explicit that launcher attaches to `document.body` — bakery's `FeedbackLauncher.tsx` is conformant; correct that false-non-conformance claim). ~half day ibuild4you + ~30 min bakery resync.
+5. **Resend inbound webhook — manual setup.** Resend dashboard inbound config on `inbox.ibuild4you.com`, MX records for that subdomain pointing at Resend, `RESEND_INBOUND_SECRET` on Vercel. Punch list at `docs/feedback-replies-plan.md`.
+6. **Cross-project telemetry & feedback v1.** Plan draft in `~/.claude/plans/ok-here-s-my-v1-functional-rossum.md`. Nico revising. Once #11 ships, the api_usage collection is a candidate for inclusion.
 
 ## Backlog (deeper queue)
 
