@@ -32,7 +32,6 @@ import {
   useResetPasscode,
   useCreateSession,
   useProjectFiles,
-  useGenerateOutboundMessage,
 } from '@/lib/query/hooks'
 import { buildNextConvoPrompt } from '@/lib/agent/next-convo-prompt'
 import { copy } from '@/lib/copy'
@@ -941,18 +940,6 @@ function NextConversationTab({
   )
 }
 
-function composeOutboundMessage(
-  aiText: string,
-  shareLink: string,
-  credentials?: { email: string; passcode: string | null }
-): string {
-  const parts = [aiText, '', shareLink]
-  if (credentials) {
-    parts.push('', 'Sign in with Google, or use:', `Email: ${credentials.email}`, `Passcode: ${credentials.passcode || '(loading...)'}`)
-  }
-  return parts.join('\n')
-}
-
 function ShareModal({ project, onClose }: { project: Project; onClose: () => void }) {
   const [email, setEmail] = useState(project.requester_email || '')
   const [firstName, setFirstName] = useState(project.requester_first_name || '')
@@ -965,8 +952,6 @@ function ShareModal({ project, onClose }: { project: Project; onClose: () => voi
   const [editLastName, setEditLastName] = useState(project.requester_last_name || '')
   const shareProject = useShareProject()
   const updateProject = useUpdateProject()
-  const generateMessage = useGenerateOutboundMessage()
-  const [aiInvite, setAiInvite] = useState<string | null>(null)
   const alreadyShared = !!project.requester_email
   const { data: fetchedPasscode } = useProjectPasscode(alreadyShared ? project.id : undefined)
   const resetPasscode = useResetPasscode()
@@ -976,15 +961,6 @@ function ShareModal({ project, onClose }: { project: Project; onClose: () => voi
   const shareLink = typeof window !== 'undefined'
     ? `${window.location.origin}/projects/${project.slug || project.id}`
     : ''
-
-  // Generate AI invite message when modal shows the shared state
-  useEffect(() => {
-    if ((alreadyShared || shareProject.isSuccess) && !aiInvite && !generateMessage.isPending) {
-      generateMessage.mutateAsync({ project_id: project.id, type: 'invite' })
-        .then(({ message }) => setAiInvite(message))
-        .catch(() => {}) // fallback to template on error
-    }
-  }, [alreadyShared, shareProject.isSuccess]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleShare = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -1004,9 +980,7 @@ function ShareModal({ project, onClose }: { project: Project; onClose: () => voi
 
   const sharedEmail = alreadyShared ? project.requester_email! : email
 
-  const inviteEmailBody = aiInvite
-    ? composeOutboundMessage(aiInvite, shareLink, { email: sharedEmail, passcode })
-    : copy.invite.body({ shareLink, email: sharedEmail, passcode })
+  const inviteEmailBody = copy.invite.body({ shareLink, email: sharedEmail, passcode })
 
   return (
     <Modal isOpen onClose={onClose} title="Share with maker">
@@ -1152,7 +1126,6 @@ function EditableSetup({ project }: { project: Project }) {
   const [newDirective, setNewDirective] = useState('')
   const [mockups, setMockups] = useState<WireframeMockup[]>(project.layout_mockups || [])
   const [identity, setIdentity] = useState(project.identity || '')
-  const [voiceSample, setVoiceSample] = useState(project.voice_sample || '')
   const [nudgeMessageOverride, setNudgeMessageOverride] = useState(project.nudge_message || '')
   const [saved, setSaved] = useState(false)
 
@@ -1166,9 +1139,8 @@ function EditableSetup({ project }: { project: Project }) {
     setDirectives(project.builder_directives || [])
     setMockups(project.layout_mockups || [])
     setIdentity(project.identity || '')
-    setVoiceSample(project.voice_sample || '')
     setNudgeMessageOverride(project.nudge_message || '')
-  }, [project.welcome_message, project.seed_questions, project.session_mode, project.builder_directives, project.layout_mockups, project.identity, project.voice_sample, project.nudge_message])
+  }, [project.welcome_message, project.seed_questions, project.session_mode, project.builder_directives, project.layout_mockups, project.identity, project.nudge_message])
 
   const handleSave = async () => {
     await updateProject.mutateAsync({
@@ -1179,7 +1151,6 @@ function EditableSetup({ project }: { project: Project }) {
       builder_directives: directives,
       layout_mockups: mockups,
       identity: identity || undefined,
-      voice_sample: voiceSample || undefined,
       nudge_message: nudgeMessageOverride || undefined,
       last_builder_activity_at: new Date().toISOString(),
     })
@@ -1226,18 +1197,11 @@ function EditableSetup({ project }: { project: Project }) {
             <p className="text-xs text-gray-400 mt-1">Changes how the agent introduces itself and frames its role.</p>
           </div>
 
-          {/* Voice sample (drives AI-generated outbound copy) */}
-          <div>
-            <label className="text-sm font-medium text-gray-700 block mb-1.5">Voice sample (optional)</label>
-            <textarea value={voiceSample} onChange={(e) => setVoiceSample(e.target.value)} placeholder="Paste a paragraph showing how you'd text this person by hand. The AI uses this as a style anchor when drafting nudges." rows={3} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy" />
-            <p className="text-xs text-gray-400 mt-1">Anchors the voice of AI-generated nudge/invite/reminder copy. Ignored if you write the nudge yourself below.</p>
-          </div>
-
           {/* Nudge override */}
           <div>
             <label className="text-sm font-medium text-gray-700 block mb-1.5">Nudge override (optional)</label>
-            <textarea value={nudgeMessageOverride} onChange={(e) => setNudgeMessageOverride(e.target.value)} placeholder="Leave blank to let the AI draft a nudge each session. Fill this in to send a specific message verbatim." rows={3} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy" />
-            <p className="text-xs text-gray-400 mt-1">When set, the next nudge uses this text verbatim and skips AI generation.</p>
+            <textarea value={nudgeMessageOverride} onChange={(e) => setNudgeMessageOverride(e.target.value)} placeholder="Leave blank to use the default boilerplate nudge. Fill this in to send a specific message verbatim." rows={3} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy" />
+            <p className="text-xs text-gray-400 mt-1">When set, the next nudge uses this text verbatim instead of the default template.</p>
           </div>
 
           <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
@@ -1255,22 +1219,10 @@ function EditableSetup({ project }: { project: Project }) {
 function RenudgeCard({ project, projectId }: { project: Project; projectId: string }) {
   const [copied, setCopied] = useState(false)
   const updateProject = useUpdateProject()
-  const generateMessage = useGenerateOutboundMessage()
-  const [aiReminder, setAiReminder] = useState<string | null>(null)
 
   const shareLink = typeof window !== 'undefined' ? `${window.location.origin}/projects/${project.slug || projectId}` : ''
-  const fallbackMessage = copy.nudge.reminder({ projectTitle: project.title, shareLink })
+  const reminderMessage = copy.nudge.reminder({ projectTitle: project.title, shareLink })
   const makerName = project.requester_first_name || project.requester_email?.split('@')[0] || 'maker'
-
-  useEffect(() => {
-    generateMessage.mutateAsync({ project_id: projectId, type: 'reminder' })
-      .then(({ message }) => setAiReminder(message))
-      .catch(() => {})
-  }, [projectId]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  const reminderMessage = aiReminder
-    ? composeOutboundMessage(aiReminder, shareLink)
-    : fallbackMessage
 
   return (
     <Card hover={false}>
@@ -1323,8 +1275,6 @@ function PrepNextSession({ project, projectId, sessionNumber }: {
   const updateProject = useUpdateProject()
   const generateWelcome = useGenerateWelcome()
   const createSession = useCreateSession()
-  const generateMessage = useGenerateOutboundMessage()
-  const [aiNudge, setAiNudge] = useState<string | null>(null)
 
   const shareLink = typeof window !== 'undefined' ? `${window.location.origin}/projects/${project.slug || projectId}` : ''
   const makerEmail = project.requester_email || ''
@@ -1353,28 +1303,17 @@ function PrepNextSession({ project, projectId, sessionNumber }: {
     })
     await createSession.mutateAsync({ project_id: projectId })
     setCreated(true)
-    // Generate AI nudge in the background (route honors nudge_message override
-    // server-side; we still call so the override flows back into aiNudge).
-    generateMessage.mutateAsync({
-      project_id: project.id,
-      type: 'nudge',
-      nudge_note: nudgeNote || undefined,
-      session_mode: sessionMode,
-      session_number: sessionNumber,
-    })
-      .then(({ message }) => setAiNudge(message))
-      .catch(() => {})
   }
 
-  const fallbackNudge = copy.nudge.body({
-    projectTitle: project.title,
-    shareLink,
-    note: nudgeNote || undefined,
-    sessionMode,
-  })
-  const nudgeMessage = aiNudge
-    ? composeOutboundMessage(aiNudge, shareLink)
-    : fallbackNudge
+  const override = nudgeMessageOverride.trim()
+  const nudgeMessage = override
+    ? [override, '', shareLink].join('\n')
+    : copy.nudge.body({
+        projectTitle: project.title,
+        shareLink,
+        note: nudgeNote || undefined,
+        sessionMode,
+      })
 
   if (created) {
     return (
@@ -1454,11 +1393,11 @@ function PrepNextSession({ project, projectId, sessionNumber }: {
               <div>
                 <label className="text-sm font-medium text-gray-700 block mb-1.5">Note for {makerEmail} (optional)</label>
                 <textarea value={nudgeNote} onChange={(e) => setNudgeNote(e.target.value)} placeholder="This time we'll narrow down which data sources to use." rows={2} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy" />
-                <p className="text-xs text-gray-400 mt-1">A single hook for the AI-generated nudge. Ignored if you fill in the override below.</p>
+                <p className="text-xs text-gray-400 mt-1">A short hook woven into the boilerplate nudge. Ignored if you fill in the override below.</p>
               </div>
               <div>
                 <label className="text-sm font-medium text-gray-700 block mb-1.5">Nudge override (optional)</label>
-                <textarea value={nudgeMessageOverride} onChange={(e) => setNudgeMessageOverride(e.target.value)} placeholder="Leave blank to let the AI draft a nudge. Fill this in to send a specific message verbatim." rows={3} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy" />
+                <textarea value={nudgeMessageOverride} onChange={(e) => setNudgeMessageOverride(e.target.value)} placeholder="Leave blank to use the boilerplate nudge. Fill this in to send a specific message verbatim." rows={3} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy" />
               </div>
               <LoadingButton variant="primary" size="sm" loading={updateProject.isPending || createSession.isPending} loadingText="Creating..." onClick={handleCreate} icon={RotateCw}>
                 Create conversation {sessionNumber} & copy nudge

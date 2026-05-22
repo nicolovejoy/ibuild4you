@@ -5,9 +5,6 @@ export type AnthropicRoute =
   | 'chat'
   | 'brief.generate'
   | 'welcome'
-  | 'outbound.invite'
-  | 'outbound.nudge'
-  | 'outbound.reminder'
 
 export interface LogAnthropicCallParams {
   project_id: string
