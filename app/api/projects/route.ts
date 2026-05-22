@@ -181,7 +181,7 @@ export async function PATCH(request: Request) {
   }
 
   // Only allow updating specific setup fields
-  const allowed = ['welcome_message', 'nudge_message', 'voice_sample', 'seed_questions', 'context', 'title', 'builder_directives', 'session_mode', 'requester_first_name', 'requester_last_name', 'last_nudged_at', 'last_builder_activity_at', 'layout_mockups', 'identity', 'github_repo'] as const
+  const allowed = ['welcome_message', 'nudge_message', 'voice_sample', 'seed_questions', 'context', 'title', 'builder_directives', 'session_mode', 'requester_first_name', 'requester_last_name', 'last_nudged_at', 'last_builder_activity_at', 'layout_mockups', 'identity', 'github_repo', 'auto_reminders_enabled'] as const
   const patch: Record<string, unknown> = { updated_at: new Date().toISOString() }
   for (const key of allowed) {
     if (key in updates) {
@@ -291,6 +291,11 @@ export async function POST(request: Request) {
     title: title.trim(),
     slug,
     status: 'active',
+    // New projects opt into the auto-reminder cron by default. Existing
+    // projects in the DB with an undefined field stay opt-out.
+    auto_reminders_enabled: true,
+    reminders_sent_count: 0,
+    last_reminder_sent_at: null,
     created_at: now,
     updated_at: now,
   }

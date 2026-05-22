@@ -78,6 +78,10 @@ export async function POST(request: Request) {
       notify_after: notifyAfter,
       notify_pending_since: existingPending || now,
       last_maker_message_at: now,
+      // Maker has engaged — reset the auto-reminder cycle so the next prepped
+      // session starts fresh (cron at /api/cron/maker-reminders reads these).
+      reminders_sent_count: 0,
+      last_reminder_sent_at: null,
       updated_at: now,
     })
   }

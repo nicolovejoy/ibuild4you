@@ -158,6 +158,7 @@ export function useUpdateProject() {
       last_builder_activity_at?: string
       identity?: string
       layout_mockups?: import('@/lib/types').WireframeMockup[]
+      auto_reminders_enabled?: boolean
     }) => {
       const res = await apiFetch('/api/projects', {
         method: 'PATCH',
