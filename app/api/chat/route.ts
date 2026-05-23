@@ -66,6 +66,11 @@ export async function POST(request: Request) {
     updated_at: now,
   })
 
+  // Capture the previous maker-message timestamp BEFORE we overwrite it below,
+  // so we can pass the real time-gap into the system prompt for the
+  // welcome-back recap (#26). Otherwise the gap would always be ~0.
+  const previousMakerMessageAt = projectData.last_maker_message_at as string | undefined | null
+
   // Queue a debounced notification + record the maker timestamp for idle-based
   // brief regeneration. The cron at /api/cron/notify picks up projects where
   // notify_after has passed and sends a single digest email; the same cron
@@ -184,6 +189,14 @@ export async function POST(request: Request) {
   const sessionMode = (sessionData.session_mode ?? projectData.session_mode) as 'discover' | 'converge' | undefined
   const layoutMockups = (sessionData.layout_mockups ?? projectData.layout_mockups) as import('@/lib/types').WireframeMockup[] | undefined
   const identity = (sessionData.identity ?? projectData.identity) as string | undefined
+  // Maker name + time-gap are read live (not snapshotted into the session)
+  // so name edits and real elapsed time reflect on every turn.
+  const makerFirstName = projectData.requester_first_name as string | undefined
+  const makerLastName = projectData.requester_last_name as string | undefined
+  const gapSinceLastMakerMessageMs = previousMakerMessageAt
+    ? Date.now() - new Date(previousMakerMessageAt).getTime()
+    : undefined
+
   const systemPrompt = buildSystemPrompt({
     briefContent,
     projectContext,
@@ -193,6 +206,9 @@ export async function POST(request: Request) {
     sessionMode,
     layoutMockups,
     identity,
+    makerFirstName,
+    makerLastName,
+    gapSinceLastMakerMessageMs,
   })
 
   // Stream response from Claude
