@@ -134,6 +134,7 @@ describe('GET /api/cron/notify — idle brief regeneration', () => {
       {
         id: 'p1',
         data: () => ({ last_maker_message_at: lastMakerAt }),
+        ref: { update: mockDoc.update },
       },
     ]
     // Brief is older than the last maker turn — stale
@@ -157,6 +158,7 @@ describe('GET /api/cron/notify — idle brief regeneration', () => {
       {
         id: 'p1',
         data: () => ({ last_maker_message_at: lastMakerAt }),
+        ref: { update: mockDoc.update },
       },
     ]
     // Brief was updated more recently than the last maker turn
@@ -180,6 +182,7 @@ describe('GET /api/cron/notify — idle brief regeneration', () => {
       {
         id: 'p1',
         data: () => ({ last_maker_message_at: lastMakerAt }),
+        ref: { update: mockDoc.update },
       },
     ]
     // briefResults.p1 unset → empty briefs collection for this project
@@ -197,10 +200,12 @@ describe('GET /api/cron/notify — idle brief regeneration', () => {
       {
         id: 'p1',
         data: () => ({ last_maker_message_at: lastMakerAt }),
+        ref: { update: mockDoc.update },
       },
       {
         id: 'p2',
         data: () => ({ last_maker_message_at: lastMakerAt }),
+        ref: { update: mockDoc.update },
       },
     ]
     mockRegenerate
@@ -223,5 +228,77 @@ describe('GET /api/cron/notify — idle brief regeneration', () => {
     const body = await res.json()
     expect(body.regenerated).toBe(0)
     expect(mockRegenerate).not.toHaveBeenCalled()
+  })
+
+  it('increments the failure counter when regen throws', async () => {
+    const lastMakerAt = new Date(Date.now() - 12 * 60 * 1000).toISOString()
+    whereResults.projects.last_maker_message_at = [
+      {
+        id: 'p1',
+        data: () => ({ last_maker_message_at: lastMakerAt }),
+        ref: { update: mockDoc.update },
+      },
+    ]
+    mockRegenerate.mockRejectedValueOnce(new Error('regenerate_brief_max_tokens'))
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    await GET(req('Bearer test-secret'))
+
+    expect(mockDoc.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        brief_regen_failures: 1,
+        brief_regen_last_error: 'regenerate_brief_max_tokens',
+      }),
+    )
+    consoleError.mockRestore()
+  })
+
+  it('trips the circuit breaker after the failure cap and stops calling regen', async () => {
+    // Maker last messaged 60 min ago; failure streak started 20 min ago → no new maker
+    // turn since the streak, breaker stays tripped.
+    const lastMakerAt = new Date(Date.now() - 60 * 60 * 1000).toISOString()
+    const failuresSince = new Date(Date.now() - 20 * 60 * 1000).toISOString()
+    whereResults.projects.last_maker_message_at = [
+      {
+        id: 'p1',
+        data: () => ({
+          last_maker_message_at: lastMakerAt,
+          brief_regen_failures: 3,
+          brief_regen_failures_since: failuresSince,
+        }),
+        ref: { update: mockDoc.update },
+      },
+    ]
+
+    const res = await GET(req('Bearer test-secret'))
+    const body = await res.json()
+    expect(body.regenerated).toBe(0)
+    expect(body.circuit_broken).toBe(1)
+    expect(mockRegenerate).not.toHaveBeenCalled()
+  })
+
+  it('clears the circuit breaker once the maker has messaged after the failure streak', async () => {
+    const lastMakerAt = new Date().toISOString() // fresh maker turn
+    const failuresSince = new Date(Date.now() - 60 * 60 * 1000).toISOString() // 1hr ago
+    whereResults.projects.last_maker_message_at = [
+      {
+        id: 'p1',
+        data: () => ({
+          last_maker_message_at: lastMakerAt,
+          brief_regen_failures: 3,
+          brief_regen_failures_since: failuresSince,
+        }),
+        ref: { update: mockDoc.update },
+      },
+    ]
+
+    const res = await GET(req('Bearer test-secret'))
+    const body = await res.json()
+    expect(body.regenerated).toBe(1)
+    expect(mockRegenerate).toHaveBeenCalledWith(expect.anything(), 'p1')
+    // First update clears the counter, second clears it after success (no-op since count is already 0 after clear, but route does both)
+    expect(mockDoc.update).toHaveBeenCalledWith(
+      expect.objectContaining({ brief_regen_failures: 0 }),
+    )
   })
 })

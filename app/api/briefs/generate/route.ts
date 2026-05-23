@@ -2,6 +2,15 @@ import { NextResponse } from 'next/server'
 import { getAuthenticatedUser, getAdminDb, getProjectRole, requireRole } from '@/lib/api/firebase-server-helpers'
 import { regenerateBriefForProject } from '@/lib/api/briefs'
 
+// Reset the circuit-breaker counters tracked in app/api/cron/notify/route.ts.
+async function clearBriefRegenFailures(db: FirebaseFirestore.Firestore, projectId: string) {
+  await db.collection('projects').doc(projectId).update({
+    brief_regen_failures: 0,
+    brief_regen_failures_since: null,
+    brief_regen_last_error: null,
+  })
+}
+
 // POST /api/briefs/generate — generate/update the brief for a project (builder+)
 export async function POST(request: Request) {
   const auth = await getAuthenticatedUser(request)
@@ -22,6 +31,7 @@ export async function POST(request: Request) {
 
   try {
     const result = await regenerateBriefForProject(db, project_id)
+    await clearBriefRegenFailures(db, project_id)
     return NextResponse.json(result)
   } catch (err) {
     if (err instanceof Error && err.message === 'regenerate_brief_no_messages') {

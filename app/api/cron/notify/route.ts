@@ -9,6 +9,7 @@ function getResend() {
 }
 
 const BRIEF_IDLE_MS = 10 * 60 * 1000 // 10 min — brief regen fires once a session has been idle this long
+const BRIEF_REGEN_FAILURE_CAP = 3 // skip a project once it's failed this many times in a row; cleared on next maker turn or manual builder regen
 
 // Every 5 min (see vercel.json). Two responsibilities:
 //   1. Send debounced notification digests for projects where notify_after has passed
@@ -86,10 +87,34 @@ export async function GET(request: Request) {
   let regenerated = 0
   const regenErrors: string[] = []
 
+  let circuitBroken = 0
+
   for (const doc of idleSnap.docs) {
     const projectId = doc.id
-    const lastMakerAt = doc.data().last_maker_message_at as string | undefined
+    const data = doc.data()
+    const lastMakerAt = data.last_maker_message_at as string | undefined
     if (!lastMakerAt) continue
+
+    // Circuit breaker: once a project has failed BRIEF_REGEN_FAILURE_CAP times
+    // in a row, stop retrying every 5 min. POST /api/briefs/generate (manual)
+    // and any new maker turn both clear the counter. Closes the cost-runaway
+    // class of bug that caused the May 21 incident.
+    const failures = (data.brief_regen_failures as number | undefined) ?? 0
+    const failuresSince = data.brief_regen_failures_since as string | undefined
+    if (failures >= BRIEF_REGEN_FAILURE_CAP) {
+      // If the maker has messaged after the failure streak started, clear it
+      // and try again on the next cron tick.
+      if (failuresSince && lastMakerAt > failuresSince) {
+        await doc.ref.update({
+          brief_regen_failures: 0,
+          brief_regen_failures_since: null,
+          brief_regen_last_error: null,
+        })
+      } else {
+        circuitBroken++
+        continue
+      }
+    }
 
     const briefSnap = await db
       .collection('briefs')
@@ -108,9 +133,23 @@ export async function GET(request: Request) {
     try {
       await regenerateBriefForProject(db, projectId)
       regenerated++
+      if (failures > 0) {
+        await doc.ref.update({
+          brief_regen_failures: 0,
+          brief_regen_failures_since: null,
+          brief_regen_last_error: null,
+        })
+      }
     } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err)
       console.error(`[cron/notify] brief regen failed for project ${projectId}:`, err)
       regenErrors.push(projectId)
+      await doc.ref.update({
+        brief_regen_failures: failures + 1,
+        brief_regen_failures_since: failuresSince || now,
+        brief_regen_last_error: errMsg.slice(0, 200),
+        brief_regen_last_error_at: now,
+      })
     }
   }
 
@@ -120,6 +159,7 @@ export async function GET(request: Request) {
     checked: readySnap.size,
     regenerated,
     regen_errors: regenErrors,
+    circuit_broken: circuitBroken,
     idle_checked: idleSnap.size,
   })
 }

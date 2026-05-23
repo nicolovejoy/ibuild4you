@@ -75,8 +75,15 @@ function makeDb() {
   } as unknown as FirebaseFirestore.Firestore
 }
 
-function jsonResponse(json: unknown) {
-  return { content: [{ type: 'text', text: JSON.stringify(json) }] }
+// Brief regen uses forced tool use, so successful responses come back as a
+// tool_use block with parsed `input`. JSON.parse is no longer in the path.
+function toolUseResponse(input: unknown, stop_reason: string = 'tool_use') {
+  return {
+    stop_reason,
+    content: [
+      { type: 'tool_use', name: 'update_brief', id: 'tool_1', input },
+    ],
+  }
 }
 
 beforeEach(() => {
@@ -122,14 +129,20 @@ describe('regenerateBriefForProject', () => {
       { id: 'm2', data: () => ({ role: 'agent', content: 'Tell me more' }) },
     ]
     projectDocs.p1 = { exists: true, data: () => ({ title: 'Bakery App' }) }
-    mockMessagesCreate.mockResolvedValue(jsonResponse({ brief: validBrief }))
+    mockMessagesCreate.mockResolvedValue(toolUseResponse(validBrief))
 
     const result = await regenerateBriefForProject(makeDb(), 'p1')
 
     expect(mockMessagesCreate).toHaveBeenCalledOnce()
-    const args = mockMessagesCreate.mock.calls[0][0] as { messages: Array<{ content: string }> }
+    const args = mockMessagesCreate.mock.calls[0][0] as {
+      messages: Array<{ content: string }>
+      tools: Array<{ name: string }>
+      tool_choice: { type: string; name: string }
+    }
     expect(args.messages[0].content).toContain('Bakery App')
     expect(args.messages[0].content).toContain('I want a bakery app')
+    expect(args.tools[0].name).toBe('update_brief')
+    expect(args.tool_choice).toEqual({ type: 'tool', name: 'update_brief' })
     expect(briefAddCalls).toHaveLength(1)
     expect(briefAddCalls[0].content).toMatchObject({
       problem: validBrief.problem,
@@ -138,33 +151,20 @@ describe('regenerateBriefForProject', () => {
     expect(result).toMatchObject({ project_id: 'p1', version: 1 })
   })
 
-  it('unwraps a brief-only payload (no top-level "brief" key)', async () => {
-    sessionsByProject.p1 = [{ id: 's1', data: () => ({}) }]
-    messagesBySession.s1 = [{ id: 'm1', data: () => ({ role: 'user', content: 'hi' }) }]
-    projectDocs.p1 = { exists: true, data: () => ({ title: 'X' }) }
-    mockMessagesCreate.mockResolvedValue(jsonResponse(validBrief))
-
-    await regenerateBriefForProject(makeDb(), 'p1')
-
-    expect(briefAddCalls[0].content).toMatchObject({ problem: validBrief.problem })
-  })
-
-  it('coerces malformed Claude JSON to a safe default shape', async () => {
+  it('coerces malformed tool_use input to a safe default shape', async () => {
     sessionsByProject.p1 = [{ id: 's1', data: () => ({}) }]
     messagesBySession.s1 = [{ id: 'm1', data: () => ({ role: 'user', content: 'hi' }) }]
     projectDocs.p1 = { exists: true, data: () => ({ title: 'X' }) }
     mockMessagesCreate.mockResolvedValue(
-      jsonResponse({
-        brief: {
-          problem: 42, // wrong type
-          features: 'not-an-array', // wrong type
-          decisions: [
-            { topic: 'OK', decision: 'fine' },
-            { topic: 123, decision: 'bad' }, // gets filtered
-            null, // gets filtered
-          ],
-          open_risks: ['risk one', '', 99], // empty + non-string filtered
-        },
+      toolUseResponse({
+        problem: 42, // wrong type
+        features: 'not-an-array', // wrong type
+        decisions: [
+          { topic: 'OK', decision: 'fine' },
+          { topic: 123, decision: 'bad' }, // filtered
+          null, // filtered
+        ],
+        open_risks: ['risk one', '', 99], // empty + non-string filtered
       }),
     )
 
@@ -192,7 +192,7 @@ describe('regenerateBriefForProject', () => {
         ref: { update: mockBriefUpdate },
       },
     ]
-    mockMessagesCreate.mockResolvedValue(jsonResponse({ brief: validBrief }))
+    mockMessagesCreate.mockResolvedValue(toolUseResponse(validBrief))
 
     await regenerateBriefForProject(makeDb(), 'p1')
 
@@ -203,8 +203,7 @@ describe('regenerateBriefForProject', () => {
   it('falls back to "Untitled" when the project doc is missing', async () => {
     sessionsByProject.p1 = [{ id: 's1', data: () => ({}) }]
     messagesBySession.s1 = [{ id: 'm1', data: () => ({ role: 'user', content: 'hi' }) }]
-    // projectDocs.p1 unset
-    mockMessagesCreate.mockResolvedValue(jsonResponse(validBrief))
+    mockMessagesCreate.mockResolvedValue(toolUseResponse(validBrief))
 
     await regenerateBriefForProject(makeDb(), 'p1')
 
@@ -212,15 +211,32 @@ describe('regenerateBriefForProject', () => {
     expect(args.messages[0].content).toContain('Untitled')
   })
 
-  it('throws when Claude returns non-JSON', async () => {
+  it('throws regenerate_brief_max_tokens when the model is truncated', async () => {
+    sessionsByProject.p1 = [{ id: 's1', data: () => ({}) }]
+    messagesBySession.s1 = [{ id: 'm1', data: () => ({ role: 'user', content: 'hi' }) }]
+    projectDocs.p1 = { exists: true, data: () => ({ title: 'X' }) }
+    // stop_reason=max_tokens means the tool_use payload is incomplete; cron's
+    // circuit breaker uses this typed error to count failures and stop retrying.
+    mockMessagesCreate.mockResolvedValue(toolUseResponse({}, 'max_tokens'))
+
+    await expect(regenerateBriefForProject(makeDb(), 'p1')).rejects.toThrow(
+      'regenerate_brief_max_tokens',
+    )
+    expect(briefAddCalls).toHaveLength(0)
+  })
+
+  it('throws when no tool_use block is present', async () => {
     sessionsByProject.p1 = [{ id: 's1', data: () => ({}) }]
     messagesBySession.s1 = [{ id: 'm1', data: () => ({ role: 'user', content: 'hi' }) }]
     projectDocs.p1 = { exists: true, data: () => ({ title: 'X' }) }
     mockMessagesCreate.mockResolvedValue({
-      content: [{ type: 'text', text: 'not json at all' }],
+      stop_reason: 'end_turn',
+      content: [{ type: 'text', text: 'I refuse to call the tool' }],
     })
 
-    await expect(regenerateBriefForProject(makeDb(), 'p1')).rejects.toThrow(/JSON/)
+    await expect(regenerateBriefForProject(makeDb(), 'p1')).rejects.toThrow(
+      'regenerate_brief_no_tool_use',
+    )
     expect(briefAddCalls).toHaveLength(0)
   })
 
@@ -236,7 +252,7 @@ describe('regenerateBriefForProject', () => {
       { id: 'm2', data: () => ({ role: 'user', content: 'SESSION_TWO_SECOND' }) },
     ]
     projectDocs.p1 = { exists: true, data: () => ({ title: 'X' }) }
-    mockMessagesCreate.mockResolvedValue(jsonResponse(validBrief))
+    mockMessagesCreate.mockResolvedValue(toolUseResponse(validBrief))
 
     await regenerateBriefForProject(makeDb(), 'p1')
 

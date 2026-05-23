@@ -4,11 +4,48 @@ import { BRIEF_MODEL, BRIEF_MAX_TOKENS, BRIEF_TEMPERATURE } from '@/lib/agent/co
 import { logAnthropicCall } from '@/lib/observability/anthropic'
 import Anthropic from '@anthropic-ai/sdk'
 
+// Forced tool that the model must call. Using tool use (vs. asking for JSON in
+// the prompt) eliminates the truncation-→-JSON.parse-throws bug class that
+// caused a 5-min cron loop on the May 21 cost incident.
+const UPDATE_BRIEF_TOOL = {
+  name: 'update_brief',
+  description: 'Save the updated project brief reflecting everything learned so far.',
+  input_schema: {
+    type: 'object' as const,
+    properties: {
+      problem: { type: 'string' },
+      target_users: { type: 'string' },
+      features: { type: 'array', items: { type: 'string' } },
+      constraints: { type: 'string' },
+      additional_context: { type: 'string' },
+      decisions: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            topic: { type: 'string' },
+            decision: { type: 'string' },
+          },
+          required: ['topic', 'decision'],
+        },
+      },
+      open_risks: { type: 'array', items: { type: 'string' } },
+    },
+    required: [
+      'problem',
+      'target_users',
+      'features',
+      'constraints',
+      'additional_context',
+    ],
+  },
+}
+
 // Regenerates the living brief for a project from the full conversation
 // history. Used by:
 //   - POST /api/briefs/generate (manual builder click)
 //   - GET  /api/cron/notify     (auto-regen when a session goes idle)
-// Throws on no messages, missing project, or unparseable Claude output.
+// Throws on no messages, missing project, or model failure to return a tool_use block.
 export async function regenerateBriefForProject(
   db: FirebaseFirestore.Firestore,
   projectId: string,
@@ -65,6 +102,8 @@ export async function regenerateBriefForProject(
     max_tokens: BRIEF_MAX_TOKENS,
     temperature: BRIEF_TEMPERATURE,
     messages: [{ role: 'user', content: prompt }],
+    tools: [UPDATE_BRIEF_TOOL],
+    tool_choice: { type: 'tool', name: 'update_brief' },
   })
 
   if (response.usage) {
@@ -82,28 +121,43 @@ export async function regenerateBriefForProject(
     })
   }
 
-  const text = response.content
-    .filter((block) => block.type === 'text')
-    .map((block) => block.text)
-    .join('')
+  // If the model hit max_tokens mid tool_use, the input is incomplete.
+  // Surface this as a typed failure so the cron's circuit breaker can stop retrying.
+  if (response.stop_reason === 'max_tokens') {
+    throw new Error('regenerate_brief_max_tokens')
+  }
 
-  const parsed = JSON.parse(text)
-  const briefContent: BriefContent = parsed.brief || parsed
+  const toolUse = response.content.find(
+    (block): block is Extract<typeof block, { type: 'tool_use' }> =>
+      block.type === 'tool_use' && block.name === 'update_brief',
+  )
+  if (!toolUse) {
+    throw new Error('regenerate_brief_no_tool_use')
+  }
 
-  // Validate / coerce shape — keep matches the manual route's behavior
-  if (typeof briefContent.problem !== 'string') briefContent.problem = ''
-  if (typeof briefContent.target_users !== 'string') briefContent.target_users = ''
-  if (!Array.isArray(briefContent.features)) briefContent.features = []
-  if (typeof briefContent.constraints !== 'string') briefContent.constraints = ''
-  if (typeof briefContent.additional_context !== 'string') briefContent.additional_context = ''
-  if (!Array.isArray(briefContent.decisions)) briefContent.decisions = []
-  briefContent.decisions = briefContent.decisions.filter(
-    (d) => d && typeof d.topic === 'string' && typeof d.decision === 'string',
-  )
-  if (!Array.isArray(briefContent.open_risks)) briefContent.open_risks = []
-  briefContent.open_risks = briefContent.open_risks.filter(
-    (r: unknown) => typeof r === 'string' && (r as string).trim(),
-  )
+  const raw = toolUse.input as Partial<BriefContent>
+  // Coerce shape — model may omit optional fields or send wrong types
+  const briefContent: BriefContent = {
+    problem: typeof raw.problem === 'string' ? raw.problem : '',
+    target_users: typeof raw.target_users === 'string' ? raw.target_users : '',
+    features: Array.isArray(raw.features)
+      ? raw.features.filter((f): f is string => typeof f === 'string')
+      : [],
+    constraints: typeof raw.constraints === 'string' ? raw.constraints : '',
+    additional_context:
+      typeof raw.additional_context === 'string' ? raw.additional_context : '',
+    decisions: Array.isArray(raw.decisions)
+      ? raw.decisions.filter(
+          (d): d is { topic: string; decision: string } =>
+            !!d && typeof d.topic === 'string' && typeof d.decision === 'string',
+        )
+      : [],
+    open_risks: Array.isArray(raw.open_risks)
+      ? raw.open_risks.filter(
+          (r): r is string => typeof r === 'string' && r.trim().length > 0,
+        )
+      : [],
+  }
 
   return upsertBrief(db, projectId, briefContent)
 }
