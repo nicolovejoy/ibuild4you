@@ -59,6 +59,12 @@ export interface Project extends BaseEntity {
   notify_after?: string | null // ISO timestamp; cron sends email once this passes
   notify_pending_since?: string | null // ISO timestamp of first unnotified maker message
   notify_last_sent_at?: string | null // ISO timestamp of last notification email
+  // Auto-reminder cron (/api/cron/maker-reminders, daily). Only `=== true` opts in.
+  // Set to `true` automatically on project creation; existing projects stay opt-out
+  // until a builder flips the Setup-tab toggle. Maker messaging resets count + ts.
+  auto_reminders_enabled?: boolean
+  reminders_sent_count?: number
+  last_reminder_sent_at?: string | null
   // Enriched by GET /api/projects
   session_count?: number
   last_message_at?: string | null

@@ -1127,6 +1127,7 @@ function EditableSetup({ project }: { project: Project }) {
   const [mockups, setMockups] = useState<WireframeMockup[]>(project.layout_mockups || [])
   const [identity, setIdentity] = useState(project.identity || '')
   const [nudgeMessageOverride, setNudgeMessageOverride] = useState(project.nudge_message || '')
+  const [autoReminders, setAutoReminders] = useState(project.auto_reminders_enabled === true)
   const [saved, setSaved] = useState(false)
 
   const updateProject = useUpdateProject()
@@ -1140,7 +1141,8 @@ function EditableSetup({ project }: { project: Project }) {
     setMockups(project.layout_mockups || [])
     setIdentity(project.identity || '')
     setNudgeMessageOverride(project.nudge_message || '')
-  }, [project.welcome_message, project.seed_questions, project.session_mode, project.builder_directives, project.layout_mockups, project.identity, project.nudge_message])
+    setAutoReminders(project.auto_reminders_enabled === true)
+  }, [project.welcome_message, project.seed_questions, project.session_mode, project.builder_directives, project.layout_mockups, project.identity, project.nudge_message, project.auto_reminders_enabled])
 
   const handleSave = async () => {
     await updateProject.mutateAsync({
@@ -1152,6 +1154,7 @@ function EditableSetup({ project }: { project: Project }) {
       layout_mockups: mockups,
       identity: identity || undefined,
       nudge_message: nudgeMessageOverride || undefined,
+      auto_reminders_enabled: autoReminders,
       last_builder_activity_at: new Date().toISOString(),
     })
     setSaved(true)
@@ -1203,6 +1206,20 @@ function EditableSetup({ project }: { project: Project }) {
             <textarea value={nudgeMessageOverride} onChange={(e) => setNudgeMessageOverride(e.target.value)} placeholder="Leave blank to use the default boilerplate nudge. Fill this in to send a specific message verbatim." rows={3} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy" />
             <p className="text-xs text-gray-400 mt-1">When set, the next nudge uses this text verbatim instead of the default template.</p>
           </div>
+
+          {/* Auto-reminders */}
+          <label className="flex items-start gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={autoReminders}
+              onChange={(e) => setAutoReminders(e.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-gray-300 text-brand-navy focus:ring-brand-navy"
+            />
+            <div>
+              <div className="text-sm font-medium text-gray-700">Auto-remind the maker if they don&apos;t respond</div>
+              <p className="text-xs text-gray-400">Sends up to 3 reminder emails on a 2 / 5 / 10 day cadence after a new conversation is ready. Stops the moment the maker replies.</p>
+            </div>
+          </label>
 
           <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
             <LoadingButton variant="secondary" size="sm" loading={updateProject.isPending} loadingText="Saving..." onClick={handleSave}>
