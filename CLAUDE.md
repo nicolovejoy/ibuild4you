@@ -152,13 +152,17 @@ This is a learning project (Max, 19, college freshman, is contributing). Code sh
 
 ## Next Steps
 
-1. **Productionize `/api/chat`.** Top-level try/catch → JSON 500 envelope, client `useStreamingChat` tolerance for non-JSON errors, structured logging, defensive tests. PR+preview pattern proven on PRs #14, #15, #17, #18.
-2. **Feedback widget — single living doc.** Create `docs/feedback-widget.md` covering: overview, architecture, integration recipe for a new "host app", v2 element-picker design, known-hosts changelog. Terminology: "host apps" (bakery louise, offer-builder), not "client projects". ~half day ibuild4you + ~30 min bakery resync + 1–2h offer-builder install.
-3. **Resend inbound webhook — manual setup.** Resend dashboard inbound config on `inbox.ibuild4you.com`, MX records for that subdomain pointing at Resend, `RESEND_INBOUND_SECRET` on Vercel. Punch list at `docs/feedback-replies-plan.md`.
-4. **#16 Brief folders + archive.** Phase 1 = add `status: 'archived'` to projects, dashboard hides archived by default. Phase 2 = folders proper. Folds in the old "Project folders" backlog item.
-5. **PR 2 of cost tracking** — admin `/admin/usage` rollup page over the `api_usage` collection. Deferred until a few days of data accumulate. Once enough data, also a candidate for cross-project rollup per the v1 telemetry plan (`~/.claude/plans/ok-here-s-my-v1-functional-rossum.md`).
+1. **Agent behavior pass — #26 + #27 + #28.** Welcome-back summary after >1h gap, verify maker name from project data instead of asking, yield to explicit maker requests instead of forcing the seed-question plan. All three are `lib/agent/system-prompt.ts` + `constants.ts` edits with a shared test pattern; ship as one PR. **#28 is the headline** — it's about whether the product feels useful or pushy.
+2. **PR #22 auto-reminders → go live.** `REMINDER_DRY_RUN=true` is set on Vercel. Merge PR #22, watch Vercel runtime logs + the new `reminder_log` Firestore collection for ~2 days, then **delete** the env var to flip live. First live send: confirm BCC lands at `nicholas.lovejoy@gmail.com`.
+3. **Productionize `/api/chat`.** Top-level try/catch → JSON 500 envelope, client `useStreamingChat` tolerance for non-JSON errors, structured logging, defensive tests. Has been sitting; worth landing after the agent-behavior pass.
+4. **Resend inbound webhook — manual setup, then PR 3.** Resend dashboard inbound config on `inbox.ibuild4you.com`, MX records, `RESEND_INBOUND_SECRET` on Vercel (punch list at `docs/feedback-replies-plan.md`). After that, PR 3 swaps PR #22's `Reply-To: noreply@` for per-session `reply+{signed_token}@inbox.ibuild4you.com` so maker email replies post as messages.
+5. **Brief regen — tool-use refactor.** Beyond the hot-patch: switch `regenerateBriefForProject` to Anthropic tool use with a forced schema so JSON.parse can't fail mid-truncation. Reduce `BRIEF_MAX_TOKENS`. Closes the door on the cron-loop class of bugs.
+6. **Issue framing PRs — #20 (Share modal copy) + #21 (reminder copy + UI placement).** Small. Bundle as a Saturday cleanup PR.
+7. **PR 2 of cost tracking** — admin `/admin/usage` rollup page over the `api_usage` collection. `scripts/api-usage-rollup.mjs` is the basis. Useful as a prevention tool now that the loop is fixed.
 
-**Shipped 2026-05-17:** PR #15 (Anthropic cost tracking), PR #17 (drag-and-drop in chat input), PR #18 (builder uploads on Files tab). S3 bucket CORS updated to allow `preview.ibuild4you.com` — was the root cause of 403 preflight on browser→S3 uploads from preview.
+**Shipped 2026-05-21 (cost incident):** Hot-patched 4 brief-regen-looped projects via `scripts/touch-stuck-briefs.mjs`. Diagnostic scripts `api-usage-rollup.mjs` + `api-usage-by-project.mjs` committed to main (`a29fb1c`). Root cause: conversational `next-convo-prompt` truncated at `BRIEF_MAX_TOKENS=4096` → `JSON.parse` throws → brief never updated → cron retries every 5 min. PR #5 tool-use fix above is the structural close-out.
+
+**Shipped 2026-05-22:** PR #19 outbound-templates rip-out merged (-516 LoC; killed AI invite/nudge/reminder and the `/api/projects/outbound-message` route — was the source of "weeks now" wrong-context copy). PR #22 maker-auto-reminders cron opened (2/5/10d cadence, cap 3, BCC builder, `REMINDER_DRY_RUN` flag for staged rollout). Filed issues #23–#28 from a maker-experience screenshot review.
 
 ## Backlog (deeper queue)
 
