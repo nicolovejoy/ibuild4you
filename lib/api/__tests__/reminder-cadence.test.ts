@@ -1,8 +1,13 @@
 import { describe, it, expect } from 'vitest'
 import { decideReminder } from '../reminder-cadence'
 
-const day = (n: number) => new Date(Date.now() - n * 24 * 60 * 60 * 1000).toISOString()
+// Fixed reference time so the suite is deterministic regardless of when
+// it runs. `day(n)` is `n` days before `now` — both anchored to the same
+// instant. Earlier version used `Date.now()` for day() while `now` was
+// fixed; the drift broke the cadence tests on any day after the PR was
+// authored (CI #158, 2026-05-23).
 const now = new Date('2026-05-22T16:00:00.000Z')
+const day = (n: number) => new Date(now.getTime() - n * 24 * 60 * 60 * 1000).toISOString()
 
 describe('decideReminder — gating', () => {
   it('skips when autoRemindersEnabled is undefined (opt-out default)', () => {
