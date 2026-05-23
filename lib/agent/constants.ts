@@ -4,7 +4,10 @@ export const AGENT_TEMPERATURE = 0.7
 
 // Used for brief generation too
 export const BRIEF_MODEL = 'claude-sonnet-4-6'
-export const BRIEF_MAX_TOKENS = 4096
+// Brief is emitted via tool use, so this bounds the structured payload, not free text.
+// 2048 is comfortable headroom; truncation now surfaces as a typed error instead of
+// silently producing invalid JSON.
+export const BRIEF_MAX_TOKENS = 2048
 export const BRIEF_TEMPERATURE = 0.3
 
 export const DEFAULT_IDENTITY = 'You are the iBuild4you project intake assistant. Your job is to help the user describe their app or website idea clearly enough that a developer could start working on it.'
