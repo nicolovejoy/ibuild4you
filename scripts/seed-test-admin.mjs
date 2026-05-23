@@ -1,28 +1,34 @@
 #!/usr/bin/env node
-// Seed a passcode-based admin login for end-to-end testing.
+// Seed a dedicated test admin user for Playwright end-to-end testing.
 //
 // Why this exists: /admin/* pages need an admin login, but Google OAuth
-// can't be driven by Playwright. This script creates a project_members row
-// for an existing hardcoded admin email (lib/constants.ts ADMIN_EMAILS),
-// so the passcode-login path grants admin access without OAuth.
+// can't be driven by Playwright. This script creates a fully isolated test
+// identity (Firebase Auth user + users doc with admin role + project
+// membership with a passcode) so e2e auth never touches a human account.
+// Revoking is a one-line script edit; rotating is just re-running --apply.
 //
 // Run via the .env wrapper:
 //   node scripts/with-prod-env.mjs node scripts/seed-test-admin.mjs            # dry-run
 //   node scripts/with-prod-env.mjs node scripts/seed-test-admin.mjs --apply    # write
 //
-// After --apply, copy the printed passcode into 1Password (dev-secrets vault).
-// The passcode is printed once; if lost, re-run --apply to rotate.
+// After --apply, the freshly generated passcode lands on the clipboard via
+// pbcopy — it is never printed to stdout. Paste it into 1Password.
 
 import { initializeApp, cert, getApps } from 'firebase-admin/app'
-import { getFirestore } from 'firebase-admin/firestore'
+import { getAuth } from 'firebase-admin/auth'
+import { getFirestore, FieldValue } from 'firebase-admin/firestore'
 import { randomBytes } from 'node:crypto'
 import { spawnSync } from 'node:child_process'
 
 const APPLY = process.argv.includes('--apply')
 
-// Must match an entry in lib/constants.ts ADMIN_EMAILS so the user already
-// has admin role by virtue of email alone — no users-doc setup needed.
-const ADMIN_EMAIL = 'nicholas.lovejoy@gmail.com'
+// Dedicated test identity — fully isolated from any human account.
+// Not a real mailbox; emails sent to it will bounce (which is fine since
+// admin emails bypass nudge/reminder flows anyway, and this account isn't
+// listed as a project requester).
+const ADMIN_EMAIL = 'test@ibuild4you.com'
+const FIRST_NAME = 'Test'
+const LAST_NAME = 'Admin'
 const TEST_PROJECT_TITLE = 'Test Admin Access (Playwright)'
 const TEST_PROJECT_SLUG = 'test-admin-access'
 
@@ -33,6 +39,7 @@ if (!sa) {
 }
 if (!getApps().length) initializeApp({ credential: cert(JSON.parse(sa)) })
 const db = getFirestore()
+const adminAuth = getAuth()
 
 // Generate a 10-char upper-alphanumeric passcode (no ambiguous chars).
 // The passcode-login route uppercases input, so we generate uppercase.
@@ -42,6 +49,55 @@ function generatePasscode() {
   let out = ''
   for (let i = 0; i < 10; i++) out += alphabet[bytes[i] % alphabet.length]
   return out
+}
+
+// Get the Firebase Auth user, creating one if it doesn't exist yet. The uid
+// is needed to key the users-doc with system_roles=['admin'].
+async function getOrCreateAuthUser() {
+  try {
+    const u = await adminAuth.getUserByEmail(ADMIN_EMAIL)
+    return { uid: u.uid, created: false }
+  } catch (err) {
+    if (err?.code !== 'auth/user-not-found') throw err
+    if (!APPLY) return { uid: '(would create)', created: true }
+    const u = await adminAuth.createUser({
+      email: ADMIN_EMAIL,
+      displayName: `${FIRST_NAME} ${LAST_NAME}`,
+      emailVerified: true,
+    })
+    return { uid: u.uid, created: true }
+  }
+}
+
+async function upsertUserDoc(uid) {
+  if (!APPLY) return 'would-upsert'
+  const now = new Date().toISOString()
+  await db.collection('users').doc(uid).set(
+    {
+      email: ADMIN_EMAIL,
+      first_name: FIRST_NAME,
+      last_name: LAST_NAME,
+      system_roles: ['admin'],
+      source: 'seed-test-admin',
+      updated_at: now,
+      created_at: FieldValue.serverTimestamp(),
+    },
+    { merge: true },
+  )
+  return 'upserted'
+}
+
+async function upsertApprovedEmail() {
+  if (!APPLY) return 'would-upsert'
+  await db.collection('approved_emails').doc(ADMIN_EMAIL).set(
+    {
+      email: ADMIN_EMAIL,
+      source: 'seed-test-admin',
+      updated_at: new Date().toISOString(),
+    },
+    { merge: true },
+  )
+  return 'upserted'
 }
 
 async function findOrCreateTestProject() {
@@ -103,6 +159,16 @@ console.log(`Test project: ${TEST_PROJECT_TITLE} (slug: ${TEST_PROJECT_SLUG})`)
 console.log()
 
 const passcode = generatePasscode()
+
+const authUser = await getOrCreateAuthUser()
+console.log(`Auth user: ${authUser.created ? 'create' : 'reuse'} → uid=${authUser.uid}`)
+
+const userDoc = await upsertUserDoc(authUser.uid)
+console.log(`Users doc (system_roles=['admin']): ${userDoc}`)
+
+const approved = await upsertApprovedEmail()
+console.log(`approved_emails entry: ${approved}`)
+
 const project = await findOrCreateTestProject()
 console.log(`Project: ${project.created ? 'create' : 'reuse'} → id=${project.id}`)
 
