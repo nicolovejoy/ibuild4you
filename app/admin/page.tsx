@@ -4,7 +4,7 @@ import { useAuth } from '@/lib/hooks/useAuth'
 import { useApproval } from '@/lib/hooks/useApproval'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
-import { ArrowLeft, Check, Save, Inbox, MessageSquare } from 'lucide-react'
+import { ArrowLeft, Check, Save, Inbox, MessageSquare, DollarSign } from 'lucide-react'
 import Link from 'next/link'
 import { useCurrentUser } from '@/lib/query/hooks'
 import { apiFetch } from '@/lib/firebase/api-fetch'
@@ -83,6 +83,13 @@ export default function AdminPage() {
           >
             <MessageSquare className="h-4 w-4" />
             Feedback inbox
+          </Link>
+          <Link
+            href="/admin/usage"
+            className="inline-flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm text-brand-charcoal hover:border-brand-navy hover:text-brand-navy transition-colors"
+          >
+            <DollarSign className="h-4 w-4" />
+            API usage
           </Link>
         </nav>
         <UsersTable />
