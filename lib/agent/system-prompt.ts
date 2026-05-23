@@ -1,6 +1,9 @@
 import { AGENT_BEHAVIOR_RULES, CONVERGE_BEHAVIOR_RULES, DEFAULT_IDENTITY } from './constants'
 import type { BriefContent, WireframeMockup } from '@/lib/types'
 
+// Maker name and gap-since-last-message are read live per request (not
+// snapshotted into the session like seed_questions / directives) so that
+// name edits and real elapsed time are reflected on every turn.
 interface SystemPromptInput {
   briefContent: BriefContent | null
   projectContext: string | null
@@ -10,9 +13,22 @@ interface SystemPromptInput {
   sessionMode?: 'discover' | 'converge'
   layoutMockups?: WireframeMockup[]
   identity?: string
+  makerFirstName?: string
+  makerLastName?: string
+  gapSinceLastMakerMessageMs?: number
 }
 
-export function buildSystemPrompt({ briefContent, projectContext, sessionNumber, seedQuestions, builderDirectives, sessionMode, layoutMockups, identity }: SystemPromptInput): string {
+const ONE_HOUR_MS = 60 * 60 * 1000
+
+function humanizeGap(ms: number): string {
+  const hours = ms / (60 * 60 * 1000)
+  if (hours < 18) return 'a few hours'
+  if (hours < 36) return 'about a day'
+  if (hours < 24 * 7) return 'a few days'
+  return 'over a week'
+}
+
+export function buildSystemPrompt({ briefContent, projectContext, sessionNumber, seedQuestions, builderDirectives, sessionMode, layoutMockups, identity, makerFirstName, makerLastName, gapSinceLastMakerMessageMs }: SystemPromptInput): string {
   const parts: string[] = []
 
   parts.push(identity || DEFAULT_IDENTITY)
@@ -25,6 +41,15 @@ export function buildSystemPrompt({ briefContent, projectContext, sessionNumber,
 Here's some context about this person and their project that was provided before the conversation started. Use this as a starting point — you don't need to re-ask about things covered here, but you can dig deeper into them.
 
 ${projectContext}
+`.trim())
+  }
+
+  if (makerFirstName) {
+    const fullName = makerLastName ? `${makerFirstName} ${makerLastName}` : makerFirstName
+    parts.push(`
+## Maker
+
+**Name:** ${fullName}
 `.trim())
   }
 
@@ -42,7 +67,7 @@ ${seedQuestions.map((q, i) => `${i + 1}. ${q}`).join('\n')}
     parts.push(`
 ## Directives
 
-The builder has identified specific things to drive toward this session. Actively steer the conversation to address these — don't leave the session without covering them:
+The builder has identified specific things to drive toward this session. Work these into the conversation when there's a natural opening — they're priorities, not a script. If the user steers somewhere else, follow them (see the Guardrails on maker direction).
 
 ${builderDirectives.map((d, i) => `${i + 1}. ${d}`).join('\n')}
 `.trim())
@@ -113,6 +138,14 @@ ${briefContent.open_risks.map((r) => `- ${r}`).join('\n')}
 Here's what we know about the user's project so far. Use this to avoid re-asking things they've already told us, and to ask deeper follow-up questions.
 
 ${formatBrief(briefContent)}
+`.trim())
+  }
+
+  if (gapSinceLastMakerMessageMs !== undefined && gapSinceLastMakerMessageMs >= ONE_HOUR_MS) {
+    parts.push(`
+## Returning after a break
+
+The user is coming back after a gap of ${humanizeGap(gapSinceLastMakerMessageMs)}. Before continuing, briefly recap where the conversation left off (1–2 sentences — what they were describing, what question was on the table), then ask what they want to focus on now. Don't recap the whole project, just the immediate thread.
 `.trim())
   }
 

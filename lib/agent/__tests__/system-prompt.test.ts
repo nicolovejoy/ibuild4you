@@ -249,4 +249,92 @@ describe('buildSystemPrompt', () => {
     expect(discover).not.toContain('8–12 exchanges')
     expect(converge).not.toContain('8–12 exchanges')
   })
+
+  // ---------------------------------------------------------------------------
+  // Maker name (#27)
+  // ---------------------------------------------------------------------------
+
+  it('includes ## Maker section when makerFirstName is set', () => {
+    const result = buildSystemPrompt({ ...minimalInput, makerFirstName: 'Jamie' })
+    expect(result).toContain('## Maker')
+    expect(result).toContain('**Name:** Jamie')
+  })
+
+  it('omits ## Maker section when makerFirstName is undefined', () => {
+    const result = buildSystemPrompt(minimalInput)
+    expect(result).not.toContain('## Maker\n')
+  })
+
+  it('## Maker section includes last name when both are provided', () => {
+    const result = buildSystemPrompt({
+      ...minimalInput,
+      makerFirstName: 'Jamie',
+      makerLastName: 'Baker',
+    })
+    expect(result).toContain('**Name:** Jamie Baker')
+  })
+
+  // ---------------------------------------------------------------------------
+  // Welcome-back recap (#26)
+  // ---------------------------------------------------------------------------
+
+  it('omits ## Returning after a break when gap is undefined', () => {
+    const result = buildSystemPrompt(minimalInput)
+    expect(result).not.toContain('## Returning after a break')
+  })
+
+  it('omits ## Returning after a break when gap is under one hour', () => {
+    const result = buildSystemPrompt({
+      ...minimalInput,
+      gapSinceLastMakerMessageMs: 30 * 60 * 1000,
+    })
+    expect(result).not.toContain('## Returning after a break')
+  })
+
+  it('includes ## Returning after a break when gap is at least one hour', () => {
+    const result = buildSystemPrompt({
+      ...minimalInput,
+      gapSinceLastMakerMessageMs: 2 * 60 * 60 * 1000,
+    })
+    expect(result).toContain('## Returning after a break')
+    expect(result).toContain('briefly recap')
+  })
+
+  it.each([
+    [2 * 60 * 60 * 1000, 'a few hours'],
+    [12 * 60 * 60 * 1000, 'a few hours'],
+    [24 * 60 * 60 * 1000, 'about a day'],
+    [3 * 24 * 60 * 60 * 1000, 'a few days'],
+    [10 * 24 * 60 * 60 * 1000, 'over a week'],
+  ])('humanizes a gap of %i ms as "%s"', (gapMs, expectedPhrase) => {
+    const result = buildSystemPrompt({ ...minimalInput, gapSinceLastMakerMessageMs: gapMs })
+    expect(result).toContain(expectedPhrase)
+  })
+
+  // ---------------------------------------------------------------------------
+  // Yield to maker (#28)
+  // ---------------------------------------------------------------------------
+
+  it('Directives block no longer pins the old "don\'t leave the session" wording', () => {
+    const result = buildSystemPrompt({
+      ...minimalInput,
+      builderDirectives: ['Focus on data flow'],
+    })
+    expect(result).not.toContain("don't leave the session without covering them")
+  })
+
+  it('Directives block frames directives as priorities, not a script', () => {
+    const result = buildSystemPrompt({
+      ...minimalInput,
+      builderDirectives: ['Focus on data flow'],
+    })
+    expect(result).toContain('priorities, not a script')
+  })
+
+  it('GUARDRAILS includes the "Maker direction wins" rule in both modes', () => {
+    const discover = buildSystemPrompt(minimalInput)
+    const converge = buildSystemPrompt({ ...minimalInput, sessionMode: 'converge' })
+    expect(discover).toContain('Maker direction wins')
+    expect(converge).toContain('Maker direction wins')
+  })
 })
