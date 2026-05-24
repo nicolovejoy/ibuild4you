@@ -2,9 +2,9 @@
 
 ## The opportunity
 
-The iBuild4you agent conducts conversations well enough to extract surface-level information, but it fails to extract depth. Across multiple makers — Eric (format review), Diane (campus app), Elijah (tide app), Owen (music practice) — the same pattern repeats: the agent asks a question, accepts whatever comes back, and moves on. It rarely pushes back on vague answers, rarely follows a rich answer into more specific territory, and wraps up based on exchange count rather than information quality.
+The iBuild4you agent conducts conversations well enough to extract surface-level information, but it fails to extract depth. Across multiple maker sessions — a format review, a campus app, a tide app, a music-practice app — the same pattern repeats: the agent asks a question, accepts whatever comes back, and moves on. It rarely pushes back on vague answers, rarely follows a rich answer into more specific territory, and wraps up based on exchange count rather than information quality.
 
-The result is briefs with holes. Diane's cold-start problem got zero pushback. Eric's session 1 ended with a summary while five seed questions remained unasked. Elijah's session produced three exchanges of thin information. The agent is polite and productive-feeling, but it leaves value on the table.
+The result is briefs with holes. The campus-app session's cold-start problem got zero pushback. The format-review session 1 ended with a summary while five seed questions remained unasked. The tide-app session produced three exchanges of thin information. The agent is polite and productive-feeling, but it leaves value on the table.
 
 The root cause is that the agent's behavior rules describe a single mode of operation — curious and yielding — without a framework for shifting to other modes based on what the conversation actually needs.
 
@@ -85,7 +85,7 @@ Two changes to the platform would support this model:
 
 **1. Make the agent's identity layer configurable.**
 
-The current hardcoded identity ("You are the iBuild4you project intake assistant. Your job is to help the user describe their app or website idea") doesn't fit non-standard sessions like Eric's format review or Elijah's "just build it" demand. The identity should be overridable at the project or session level, with a sensible default for standard intake sessions. The posture model works regardless of identity — a format review agent and a product intake agent both need the same set of postures, just with different gravity.
+The current hardcoded identity ("You are the iBuild4you project intake assistant. Your job is to help the user describe their app or website idea") doesn't fit non-standard sessions like a format-review session or a "just build it" demand. The identity should be overridable at the project or session level, with a sensible default for standard intake sessions. The posture model works regardless of identity — a format review agent and a product intake agent both need the same set of postures, just with different gravity.
 
 **2. Add an open risks field to the brief.**
 
@@ -95,11 +95,11 @@ The brief currently captures what the user wants but not what's unresolved or ri
 
 With postures and governance in place:
 
-- **Eric's session 1** would have gone deeper. When Eric said "I did not notice that distinction" about numbered sections, the agent would have shifted to Deepening ("interesting — what did you think those sections were?") instead of immediately asking two new questions.
+- **The format-review session 1** would have gone deeper. When the maker said "I did not notice that distinction" about numbered sections, the agent would have shifted to Deepening ("interesting — what did you think those sections were?") instead of immediately asking two new questions.
 
-- **Diane's session** would have challenged the cold-start hand-wave. "If it gets traction it'll naturally become a go-to" would have triggered Challenging: "That makes sense once it's rolling, but how do the first 20 students hear about it?"
+- **The campus-app session** would have challenged the cold-start hand-wave. "If it gets traction it'll naturally become a go-to" would have triggered Challenging: "That makes sense once it's rolling, but how do the first 20 students hear about it?"
 
-- **Elijah's session** would have recognized thin, disengaged answers and either deepened on the one topic he cared about (the tide app) or yielded gracefully instead of producing three exchanges of nothing.
+- **The tide-app session** would have recognized thin, disengaged answers and either deepened on the one topic the maker cared about (the tide app itself) or yielded gracefully instead of producing three exchanges of nothing.
 
 - **Session endings** would be earned, not timed. The agent wraps up when it has what it needs, not when a counter says so.
 

@@ -22,7 +22,7 @@ const STUCK_PROJECT_IDS = [
   '0kFhweZTAdtwxsfotE1H', // Med Tracking for ORCA Center
   'oLgKcqhseCnDev6Zx81v', // NWMLS Contract Generator
   'IyMeSmhWnEzaAr9i67cs', // iBuild4you UX Rethink — Maker Experience
-  'WlAyoxtUKpxxYSsmAF46', // ORCA Center Med Tracking — Darence's view
+  'WlAyoxtUKpxxYSsmAF46', // ORCA Center Med Tracking — maker view
 ]
 
 const sa = process.env.FIREBASE_SERVICE_ACCOUNT
