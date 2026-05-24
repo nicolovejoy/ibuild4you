@@ -120,6 +120,23 @@ describe('regenerateBriefForProject', () => {
     expect(mockMessagesCreate).not.toHaveBeenCalled()
   })
 
+  // Shape of the Anthropic call after the prompt-caching refactor: system is
+  // a single text block with cache_control; the user message is a content
+  // array whose only block also carries cache_control. Helper isolates the
+  // user-text extraction so the rest of the suite stays terse.
+  type CachedCall = {
+    system: Array<{ type: string; text: string; cache_control?: { type: string } }>
+    messages: Array<{
+      role: string
+      content: Array<{ type: string; text: string; cache_control?: { type: string } }>
+    }>
+    tools: Array<{ name: string }>
+    tool_choice: { type: string; name: string }
+  }
+  function getUserText(call: CachedCall): string {
+    return call.messages[0].content[0].text
+  }
+
   it('calls Claude with the conversation history and upserts the brief', async () => {
     sessionsByProject.p1 = [
       { id: 's1', data: () => ({ created_at: '2026-01-01T00:00:00Z' }) },
@@ -134,13 +151,9 @@ describe('regenerateBriefForProject', () => {
     const result = await regenerateBriefForProject(makeDb(), 'p1')
 
     expect(mockMessagesCreate).toHaveBeenCalledOnce()
-    const args = mockMessagesCreate.mock.calls[0][0] as {
-      messages: Array<{ content: string }>
-      tools: Array<{ name: string }>
-      tool_choice: { type: string; name: string }
-    }
-    expect(args.messages[0].content).toContain('Bakery App')
-    expect(args.messages[0].content).toContain('I want a bakery app')
+    const args = mockMessagesCreate.mock.calls[0][0] as CachedCall
+    expect(getUserText(args)).toContain('Bakery App')
+    expect(getUserText(args)).toContain('I want a bakery app')
     expect(args.tools[0].name).toBe('update_brief')
     expect(args.tool_choice).toEqual({ type: 'tool', name: 'update_brief' })
     expect(briefAddCalls).toHaveLength(1)
@@ -149,6 +162,22 @@ describe('regenerateBriefForProject', () => {
       features: validBrief.features,
     })
     expect(result).toMatchObject({ project_id: 'p1', version: 1 })
+  })
+
+  it('marks system and user blocks with cache_control for prompt caching', async () => {
+    sessionsByProject.p1 = [{ id: 's1', data: () => ({}) }]
+    messagesBySession.s1 = [{ id: 'm1', data: () => ({ role: 'user', content: 'hi' }) }]
+    projectDocs.p1 = { exists: true, data: () => ({ title: 'X' }) }
+    mockMessagesCreate.mockResolvedValue(toolUseResponse(validBrief))
+
+    await regenerateBriefForProject(makeDb(), 'p1')
+
+    const args = mockMessagesCreate.mock.calls[0][0] as CachedCall
+    // Breakpoint 1: system block (caches tools + system together across all projects)
+    expect(args.system[0].cache_control).toEqual({ type: 'ephemeral' })
+    expect(args.system[0].text).toContain('NEXT-CONVO PREP')
+    // Breakpoint 2: user content block (caches per-project conversation prefix)
+    expect(args.messages[0].content[0].cache_control).toEqual({ type: 'ephemeral' })
   })
 
   it('coerces malformed tool_use input to a safe default shape', async () => {
@@ -196,8 +225,8 @@ describe('regenerateBriefForProject', () => {
 
     await regenerateBriefForProject(makeDb(), 'p1')
 
-    const args = mockMessagesCreate.mock.calls[0][0] as { messages: Array<{ content: string }> }
-    expect(args.messages[0].content).toContain('PRIOR_BRIEF_PROBLEM')
+    const args = mockMessagesCreate.mock.calls[0][0] as CachedCall
+    expect(getUserText(args)).toContain('PRIOR_BRIEF_PROBLEM')
   })
 
   it('falls back to "Untitled" when the project doc is missing', async () => {
@@ -207,8 +236,8 @@ describe('regenerateBriefForProject', () => {
 
     await regenerateBriefForProject(makeDb(), 'p1')
 
-    const args = mockMessagesCreate.mock.calls[0][0] as { messages: Array<{ content: string }> }
-    expect(args.messages[0].content).toContain('Untitled')
+    const args = mockMessagesCreate.mock.calls[0][0] as CachedCall
+    expect(getUserText(args)).toContain('Untitled')
   })
 
   it('throws regenerate_brief_max_tokens when the model is truncated', async () => {
@@ -256,9 +285,10 @@ describe('regenerateBriefForProject', () => {
 
     await regenerateBriefForProject(makeDb(), 'p1')
 
-    const args = mockMessagesCreate.mock.calls[0][0] as { messages: Array<{ content: string }> }
-    const idx1 = args.messages[0].content.indexOf('SESSION_ONE_FIRST')
-    const idx2 = args.messages[0].content.indexOf('SESSION_TWO_SECOND')
+    const args = mockMessagesCreate.mock.calls[0][0] as CachedCall
+    const userText = getUserText(args)
+    const idx1 = userText.indexOf('SESSION_ONE_FIRST')
+    const idx2 = userText.indexOf('SESSION_TWO_SECOND')
     expect(idx1).toBeGreaterThan(0)
     expect(idx2).toBeGreaterThan(idx1)
   })

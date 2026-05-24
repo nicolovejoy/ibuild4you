@@ -7,38 +7,16 @@ interface NextConvoPromptInput {
   sessionCount: number
 }
 
-// Builds the "next-convo" prep prompt.
-//
-// Used by the Brief tab's "Copy next-convo prep" button and by the
-// auto brief-regen path in lib/api/briefs.ts. The receiving Claude
-// returns a "next-convo" payload (PATCH /api/projects + new brief
-// revision shape — no title, no requester_* fields).
-export function buildNextConvoPrompt({ currentBrief, conversationHistory, projectTitle, sessionCount }: NextConvoPromptInput): string {
-  const parts: string[] = []
-
-  parts.push(`NEXT-CONVO PREP — output a "next-convo" payload for an EXISTING project.
+// Static portion of the next-convo prep prompt: intro, JSON schema, extraction
+// rules. Identical across all projects and all calls. Passed as a system block
+// with cache_control by lib/api/briefs.ts so the Anthropic prompt cache can
+// serve it across calls — both within a single cron tick (multiple idle
+// projects in one loop) and across cron ticks within the 5-minute TTL.
+export const NEXT_CONVO_SYSTEM_PROMPT = `NEXT-CONVO PREP — output a "next-convo" payload for an EXISTING project.
 The first key of your JSON output MUST be \`"_payload_type": "next-convo"\`.
 Do NOT include \`title\`, \`requester_email\`, or maker names — those are create-only fields.
 
 I'm a project builder managing an intake project. I need your help preparing for the next session with my maker (the person whose app idea we're exploring).
-
-<project>
-Title: ${projectTitle}
-Sessions so far: ${sessionCount}
-</project>`)
-
-  parts.push(`<current_brief>
-${currentBrief ? JSON.stringify(currentBrief, null, 2) : 'No brief yet'}
-</current_brief>`)
-
-  parts.push(`<conversation_history>
-${conversationHistory.map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`).join('\n\n')}
-</conversation_history>
-
-Please review this project and let's discuss:
-- What went well in the conversation so far?
-- What should the next session focus on?
-- Should we stay in discover mode or switch to converge?
 
 When I say "give me the output", produce ONLY valid JSON matching this schema (no markdown, no code fences). \`_payload_type\` MUST be the first key.
 
@@ -81,7 +59,42 @@ Rules:
 - If updating an existing brief, preserve information from it unless the conversation contradicts it.
 - A decision = the user committed to a specific choice (not just mentioned an option). Each decision has a short topic label and the decision itself.
 - Preserve prior decisions unless the user explicitly reversed one in the conversation.
-- Open risks = things that are unresolved, unclear, or risky based on the conversation. Extract from what the user actually said — don't invent risks. Examples: "no plan for getting first users", "pricing model undecided", "unclear how data gets into the system".`)
+- Open risks = things that are unresolved, unclear, or risky based on the conversation. Extract from what the user actually said — don't invent risks. Examples: "no plan for getting first users", "pricing model undecided", "unclear how data gets into the system".
 
-  return parts.join('\n\n')
+Please review the project data the builder will give you next and let's discuss:
+- What went well in the conversation so far?
+- What should the next session focus on?
+- Should we stay in discover mode or switch to converge?`
+
+// Dynamic portion: per-project state (title, session count, current brief,
+// conversation history). Returned as a separate string so callers can place a
+// second cache_control breakpoint after it — when the same project is
+// regenerated twice without a new maker message, the second call hits the
+// cache for nearly the entire prompt.
+export function buildNextConvoUserContent({
+  currentBrief,
+  conversationHistory,
+  projectTitle,
+  sessionCount,
+}: NextConvoPromptInput): string {
+  return [
+    `<project>
+Title: ${projectTitle}
+Sessions so far: ${sessionCount}
+</project>`,
+    `<current_brief>
+${currentBrief ? JSON.stringify(currentBrief, null, 2) : 'No brief yet'}
+</current_brief>`,
+    `<conversation_history>
+${conversationHistory.map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`).join('\n\n')}
+</conversation_history>`,
+  ].join('\n\n')
+}
+
+// Combined string used by the Brief tab's "Copy next-convo prep" button — the
+// builder pastes the whole thing into a Claude.ai conversation. The auto
+// brief-regen path in lib/api/briefs.ts calls the split halves directly so it
+// can place cache_control markers.
+export function buildNextConvoPrompt(input: NextConvoPromptInput): string {
+  return `${NEXT_CONVO_SYSTEM_PROMPT}\n\n${buildNextConvoUserContent(input)}`
 }

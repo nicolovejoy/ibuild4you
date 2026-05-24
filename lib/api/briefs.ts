@@ -1,5 +1,8 @@
 import type { BriefContent } from '@/lib/types'
-import { buildNextConvoPrompt } from '@/lib/agent/next-convo-prompt'
+import {
+  NEXT_CONVO_SYSTEM_PROMPT,
+  buildNextConvoUserContent,
+} from '@/lib/agent/next-convo-prompt'
 import { BRIEF_MODEL, BRIEF_MAX_TOKENS, BRIEF_TEMPERATURE } from '@/lib/agent/constants'
 import { logAnthropicCall } from '@/lib/observability/anthropic'
 import Anthropic from '@anthropic-ai/sdk'
@@ -7,6 +10,10 @@ import Anthropic from '@anthropic-ai/sdk'
 // Forced tool that the model must call. Using tool use (vs. asking for JSON in
 // the prompt) eliminates the truncation-→-JSON.parse-throws bug class that
 // caused a 5-min cron loop on the May 21 cost incident.
+//
+// Tools are part of the cached prefix (order: tools → system → messages), so
+// changing this schema invalidates the system-prompt cache below. Don't tweak
+// casually.
 const UPDATE_BRIEF_TOOL = {
   name: 'update_brief',
   description: 'Save the updated project brief reflecting everything learned so far.',
@@ -88,20 +95,45 @@ export async function regenerateBriefForProject(
   const projectDoc = await db.collection('projects').doc(projectId).get()
   const projectTitle = (projectDoc.data()?.title as string) || 'Untitled'
 
-  const prompt = buildNextConvoPrompt({
+  const userContent = buildNextConvoUserContent({
     currentBrief,
     conversationHistory: allMessages,
     projectTitle,
     sessionCount: sessionIds.length,
   })
 
+  // Prompt caching: two breakpoints.
+  //   1. system block — caches tools + system together (~1.5k stable tokens).
+  //      Hits across all projects within 5 min, so the cron's per-tick loop
+  //      over idle projects pays the cache-write cost once.
+  //   2. user content block — caches the project preamble + brief +
+  //      conversation history. Hits when the same project is regenerated
+  //      twice without a new maker message (cron + manual click, etc.).
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
   const callStart = Date.now()
   const response = await client.messages.create({
     model: BRIEF_MODEL,
     max_tokens: BRIEF_MAX_TOKENS,
     temperature: BRIEF_TEMPERATURE,
-    messages: [{ role: 'user', content: prompt }],
+    system: [
+      {
+        type: 'text',
+        text: NEXT_CONVO_SYSTEM_PROMPT,
+        cache_control: { type: 'ephemeral' },
+      },
+    ],
+    messages: [
+      {
+        role: 'user',
+        content: [
+          {
+            type: 'text',
+            text: userContent,
+            cache_control: { type: 'ephemeral' },
+          },
+        ],
+      },
+    ],
     tools: [UPDATE_BRIEF_TOOL],
     tool_choice: { type: 'tool', name: 'update_brief' },
   })
