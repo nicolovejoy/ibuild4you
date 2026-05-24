@@ -30,7 +30,7 @@ honeypot, render-time check, and rate limit, not in an origin allowlist.
 
 ```jsonc
 {
-  "projectId": "bakery-louise",        // string, required, must match an existing projects.slug
+  "projectId": "sample-cafe",          // string, required, must match an existing projects.slug
   "type": "bug",                       // "bug" | "idea" | "other", required
   "body": "Footer link 404s",          // string, required, max 5000 chars
   "submitterEmail": "j@example.com",   // string, optional, lowercased server-side
@@ -83,8 +83,8 @@ honeypot, render-time check, and rate limit, not in an origin allowlist.
   skew). Always set `_ts` from `Date.now()` at *render time*, not at submit
   time.
 - **404 Unknown project.** Slug mismatch. Project slugs are kebab-case and
-  must match exactly — `bakery-louise`, not `bakerylouise` or
-  `bakery-louise-v1`.
+  must match exactly — `sample-cafe`, not `samplecafe` or
+  `sample-cafe-v1`.
 - **Drifting field names.** Don't rename. The server enforces exact field
   names and rejects unknown shapes silently in some cases.
 

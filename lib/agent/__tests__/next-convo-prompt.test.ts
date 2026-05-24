@@ -63,8 +63,8 @@ describe('buildNextConvoPrompt', () => {
   })
 
   it('embeds project title and session count', () => {
-    const result = buildNextConvoPrompt({ ...emptyInput, projectTitle: 'Jamie Bakery', sessionCount: 3 })
-    expect(result).toContain('Jamie Bakery')
+    const result = buildNextConvoPrompt({ ...emptyInput, projectTitle: 'Sam Cafe', sessionCount: 3 })
+    expect(result).toContain('Sam Cafe')
     expect(result).toContain('Sessions so far: 3')
   })
 
@@ -78,7 +78,7 @@ describe('buildNextConvoPrompt', () => {
       ...emptyInput,
       currentBrief: {
         problem: 'no online ordering',
-        target_users: 'bakery customers',
+        target_users: 'cafe customers',
         features: ['catalog'],
         constraints: '',
         additional_context: '',

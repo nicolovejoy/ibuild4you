@@ -16,7 +16,7 @@ const mockAdd = vi.fn<(doc: Record<string, unknown>) => Promise<{ id: string }>>
 )
 const mockProjectsGet = vi.fn(async () => ({
   empty: false,
-  docs: [{ id: 'project-1', data: () => ({ title: 'Bakery Louise', slug: 'bakery-louise' }) }],
+  docs: [{ id: 'project-1', data: () => ({ title: 'Sample Cafe', slug: 'sample-cafe' }) }],
 }))
 const mockVerifyIdToken = vi.fn<(token: string) => Promise<{ uid: string }>>(async () => ({ uid: 'user-1' }))
 const mockResendSend = vi.fn<(payload: Record<string, unknown>) => Promise<{ id: string }>>(
@@ -55,11 +55,11 @@ function makeRequest(
 
 function validPayload(overrides: Record<string, unknown> = {}) {
   return {
-    projectId: 'bakery-louise',
+    projectId: 'sample-cafe',
     type: 'bug',
     body: 'Header is broken on mobile',
-    submitterEmail: 'jamie@example.com',
-    pageUrl: 'https://bakery-louise.com/menu',
+    submitterEmail: 'sam@example.com',
+    pageUrl: 'https://sample-cafe.com/menu',
     userAgent: 'Mozilla/5.0',
     viewport: '375x812',
     website: '', // honeypot, must be empty
@@ -73,7 +73,7 @@ beforeEach(() => {
   _resetRateLimit()
   mockProjectsGet.mockResolvedValue({
     empty: false,
-    docs: [{ id: 'project-1', data: () => ({ title: 'Bakery Louise', slug: 'bakery-louise' }) }],
+    docs: [{ id: 'project-1', data: () => ({ title: 'Sample Cafe', slug: 'sample-cafe' }) }],
   })
 })
 
@@ -95,16 +95,16 @@ describe('POST /api/feedback — validation', () => {
 
     expect(mockAdd).toHaveBeenCalledOnce()
     const written = mockAdd.mock.calls[0][0]
-    expect(written.project_id).toBe('bakery-louise')
+    expect(written.project_id).toBe('sample-cafe')
     expect(written.type).toBe('bug')
     expect(written.body).toBe('Header is broken on mobile')
-    expect(written.submitter_email).toBe('jamie@example.com')
+    expect(written.submitter_email).toBe('sam@example.com')
     expect(written.status).toBe('new')
     expect(written.submitter_uid).toBeNull() // no Bearer token
 
     expect(mockResendSend).toHaveBeenCalledOnce()
     const email = mockResendSend.mock.calls[0][0]
-    expect(email.subject).toContain('Bakery Louise')
+    expect(email.subject).toContain('Sample Cafe')
   })
 
   it('silently 200s a honeypot trigger (does not write or notify)', async () => {

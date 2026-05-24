@@ -31,12 +31,12 @@ function makeReq() {
 }
 
 const baseFeedback = {
-  project_id: 'bakery-louise',
+  project_id: 'sample-cafe',
   type: 'bug' as const,
   body: 'Footer link broken',
-  submitter_email: 'jamie@example.com',
+  submitter_email: 'sam@example.com',
   submitter_uid: null,
-  page_url: 'https://bakerylouise.com/menu',
+  page_url: 'https://samplecafe.com/menu',
   user_agent: 'UA',
   viewport: '375x812',
   status: 'new' as const,
@@ -54,11 +54,11 @@ beforeEach(() => {
   mockDocGet.mockResolvedValue({ exists: true, data: () => baseFeedback })
   mockProjectsGet.mockResolvedValue({
     empty: false,
-    docs: [{ data: () => ({ title: 'Bakery Louise', github_repo: 'nicolovejoy/bakery-louise' }) }],
+    docs: [{ data: () => ({ title: 'Sample Cafe', github_repo: 'nicolovejoy/sample-cafe' }) }],
   })
   vi.spyOn(globalThis, 'fetch').mockResolvedValue(
     new Response(
-      JSON.stringify({ number: 7, html_url: 'https://github.com/nicolovejoy/bakery-louise/issues/7' }),
+      JSON.stringify({ number: 7, html_url: 'https://github.com/nicolovejoy/sample-cafe/issues/7' }),
       { status: 201 }
     )
   )
@@ -137,11 +137,11 @@ describe('POST /api/admin/feedback/[id]/to-github', () => {
     const res = await POST(makeReq(), { params })
     expect(res.status).toBe(200)
     const data = await res.json()
-    expect(data.github_issue_url).toBe('https://github.com/nicolovejoy/bakery-louise/issues/7')
+    expect(data.github_issue_url).toBe('https://github.com/nicolovejoy/sample-cafe/issues/7')
 
     expect(globalThis.fetch).toHaveBeenCalledTimes(1)
     const [url, init] = vi.mocked(globalThis.fetch).mock.calls[0] as [string, RequestInit]
-    expect(url).toBe('https://api.github.com/repos/nicolovejoy/bakery-louise/issues')
+    expect(url).toBe('https://api.github.com/repos/nicolovejoy/sample-cafe/issues')
     expect((init.headers as Record<string, string>).Authorization).toBe('Bearer test-token')
     const body = JSON.parse(init.body as string)
     expect(body.title).toContain('[bug]')
@@ -149,7 +149,7 @@ describe('POST /api/admin/feedback/[id]/to-github', () => {
 
     expect(mockDocUpdate).toHaveBeenCalledOnce()
     const patch = mockDocUpdate.mock.calls[0][0]
-    expect(patch.github_issue_url).toBe('https://github.com/nicolovejoy/bakery-louise/issues/7')
+    expect(patch.github_issue_url).toBe('https://github.com/nicolovejoy/sample-cafe/issues/7')
   })
 
   it('returns 502 when the GitHub API call fails', async () => {

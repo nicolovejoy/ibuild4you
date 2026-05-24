@@ -55,11 +55,11 @@ vi.mock('@/lib/api/briefs', () => ({
 // --- Helpers ---
 
 const validContent = {
-  problem: 'Need a bakery website',
+  problem: 'Need a cafe website',
   target_users: 'Local customers',
   features: ['Online ordering', 'Menu display'],
   constraints: 'Budget under $5k',
-  additional_context: 'Small bakery in Shoreline',
+  additional_context: 'Small cafe in Shoreline',
 }
 
 describe('GET /api/briefs', () => {
@@ -110,7 +110,7 @@ describe('GET /api/briefs', () => {
     const data = await res.json()
     expect(data.id).toBe('brief-1')
     expect(data.version).toBe(3)
-    expect(data.content.problem).toBe('Need a bakery website')
+    expect(data.content.problem).toBe('Need a cafe website')
   })
 
   it('allows makers to read briefs', async () => {
@@ -187,7 +187,7 @@ describe('PUT /api/briefs', () => {
 
     // Check the content arg passed to upsertBrief
     const contentArg = mockUpsertBrief.mock.calls[0][2]
-    expect(contentArg.problem).toBe('Need a bakery website')
+    expect(contentArg.problem).toBe('Need a cafe website')
     expect(contentArg.features).toEqual(['Online ordering', 'Menu display'])
   })
 

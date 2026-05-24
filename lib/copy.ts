@@ -61,16 +61,16 @@ export const copy = {
 
   // --- New brief modal (internal key kept as `newProject` to match data model) ---
   newProject: {
-    titlePlaceholder: "Jamie's Bakery Website",
+    titlePlaceholder: "Sam's Cafe Website",
     contextLabel: 'Context for the agent',
-    contextPlaceholder: "Jamie owns a bakery in downtown Portland. She wants to let customers order online and pick up in store. She's not technical at all...",
+    contextPlaceholder: "Sam owns a cafe in downtown Portland. They want to let customers order online and pick up in store. They're not technical at all...",
     contextHelp: "Background info the agent will use to skip basic discovery questions.",
   },
 
   // --- Share modal (dashboard) ---
   shareModal: {
     emailLabel: 'Their email address',
-    emailPlaceholder: 'jamie@example.com',
+    emailPlaceholder: 'sam@example.com',
     emailHelp: "They'll be approved automatically. You'll get a link to send them.",
     successMessage: (email: string) => `${email} has been approved and linked to this brief.`,
     sendLinkPrompt: 'Send them this link:',
@@ -217,7 +217,7 @@ export const copy = {
   loading: 'Loading...',
 }
 
-// Display name formatter: "Jamie B" or "Nico L"
+// Display name formatter: first name + last initial (e.g. "Sam L")
 export function formatDisplayName(firstName?: string | null, lastName?: string | null): string | null {
   if (!firstName) return null
   if (lastName) return `${firstName} ${lastName.charAt(0)}`

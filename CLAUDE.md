@@ -78,12 +78,12 @@ Only `title` is required. All other fields are optional.
 
 ```json
 {
-  "title": "Jamie's Bakery App",
-  "requester_email": "jamie@example.com",
-  "requester_first_name": "Jamie",
-  "requester_last_name": "Baker",
+  "title": "Sam's Cafe App",
+  "requester_email": "sam@example.com",
+  "requester_first_name": "Sam",
+  "requester_last_name": "Lee",
   "context": "Background info the agent uses to skip basic discovery questions.",
-  "welcome_message": "Hey Jamie — tell me about your bakery idea!",
+  "welcome_message": "Hey Sam — tell me about your cafe idea!",
   "nudge_message": "Optional. When set, used verbatim as the outbound nudge text for the next session and skips AI generation. Leave blank to let the AI draft.",
   "voice_sample": "Optional. One paragraph showing how you'd text this person by hand. Used as a style anchor for AI-generated outbound copy (nudge/invite/reminder). Ignored when nudge_message is set.",
   "session_mode": "discover",
@@ -99,14 +99,14 @@ Only `title` is required. All other fields are optional.
     {
       "title": "Homepage",
       "sections": [
-        { "type": "hero", "label": "Welcome", "description": "Hero with bakery photos" },
-        { "type": "gallery", "label": "Menu", "description": "Cake portfolio with prices" }
+        { "type": "hero", "label": "Welcome", "description": "Hero with cafe photos" },
+        { "type": "gallery", "label": "Menu", "description": "Drinks and pastries with prices" }
       ]
     }
   ],
   "brief": {
     "problem": "Customers can't order online",
-    "target_users": "Local bakery customers",
+    "target_users": "Local cafe customers",
     "features": ["Online ordering", "Pickup scheduling"],
     "constraints": "Must work on mobile",
     "additional_context": "",

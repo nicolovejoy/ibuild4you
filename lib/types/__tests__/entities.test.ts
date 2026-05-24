@@ -18,7 +18,7 @@ describe('data model types', () => {
   it('AppUser has required fields', () => {
     const user: AppUser = {
       id: 'u1',
-      email: 'jamie@bakery.com',
+      email: 'sam@example.com',
       created_at: '2026-03-18T00:00:00Z',
       updated_at: '2026-03-18T00:00:00Z',
     }
@@ -35,7 +35,7 @@ describe('data model types', () => {
       id: 'pm1',
       project_id: 'p1',
       user_id: 'u1',
-      email: 'jamie@bakery.com',
+      email: 'sam@example.com',
       role: 'maker',
       added_by: 'nlovejoy@me.com',
       created_at: '2026-03-18T00:00:00Z',
@@ -49,7 +49,7 @@ describe('data model types', () => {
     const project: Project = {
       id: 'p1',
       requester_id: 'u1',
-      title: "Jamie's Bakery App",
+      title: "Sam's Cafe App",
       status: 'active',
       created_at: '2026-03-18T00:00:00Z',
       updated_at: '2026-03-18T00:00:00Z',
@@ -73,7 +73,7 @@ describe('data model types', () => {
       id: 'm1',
       session_id: 's1',
       role: 'user',
-      content: 'I want an app for my bakery',
+      content: 'I want an app for my cafe',
       created_at: '2026-03-18T00:00:00Z',
       updated_at: '2026-03-18T00:00:00Z',
     }
@@ -96,7 +96,7 @@ describe('data model types', () => {
       version: 1,
       content: {
         problem: 'No online ordering',
-        target_users: 'Bakery customers and staff',
+        target_users: 'Cafe customers and staff',
         features: ['Online ordering', 'Menu display'],
         constraints: '',
         additional_context: '',

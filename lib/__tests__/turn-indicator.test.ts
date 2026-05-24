@@ -10,8 +10,8 @@ function makeProject(overrides: Partial<Project> = {}): Project {
     status: 'active',
     created_at: '2026-01-01T00:00:00Z',
     updated_at: '2026-01-01T00:00:00Z',
-    requester_email: 'jamie@example.com',
-    requester_first_name: 'Jamie',
+    requester_email: 'sam@example.com',
+    requester_first_name: 'Sam',
     session_count: 1,
     latest_session_created_at: '2026-01-01T00:00:00Z',
     last_maker_message_at: null,
@@ -53,13 +53,13 @@ describe('getTurnIndicator', () => {
 
     it('builder sees "Waiting on {name}"', () => {
       const result = getTurnIndicator(project, 'builder')
-      expect(result?.label).toBe('Waiting on Jamie')
+      expect(result?.label).toBe('Waiting on Sam')
       expect(result?.className).toContain('blue')
     })
 
     it('admin sees "Waiting on {name}"', () => {
       const result = getTurnIndicator(project, 'admin')
-      expect(result?.label).toBe('Waiting on Jamie')
+      expect(result?.label).toBe('Waiting on Sam')
     })
 
     it('maker sees "Your turn"', () => {
@@ -94,6 +94,6 @@ describe('getTurnIndicator', () => {
       last_maker_message_at: null,
     })
     const result = getTurnIndicator(project, 'builder')
-    expect(result?.label).toBe('Waiting on jamie')
+    expect(result?.label).toBe('Waiting on sam')
   })
 })

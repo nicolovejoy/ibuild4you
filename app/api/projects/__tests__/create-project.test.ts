@@ -143,9 +143,9 @@ describe('POST /api/projects', () => {
   it('creates maker membership when requester_email is provided', async () => {
     await POST(makeRequest({
       title: 'Test',
-      requester_email: 'jamie@example.com',
-      requester_first_name: 'Jamie',
-      requester_last_name: 'Baker',
+      requester_email: 'sam@example.com',
+      requester_first_name: 'Sam',
+      requester_last_name: 'Lee',
     }))
 
     const members = addedDocs['project_members']
@@ -155,7 +155,7 @@ describe('POST /api/projects', () => {
     expect(maker).toBeDefined()
     expect(maker).toMatchObject({
       project_id: 'mock-projects-id',
-      email: 'jamie@example.com',
+      email: 'sam@example.com',
       role: 'maker',
     })
     // Names no longer written to project_members (Phase 3)
@@ -178,14 +178,14 @@ describe('POST /api/projects', () => {
   it('approves the maker email using the email as doc ID', async () => {
     await POST(makeRequest({
       title: 'Test',
-      requester_email: 'Jamie@Example.com',
+      requester_email: 'Sam@Example.com',
     }))
 
     // Should use doc(email).set(), not add(), so the doc ID is the email
     const approvals = setDocs['approved_emails']
     expect(approvals).toHaveLength(1)
-    expect(approvals[0].docId).toBe('jamie@example.com')
-    expect(approvals[0].data.email).toBe('jamie@example.com')
+    expect(approvals[0].docId).toBe('sam@example.com')
+    expect(approvals[0].data.email).toBe('sam@example.com')
   })
 
   // --- Full setup payload ---
@@ -194,13 +194,13 @@ describe('POST /api/projects', () => {
     const res = await POST(makeRequest({
       title: 'Full Setup',
       context: 'Background info',
-      requester_first_name: 'Jamie',
-      requester_last_name: 'Baker',
-      requester_email: 'jamie@example.com',
+      requester_first_name: 'Sam',
+      requester_last_name: 'Lee',
+      requester_email: 'sam@example.com',
       session_mode: 'discover',
       seed_questions: ['What problem are you solving?', 'Who are your users?'],
       builder_directives: ['Push toward single page'],
-      welcome_message: 'Hi Jamie!',
+      welcome_message: 'Hi Sam!',
       layout_mockups: [{ title: 'Layout A', sections: [] }],
     }))
 
@@ -209,13 +209,13 @@ describe('POST /api/projects', () => {
 
     // All fields should be in the response
     expect(data.context).toBe('Background info')
-    expect(data.requester_first_name).toBe('Jamie')
-    expect(data.requester_last_name).toBe('Baker')
-    expect(data.requester_email).toBe('jamie@example.com')
+    expect(data.requester_first_name).toBe('Sam')
+    expect(data.requester_last_name).toBe('Lee')
+    expect(data.requester_email).toBe('sam@example.com')
     expect(data.session_mode).toBe('discover')
     expect(data.seed_questions).toEqual(['What problem are you solving?', 'Who are your users?'])
     expect(data.builder_directives).toEqual(['Push toward single page'])
-    expect(data.welcome_message).toBe('Hi Jamie!')
+    expect(data.welcome_message).toBe('Hi Sam!')
     expect(data.layout_mockups).toEqual([{ title: 'Layout A', sections: [] }])
   })
 
@@ -341,7 +341,7 @@ describe('POST /api/projects', () => {
       title: 'With Brief',
       brief: {
         problem: 'no online ordering',
-        target_users: 'bakery customers',
+        target_users: 'cafe customers',
         features: ['catalog', 'checkout'],
         constraints: 'mobile-first',
         additional_context: '',
@@ -354,7 +354,7 @@ describe('POST /api/projects', () => {
     expect(briefs).toHaveLength(1)
     expect(briefs[0].content).toMatchObject({
       problem: 'no online ordering',
-      target_users: 'bakery customers',
+      target_users: 'cafe customers',
       features: ['catalog', 'checkout'],
       constraints: 'mobile-first',
       decisions: [{ topic: 'payments', decision: 'Stripe only' }],

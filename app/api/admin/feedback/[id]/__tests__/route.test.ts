@@ -48,11 +48,11 @@ beforeEach(() => {
   mockDocGet.mockResolvedValue({
     exists: true,
     data: () => ({
-      project_id: 'bakery-louise',
+      project_id: 'sample-cafe',
       type: 'bug',
       body: 'Footer link broken',
       status: 'new',
-      submitter_email: 'jamie@example.com',
+      submitter_email: 'sam@example.com',
     }),
   })
 })
@@ -86,13 +86,13 @@ describe('PATCH /api/admin/feedback/[id]', () => {
     expect(patch.status).toBe('acknowledged')
     expect(mockResendSend).toHaveBeenCalledOnce()
     const email = mockResendSend.mock.calls[0][0]
-    expect((email.to as string[])[0]).toBe('jamie@example.com')
+    expect((email.to as string[])[0]).toBe('sam@example.com')
   })
 
   it('does not re-notify when status does not change', async () => {
     mockDocGet.mockResolvedValueOnce({
       exists: true,
-      data: () => ({ status: 'acknowledged', body: 'x', submitter_email: 'jamie@example.com' }),
+      data: () => ({ status: 'acknowledged', body: 'x', submitter_email: 'sam@example.com' }),
     })
     const res = await PATCH(makeReq({ status: 'acknowledged' }), { params })
     expect(res.status).toBe(200)
@@ -123,12 +123,12 @@ describe('PATCH /api/admin/feedback/[id]', () => {
 
   it('updates internal_notes and github_issue_url without sending email', async () => {
     const res = await PATCH(
-      makeReq({ internal_notes: 'Talked to Jamie', github_issue_url: 'https://github.com/x/y/issues/1' }),
+      makeReq({ internal_notes: 'Talked to Sam', github_issue_url: 'https://github.com/x/y/issues/1' }),
       { params }
     )
     expect(res.status).toBe(200)
     const patch = mockUpdate.mock.calls[0][0]
-    expect(patch.internal_notes).toBe('Talked to Jamie')
+    expect(patch.internal_notes).toBe('Talked to Sam')
     expect(patch.github_issue_url).toBe('https://github.com/x/y/issues/1')
     expect(mockResendSend).not.toHaveBeenCalled()
   })

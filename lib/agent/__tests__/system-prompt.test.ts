@@ -55,10 +55,10 @@ describe('buildSystemPrompt', () => {
   it('includes project context when provided', () => {
     const result = buildSystemPrompt({
       ...minimalInput,
-      projectContext: 'Jamie owns a bakery in Portland',
+      projectContext: 'Sam owns a cafe in Portland',
     })
     expect(result).toContain('## Background')
-    expect(result).toContain('Jamie owns a bakery in Portland')
+    expect(result).toContain('Sam owns a cafe in Portland')
   })
 
   it('omits background section when no context', () => {
@@ -142,14 +142,14 @@ describe('buildSystemPrompt', () => {
       briefContent: {
         ...emptyBrief,
         problem: 'Customers cannot order online',
-        target_users: 'Local bakery customers',
+        target_users: 'Local cafe customers',
         features: ['Online ordering', 'Pickup scheduling'],
         constraints: 'Must work on mobile',
       },
     })
     expect(result).toContain('## Current project brief')
     expect(result).toContain('**Problem:** Customers cannot order online')
-    expect(result).toContain('**Target users:** Local bakery customers')
+    expect(result).toContain('**Target users:** Local cafe customers')
     expect(result).toContain('- Online ordering')
     expect(result).toContain('- Pickup scheduling')
     expect(result).toContain('**Constraints:** Must work on mobile')
@@ -255,9 +255,9 @@ describe('buildSystemPrompt', () => {
   // ---------------------------------------------------------------------------
 
   it('includes ## Maker section when makerFirstName is set', () => {
-    const result = buildSystemPrompt({ ...minimalInput, makerFirstName: 'Jamie' })
+    const result = buildSystemPrompt({ ...minimalInput, makerFirstName: 'Sam' })
     expect(result).toContain('## Maker')
-    expect(result).toContain('**Name:** Jamie')
+    expect(result).toContain('**Name:** Sam')
   })
 
   it('omits ## Maker section when makerFirstName is undefined', () => {
@@ -268,10 +268,10 @@ describe('buildSystemPrompt', () => {
   it('## Maker section includes last name when both are provided', () => {
     const result = buildSystemPrompt({
       ...minimalInput,
-      makerFirstName: 'Jamie',
-      makerLastName: 'Baker',
+      makerFirstName: 'Sam',
+      makerLastName: 'Lee',
     })
-    expect(result).toContain('**Name:** Jamie Baker')
+    expect(result).toContain('**Name:** Sam Lee')
   })
 
   // ---------------------------------------------------------------------------

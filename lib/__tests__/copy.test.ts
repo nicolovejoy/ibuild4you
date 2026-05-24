@@ -7,9 +7,9 @@ import { copy } from '../copy'
 
 describe('copy.invite.body', () => {
   const args = {
-    projectTitle: "Jamie's Bakery",
-    shareLink: 'https://ibuild4you.com/projects/jamies-bakery',
-    email: 'jamie@example.com',
+    projectTitle: "Sam's Cafe",
+    shareLink: 'https://ibuild4you.com/projects/sams-cafe',
+    email: 'sam@example.com',
     passcode: '123456',
   }
 
@@ -23,7 +23,7 @@ describe('copy.invite.body', () => {
   })
 
   it('embeds the project title so the maker sees what this is about', () => {
-    expect(copy.invite.body(args)).toContain("Jamie's Bakery")
+    expect(copy.invite.body(args)).toContain("Sam's Cafe")
   })
 
   it('signals continuity across multiple conversations', () => {
