@@ -48,3 +48,6 @@ cors.json
 *.tsbuildinfo
 next-env.d.ts
 .playwright-mcp/
+
+# Claude Code per-project state (scheduled tasks lock, local settings)
+.claude/
