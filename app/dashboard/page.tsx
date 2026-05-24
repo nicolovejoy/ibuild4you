@@ -553,7 +553,7 @@ function ShareModal({ project, onClose }: { project: Project; onClose: () => voi
     ? `${window.location.origin}/projects/${project.slug || project.id}`
     : ''
 
-  const inviteEmailBody = copy.invite.body({ shareLink, email, passcode: shareProject.data?.passcode || null })
+  const inviteEmailBody = copy.invite.body({ projectTitle: project.title, shareLink, email, passcode: shareProject.data?.passcode || null })
 
   const handleShare = async (e: React.FormEvent) => {
     e.preventDefault()

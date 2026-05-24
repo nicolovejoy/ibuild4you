@@ -980,7 +980,7 @@ function ShareModal({ project, onClose }: { project: Project; onClose: () => voi
 
   const sharedEmail = alreadyShared ? project.requester_email! : email
 
-  const inviteEmailBody = copy.invite.body({ shareLink, email: sharedEmail, passcode })
+  const inviteEmailBody = copy.invite.body({ projectTitle: project.title, shareLink, email: sharedEmail, passcode })
 
   return (
     <Modal isOpen onClose={onClose} title="Share with maker">
