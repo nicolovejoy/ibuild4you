@@ -2,7 +2,7 @@
 
 ## Context
 
-Maker (Matt) reported "I'm getting an error message when I try to send them to you as PDFs" while attempting to upload NWMLS form PDFs in his chat session. We don't have the exact error text. Two underlying issues:
+A maker reported "I'm getting an error message when I try to send them to you as PDFs" while attempting to upload NWMLS form PDFs in their chat session. We don't have the exact error text. Two underlying issues:
 
 1. **Uploads fail for plausibly-sized PDFs.** Real-estate form packets routinely run 5–20MB; we cap at 4MB everywhere.
 2. **Even when uploads succeed, the agent never sees the file.** `/api/chat` stores `file_ids` on the user message but doesn't pass any document content to Claude. The agent is blind to PDFs and images.
@@ -36,9 +36,9 @@ Goal: next time a maker hits an error, we know exactly why. No behavior change.
   - `502` "Storage upload failed: <code>" (S3 error, include AWS error name)
   - `500` "Unexpected error" (everything else)
 - **Client error surfacing.** `useUploadFiles` currently does `await res.json()` blindly — if the platform returns a non-JSON 413, this throws and we lose the real reason. Wrap parsing, fall back to status text. Pass through to `setError` verbatim.
-- **Browser console signal.** When `addFiles` rejects for size, also `console.warn` so the rejection shows up if Matt opens DevTools.
+- **Browser console signal.** When `addFiles` rejects for size, also `console.warn` so the rejection shows up if the maker opens DevTools.
 
-This phase doesn't fix anything for Matt yet — it tells us what's actually failing.
+This phase doesn't fix anything for the maker yet — it tells us what's actually failing.
 
 ### Phase 2 — Raise the Cap (presigned-URL direct upload)
 
@@ -126,4 +126,4 @@ Then Phase 2 (likely a day, larger surface area: new endpoints, client refactor,
 
 Then Phase 3 (also ~a day, mostly in `/api/chat` plus a token-budget guard).
 
-Each phase is independently shippable. Phase 1 alone unblocks Matt re-trying with usable error messages. Phase 2 alone makes uploads work for real PDFs. Phase 3 makes them useful to the agent.
+Each phase is independently shippable. Phase 1 alone unblocks the maker re-trying with usable error messages. Phase 2 alone makes uploads work for real PDFs. Phase 3 makes them useful to the agent.

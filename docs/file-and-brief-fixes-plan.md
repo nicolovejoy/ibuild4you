@@ -1,17 +1,17 @@
 # Files-to-Agent + Brief Generation — Fixes
 
 Follow-up to `docs/file-upload-plan.md` (Phases 1-3 shipped late April). This
-plan covers two regressions discovered when Matt tried to share 16 NWMLS
-form PDFs in his NWMLS Contract Generator project on May 9, 2026.
+plan covers two regressions discovered when a maker tried to share 16 NWMLS
+form PDFs in the NWMLS Contract Generator project on May 9, 2026.
 
 ## What broke
 
 ### Symptom A — Chat wedged after multi-PDF upload
 
-Matt uploaded 16 NWMLS form PDFs in a single message. Files arrived in S3 and
-showed up in the Files tab. The chat returned a generic error and Matt asked
-"Did you receive?" The agent never responded — neither acknowledging nor
-denying the files. Three retries, three identical 500s.
+The maker uploaded 16 NWMLS form PDFs in a single message. Files arrived in S3
+and showed up in the Files tab. The chat returned a generic error and the
+maker asked "Did you receive?" The agent never responded — neither acknowledging
+nor denying the files. Three retries, three identical 500s.
 
 Vercel runtime log surfaced the actual reason:
 
@@ -25,12 +25,12 @@ Root cause: `lib/agent/attachments.ts` tagged every attachment block with
 cache_control markers at 4 per request. With 16 PDFs in one message we sent
 16 markers and got 400'd. Worse, the failing user message was already
 persisted with `file_ids`, so every retry replayed the same wedged message
-and 400'd again — Matt was stuck until we either fixed the code or cleared
-his message manually.
+and 400'd again — the maker was stuck until we either fixed the code or cleared
+the message manually.
 
 ### Symptom B — Brief stays empty across sessions
 
-Three sessions in, Matt's brief had every field empty except `open_risks`
+Three sessions in, the maker's brief had every field empty except `open_risks`
 (which had content because it was injected via the JSON payload at session 3).
 The agent reads the brief into the system prompt during chat (good) but
 never writes to it (the gap). Brief regeneration only fires when a builder
@@ -57,7 +57,7 @@ should have produced.
 - Tests updated + new coverage for the >4-attachments case and
   most-recent-only marker placement.
 
-Matt's chat un-wedges automatically — his historical message keeps its
+The maker's chat un-wedges automatically — the historical message keeps its
 `file_ids`, but the next request's request body has 1 marker instead of
 16, so Anthropic accepts it.
 
@@ -159,12 +159,12 @@ Manual "Regenerate" button stays available as a forced refresh.
   enough. Save Queues for a use case that needs at-least-once durability
   (probably outbound emails, eventually).
 
-## Recovery for Matt's existing wedge
+## Recovery for the existing wedge
 
-Once A0 is deployed, no manual recovery is needed. His next message in the
+Once A0 is deployed, no manual recovery is needed. The next message in the
 chat will succeed because the request now contains 1 cache_control marker
 regardless of how many PDFs are in history.
 
-To enumerate what we have for him: `node scripts/list-project-files.mjs
+To enumerate what we have for the maker: `node scripts/list-project-files.mjs
 nwmls-contract-generator`. Prints the table to stdout and copies a clean
 Markdown bullet list to the clipboard for pasting into the reply.

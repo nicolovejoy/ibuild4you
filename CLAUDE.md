@@ -145,7 +145,7 @@ NOT in MVP: process flow diagrams, data architecture drafts, microservice sketch
 
 ## Code Style
 
-This is a learning project (Max, 19, college freshman, is contributing). Code should be:
+This is a learning project — a junior contributor is also working on the codebase. Code should be:
 - Clear and straightforward — no clever abstractions
 - Well-commented where non-obvious
 - Following patterns established in NoteMaxxing
@@ -170,7 +170,9 @@ This is a learning project (Max, 19, college freshman, is contributing). Code sh
 
 ## Backlog (deeper queue)
 
-- Validate Matt's PDF flow end-to-end (cache_control fix `a8d9c94` unverified). Tune `lib/agent/system-prompt.ts` if agent ignores/hallucinates PDF content.
+- **Agent-driven Playwright on preview.** Set up a Vercel "Protection Bypass for Automation" token + a clean pattern for the agent to access `test@ibuild4you.com`'s passcode (currently blocked by the secrets hook). With both, the agent owns end-to-end UI verification on `preview.ibuild4you.com` instead of relying on copy-paste between Claude Code and Claude.ai's browser MCP. Docs: https://vercel.com/docs/deployment-protection/methods-to-bypass-deployment-protection/protection-bypass-automation. Pair with a session memory + a thin helper script that builds the bypassed URL (`?x-vercel-set-bypass-cookie=true&x-vercel-protection-bypass=$TOKEN`).
+- **Preview shares prod Firestore — footgun.** `preview.ibuild4you.com` is just a different Vercel deployment pointing at the same `ibuild4you-a0c4d` Firestore as prod. Any write on preview (e.g. submitting Share modal) hits prod data. Surfaced 2026-05-23 when verifying PR #35 — a test project's `requester_email` got overwritten to `test@ibuild4you.com` in prod via a preview submission. Options: (a) loudly document in CLAUDE.md so test sessions use throwaway data, (b) provision a separate Firebase project for preview (non-trivial but the right long-term answer).
+- Validate the PDF upload flow end-to-end for the maker who hit the issue (cache_control fix `a8d9c94` unverified). Tune `lib/agent/system-prompt.ts` if the agent ignores/hallucinates PDF content.
 - A4 — pre-upload batch size budgeting in `addFiles` (see `docs/file-and-brief-fixes-plan.md` § A4).
 - Project delete should clean up files (S3 + Firestore orphans). Factor from `scripts/cleanup-test-data.mjs`.
 - Plan P4/P5 — denormalized session counters + retire `requester_*` legacy fields. `~/.claude/plans/zesty-tumbling-fountain.md`. Telemetry-gated.
@@ -179,8 +181,8 @@ This is a learning project (Max, 19, college freshman, is contributing). Code sh
 - Project folders for the dashboard — group stale projects, badge with builder-turn count.
 - Smoke-test prep-prompts split in prod (commit `21f4c10`) — eight cases queued.
 - Maker experience design exploration (`docs/maker-experience-functionality.md`). Next: hand to design agents.
-- Maker re-engagement flow — signed-token email links, snooze/opt-out (`docs/maker-re-engagement-plan.md`). Blocked on Ryan.
-- Validate Session 4 with Matt using new `voice_sample` + `nudge_message` override.
+- Maker re-engagement flow — signed-token email links, snooze/opt-out (`docs/maker-re-engagement-plan.md`). Blocked on a builder review.
+- Validate Session 4 on the long-running maker engagement using new `voice_sample` + `nudge_message` override.
 - Posture model validation on claude-sonnet-4-6.
 - Known issues on feedback admin: stale `github_issue_url` after issue deletion needs "Clear linked issue" action; `github_repo` only editable via Firebase console (add to PATCH allowlist when annoying).
 

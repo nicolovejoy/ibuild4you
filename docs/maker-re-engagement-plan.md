@@ -1,7 +1,7 @@
 # Maker re-engagement: nag flow, opt-out, feedback, share modal
 
 Status: proposal / discussion draft
-Audience: Ryan (builder, idea originator), Nico
+Audience: the builder (idea originator), Nico
 Last updated: 2026-05-11
 
 This is a starting point for the conversation. Decisions are explicitly
@@ -97,15 +97,16 @@ Trade-offs we should talk through:
   but loses the "I'll have time tomorrow" honest case.
 - **Why include 30?** Without a long option, makers who genuinely want a
   long pause will pick "no more reminders" instead. That over-counts
-  opt-outs and loses people we could have kept. Matt is the canonical
-  example: he probably wants 30+ days right now, not "lost forever."
+  opt-outs and loses people we could have kept. A long-running maker
+  engagement is the canonical example: they probably want 30+ days right
+  now, not "lost forever."
 - **Alternative if 4 buttons isn't enough**: surface "remind in 60 / 90
   days" on the snooze landing page after they click 30 — progressive
   disclosure for the long tail without cluttering every email.
 
-Open question for Ryan: do the values feel right? Are there builder-side
-constraints I'm missing? (e.g., does Ryan care if a maker is silent for
-30+ days from a billing or workflow perspective?)
+Open question for the builder: do the values feel right? Are there
+builder-side constraints I'm missing? (e.g., do you care if a maker is
+silent for 30+ days from a billing or workflow perspective?)
 
 ### 3. Feedback collection at opt-out
 
@@ -135,8 +136,8 @@ Plus one optional "anything else?" free-text field. Single **Done** button.
 **Data stored:** `project.feedback_at_pause = { reason_chip, free_text,
 submitted_at }`. Persists even if the project later reactivates.
 
-Open question for Ryan: are there specific things you'd want to know from
-people who opt out? The chips should reflect real builder decisions —
+Open question for the builder: are there specific things you'd want to know
+from people who opt out? The chips should reflect real builder decisions —
 "what would change your roadmap if you saw 60% of opt-outs picking X?"
 
 ### 4. Schema additions
@@ -179,7 +180,7 @@ the gate. A snooze is "active, but quiet for now."
   next eligible pass will then email them as normal.
 - Skip projects with `status !== 'active'`.
 
-Open question for Ryan: what's the right base cadence? My instinct is
+Open question for the builder: what's the right base cadence? My instinct is
 something gentle — maybe 7-day intervals once a maker has gone silent,
 escalating to 14 after the second snooze, then stopping. We should
 *never* send more than ~6 emails before forcing a hard stop.
@@ -188,8 +189,8 @@ escalating to 14 after the second snooze, then stopping. We should
 
 Turn-indicator and project list need to show new states:
 
-- "Snoozed until May 25" (instead of ambiguous "Waiting on Matt")
-- "Matt opted out: lost interest" (with timestamp + reason chip)
+- "Snoozed until May 25" (instead of ambiguous "Waiting on {maker}")
+- "{Maker} opted out: lost interest" (with timestamp + reason chip)
 - "Replied to nudge May 10" (positive signal)
 
 Builders should be able to manually un-snooze ("I had a conversation
@@ -271,7 +272,7 @@ collection real; (4-5) close the loop.
 
 ---
 
-## Open questions to discuss with Ryan
+## Open questions to discuss with the builder
 
 1. **Snooze values**: `3/7/14/30`? Or include 1 day? Or push to 60/90?
 2. **Feedback chips**: what would actually help your roadmap if you saw
