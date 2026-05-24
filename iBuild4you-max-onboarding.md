@@ -8,12 +8,12 @@ Behind the scenes, every answer gets organized into a structured document called
 
 ## How It Works
 
-1. **Someone like Jamie** (dad's friend who runs a small bakery) lands on iBuild4you.com
-2. She gets a **magic link** email to log in — no passwords to remember
-3. An **AI chat** walks her through questions: Who uses your thing? What do they do? What exists today? What's the simplest version?
-4. The AI builds a **living brief** from her answers — structured, not just a chat log
+1. **Someone like a friend with a small cafe** lands on iBuild4you.com
+2. They get a **magic link** email to log in — no passwords to remember
+3. An **AI chat** walks them through questions: Who uses your thing? What do they do? What exists today? What's the simplest version?
+4. The AI builds a **living brief** from their answers — structured, not just a chat log
 5. **We review** the brief on our side, add notes
-6. **Next time Jamie comes back**, the AI picks up where we left off, informed by our review
+6. **Next time they come back**, the AI picks up where we left off, informed by our review
 
 ## The Stack
 

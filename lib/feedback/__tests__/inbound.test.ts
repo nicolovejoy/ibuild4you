@@ -27,7 +27,7 @@ describe('parseFeedbackIdFromAddress', () => {
 
   it('extracts the id from an RFC 5322 "Name <addr>" form', () => {
     expect(
-      parseFeedbackIdFromAddress(`Jamie Baker <feedback+xyz789@${FEEDBACK_INBOX_HOST}>`)
+      parseFeedbackIdFromAddress(`Sam Lee <feedback+xyz789@${FEEDBACK_INBOX_HOST}>`)
     ).toBe('xyz789')
   })
 
@@ -102,14 +102,14 @@ describe('buildInboundReply', () => {
   it('lowercases the from_email and stamps both timestamps from the same now()', () => {
     const reply = buildInboundReply({
       feedbackId: 'fb-1',
-      fromEmail: 'Jamie@Example.COM',
+      fromEmail: 'Sam@Example.COM',
       body: 'Hey, two more notes on the bug',
       now: () => '2026-05-14T10:00:00.000Z',
     })
     expect(reply).toEqual({
       feedback_id: 'fb-1',
       from: 'submitter',
-      from_email: 'jamie@example.com',
+      from_email: 'sam@example.com',
       body: 'Hey, two more notes on the bug',
       via_email: true,
       created_at: '2026-05-14T10:00:00.000Z',

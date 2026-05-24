@@ -84,7 +84,7 @@ function receivedEvent(overrides: Record<string, unknown> = {}) {
     type: 'email.received',
     data: {
       email_id: 'em_123',
-      from: 'jamie@example.com',
+      from: 'sam@example.com',
       to: [`feedback+fb-1@${FEEDBACK_INBOX_HOST}`],
       subject: 'Re: Update on your feedback',
       message_id: '<thread@example.com>',
@@ -179,7 +179,7 @@ describe('POST /api/webhooks/resend/inbound — happy path', () => {
     const written = mockReplyAdd.mock.calls[0][0]
     expect(written.feedback_id).toBe('fb-1')
     expect(written.from).toBe('submitter')
-    expect(written.from_email).toBe('jamie@example.com')
+    expect(written.from_email).toBe('sam@example.com')
     expect(written.body).toBe('Two more notes on the bug.')
     expect(written.via_email).toBe(true)
 

@@ -5,12 +5,12 @@ import type { Feedback } from '@/lib/types'
 function makeFeedback(overrides: Partial<Feedback> = {}): Feedback {
   return {
     id: 'fb_1',
-    project_id: 'bakery-louise',
+    project_id: 'sample-cafe',
     type: 'bug',
     body: 'Footer cart link 404s on iPhone',
-    submitter_email: 'jamie@example.com',
+    submitter_email: 'sam@example.com',
     submitter_uid: null,
-    page_url: 'https://bakerylouise.com/menu',
+    page_url: 'https://samplecafe.com/menu',
     user_agent: 'Mozilla/5.0',
     viewport: '375x812',
     status: 'new',
@@ -55,7 +55,7 @@ describe('buildGithubIssue', () => {
   it('builds a title from type + truncated body', () => {
     const issue = buildGithubIssue({
       feedback: makeFeedback({ body: 'a'.repeat(200) }),
-      projectTitle: "Bakery Louise",
+      projectTitle: "Sample Cafe",
     })
     expect(issue.title.startsWith('[bug] ')).toBe(true)
     expect(issue.title.length).toBeLessThanOrEqual(120)
@@ -64,7 +64,7 @@ describe('buildGithubIssue', () => {
   it('keeps a short body intact in the title', () => {
     const issue = buildGithubIssue({
       feedback: makeFeedback({ body: 'Footer cart link 404s on iPhone' }),
-      projectTitle: 'Bakery Louise',
+      projectTitle: 'Sample Cafe',
     })
     expect(issue.title).toBe('[bug] Footer cart link 404s on iPhone')
   })
@@ -72,18 +72,18 @@ describe('buildGithubIssue', () => {
   it('collapses whitespace and newlines in the title', () => {
     const issue = buildGithubIssue({
       feedback: makeFeedback({ body: 'Multi\n  line\n\n   problem' }),
-      projectTitle: 'Bakery Louise',
+      projectTitle: 'Sample Cafe',
     })
     expect(issue.title).toBe('[bug] Multi line problem')
   })
 
   it('includes project, page url, submitter, viewport, ua, and feedback id in the body', () => {
     const fb = makeFeedback()
-    const { body } = buildGithubIssue({ feedback: fb, projectTitle: 'Bakery Louise' })
-    expect(body).toContain('Bakery Louise')
-    expect(body).toContain('bakery-louise')
-    expect(body).toContain('https://bakerylouise.com/menu')
-    expect(body).toContain('jamie@example.com')
+    const { body } = buildGithubIssue({ feedback: fb, projectTitle: 'Sample Cafe' })
+    expect(body).toContain('Sample Cafe')
+    expect(body).toContain('sample-cafe')
+    expect(body).toContain('https://samplecafe.com/menu')
+    expect(body).toContain('sam@example.com')
     expect(body).toContain('375x812')
     expect(body).toContain('Mozilla/5.0')
     expect(body).toContain(fb.id)
@@ -93,7 +93,7 @@ describe('buildGithubIssue', () => {
   it('shows "anonymous" when no submitter email', () => {
     const { body } = buildGithubIssue({
       feedback: makeFeedback({ submitter_email: null }),
-      projectTitle: 'Bakery Louise',
+      projectTitle: 'Sample Cafe',
     })
     expect(body).toContain('anonymous')
   })
@@ -101,7 +101,7 @@ describe('buildGithubIssue', () => {
   it('labels the issue with feedback + type', () => {
     const issue = buildGithubIssue({
       feedback: makeFeedback({ type: 'idea' }),
-      projectTitle: 'Bakery Louise',
+      projectTitle: 'Sample Cafe',
     })
     expect(issue.labels).toEqual(['feedback', 'idea'])
   })

@@ -40,11 +40,11 @@ describe('stripCodeFences', () => {
 
 describe('generateSlug', () => {
   it('converts a simple title to kebab-case', () => {
-    expect(generateSlug('Bakery Louise')).toBe('bakery-louise')
+    expect(generateSlug('Sample Cafe')).toBe('sample-cafe')
   })
 
   it('strips apostrophes and special characters', () => {
-    expect(generateSlug("Jamie's Bakery App")).toBe('jamies-bakery-app')
+    expect(generateSlug("Sam's Cafe App")).toBe('sams-cafe-app')
   })
 
   it('handles accented characters', () => {

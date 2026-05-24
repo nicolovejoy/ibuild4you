@@ -99,7 +99,7 @@ beforeEach(() => {
 
 const validBrief = {
   problem: 'Customers cannot order online',
-  target_users: 'Bakery customers',
+  target_users: 'Cafe customers',
   features: ['Online ordering', 'Pickup scheduling'],
   constraints: 'Must work on mobile',
   additional_context: '',
@@ -142,18 +142,18 @@ describe('regenerateBriefForProject', () => {
       { id: 's1', data: () => ({ created_at: '2026-01-01T00:00:00Z' }) },
     ]
     messagesBySession.s1 = [
-      { id: 'm1', data: () => ({ role: 'user', content: 'I want a bakery app' }) },
+      { id: 'm1', data: () => ({ role: 'user', content: 'I want a cafe app' }) },
       { id: 'm2', data: () => ({ role: 'agent', content: 'Tell me more' }) },
     ]
-    projectDocs.p1 = { exists: true, data: () => ({ title: 'Bakery App' }) }
+    projectDocs.p1 = { exists: true, data: () => ({ title: 'Cafe App' }) }
     mockMessagesCreate.mockResolvedValue(toolUseResponse(validBrief))
 
     const result = await regenerateBriefForProject(makeDb(), 'p1')
 
     expect(mockMessagesCreate).toHaveBeenCalledOnce()
     const args = mockMessagesCreate.mock.calls[0][0] as CachedCall
-    expect(getUserText(args)).toContain('Bakery App')
-    expect(getUserText(args)).toContain('I want a bakery app')
+    expect(getUserText(args)).toContain('Cafe App')
+    expect(getUserText(args)).toContain('I want a cafe app')
     expect(args.tools[0].name).toBe('update_brief')
     expect(args.tool_choice).toEqual({ type: 'tool', name: 'update_brief' })
     expect(briefAddCalls).toHaveLength(1)

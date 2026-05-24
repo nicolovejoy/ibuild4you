@@ -101,10 +101,10 @@ describe('GET /api/cron/notify — auth + notification digests', () => {
       {
         id: 'p1',
         data: () => ({
-          title: 'Bakery App',
-          slug: 'bakery-app',
-          requester_first_name: 'Jamie',
-          requester_email: 'jamie@example.com',
+          title: 'Cafe App',
+          slug: 'cafe-app',
+          requester_first_name: 'Sam',
+          requester_email: 'sam@example.com',
           notify_pending_since: '2026-04-14T17:00:00Z',
         }),
         ref: { update: mockDoc.update },
@@ -118,8 +118,8 @@ describe('GET /api/cron/notify — auth + notification digests', () => {
     expect(mockSend).toHaveBeenCalledOnce()
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const call = (mockSend.mock.calls as any[][])[0][0] as { subject: string; to: string[] }
-    expect(call.subject).toContain('Bakery App')
-    expect(call.subject).toContain('Jamie')
+    expect(call.subject).toContain('Cafe App')
+    expect(call.subject).toContain('Sam')
     expect(mockDoc.update).toHaveBeenCalledWith(
       expect.objectContaining({ notify_after: null, notify_pending_since: null }),
     )

@@ -7,7 +7,7 @@ export function stripCodeFences(text: string): string {
 }
 
 // Generate a URL-safe slug from a title.
-// "Louise's Bakery App" → "louises-bakery-app"
+// "Sam's Cafe App" → "sams-cafe-app"
 export function generateSlug(title: string): string {
   return title
     .toLowerCase()

@@ -27,10 +27,10 @@ describe('sendReminderEmail', () => {
 
   const baseInput = {
     makerEmail: 'maker@example.com',
-    makerFirstName: 'Jamie',
-    projectTitle: "Jamie's Bakery",
+    makerFirstName: 'Sam',
+    projectTitle: "Sam's Cafe",
     projectId: 'p_123',
-    shareLink: 'https://ibuild4you.com/projects/jamies-bakery',
+    shareLink: 'https://ibuild4you.com/projects/sams-cafe',
     reminderNumber: 1 as const,
   }
 
@@ -44,8 +44,8 @@ describe('sendReminderEmail', () => {
     expect(call.to).toEqual(['maker@example.com'])
     expect(call.bcc).toEqual(['nicholas.lovejoy@gmail.com'])
     expect(call.replyTo).toBe('noreply@ibuild4you.com')
-    expect(call.subject).toContain("Jamie's Bakery")
-    expect(call.text).toMatch(/Hi Jamie/)
+    expect(call.subject).toContain("Sam's Cafe")
+    expect(call.text).toMatch(/Hi Sam/)
     expect(call.text).toContain(baseInput.shareLink)
   })
 

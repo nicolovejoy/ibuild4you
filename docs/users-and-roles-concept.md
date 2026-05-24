@@ -69,7 +69,7 @@ files
 
 ### Display Name Format
 
-`"Jamie B"` — first name + last initial. Already implemented in `lib/copy.ts` as `formatDisplayName()`.
+`"Sam L"` — first name + last initial. Already implemented in `lib/copy.ts` as `formatDisplayName()`.
 
 Falls back to: first name only > email prefix > email (never if we enforce names).
 

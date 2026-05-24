@@ -83,8 +83,8 @@ describe('GET /api/admin/feedback', () => {
 
   it('filters by projectId', async () => {
     mockGet.mockResolvedValueOnce({ docs: [] })
-    await GET(makeReq('?projectId=bakery-louise'))
-    expect(whereCalls).toContainEqual({ field: 'project_id', op: '==', value: 'bakery-louise' })
+    await GET(makeReq('?projectId=sample-cafe'))
+    expect(whereCalls).toContainEqual({ field: 'project_id', op: '==', value: 'sample-cafe' })
   })
 
   it('filters by status', async () => {
@@ -114,8 +114,8 @@ describe('GET /api/admin/feedback', () => {
 
   it('composes projectId + status', async () => {
     mockGet.mockResolvedValueOnce({ docs: [] })
-    await GET(makeReq('?projectId=bakery-louise&status=new'))
-    expect(whereCalls).toContainEqual({ field: 'project_id', op: '==', value: 'bakery-louise' })
+    await GET(makeReq('?projectId=sample-cafe&status=new'))
+    expect(whereCalls).toContainEqual({ field: 'project_id', op: '==', value: 'sample-cafe' })
     expect(whereCalls).toContainEqual({ field: 'status', op: '==', value: 'new' })
   })
 })

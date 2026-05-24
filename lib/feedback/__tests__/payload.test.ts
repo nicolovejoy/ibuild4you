@@ -8,7 +8,7 @@ import {
 describe('validateFeedbackInput', () => {
   it('accepts a minimal valid input', () => {
     const result = validateFeedbackInput({
-      projectId: 'bakery-louise',
+      projectId: 'sample-cafe',
       type: 'bug',
       body: 'The order button does nothing',
     })
@@ -63,7 +63,7 @@ describe('validateFeedbackInput', () => {
 
 describe('buildFeedbackPayload', () => {
   const ctx = {
-    pageUrl: 'https://bakerylouise.com/menu',
+    pageUrl: 'https://samplecafe.com/menu',
     userAgent: 'Mozilla/5.0',
     viewport: '1440x900',
     renderedAt: 1_700_000_000_000,
@@ -72,20 +72,20 @@ describe('buildFeedbackPayload', () => {
   it('produces the wire payload the server expects', () => {
     const payload = buildFeedbackPayload(
       {
-        projectId: '  bakery-louise  ',
+        projectId: '  sample-cafe  ',
         type: 'idea',
         body: '  add gluten-free section  ',
-        submitterEmail: '  Jamie@Example.com  ',
+        submitterEmail: '  Sam@Example.com  ',
       },
       ctx
     )
 
     expect(payload).toEqual({
-      projectId: 'bakery-louise',
+      projectId: 'sample-cafe',
       type: 'idea',
       body: 'add gluten-free section',
-      submitterEmail: 'jamie@example.com',
-      pageUrl: 'https://bakerylouise.com/menu',
+      submitterEmail: 'sam@example.com',
+      pageUrl: 'https://samplecafe.com/menu',
       userAgent: 'Mozilla/5.0',
       viewport: '1440x900',
       website: '',

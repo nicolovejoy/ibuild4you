@@ -31,14 +31,14 @@ describe('<FeedbackWidget>', () => {
     const fetchMock = mockFetch({ ok: true, status: 201, json: { id: 'fb_1' } })
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
 
-    render(<FeedbackWidget projectId="bakery-louise" />)
+    render(<FeedbackWidget projectId="sample-cafe" />)
 
     // Advance past the server's MIN_RENDER_AGE_MS check.
     vi.advanceTimersByTime(3000)
 
     await user.click(screen.getByRole('button', { name: /idea/i }))
     await user.type(screen.getByPlaceholderText(/what's up/i), 'add gluten-free section')
-    await user.type(screen.getByPlaceholderText(/email/i), 'jamie@example.com')
+    await user.type(screen.getByPlaceholderText(/email/i), 'sam@example.com')
     await user.click(screen.getByRole('button', { name: /send feedback/i }))
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
@@ -49,10 +49,10 @@ describe('<FeedbackWidget>', () => {
 
     const body = JSON.parse(init.body as string)
     expect(body).toMatchObject({
-      projectId: 'bakery-louise',
+      projectId: 'sample-cafe',
       type: 'idea',
       body: 'add gluten-free section',
-      submitterEmail: 'jamie@example.com',
+      submitterEmail: 'sam@example.com',
       website: '',
     })
     expect(typeof body._ts).toBe('number')
@@ -64,7 +64,7 @@ describe('<FeedbackWidget>', () => {
     const fetchMock = mockFetch({ ok: true })
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
 
-    render(<FeedbackWidget projectId="bakery-louise" />)
+    render(<FeedbackWidget projectId="sample-cafe" />)
     await user.click(screen.getByRole('button', { name: /send feedback/i }))
 
     expect(fetchMock).not.toHaveBeenCalled()
@@ -75,7 +75,7 @@ describe('<FeedbackWidget>', () => {
     mockFetch({ ok: false, status: 429, json: { error: 'Too many submissions' } })
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
 
-    render(<FeedbackWidget projectId="bakery-louise" />)
+    render(<FeedbackWidget projectId="sample-cafe" />)
     await user.type(screen.getByPlaceholderText(/what's up/i), 'something is broken')
     await user.click(screen.getByRole('button', { name: /send feedback/i }))
 
@@ -83,7 +83,7 @@ describe('<FeedbackWidget>', () => {
   })
 
   it('keeps the honeypot field hidden from assistive tech and tab order', () => {
-    const { container } = render(<FeedbackWidget projectId="bakery-louise" />)
+    const { container } = render(<FeedbackWidget projectId="sample-cafe" />)
     const honeypot = container.querySelector('input[name="website"]')
     expect(honeypot).not.toBeNull()
     expect(honeypot).toHaveAttribute('aria-hidden', 'true')

@@ -226,7 +226,7 @@ function NewProjectButton() {
                 type="text"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder="Jamie's Bakery App"
+                placeholder="Sam's Cafe App"
                 className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
                 autoFocus
               />
@@ -242,7 +242,7 @@ function NewProjectButton() {
                   type="text"
                   value={firstName}
                   onChange={(e) => setFirstName(e.target.value)}
-                  placeholder="Jamie"
+                  placeholder="Sam"
                   className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
                 />
               </div>
@@ -255,7 +255,7 @@ function NewProjectButton() {
                   type="text"
                   value={lastName}
                   onChange={(e) => setLastName(e.target.value)}
-                  placeholder="Baker"
+                  placeholder="Lee"
                   className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
                 />
               </div>
@@ -270,7 +270,7 @@ function NewProjectButton() {
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="jamie@example.com"
+                placeholder="sam@example.com"
                 className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
               />
               <p className="text-xs text-gray-500 mt-1">
@@ -286,7 +286,7 @@ function NewProjectButton() {
                 id="project-context"
                 value={context}
                 onChange={(e) => setContext(e.target.value)}
-                placeholder="Jamie owns a bakery in downtown Portland. She wants to let customers order online and pick up in store. She's not technical at all..."
+                placeholder="Sam owns a cafe in downtown Portland. They want to let customers order online and pick up in store. They're not technical at all..."
                 rows={4}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
               />
@@ -336,7 +336,7 @@ function NewProjectButton() {
                 id="project-json"
                 value={jsonInput}
                 onChange={(e) => { setJsonInput(e.target.value); setJsonError(null) }}
-                placeholder={'{\n  "_payload_type": "new-project",\n  "title": "Jamie\'s Bakery App",\n  "requester_email": "jamie@example.com",\n  ...\n}'}
+                placeholder={'{\n  "_payload_type": "new-project",\n  "title": "Sam\'s Cafe App",\n  "requester_email": "sam@example.com",\n  ...\n}'}
                 rows={10}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-xs font-mono focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
                 autoFocus
@@ -645,7 +645,7 @@ function ShareModal({ project, onClose }: { project: Project; onClose: () => voi
                 type="text"
                 value={firstName}
                 onChange={(e) => setFirstName(e.target.value)}
-                placeholder="Jamie"
+                placeholder="Sam"
                 className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
                 autoFocus
               />
@@ -659,7 +659,7 @@ function ShareModal({ project, onClose }: { project: Project; onClose: () => voi
                 type="text"
                 value={lastName}
                 onChange={(e) => setLastName(e.target.value)}
-                placeholder="Baker"
+                placeholder="Lee"
                 className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
               />
             </div>

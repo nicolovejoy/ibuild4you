@@ -121,7 +121,7 @@ function FeedbackList() {
             type="text"
             value={projectId}
             onChange={(e) => setProjectId(e.target.value)}
-            placeholder="e.g. bakery-louise"
+            placeholder="e.g. sample-cafe"
             className="px-2 py-1 text-sm border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-brand-navy"
           />
         </label>

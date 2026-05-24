@@ -6,9 +6,9 @@ We are building an AI-powered project intake system. The target user is a non-te
 
 There are three roles in the system:
 
-- **Requester** (e.g. Jamie, a bakery owner) — chats with the agent, answers questions, reviews summaries
+- **Requester** (e.g. a friend who owns a small cafe) — chats with the agent, answers questions, reviews summaries
 - **Agent** — conducts the conversation, extracts structure, produces and updates the living brief
-- **Builder** (e.g. Nico) — reviews briefs on a dashboard, annotates them, and those annotations inform the agent's next session with the requester
+- **Builder** — reviews briefs on a dashboard, annotates them, and those annotations inform the agent's next session with the requester
 
 ## Architecture Origin
 
@@ -27,7 +27,7 @@ We are stripping out: folders/notebooks/notes data model, study features, import
 ## Data Model (Initial)
 
 - **users** — requester or builder role, email, auth metadata
-- **projects** — one per requester engagement (Jamie's bakery = one project)
+- **projects** — one per requester engagement (a friend's cafe = one project)
 - **sessions** — each conversation between requester and agent, belonging to a project
 - **messages** — individual messages within a session, with role (user/agent) and timestamp
 - **briefs** — the living brief for a project, structured and versioned, updated after each session

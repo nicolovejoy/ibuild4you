@@ -25,8 +25,8 @@ The builder seeds layout mockups as JSON on a project. The agent presents them d
 {
   "title": "Strategy A: Single Page",
   "sections": [
-    { "type": "hero", "label": "Welcome to Bakery Louise", "description": "Hero photo grid" },
-    { "type": "text", "label": "About", "description": "Micro-bakery story" },
+    { "type": "hero", "label": "Welcome to Sample Cafe", "description": "Hero photo grid" },
+    { "type": "text", "label": "About", "description": "Micro-cafe story" },
     {
       "type": "cta",
       "label": "Order Upcoming Bakes",
@@ -153,10 +153,10 @@ Both prep prompts (`new-project` and `next-convo` — see `lib/agent/new-project
   ```
   Strategy A: Single Page
   ─────────────────────
-  [Hero] Welcome to Bakery Louise
+  [Hero] Welcome to Sample Cafe
     Hero photo grid showing range of offerings
   [Text] About
-    Micro-bakery story, Shoreline location
+    Micro-cafe story, Shoreline location
   ...
   ```
 - Add a "Save to brief" button — saves the wireframe as a new field on the brief (`layout` or `agreed_layout`), shown on the Brief tab and in the public brief view
