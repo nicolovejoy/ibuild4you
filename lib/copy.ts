@@ -4,9 +4,11 @@
 export const copy = {
   // --- Invite & nudge messages ---
   invite: {
-    body: ({ shareLink, email, passcode }: { shareLink: string; email: string; passcode: string | null }) =>
+    body: ({ projectTitle, shareLink, email, passcode }: { projectTitle: string; shareLink: string; email: string; passcode: string | null }) =>
       [
-        `I set up a quick conversation for you — an AI assistant will ask about what you're looking for, and I'll use that to start building.`,
+        `I'm putting together a brief for ${projectTitle} and want your input to shape it.`,
+        '',
+        `The link below opens a conversation where you can share what you're looking for. We'll come back to it across a few sessions to fill in the picture.`,
         '',
         shareLink,
         '',
