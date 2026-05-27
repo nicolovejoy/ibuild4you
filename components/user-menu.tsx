@@ -3,7 +3,7 @@
 import { auth } from '@/lib/firebase/client'
 import { signOut } from 'firebase/auth'
 import { useRouter } from 'next/navigation'
-import { User, LogOut, Shield } from 'lucide-react'
+import { User, LogOut, Shield, Info } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import type { User as FirebaseUser } from 'firebase/auth'
 import { useQueryClient } from '@tanstack/react-query'
@@ -49,6 +49,16 @@ export function UserMenu() {
             <div className="px-4 py-2 text-sm text-gray-700 border-b border-gray-200">
               {user.email}
             </div>
+            <button
+              onClick={() => {
+                setShowDropdown(false)
+                router.push('/about')
+              }}
+              className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+            >
+              <Info className="h-4 w-4" />
+              About
+            </button>
             {isAdmin && (
               <button
                 onClick={() => {

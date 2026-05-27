@@ -49,6 +49,12 @@ export default function AboutPage() {
           <p className="text-brand-slate leading-relaxed">{copy.about.whoIsRoan}</p>
         </section>
 
+        {/* The brief */}
+        <section className="space-y-3">
+          <h2 className="text-xl font-semibold text-brand-charcoal">{copy.about.briefHeading}</h2>
+          <p className="text-brand-slate leading-relaxed">{copy.about.briefIntro}</p>
+        </section>
+
         {/* Roles in a brief */}
         <section className="space-y-6">
           <h2 className="text-xl font-semibold text-brand-charcoal">{copy.about.rolesIntroHeading}</h2>
@@ -71,6 +77,12 @@ export default function AboutPage() {
         <section className="space-y-3">
           <h2 className="text-xl font-semibold text-brand-charcoal">{copy.about.visionHeading}</h2>
           <p className="text-brand-slate leading-relaxed">{copy.about.vision}</p>
+        </section>
+
+        {/* Voice attribution note */}
+        <section className="space-y-3 border-l-2 border-brand-navy/30 pl-4">
+          <h2 className="text-xl font-semibold text-brand-charcoal">{copy.about.voiceHeading}</h2>
+          <p className="text-brand-slate leading-relaxed">{copy.about.voiceNote}</p>
         </section>
 
         {/* Glossary */}

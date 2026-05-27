@@ -75,7 +75,15 @@ export default function DashboardPage() {
               <h1 className={`text-xl font-bold ${titleColor}`}>iBuild4you</h1>
               <BuildTimestamp />
             </div>
-            <UserMenu />
+            <div className="flex items-center gap-2">
+              <Link
+                href="/about"
+                className="text-sm text-gray-600 hover:text-brand-navy px-2 py-1 rounded-md hover:bg-gray-100"
+              >
+                About
+              </Link>
+              <UserMenu />
+            </div>
           </div>
         </div>
       </header>

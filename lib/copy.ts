@@ -4,7 +4,17 @@
 export const copy = {
   // --- Invite & nudge messages ---
   invite: {
-    body: ({ projectTitle, shareLink, email, passcode }: { projectTitle: string; shareLink: string; email: string; passcode: string | null }) =>
+    body: ({
+      projectTitle,
+      shareLink,
+      email,
+      passcode,
+    }: {
+      projectTitle: string
+      shareLink: string
+      email: string
+      passcode: string | null
+    }) =>
       [
         `I'm putting together a brief for ${projectTitle} and want your input to shape it.`,
         '',
@@ -19,15 +29,21 @@ export const copy = {
     emailLabel: 'Invite message',
   },
   nudge: {
-    body: ({ projectTitle, shareLink, note, sessionMode }: {
+    body: ({
+      projectTitle,
+      shareLink,
+      note,
+      sessionMode,
+    }: {
       projectTitle: string
       shareLink: string
       note?: string
       sessionMode?: 'discover' | 'converge'
     }) => {
-      const modeHint = sessionMode === 'converge'
-        ? 'Ready to narrow things down and lock in a few decisions.'
-        : 'Want to dig into a few things from last time.'
+      const modeHint =
+        sessionMode === 'converge'
+          ? 'Ready to narrow things down and lock in a few decisions.'
+          : 'Want to dig into a few things from last time.'
 
       return [
         `New conversation ready for ${projectTitle}. ${note || modeHint}`,
@@ -36,7 +52,11 @@ export const copy = {
       ].join('\n')
     },
     reminder: ({ projectTitle, shareLink }: { projectTitle: string; shareLink: string }) =>
-      [`Just a reminder — your conversation for ${projectTitle} is ready whenever you have a few minutes.`, '', shareLink].join('\n'),
+      [
+        `Just a reminder — your conversation for ${projectTitle} is ready whenever you have a few minutes.`,
+        '',
+        shareLink,
+      ].join('\n'),
   },
 
   // --- Dashboard ---
@@ -63,8 +83,9 @@ export const copy = {
   newProject: {
     titlePlaceholder: "Sam's Cafe Website",
     contextLabel: 'Context for the agent',
-    contextPlaceholder: "Sam owns a cafe in downtown Portland. They want to let customers order online and pick up in store. They're not technical at all...",
-    contextHelp: "Background info the agent will use to skip basic discovery questions.",
+    contextPlaceholder:
+      "Sam owns a cafe in downtown Portland. They want to let customers order online and pick up in store. They're not technical at all...",
+    contextHelp: 'Background info the agent will use to skip basic discovery questions.',
   },
 
   // --- Share modal (dashboard) ---
@@ -80,7 +101,8 @@ export const copy = {
   setup: {
     agentSetup: 'Agent setup',
     conversationOpener: 'Conversation opener',
-    conversationOpenerPlaceholder: 'The message the agent sends when the maker opens this conversation.',
+    conversationOpenerPlaceholder:
+      'The message the agent sends when the maker opens this conversation.',
     conversationOpenerGenerate: 'Generate',
     conversationOpenerRegenerate: 'Regenerate',
     seedQuestionsLabel: 'Seed questions',
@@ -100,11 +122,14 @@ export const copy = {
   // --- Brief tab ---
   brief: {
     copyPrepContext: 'Copy prep context',
-    copyPrepHelp: 'Copy the prep context, paste into Claude to discuss strategy, then ask for output and paste the JSON below.',
-    importPlaceholder: 'Paste JSON here (multi-field with brief/session_opener/directives/mode, or brief-only)...',
+    copyPrepHelp:
+      'Copy the prep context, paste into Claude to discuss strategy, then ask for output and paste the JSON below.',
+    importPlaceholder:
+      'Paste JSON here (multi-field with brief/session_opener/directives/mode, or brief-only)...',
     importButton: 'Import JSON',
     emptyTitle: 'No brief yet',
-    emptyDescription: 'Copy the prep context for Claude and paste the response above, or use Generate via API.',
+    emptyDescription:
+      'Copy the prep context for Claude and paste the response above, or use Generate via API.',
   },
 
   // --- Chat ---
@@ -139,15 +164,26 @@ export const copy = {
 
   // --- Landing page ---
   landing: {
-    tagline: "Have an idea for an app or website but not sure where to start? Our AI guides you through the details and turns your idea into a clear plan — no technical knowledge needed.",
+    tagline:
+      'Have an idea for an app or website but not sure where to start? Our AI guides you through the details and turns your idea into a clear plan — no technical knowledge needed.',
     howItWorks: 'How it works',
     steps: [
-      { title: 'Tell us your idea', desc: 'Chat with our AI assistant about what you want to build. No jargon, just a conversation.' },
-      { title: 'We figure out the details', desc: "As you talk, we capture everything you've described so your builder knows exactly what you need." },
-      { title: 'Refine over time', desc: 'Come back anytime to add more details. Your plan evolves as your thinking does.' },
+      {
+        title: 'Tell us your idea',
+        desc: 'Chat with our AI assistant about what you want to build. No jargon, just a conversation.',
+      },
+      {
+        title: 'We figure out the details',
+        desc: "As you talk, we capture everything you've described so your builder knows exactly what you need.",
+      },
+      {
+        title: 'Refine over time',
+        desc: 'Come back anytime to add more details. Your plan evolves as your thinking does.',
+      },
     ],
     interestTitle: 'Interested?',
-    interestSubtitle: "We're invite-only right now. Let us know you're interested and we'll be in touch.",
+    interestSubtitle:
+      "We're invite-only right now. Let us know you're interested and we'll be in touch.",
     interestSuccess: 'Thanks for your interest!',
     interestSuccessDetail: "We'll be in touch when we have a spot for you.",
   },
@@ -155,17 +191,28 @@ export const copy = {
   // --- About page ---
   about: {
     title: 'What is iBuild4you?',
-    intro: "Someone sent you a link because they want to figure something out with you. Here's what to expect.",
-    whatItIs: "iBuild4you is a quiet way for two or more people to think through something they're building together. Each of you writes when it suits you. Between turns, Roan — our AI — carries questions and notes between you, tracks what's open vs. resolved, and keeps a shared brief up to date so nobody loses the thread.",
+    intro: 'an experiment in RAAC - Rapid asynchronous assisted communication',
+    whatItIs:
+      "initially conceived as an intake process for friends who wanted my help with coding on various projects, I'm looking at developing it into a more generalized conversation platform that enables people to communicate with each other with the assistant of an agent.",
     whoIsRoanHeading: 'Meet Roan',
-    whoIsRoan: "Roan is the connective tissue. They sit in the middle of your brief and never speak for either of you. They surface gaps, ask follow-up questions, and keep the brief current — but they don't decide anything. That's still your call.",
+    whoIsRoan:
+      'Roan is our friendly agentic assistant there to help both humans (eventually any of the humans) develop their own thinking, as well as understand the thinking of the others involved in the conversation.',
+    briefHeading: 'The brief',
+    briefIntro:
+      "A brief is the thing we're building together. It starts mostly empty and fills in as people talk — what the idea is, who it's for, what matters, what's still open. It lives between sessions, so you can come back to it. When it feels ready, it's also what gets handed off to whoever writes the code.",
     rolesIntroHeading: 'Roles in a brief',
-    rolesIntro: "Each person in a brief plays one role. For now, your role is set when the brief is created and doesn't change.",
+    rolesIntro:
+      "I'm trying to formulate the right way to frame the different participants in a conversation. For now we're thinking about originator, contributor, reviewer. In the initial framing it was a Maker and a Builder. Feedback encouraged, always.",
     whatHappensNextHeading: 'What happens next',
-    whatHappensNext: "Your brief is a living document. It grows every time someone weighs in. When the brief feels ready, a builder — the person who'll write the code — picks it up.",
+    whatHappensNext:
+      'The brief grows session by session, not in one sitting. When it feels ready, someone (probably me, for now) takes it and writes the actual software.',
     visionHeading: 'Where this is going',
-    vision: "What you're seeing today is the simple version: two people, one brief, Roan in the middle. Where we're headed: more people per brief, briefs that talk to each other, and a clean handoff from brief to working software. Async, multi-human collaboration with an AI that's helpful but never in charge.",
-    privacy: "Your brief is only visible to the people invited to it.",
+    vision:
+      "Right now this is the simple version — two people on a brief with Roan between them. I'm hoping it grows to handle more people per brief, briefs that connect to each other, and a clean handoff from brief to working software. The constant: an AI that helps but never decides for you.",
+    voiceHeading: 'A note on voice',
+    voiceNote:
+      "Most of this page is mine — Nico, the human behind iBuild4you — with some scaffolding from Claude (the AI I'm building this with). Knowing whose thinking is whose feels like a core piece of what we're doing here, so I'm working out the right conventions for marking which words came from a person and which came from an AI. Open question for now — feedback welcome.",
+    privacy: 'Your brief is only visible to the people invited to it.',
     cta: 'Ready to get started?',
     glossaryHeading: 'Words we use',
   },
@@ -183,7 +230,8 @@ export const copy = {
   glossary: {
     brief: {
       term: 'Brief',
-      short: 'The living document at the center of everything — grows every time someone weighs in.',
+      short:
+        'The living document at the center of everything — grows every time someone weighs in.',
     },
     roan: {
       term: 'Roan',
@@ -195,11 +243,12 @@ export const copy = {
     },
     contributor: {
       term: 'Contributor',
-      short: "Adds their own voice, questions, and context to the brief alongside the originator.",
+      short: 'Adds their own voice, questions, and context to the brief alongside the originator.',
     },
     reviewer: {
       term: 'Reviewer',
-      short: "Annotates and validates — flags what's missing or unclear and steers the next session.",
+      short:
+        "Annotates and validates — flags what's missing or unclear and steers the next session.",
     },
     builderDownstream: {
       term: 'Builder',
@@ -229,7 +278,8 @@ export const copy = {
     },
     builder: {
       term: 'Builder',
-      short: 'The person who turns the brief into the built thing — sets context, reviews, follows up.',
+      short:
+        'The person who turns the brief into the built thing — sets context, reviews, follows up.',
     },
     agent: {
       term: 'iBuild4you assistant',
@@ -256,7 +306,10 @@ export const copy = {
 }
 
 // Display name formatter: first name + last initial (e.g. "Sam L")
-export function formatDisplayName(firstName?: string | null, lastName?: string | null): string | null {
+export function formatDisplayName(
+  firstName?: string | null,
+  lastName?: string | null
+): string | null {
   if (!firstName) return null
   if (lastName) return `${firstName} ${lastName.charAt(0)}`
   return firstName
