@@ -147,7 +147,7 @@ describe('buildSystemPrompt', () => {
         constraints: 'Must work on mobile',
       },
     })
-    expect(result).toContain('## Current project brief')
+    expect(result).toContain('## Current brief')
     expect(result).toContain('**Problem:** Customers cannot order online')
     expect(result).toContain('**Target users:** Local cafe customers')
     expect(result).toContain('- Online ordering')
@@ -160,7 +160,7 @@ describe('buildSystemPrompt', () => {
       ...minimalInput,
       briefContent: emptyBrief,
     })
-    expect(result).not.toContain('## Current project brief')
+    expect(result).not.toContain('## Current brief')
   })
 
   it('says first session for sessionNumber 1', () => {
@@ -331,10 +331,10 @@ describe('buildSystemPrompt', () => {
     expect(result).toContain('priorities, not a script')
   })
 
-  it('GUARDRAILS includes the "Maker direction wins" rule in both modes', () => {
+  it('GUARDRAILS includes the "Their direction wins" rule in both modes', () => {
     const discover = buildSystemPrompt(minimalInput)
     const converge = buildSystemPrompt({ ...minimalInput, sessionMode: 'converge' })
-    expect(discover).toContain('Maker direction wins')
-    expect(converge).toContain('Maker direction wins')
+    expect(discover).toContain('Their direction wins')
+    expect(converge).toContain('Their direction wins')
   })
 })

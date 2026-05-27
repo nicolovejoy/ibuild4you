@@ -484,7 +484,7 @@ function SessionChat({
                   : 'bg-white border border-gray-200 text-gray-800'
               }`}>
                 <p className={`text-[10px] mb-1 ${msg.role === 'user' ? 'text-blue-200' : 'text-gray-400'}`}>
-                  {msg.role === 'user' ? (msg.sender_display_name || msg.sender_email?.split('@')[0] || 'You') : 'iBuild4you assistant'}
+                  {msg.role === 'user' ? (msg.sender_display_name || msg.sender_email?.split('@')[0] || 'You') : copy.chat.agentLabel}
                   {msg.created_at ? ` \u00b7 ${formatTimestamp(msg.created_at)}` : ''}
                 </p>
                 <MessageContent content={msg.content} />
@@ -1039,7 +1039,7 @@ function ShareModal({ project, onClose }: { project: Project; onClose: () => voi
             )}
           </div>
           <div>
-            <p className="text-xs text-gray-600 mb-1">Project link</p>
+            <p className="text-xs text-gray-600 mb-1">Brief link</p>
             <div className="flex items-center gap-2">
               <input type="text" readOnly value={shareLink} className="flex-1 px-2.5 py-1.5 bg-gray-50 border border-gray-300 rounded-md text-sm text-gray-700" />
               <button onClick={async () => { await navigator.clipboard.writeText(shareLink); setLinkCopied(true); setTimeout(() => setLinkCopied(false), 2000) }} className="p-1.5 text-gray-500 hover:text-brand-navy hover:bg-gray-100 rounded">

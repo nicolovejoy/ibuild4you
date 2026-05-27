@@ -109,7 +109,7 @@ export const copy = {
 
   // --- Chat ---
   chat: {
-    agentLabel: 'iBuild4you assistant',
+    agentLabel: 'Roan',
     completedSession: 'Completed conversation — read only',
     placeholder: 'Type a message...',
     makerEmptyState: 'Send a message to start the conversation.',
@@ -155,24 +155,74 @@ export const copy = {
   // --- About page ---
   about: {
     title: 'What is iBuild4you?',
-    intro: "Someone sent you a link because they want to help you build something. Here's what to expect.",
-    whatItIs: "iBuild4you is a tool that helps you describe your idea through a simple conversation. You chat with an AI assistant that asks questions about what you want to build — no technical knowledge needed. As you talk, it captures everything into a brief that your builder can use to start building.",
-    whatHappensNext: "After your conversation, your builder reviews what you discussed and may set up a follow-up to dig deeper. You can come back anytime — your brief grows with each conversation.",
-    privacy: "Your conversations are only visible to you and the builder who invited you.",
+    intro: "Someone sent you a link because they want to figure something out with you. Here's what to expect.",
+    whatItIs: "iBuild4you is a quiet way for two or more people to think through something they're building together. Each of you writes when it suits you. Between turns, Roan — our AI — carries questions and notes between you, tracks what's open vs. resolved, and keeps a shared brief up to date so nobody loses the thread.",
+    whoIsRoanHeading: 'Meet Roan',
+    whoIsRoan: "Roan is the connective tissue. They sit in the middle of your brief and never speak for either of you. They surface gaps, ask follow-up questions, and keep the brief current — but they don't decide anything. That's still your call.",
+    rolesIntroHeading: 'Roles in a brief',
+    rolesIntro: "Each person in a brief plays one role. For now, your role is set when the brief is created and doesn't change.",
+    whatHappensNextHeading: 'What happens next',
+    whatHappensNext: "Your brief is a living document. It grows every time someone weighs in. When the brief feels ready, a builder — the person who'll write the code — picks it up.",
+    visionHeading: 'Where this is going',
+    vision: "What you're seeing today is the simple version: two people, one brief, Roan in the middle. Where we're headed: more people per brief, briefs that talk to each other, and a clean handoff from brief to working software. Async, multi-human collaboration with an AI that's helpful but never in charge.",
+    privacy: "Your brief is only visible to the people invited to it.",
     cta: 'Ready to get started?',
-    rolesIntro: "iBuild4you has two roles. The same app shows a different surface depending on which role you're in.",
-    twoRoles: 'Two roles',
     glossaryHeading: 'Words we use',
   },
 
   // --- Glossary — single source of truth for terminology ---
   // Used by the About page and as tooltip text across the app.
   // Keep `short` ≤ 90 chars so it works as a hover tooltip.
+  //
+  // NOTE: this is in transition. The new RAAC vocab (Roan / Originator /
+  // Contributor / Reviewer / Builder-as-downstream) lives alongside the legacy
+  // in-UI vocab (maker / builder / agent / conversation / nextConversation)
+  // until the Phase 3 sweep renames component references. About page renders
+  // the new vocab via an explicit list; existing tooltips continue to look up
+  // legacy keys.
   glossary: {
     brief: {
       term: 'Brief',
-      short: 'Your living document of what you want to build — grows with each conversation.',
+      short: 'The living document at the center of everything — grows every time someone weighs in.',
     },
+    roan: {
+      term: 'Roan',
+      short: 'The AI that carries questions between people and keeps the brief up to date.',
+    },
+    originator: {
+      term: 'Originator',
+      short: 'The person who brought the idea to this brief. Usually the first to write.',
+    },
+    contributor: {
+      term: 'Contributor',
+      short: "Adds their own voice, questions, and context to the brief alongside the originator.",
+    },
+    reviewer: {
+      term: 'Reviewer',
+      short: "Annotates and validates — flags what's missing or unclear and steers the next session.",
+    },
+    builderDownstream: {
+      term: 'Builder',
+      short: 'Downstream: the person who reads the finished brief and writes the software.',
+    },
+    session: {
+      term: 'Session',
+      short: 'One conversation between you and Roan. You can come back across many.',
+    },
+    setup: {
+      term: 'Setup',
+      short: 'Context, seed questions, and directives that shape what Roan opens with next.',
+    },
+    files: {
+      term: 'Files',
+      short: 'Anything attached to a brief — PDFs, images, docs Roan can reference.',
+    },
+    needsSetup: {
+      term: 'Needs setup',
+      short: "This brief hasn't been shared yet — still needs a link sent.",
+    },
+
+    // --- Legacy keys (in-UI tooltips) — removed in Phase 3 ---
     maker: {
       term: 'Maker',
       short: 'The person with the idea, chatting with the AI assistant. (That might be you.)',
@@ -189,21 +239,9 @@ export const copy = {
       term: 'Conversation',
       short: 'One chat between maker and assistant. You can come back across many.',
     },
-    setup: {
-      term: 'Setup',
-      short: 'Builder-side: context, seed questions, and directives that shape the next conversation.',
-    },
-    files: {
-      term: 'Files',
-      short: 'Anything attached to this brief — PDFs, images, docs the assistant can reference.',
-    },
     nextConversation: {
       term: 'Next Conversation',
       short: 'Builder-side: shape what the assistant should open with for the next session.',
-    },
-    needsSetup: {
-      term: 'Needs setup',
-      short: "This brief hasn't been shared with a maker yet — builder still needs to send the link.",
     },
   },
 

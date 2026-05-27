@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
+import Image from 'next/image'
 import Link from 'next/link'
 import { ArrowLeft, Send, ChevronDown, ChevronUp, MessageSquare, HelpCircle, Paperclip, Pencil } from 'lucide-react'
 import { getTurnIndicator } from '@/lib/turn-indicator'
@@ -140,7 +141,16 @@ export function MakerProjectView({ projectId, userEmail }: { projectId: string; 
             >
               Maker
             </span>
-            <span className="truncate">Chatting with the iBuild4you assistant</span>
+            <span className="flex items-center gap-1.5 truncate">
+              <Image
+                src="/roan/roan-avatar.png"
+                alt=""
+                width={20}
+                height={20}
+                className="rounded-full shrink-0"
+              />
+              <span className="truncate">Chatting with {copy.chat.agentLabel}</span>
+            </span>
             {turn && (
               <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium shrink-0 ${turn.className}`}>
                 {turn.label}
@@ -464,7 +474,7 @@ function MakerChat({
                   : 'bg-white border border-gray-200 text-gray-800'
               }`}>
                 <p className={`text-[10px] mb-1 ${msg.role === 'user' ? 'text-blue-200' : 'text-gray-400'}`}>
-                  {msg.role === 'user' ? (msg.sender_display_name || msg.sender_email?.split('@')[0] || 'You') : 'iBuild4you assistant'}
+                  {msg.role === 'user' ? (msg.sender_display_name || msg.sender_email?.split('@')[0] || 'You') : copy.chat.agentLabel}
                   {msg.created_at ? ` \u00b7 ${formatTimestamp(msg.created_at)}` : ''}
                 </p>
                 {/* Inline file attachments */}

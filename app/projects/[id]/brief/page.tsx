@@ -67,7 +67,7 @@ export default function BriefPage() {
             <ArrowLeft className="h-5 w-5 text-gray-600" />
           </button>
           <FileText className="h-5 w-5 text-brand-navy" />
-          <span className="font-semibold text-brand-charcoal">Project brief</span>
+          <span className="font-semibold text-brand-charcoal">Brief</span>
           {brief && (
             <span className="text-xs text-brand-slate ml-2">v{brief.version}</span>
           )}

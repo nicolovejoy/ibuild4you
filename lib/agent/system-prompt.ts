@@ -133,9 +133,9 @@ ${briefContent.open_risks.map((r) => `- ${r}`).join('\n')}
 
   if (briefContent && hasBriefContent(briefContent)) {
     parts.push(`
-## Current project brief
+## Current brief
 
-Here's what we know about the user's project so far. Use this to avoid re-asking things they've already told us, and to ask deeper follow-up questions.
+Here's what we know so far. Use this to avoid re-asking things they've already told us, and to ask deeper follow-up questions.
 
 ${formatBrief(briefContent)}
 `.trim())
