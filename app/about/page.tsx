@@ -22,17 +22,7 @@ export default function AboutPage() {
     <div className="min-h-screen bg-brand-cream">
       <div className="max-w-2xl mx-auto px-4 py-12 sm:py-16 space-y-12 sm:space-y-16">
         {/* Header */}
-        <div className="text-center space-y-6">
-          <div className="relative mx-auto w-40 h-50 sm:w-48 sm:h-60">
-            <Image
-              src="/roan/roan-hero.webp"
-              alt="Roan"
-              fill
-              priority
-              sizes="(min-width: 640px) 192px, 160px"
-              className="object-contain"
-            />
-          </div>
+        <div className="text-center">
           <h1 className="text-3xl font-bold text-brand-charcoal">iBuild4you</h1>
         </div>
 
@@ -45,8 +35,22 @@ export default function AboutPage() {
 
         {/* Meet Roan */}
         <section className="space-y-3">
-          <h2 className="text-xl font-semibold text-brand-charcoal">{copy.about.whoIsRoanHeading}</h2>
-          <p className="text-brand-slate leading-relaxed">{copy.about.whoIsRoan}</p>
+          <div className="flex flex-col sm:flex-row sm:items-start sm:gap-6">
+            <div className="space-y-3 flex-1">
+              <h2 className="text-xl font-semibold text-brand-charcoal">{copy.about.whoIsRoanHeading}</h2>
+              <p className="text-brand-slate leading-relaxed">{copy.about.whoIsRoan}</p>
+            </div>
+            <div className="relative w-40 h-50 sm:w-40 sm:h-50 mx-auto sm:mx-0 shrink-0 mt-4 sm:mt-0">
+              <Image
+                src="/roan/roan-hero.webp"
+                alt="Roan"
+                fill
+                priority
+                sizes="(min-width: 640px) 160px, 160px"
+                className="object-contain"
+              />
+            </div>
+          </div>
         </section>
 
         {/* The brief */}
@@ -67,7 +71,8 @@ export default function AboutPage() {
         </section>
 
         {/* Privacy note */}
-        <section className="border-l-2 border-brand-navy/30 pl-4">
+        <section className="space-y-3 border-l-2 border-brand-navy/30 pl-4">
+          <h2 className="text-xl font-semibold text-brand-charcoal">{copy.about.privacyIntroHeading}</h2>
           <p className="text-sm text-brand-slate leading-relaxed">{copy.about.privacy}</p>
         </section>
 
@@ -104,6 +109,9 @@ export default function AboutPage() {
             </Link>
           </p>
         </div>
+
+        {/* Signature */}
+        <p className="text-right text-sm italic text-brand-slate pt-2">— Nico Lovejoy</p>
       </div>
     </div>
   )
