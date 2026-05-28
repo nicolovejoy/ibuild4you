@@ -45,21 +45,8 @@ export default function AboutPage() {
 
         {/* Meet Roan */}
         <section className="space-y-3">
-          <div className="flex items-start gap-4">
-            <div className="relative w-20 h-25 sm:w-24 sm:h-30 shrink-0">
-              <Image
-                src="/roan/roan-hero.webp"
-                alt="Roan"
-                fill
-                sizes="(min-width: 640px) 96px, 80px"
-                className="object-contain"
-              />
-            </div>
-            <div className="space-y-3">
-              <h2 className="text-xl font-semibold text-brand-charcoal">{copy.about.whoIsRoanHeading}</h2>
-              <p className="text-brand-slate leading-relaxed">{copy.about.whoIsRoan}</p>
-            </div>
-          </div>
+          <h2 className="text-xl font-semibold text-brand-charcoal">{copy.about.whoIsRoanHeading}</h2>
+          <p className="text-brand-slate leading-relaxed">{copy.about.whoIsRoan}</p>
         </section>
 
         {/* The brief */}
@@ -79,23 +66,9 @@ export default function AboutPage() {
           </div>
         </section>
 
-        {/* What happens next */}
-        <section className="space-y-3">
-          <h2 className="text-xl font-semibold text-brand-charcoal">{copy.about.whatHappensNextHeading}</h2>
-          <p className="text-brand-slate leading-relaxed">{copy.about.whatHappensNext}</p>
-          <p className="text-sm text-brand-slate">{copy.about.privacy}</p>
-        </section>
-
-        {/* Vision */}
-        <section className="space-y-3">
-          <h2 className="text-xl font-semibold text-brand-charcoal">{copy.about.visionHeading}</h2>
-          <p className="text-brand-slate leading-relaxed">{copy.about.vision}</p>
-        </section>
-
-        {/* Voice attribution note */}
-        <section className="space-y-3 border-l-2 border-brand-navy/30 pl-4">
-          <h2 className="text-xl font-semibold text-brand-charcoal">{copy.about.voiceHeading}</h2>
-          <p className="text-brand-slate leading-relaxed">{copy.about.voiceNote}</p>
+        {/* Privacy note */}
+        <section className="border-l-2 border-brand-navy/30 pl-4">
+          <p className="text-sm text-brand-slate leading-relaxed">{copy.about.privacy}</p>
         </section>
 
         {/* Glossary */}

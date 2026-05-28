@@ -193,26 +193,18 @@ export const copy = {
     title: 'What is iBuild4you?',
     intro: 'an experiment in RAAC - Rapid asynchronous assisted communication',
     whatItIs:
-      "initially conceived as an intake process for friends who wanted my help with coding on various projects, I'm looking at developing it into a more generalized conversation platform that enables people to communicate with each other with the assistant of an agent.",
+      'Initially conceived as an intake process for friends who wanted my help with coding on various projects, I now see this as a generalized conversation platform that enables people to communicate with each other with the assistance of an agent to facilitate the process. I — meaning Nico, the human behind iBuild4you. Now meet our assistant, Roan:',
     whoIsRoanHeading: 'Meet Roan',
     whoIsRoan:
-      'Roan is our friendly agentic assistant there to help both humans (eventually any of the humans) develop their own thinking, as well as understand the thinking of the others involved in the conversation.',
+      'Roan is our friendly agentic assistant there to help both humans (eventually any of the humans) develop their own thinking, as well as understand the thinking of the others involved in the conversation. Nico (and you!) help tune Roan to improve as this evolves.',
     briefHeading: 'The brief',
     briefIntro:
-      "A brief is the thing we're building together. It starts mostly empty and fills in as people talk — what the idea is, who it's for, what matters, what's still open. It lives between sessions, so you can come back to it. When it feels ready, it's also what gets handed off to whoever writes the code.",
+      "What was first called a project (could be better) is now called a brief. It's focused on some topic, and evolves as a series of assisted conversations, with some artifacts at times (one of us uploads some files, say). Roan works within the brief to evolve conversations and help them cover the intended scope.",
     rolesIntroHeading: 'Roles in a brief',
     rolesIntro:
       "I'm trying to formulate the right way to frame the different participants in a conversation. For now we're thinking about originator, contributor, reviewer. In the initial framing it was a Maker and a Builder. Feedback encouraged, always.",
-    whatHappensNextHeading: 'What happens next',
-    whatHappensNext:
-      'The brief grows session by session, not in one sitting. When it feels ready, someone (probably me, for now) takes it and writes the actual software.',
-    visionHeading: 'Where this is going',
-    vision:
-      "Right now this is the simple version — two people on a brief with Roan between them. I'm hoping it grows to handle more people per brief, briefs that connect to each other, and a clean handoff from brief to working software. The constant: an AI that helps but never decides for you.",
-    voiceHeading: 'A note on voice',
-    voiceNote:
-      "Most of this page is mine — Nico, the human behind iBuild4you — with some scaffolding from Claude (the AI I'm building this with). Knowing whose thinking is whose feels like a core piece of what we're doing here, so I'm working out the right conventions for marking which words came from a person and which came from an AI. Open question for now — feedback welcome.",
-    privacy: 'Your brief is only visible to the people invited to it.',
+    privacy:
+      "Your brief should only be visible to the people invited to it, but given that this is an early-stage project, with one developer who has a dozen projects or more, don't share things that are too personal here, please!",
     cta: 'Ready to get started?',
     glossaryHeading: 'Words we use',
   },
