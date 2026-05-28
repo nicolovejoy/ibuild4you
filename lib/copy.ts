@@ -210,6 +210,84 @@ export const copy = {
     glossaryHeading: 'Words we use',
   },
 
+  // --- Glossary — single source of truth for terminology ---
+  // Used by the About page and as tooltip text across the app.
+  // Keep `short` ≤ 90 chars so it works as a hover tooltip.
+  //
+  // NOTE: this is in transition. The new RAAC vocab (Roan / Originator /
+  // Contributor / Reviewer / Builder-as-downstream) lives alongside the legacy
+  // in-UI vocab (maker / builder / agent / conversation / nextConversation)
+  // until the Phase 3 sweep renames component references. About page renders
+  // the new vocab via an explicit list; existing tooltips continue to look up
+  // legacy keys.
+  glossary: {
+    brief: {
+      term: 'Brief',
+      short:
+        'The living document at the center of everything — grows every time someone weighs in.',
+    },
+    roan: {
+      term: 'Roan',
+      short: 'The AI that carries questions between people and keeps the brief up to date.',
+    },
+    originator: {
+      term: 'Originator',
+      short: 'The person who brought the idea to this brief. Usually the first to write.',
+    },
+    contributor: {
+      term: 'Contributor',
+      short: 'Adds their own voice, questions, and context to the brief alongside the originator.',
+    },
+    reviewer: {
+      term: 'Reviewer',
+      short:
+        "Annotates and validates — flags what's missing or unclear and steers the next session.",
+    },
+    builderDownstream: {
+      term: 'Builder',
+      short: 'Downstream: the person who reads the finished brief and writes the software.',
+    },
+    session: {
+      term: 'Session',
+      short: 'One conversation between you and Roan. You can come back across many.',
+    },
+    setup: {
+      term: 'Setup',
+      short: 'Context, seed questions, and directives that shape what Roan opens with next.',
+    },
+    files: {
+      term: 'Files',
+      short: 'Anything attached to a brief — PDFs, images, docs Roan can reference.',
+    },
+    needsSetup: {
+      term: 'Needs setup',
+      short: "This brief hasn't been shared yet — still needs a link sent.",
+    },
+
+    // --- Legacy keys (in-UI tooltips) — removed in Phase 3 ---
+    maker: {
+      term: 'Maker',
+      short: 'The person with the idea, chatting with the AI assistant. (That might be you.)',
+    },
+    builder: {
+      term: 'Builder',
+      short:
+        'The person who turns the brief into the built thing — sets context, reviews, follows up.',
+    },
+    agent: {
+      term: 'iBuild4you assistant',
+      short: 'The AI that asks questions, captures what you say, and updates the brief.',
+    },
+    conversation: {
+      term: 'Conversation',
+      short: 'One chat between maker and assistant. You can come back across many.',
+    },
+    nextConversation: {
+      term: 'Next Conversation',
+      short: 'Builder-side: shape what the assistant should open with for the next session.',
+    },
+  },
+
   // --- Delete confirmation ---
   deleteProject: {
     warning: "This permanently deletes this brief and all its conversations. This can't be undone.",
