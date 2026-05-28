@@ -7,11 +7,12 @@ import { useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { apiFetch } from '@/lib/firebase/api-fetch'
 import { useResolveProject } from '@/lib/query/hooks'
-import { ArrowLeft, FileText } from 'lucide-react'
+import { FileText } from 'lucide-react'
 import { Card, CardBody } from '@/components/ui/Card'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { StatusMessage } from '@/components/ui/StatusMessage'
+import { SectionHeader } from '@/components/section-header'
 import type { Brief, BriefContent } from '@/lib/types'
 
 export default function BriefPage() {
@@ -58,21 +59,13 @@ export default function BriefPage() {
 
   return (
     <div className="min-h-screen bg-brand-cream">
-      <header className="bg-white border-b border-gray-200">
-        <div className="px-4 sm:px-6 h-14 flex items-center gap-3">
-          <button
-            onClick={() => router.push(`/projects/${slugOrId}`)}
-            className="p-1 hover:bg-gray-100 rounded"
-          >
-            <ArrowLeft className="h-5 w-5 text-gray-600" />
-          </button>
-          <FileText className="h-5 w-5 text-brand-navy" />
-          <span className="font-semibold text-brand-charcoal">Brief</span>
-          {brief && (
-            <span className="text-xs text-brand-slate ml-2">v{brief.version}</span>
-          )}
-        </div>
-      </header>
+      <SectionHeader
+        backHref={`/projects/${slugOrId}`}
+        title="Brief"
+        icon={<FileText className="h-5 w-5 text-brand-navy" />}
+        meta={brief && <span className="text-xs text-brand-slate ml-2">v{brief.version}</span>}
+        sticky={false}
+      />
 
       <main className="max-w-2xl mx-auto px-4 py-8">
         {isLoading ? (

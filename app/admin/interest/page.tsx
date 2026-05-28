@@ -4,10 +4,11 @@ import { useAuth } from '@/lib/hooks/useAuth'
 import { useApproval } from '@/lib/hooks/useApproval'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
-import { ArrowLeft, Mail } from 'lucide-react'
+import { Mail } from 'lucide-react'
 import { useCurrentUser } from '@/lib/query/hooks'
 import { apiFetch } from '@/lib/firebase/api-fetch'
 import { useEscapeBack } from '@/lib/hooks/useEscapeBack'
+import { SectionHeader } from '@/components/section-header'
 
 interface InterestSubmission {
   id: string
@@ -52,14 +53,7 @@ export default function InterestAdminPage() {
 
   return (
     <div className="min-h-screen bg-brand-cream">
-      <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
-        <div className="px-4 sm:px-6 h-14 flex items-center gap-3">
-          <button onClick={() => router.push('/admin')} className="p-1 hover:bg-gray-100 rounded">
-            <ArrowLeft className="h-5 w-5 text-gray-600" />
-          </button>
-          <h1 className="font-semibold text-brand-charcoal">Interest submissions</h1>
-        </div>
-      </header>
+      <SectionHeader backHref="/admin" title="Interest submissions" />
 
       <main className="max-w-4xl mx-auto px-4 py-6">
         <SubmissionsList />

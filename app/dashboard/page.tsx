@@ -4,11 +4,9 @@ import { useAuth } from '@/lib/hooks/useAuth'
 import { useApproval } from '@/lib/hooks/useApproval'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
-import { UserMenu } from '@/components/user-menu'
 import Link from 'next/link'
 import { Plus, FolderOpen, Share2, Copy, Check, Mail, Trash2, Settings } from 'lucide-react'
-import { ScaffoldIcon } from '@/components/ScaffoldIcon'
-import { BuildTimestamp } from '@/components/build-timestamp'
+import { SiteHeader } from '@/components/site-header'
 import { useProjects, useCreateProject, useShareProject, useDeleteProject, useCurrentUser } from '@/lib/query/hooks'
 import { LoadingButton } from '@/components/ui/LoadingButton'
 import { Card, CardBody } from '@/components/ui/Card'
@@ -57,9 +55,6 @@ export default function DashboardPage() {
   // slate "operator console" that matches the builder side rail. Pure makers
   // keep the warm cream — their dashboard is just "briefs I was invited into".
   const pageBg = isAdmin ? 'bg-slate-900' : 'bg-brand-cream'
-  const headerBg = isAdmin ? 'bg-slate-900 border-slate-800' : 'bg-white border-gray-200'
-  const logoColor = isAdmin ? 'text-white' : 'text-brand-navy'
-  const titleColor = isAdmin ? 'text-white' : 'text-brand-charcoal'
   const headingColor = isAdmin ? 'text-white' : 'text-gray-900'
   const adminBtnColor = isAdmin
     ? 'text-slate-400 hover:text-white hover:bg-slate-800'
@@ -67,26 +62,7 @@ export default function DashboardPage() {
 
   return (
     <div className={`min-h-screen ${pageBg}`}>
-      <header className={`border-b sticky top-0 z-10 ${headerBg}`}>
-        <div className="px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-3 group relative">
-              <ScaffoldIcon className={`h-7 w-7 ${logoColor}`} />
-              <h1 className={`text-xl font-bold ${titleColor}`}>iBuild4you</h1>
-              <BuildTimestamp />
-            </div>
-            <div className="flex items-center gap-2">
-              <Link
-                href="/about"
-                className="text-sm text-gray-600 hover:text-brand-navy px-2 py-1 rounded-md hover:bg-gray-100"
-              >
-                About
-              </Link>
-              <UserMenu />
-            </div>
-          </div>
-        </div>
-      </header>
+      <SiteHeader />
 
       <main className="max-w-4xl mx-auto px-4 py-8">
         <div className="flex items-center justify-between mb-6">

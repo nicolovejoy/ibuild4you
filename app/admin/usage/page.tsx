@@ -4,11 +4,12 @@ import { useAuth } from '@/lib/hooks/useAuth'
 import { useApproval } from '@/lib/hooks/useApproval'
 import { useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
-import { ArrowLeft, RefreshCw } from 'lucide-react'
+import { RefreshCw } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { useCurrentUser } from '@/lib/query/hooks'
 import { apiFetch } from '@/lib/firebase/api-fetch'
 import { useEscapeBack } from '@/lib/hooks/useEscapeBack'
+import { SectionHeader } from '@/components/section-header'
 import type { UsageRollup, GroupTotals } from '@/lib/api/usage-rollup'
 
 const DAY_OPTIONS = [1, 3, 7, 14, 30] as const
@@ -46,14 +47,7 @@ export default function UsagePage() {
 
   return (
     <div className="min-h-screen bg-brand-cream">
-      <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
-        <div className="px-4 sm:px-6 h-14 flex items-center gap-3">
-          <button onClick={() => router.push('/admin')} className="p-1 hover:bg-gray-100 rounded">
-            <ArrowLeft className="h-5 w-5 text-gray-600" />
-          </button>
-          <h1 className="font-semibold text-brand-charcoal">Anthropic API usage</h1>
-        </div>
-      </header>
+      <SectionHeader backHref="/admin" title="Anthropic API usage" />
 
       <main className="max-w-5xl mx-auto px-4 py-6">
         <UsageDashboard />

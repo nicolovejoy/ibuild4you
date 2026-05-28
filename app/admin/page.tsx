@@ -4,11 +4,12 @@ import { useAuth } from '@/lib/hooks/useAuth'
 import { useApproval } from '@/lib/hooks/useApproval'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
-import { ArrowLeft, Check, Save, Inbox, MessageSquare, DollarSign } from 'lucide-react'
+import { Check, Save, Inbox, MessageSquare, DollarSign } from 'lucide-react'
 import Link from 'next/link'
 import { useCurrentUser } from '@/lib/query/hooks'
 import { apiFetch } from '@/lib/firebase/api-fetch'
 import { useEscapeBack } from '@/lib/hooks/useEscapeBack'
+import { SectionHeader } from '@/components/section-header'
 
 interface UserDoc {
   id: string
@@ -59,14 +60,7 @@ export default function AdminPage() {
 
   return (
     <div className="min-h-screen bg-brand-cream">
-      <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
-        <div className="px-4 sm:px-6 h-14 flex items-center gap-3">
-          <button onClick={() => router.push('/dashboard')} className="p-1 hover:bg-gray-100 rounded">
-            <ArrowLeft className="h-5 w-5 text-gray-600" />
-          </button>
-          <h1 className="font-semibold text-brand-charcoal">Admin</h1>
-        </div>
-      </header>
+      <SectionHeader backHref="/dashboard" title="Admin" />
 
       <main className="max-w-3xl mx-auto px-4 py-6 space-y-6">
         <nav className="flex flex-wrap gap-2">

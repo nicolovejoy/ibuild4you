@@ -4,10 +4,11 @@ import { useAuth } from '@/lib/hooks/useAuth'
 import { useApproval } from '@/lib/hooks/useApproval'
 import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowLeft, ExternalLink, Save, Check, Github, MessageCircle } from 'lucide-react'
+import { ExternalLink, Save, Check, Github, MessageCircle } from 'lucide-react'
 import { useCurrentUser } from '@/lib/query/hooks'
 import { apiFetch } from '@/lib/firebase/api-fetch'
 import { useEscapeBack } from '@/lib/hooks/useEscapeBack'
+import { SectionHeader } from '@/components/section-header'
 import type { Feedback, FeedbackReply, FeedbackStatus, FeedbackType } from '@/lib/types'
 
 const STATUSES: FeedbackStatus[] = ['new', 'acknowledged', 'in_progress', 'done', 'wontfix']
@@ -54,14 +55,7 @@ export default function FeedbackAdminPage() {
 
   return (
     <div className="min-h-screen bg-brand-cream">
-      <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
-        <div className="px-4 sm:px-6 h-14 flex items-center gap-3">
-          <button onClick={() => router.push('/admin')} className="p-1 hover:bg-gray-100 rounded">
-            <ArrowLeft className="h-5 w-5 text-gray-600" />
-          </button>
-          <h1 className="font-semibold text-brand-charcoal">Feedback inbox</h1>
-        </div>
-      </header>
+      <SectionHeader backHref="/admin" title="Feedback inbox" />
 
       <main className="max-w-5xl mx-auto px-4 py-6">
         <FeedbackList />
