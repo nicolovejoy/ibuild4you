@@ -2,21 +2,6 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { copy } from '@/lib/copy'
 
-// Curated glossary order for the About page — new RAAC vocabulary only.
-// Legacy keys (maker, builder, agent, conversation, nextConversation) still
-// live in `copy.glossary` for in-UI tooltips and are intentionally omitted here.
-const ABOUT_GLOSSARY_KEYS = [
-  'brief',
-  'roan',
-  'originator',
-  'contributor',
-  'reviewer',
-  'builderDownstream',
-  'session',
-  'setup',
-  'files',
-] as const
-
 export default function AboutPage() {
   return (
     <div className="min-h-screen bg-brand-cream">
@@ -74,25 +59,6 @@ export default function AboutPage() {
         <section className="space-y-3 border-l-2 border-brand-navy/30 pl-4">
           <h2 className="text-xl font-semibold text-brand-charcoal">{copy.about.privacyIntroHeading}</h2>
           <p className="text-sm text-brand-slate leading-relaxed">{copy.about.privacy}</p>
-        </section>
-
-        {/* Glossary */}
-        <section className="space-y-6">
-          <h2 className="text-xl font-semibold text-brand-charcoal">{copy.about.glossaryHeading}</h2>
-          <dl className="space-y-4">
-            {ABOUT_GLOSSARY_KEYS.map((key) => {
-              const entry = copy.glossary[key]
-              return (
-                <div
-                  key={key}
-                  className="bg-white border border-gray-200 rounded-lg px-4 py-3"
-                >
-                  <dt className="font-medium text-brand-charcoal">{entry.term}</dt>
-                  <dd className="text-sm text-brand-slate mt-0.5">{entry.short}</dd>
-                </div>
-              )
-            })}
-          </dl>
         </section>
 
         {/* CTA */}
