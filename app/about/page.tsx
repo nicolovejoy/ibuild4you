@@ -1,16 +1,33 @@
 import Image from 'next/image'
 import Link from 'next/link'
 import { copy } from '@/lib/copy'
+import { ScaffoldIcon } from '@/components/ScaffoldIcon'
+import { UserMenu } from '@/components/user-menu'
 
 export default function AboutPage() {
   return (
     <div className="min-h-screen bg-brand-cream">
-      <div className="max-w-2xl mx-auto px-4 py-12 sm:py-16 space-y-12 sm:space-y-16">
-        {/* Header */}
-        <div className="text-center">
-          <h1 className="text-3xl font-bold text-brand-charcoal">iBuild4you</h1>
+      <header className="border-b border-gray-200 bg-white sticky top-0 z-10">
+        <div className="px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16">
+            <Link href="/" className="flex items-center gap-3">
+              <ScaffoldIcon className="h-7 w-7 text-brand-navy" />
+              <h1 className="text-xl font-bold text-brand-charcoal">iBuild4you</h1>
+            </Link>
+            <div className="flex items-center gap-2">
+              <Link
+                href="/"
+                className="text-sm text-gray-600 hover:text-brand-navy px-2 py-1 rounded-md hover:bg-gray-100"
+              >
+                Home
+              </Link>
+              <UserMenu />
+            </div>
+          </div>
         </div>
+      </header>
 
+      <div className="max-w-2xl mx-auto px-4 py-12 sm:py-16 space-y-12 sm:space-y-16">
         {/* What is this? */}
         <section className="space-y-3">
           <h2 className="text-xl font-semibold text-brand-charcoal">{copy.about.title}</h2>
@@ -62,18 +79,13 @@ export default function AboutPage() {
         </section>
 
         {/* CTA */}
-        <div className="text-center space-y-3 pt-4">
+        <div className="text-center pt-4">
           <Link
             href="/auth/login"
             className="inline-block px-6 py-2.5 bg-brand-navy text-white rounded-md font-medium hover:bg-brand-navy/90 transition-colors"
           >
             {copy.about.cta}
           </Link>
-          <p>
-            <Link href="/" className="text-sm text-brand-slate hover:text-brand-charcoal underline">
-              Back to home
-            </Link>
-          </p>
         </div>
 
         {/* Signature */}
