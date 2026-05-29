@@ -1128,6 +1128,7 @@ function EditableSetup({ project }: { project: Project }) {
   const [identity, setIdentity] = useState(project.identity || '')
   const [nudgeMessageOverride, setNudgeMessageOverride] = useState(project.nudge_message || '')
   const [autoReminders, setAutoReminders] = useState(project.auto_reminders_enabled === true)
+  const [githubRepo, setGithubRepo] = useState(project.github_repo || '')
   const [saved, setSaved] = useState(false)
 
   const updateProject = useUpdateProject()
@@ -1142,7 +1143,8 @@ function EditableSetup({ project }: { project: Project }) {
     setIdentity(project.identity || '')
     setNudgeMessageOverride(project.nudge_message || '')
     setAutoReminders(project.auto_reminders_enabled === true)
-  }, [project.welcome_message, project.seed_questions, project.session_mode, project.builder_directives, project.layout_mockups, project.identity, project.nudge_message, project.auto_reminders_enabled])
+    setGithubRepo(project.github_repo || '')
+  }, [project.welcome_message, project.seed_questions, project.session_mode, project.builder_directives, project.layout_mockups, project.identity, project.nudge_message, project.auto_reminders_enabled, project.github_repo])
 
   const handleSave = async () => {
     await updateProject.mutateAsync({
@@ -1155,6 +1157,7 @@ function EditableSetup({ project }: { project: Project }) {
       identity: identity || undefined,
       nudge_message: nudgeMessageOverride || undefined,
       auto_reminders_enabled: autoReminders,
+      github_repo: githubRepo.trim() || undefined,
       last_builder_activity_at: new Date().toISOString(),
     })
     setSaved(true)
@@ -1220,6 +1223,19 @@ function EditableSetup({ project }: { project: Project }) {
               <p className="text-xs text-gray-400">Sends up to 3 reminder emails on a 2 / 5 / 10 day cadence after a new conversation is ready. Stops the moment the maker replies.</p>
             </div>
           </label>
+
+          {/* GitHub repo — destination for "Convert to GitHub issue" in the feedback inbox */}
+          <div>
+            <label className="text-sm font-medium text-gray-700 block mb-1.5">GitHub repo (optional)</label>
+            <input
+              type="text"
+              value={githubRepo}
+              onChange={(e) => setGithubRepo(e.target.value)}
+              placeholder="owner/name — e.g. nicolovejoy/prntd"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
+            />
+            <p className="text-xs text-gray-400 mt-1">Where feedback gets sent when you click &quot;Convert to GitHub issue&quot;. The server&apos;s GITHUB_TOKEN must have access to this repo.</p>
+          </div>
 
           <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
             <LoadingButton variant="secondary" size="sm" loading={updateProject.isPending} loadingText="Saving..." onClick={handleSave}>
