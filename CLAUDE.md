@@ -145,7 +145,7 @@ NOT in MVP: process flow diagrams, data architecture drafts, microservice sketch
 
 ## Code Style
 
-This is a learning project — a junior contributor is also working on the codebase. Code should be:
+Keep the code approachable — clarity over cleverness. Code should be:
 - Clear and straightforward — no clever abstractions
 - Well-commented where non-obvious
 - Following patterns established in NoteMaxxing

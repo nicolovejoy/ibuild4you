@@ -102,7 +102,7 @@ Both prep prompts (`new-project` and `next-convo` — see `lib/agent/new-project
 
 ### 2. Structured mockup editor
 
-**Problem:** Builders have to write JSON by hand. Works for Nico but not for Max or future builders.
+**Problem:** Builders have to write JSON by hand. Works for technical builders but not for non-technical ones.
 
 **Design:**
 
