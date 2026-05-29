@@ -1,0 +1,7 @@
+{
+  "projects": {
+    "default": "ibuild4you-a0c4d",
+    "prod": "ibuild4you-a0c4d",
+    "preview": "ibuild4you-preview"
+  }
+}
