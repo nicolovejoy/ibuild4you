@@ -1,8 +1,10 @@
-# Feedback wire contract
+# Feedback wire contract (Loop)
 
 This is the canonical spec for the `<FeedbackWidget>` ↔ `/api/feedback`
-contract. Update this file when the contract changes; sites embedding the
-widget read this to know what to send.
+contract — the wire layer of **Loop**, the feedback mechanism. For the
+overview + how to embed Loop in a host app, see [`docs/loop.md`](../../docs/loop.md).
+Update this file when the contract changes; sites embedding the widget read
+this to know what to send.
 
 The contract lives in three coordinated places:
 

@@ -53,6 +53,7 @@ npm run test:watch   # Run tests in watch mode
 - `components/builder/` — Builder project view (sessions, brief, setup tabs)
 - `components/maker/` — Maker project view (chat, brief card)
 - `components/` — App-level components (ErrorBoundary, UserMenu)
+- **Loop** — the feedback mechanism: a widget embedded on host apps → `/api/feedback` → admin inbox at `/admin/feedback` → optional GitHub issue. Overview + how to embed: `docs/loop.md`. Wire contract: `lib/feedback/README.md`.
 
 Key pattern: clients call `apiFetch()` which attaches the Firebase Bearer token. API routes call `getAuthenticatedUser(request)` to verify the token server-side before accessing Firestore via `getAdminDb()`.
 
@@ -184,7 +185,7 @@ Keep the code approachable — clarity over cleverness. Code should be:
 - **#40 — Architectural drift: `useRealtimeMessages` bypasses API-route layer.** Client-direct Firestore subscription. Low severity; works today; replace with SSE-via-API when convenient.
 - **#38 — PDF upload validation (cache_control fix unverified end-to-end).**
 - **#39 — Smoke-test prep-prompts split in prod (commit `21f4c10`) — eight cases queued.**
-- A4 — pre-upload batch size budgeting in `addFiles` (see `docs/file-and-brief-fixes-plan.md` § A4).
+- A4 — pre-upload batch size budgeting in `addFiles` (see `docs/archive/file-and-brief-fixes-plan.md` § A4).
 - Project delete should clean up files (S3 + Firestore orphans). Factor from `scripts/cleanup-test-data.mjs`.
 - Plan P4/P5 — denormalized session counters + retire `requester_*` legacy fields. `~/.claude/plans/zesty-tumbling-fountain.md`. Telemetry-gated.
 - Users & roles Phase 1: display names everywhere (`docs/users-and-roles-plan.md`).
