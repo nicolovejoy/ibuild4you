@@ -380,6 +380,12 @@ export async function POST(request: Request) {
   }
   const sessionRef = await db.collection('sessions').add(sessionData)
 
+  // Persist the latest session timestamp on the project (mirrors the
+  // sessions route) so the maker-reminders cron anchors cadence on the
+  // newest session rather than falling back to shared_at.
+  await docRef.update({ latest_session_created_at: now })
+  projectData.latest_session_created_at = now
+
   // Add welcome message as first message so the maker sees a greeting
   const welcomeMessage = (projectData.welcome_message as string | undefined)
     || copy.chat.defaultWelcomeMessage(title.trim())

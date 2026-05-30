@@ -181,4 +181,19 @@ describe('decideReminder — reference-timestamp precedence', () => {
     expect(decision.send).toBe(true)
     if (decision.send) expect(decision.reminderNumber).toBe(1)
   })
+
+  // Regression for the persistence gap (PR feat/reminders-phase1): a fresh
+  // session prepped 1 day ago must hold the cadence even when the project was
+  // first shared long ago. Before latest_session_created_at was persisted onto
+  // the project doc, the cron saw it as undefined and anchored on the stale
+  // sharedAt — firing reminders off the original share instead of the newest
+  // session. This asserts the session timestamp wins.
+  it('does NOT fire off a stale sharedAt when a newer session exists', () => {
+    const decision = decideReminder(
+      { ...base, sharedAt: day(30), latestSessionCreatedAt: day(1) },
+      now,
+    )
+    expect(decision.send).toBe(false)
+    if (!decision.send) expect(decision.reason).toMatch(/cadence_not_elapsed/)
+  })
 })
