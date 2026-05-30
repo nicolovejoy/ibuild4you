@@ -243,10 +243,16 @@ describe('POST /api/sessions', () => {
 
     await POST(makePostRequest({ project_id: 'proj1' }))
 
-    // batch.update should have been called for each old session
-    expect(batchUpdates).toHaveLength(2)
-    expect(batchUpdates[0].data.status).toBe('completed')
-    expect(batchUpdates[1].data.status).toBe('completed')
+    // batch.update should have been called for each old session (+ one more
+    // for the project-doc latest_session_created_at denormalization).
+    const completed = batchUpdates.filter((u) => u.data.status === 'completed')
+    expect(completed).toHaveLength(2)
+
+    // The project doc is updated with the latest session timestamp so the
+    // maker-reminders cron can anchor its cadence on it.
+    const projectUpdate = batchUpdates.find((u) => 'latest_session_created_at' in u.data)
+    expect(projectUpdate).toBeDefined()
+    expect(typeof projectUpdate!.data.latest_session_created_at).toBe('string')
   })
 
   it('commits all operations in a single batch', async () => {

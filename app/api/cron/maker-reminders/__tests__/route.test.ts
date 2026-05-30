@@ -96,6 +96,26 @@ describe('GET /api/cron/maker-reminders', () => {
     expect(typeof update.last_reminder_sent_at).toBe('string')
 
     expect(mockReminderLogAdd).toHaveBeenCalledOnce()
+    const logged = mockReminderLogAdd.mock.calls[0][0]
+    expect(logged.decision).toBe('sent')
+    expect(typeof logged.decided_at).toBe('string')
+  })
+
+  it('logs a skipped decision row (every decision is recorded)', async () => {
+    mockProjects = [
+      makeProject({
+        reminders_sent_count: 3,
+        last_reminder_sent_at: day(30),
+        latest_session_created_at: day(40),
+      }),
+    ]
+
+    await GET(makeReq())
+
+    expect(mockReminderLogAdd).toHaveBeenCalledOnce()
+    const logged = mockReminderLogAdd.mock.calls[0][0]
+    expect(logged.decision).toBe('skipped')
+    expect(logged.reason).toBe('cap_reached')
   })
 
   it('skips when the cap of 3 reminders has been reached', async () => {
@@ -150,15 +170,23 @@ describe('GET /api/cron/maker-reminders', () => {
     expect(ok.ref.update).toHaveBeenCalled()
   })
 
-  it('records dry_run=true in the reminder_log when send-reminder returns it', async () => {
-    mockProjects = [makeProject({ latest_session_created_at: day(3) })]
+  it('records a would_send in dry-run WITHOUT advancing the cadence counters', async () => {
+    const proj = makeProject({ latest_session_created_at: day(3) })
+    mockProjects = [proj]
     mockSendReminder.mockResolvedValueOnce({ emailId: 'dry-run', dryRun: true })
 
-    await GET(makeReq())
+    const res = await GET(makeReq())
+    const body = await res.json()
 
     expect(mockReminderLogAdd).toHaveBeenCalledOnce()
     const logged = mockReminderLogAdd.mock.calls[0][0]
+    expect(logged.decision).toBe('would_send')
     expect(logged.dry_run).toBe(true)
     expect(logged.email_id).toBe('dry-run')
+
+    // Dry-run must not consume the real maker's reminder budget.
+    expect(proj.ref.update).not.toHaveBeenCalled()
+    expect(body.would_send).toBe(1)
+    expect(body.sent).toBe(0)
   })
 })

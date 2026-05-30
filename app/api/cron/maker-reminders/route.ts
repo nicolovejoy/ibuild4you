@@ -12,6 +12,10 @@ import { sendReminderEmail } from '@/lib/email/send-reminder'
 //
 // Safety rails:
 // - Set REMINDER_DRY_RUN=true in Vercel env to log decisions without sending.
+//   Dry-run is side-effect-free: it records a 'would_send' decision but does
+//   NOT advance the cadence counters, so it can't eat a real maker's budget.
+// - Every decision (sent / would_send / skipped / error) is written to the
+//   reminder_log collection — surfaced at /admin/reminders.
 // - Per-project failures are logged and skipped — one bad project shouldn't
 //   block the rest of the batch (lesson learned from the brief-regen loop).
 
@@ -33,16 +37,55 @@ export async function GET(request: Request) {
     .where('auto_reminders_enabled', '==', true)
     .get()
 
-  type Outcome =
-    | { project_id: string; result: 'sent'; reminder_number: number; email_id: string; dry_run: boolean }
-    | { project_id: string; result: 'skipped'; reason: string }
-    | { project_id: string; result: 'error'; message: string }
+  // Every decision — send, would-send (dry-run), skip, error — is recorded as
+  // a reminder_log row so /admin/reminders is the self-observable surface that
+  // replaces the REMINDER_DRY_RUN env switch.
+  type Decision = 'sent' | 'would_send' | 'skipped' | 'error'
+  type Outcome = {
+    project_id: string
+    decision: Decision
+    reason: string | null
+    reminder_number: number | null
+    days_since_last_touch: number | null
+    email_id: string | null
+    dry_run: boolean
+  }
 
   const outcomes: Outcome[] = []
+
+  // Write the decision row + push it onto the in-memory outcomes for the
+  // cron-run summary. Logging failures are swallowed — a bad log write must
+  // not abort the batch or block a real send.
+  async function record(
+    projectId: string,
+    makerEmail: string | null,
+    o: Omit<Outcome, 'project_id'>,
+  ) {
+    outcomes.push({ project_id: projectId, ...o })
+    try {
+      await db.collection('reminder_log').add({
+        project_id: projectId,
+        maker_email: makerEmail,
+        decision: o.decision,
+        reason: o.reason,
+        reminder_number: o.reminder_number,
+        days_since_last_touch: o.days_since_last_touch,
+        email_id: o.email_id,
+        dry_run: o.dry_run,
+        decided_at: nowIso,
+      })
+    } catch (logErr) {
+      console.error(
+        `[cron/maker-reminders] failed to log decision for ${projectId}:`,
+        logErr instanceof Error ? logErr.message : String(logErr),
+      )
+    }
+  }
 
   for (const doc of candidates.docs) {
     const project = doc.data()
     const projectId = doc.id
+    const makerEmail = (project.requester_email as string | undefined) || null
 
     try {
       const decision = decideReminder(
@@ -59,7 +102,14 @@ export async function GET(request: Request) {
       )
 
       if (!decision.send) {
-        outcomes.push({ project_id: projectId, result: 'skipped', reason: decision.reason })
+        await record(projectId, makerEmail, {
+          decision: 'skipped',
+          reason: decision.reason,
+          reminder_number: null,
+          days_since_last_touch: null,
+          email_id: null,
+          dry_run: false,
+        })
         continue
       }
 
@@ -73,34 +123,38 @@ export async function GET(request: Request) {
         reminderNumber: decision.reminderNumber,
       })
 
-      const prevCount = (project.reminders_sent_count as number | undefined) ?? 0
-      await doc.ref.update({
-        reminders_sent_count: prevCount + 1,
-        last_reminder_sent_at: nowIso,
-        updated_at: nowIso,
-      })
+      // Only a REAL send advances the cadence. In dry-run we log the
+      // would-send but leave reminders_sent_count / last_reminder_sent_at
+      // untouched — otherwise dry-run would silently consume a real maker's
+      // 3-reminder budget before we ever flip live.
+      if (!result.dryRun) {
+        const prevCount = (project.reminders_sent_count as number | undefined) ?? 0
+        await doc.ref.update({
+          reminders_sent_count: prevCount + 1,
+          last_reminder_sent_at: nowIso,
+          updated_at: nowIso,
+        })
+      }
 
-      await db.collection('reminder_log').add({
-        project_id: projectId,
-        maker_email: project.requester_email,
+      await record(projectId, makerEmail, {
+        decision: result.dryRun ? 'would_send' : 'sent',
+        reason: null,
         reminder_number: decision.reminderNumber,
         days_since_last_touch: decision.daysSinceLastTouch,
-        email_id: result.emailId,
-        dry_run: result.dryRun,
-        sent_at: nowIso,
-      })
-
-      outcomes.push({
-        project_id: projectId,
-        result: 'sent',
-        reminder_number: decision.reminderNumber,
         email_id: result.emailId,
         dry_run: result.dryRun,
       })
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       console.error(`[cron/maker-reminders] error for project ${projectId}:`, message)
-      outcomes.push({ project_id: projectId, result: 'error', message })
+      await record(projectId, makerEmail, {
+        decision: 'error',
+        reason: message,
+        reminder_number: null,
+        days_since_last_touch: null,
+        email_id: null,
+        dry_run: false,
+      })
     }
   }
 
@@ -108,9 +162,10 @@ export async function GET(request: Request) {
   // logs but noisy in the cron-run summary).
   const summary = {
     candidates: candidates.size,
-    sent: outcomes.filter((o) => o.result === 'sent').length,
-    skipped: outcomes.filter((o) => o.result === 'skipped').length,
-    errors: outcomes.filter((o) => o.result === 'error').length,
+    sent: outcomes.filter((o) => o.decision === 'sent').length,
+    would_send: outcomes.filter((o) => o.decision === 'would_send').length,
+    skipped: outcomes.filter((o) => o.decision === 'skipped').length,
+    errors: outcomes.filter((o) => o.decision === 'error').length,
   }
 
   console.log(

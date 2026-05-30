@@ -87,6 +87,15 @@ export async function POST(request: Request) {
   const docRef = db.collection('sessions').doc()
   batch.set(docRef, sessionData)
 
+  // Denormalize the latest session timestamp onto the project so the
+  // maker-reminders cron can anchor its cadence on the newest session
+  // without an extra query. (The dashboard's enrich-projects computes this
+  // read-time; the cron reads the persisted field.)
+  batch.update(projectDoc.ref, {
+    latest_session_created_at: now,
+    updated_at: now,
+  })
+
   // Add welcome message as first message in the new session
   const welcomeMessage = (projectData.welcome_message as string | undefined)
     || copy.chat.defaultWelcomeMessage(projectData.title as string)
