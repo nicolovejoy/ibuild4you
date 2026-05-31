@@ -91,7 +91,10 @@ export default function AboutPage() {
         </div>
 
         {/* Signature */}
-        <p className="text-right text-sm italic text-brand-slate pt-2">— Nico Lovejoy</p>
+        <div className="text-right pt-2">
+          <p className="text-sm italic text-brand-slate">— Nico Lovejoy</p>
+          <p className="text-xs text-brand-slate/70 mt-1">{copy.about.voiceNote}</p>
+        </div>
       </div>
     </div>
   )

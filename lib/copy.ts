@@ -207,6 +207,7 @@ export const copy = {
     privacy:
       "Your brief should only be visible to the people invited to it, but given that this is an early-stage project, with one developer who has a dozen projects or more, don't share things that are too personal here, please!",
     cta: 'Ready to get started?',
+    voiceNote: "This page was written by Nico with Roan's help, and edited by hand.",
   },
 
   // --- Glossary — single source of truth for terminology ---
