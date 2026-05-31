@@ -98,3 +98,48 @@ the flip (Phase 2) is then a one-line env change you can do with confidence.
 There are real makers in prod now — flipping live sends real email to real
 people. Phase 1 observability + the controlled test send are what de-risk it.
 Don't skip straight to deleting the env var.
+
+## Flip status + choreography (2026-05-31, mid-flip handoff)
+
+**Backfill applied** 2026-05-30 (`latest_session_created_at` on 16 projects;
+also RAAC `brief_role` on 31 members — unrelated). Verified read-only against
+prod this session:
+
+- **Exactly one project is opted in: `prntd-mobile-flow-rethink`** (maker
+  `manineg@`). State: `shared_at` = `latest_session_created_at` =
+  `2026-05-28T21:41:18Z`, `last_maker_message_at` = null,
+  `reminders_sent_count` = 0.
+- **prntd is DUE for reminder #1 right now** — computed via
+  `decideReminder`: 2.13 days since reference ≥ the 2-day threshold, maker
+  hasn't responded → `SEND reminder #1`. So the **first live cron tick (9am PT,
+  or a manual Vercel → Crons → Run) will email the real maker immediately.**
+- `reminder_log` is still empty (the Phase-1 logging code only deployed
+  2026-05-30 PM; cron hadn't ticked since). First row appears at the next tick.
+
+**KEY SUBTLETY — the flip is GLOBAL, not per-project.** `REMINDER_DRY_RUN` is a
+single env var; deleting it makes *every* opted-in project send on the next
+tick. You cannot isolate a "test send to test@" from prntd's real send via the
+env var. To test-to-self first you must choreograph the opt-in flags:
+
+**Safe sequence (test-to-self before the real maker):**
+1. Disable prntd's `auto_reminders_enabled` (RW script) so the real maker isn't
+   emailed during testing.
+2. Enable `auto_reminders_enabled` on a **test project whose `requester_email`
+   is `…@ibuild4you.com`** (catch-all domain — NOT example.com, or it won't
+   reach Nico's inbox).
+3. *(Nico)* Turn on the iCloud catch-all (#7).
+4. *(Nico)* Delete `REMINDER_DRY_RUN` on Vercel → next tick emails only the test
+   address → confirm it lands.
+5. Re-enable prntd → it gets reminder #1 on the following tick.
+6. Rollback anytime: re-add `REMINDER_DRY_RUN=true` (no code change).
+
+**Simpler sequence (if ready for prntd to go live):** treat the dry-run
+`/admin/reminders` row as the test (real targeting, no email); confirm it, then
+delete the env var and accept prntd's reminder #1 goes to the real maker.
+
+**Agent can do:** the flag choreography (steps 1/2/5 via `with-prod-env.mjs`)
++ all read-only verification. **Only Nico can do:** the iCloud toggle + the
+Vercel env-var delete (and shouldn't delegate sending real email).
+
+**PAUSED awaiting Nico's choice:** which sequence (test-to-self vs go-live), and
+whether to run it now. Resume by asking that, then drive the agent-doable steps.
