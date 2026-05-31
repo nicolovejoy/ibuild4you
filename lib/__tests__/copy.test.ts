@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { copy } from '../copy'
+import { copy, getMakerShortName } from '../copy'
 
 // Light-touch tests on user-facing copy. Goal: lock in the framing decisions
 // that get debated (brief language, no AI mechanism leakage in the invite),
@@ -39,5 +39,25 @@ describe('copy.invite.body', () => {
 
   it('falls back to "(loading...)" when passcode is null', () => {
     expect(copy.invite.body({ ...args, passcode: null })).toContain('(loading...)')
+  })
+})
+
+describe('getMakerShortName', () => {
+  it('prefers the first name', () => {
+    expect(getMakerShortName('Sam', 'sam.lee@example.com')).toBe('Sam')
+  })
+
+  it('falls back to the email local-part when no first name', () => {
+    expect(getMakerShortName(undefined, 'sam.lee@example.com')).toBe('sam.lee')
+    expect(getMakerShortName(null, 'sam.lee@example.com')).toBe('sam.lee')
+  })
+
+  it('uses the default generic fallback when neither is present', () => {
+    expect(getMakerShortName(undefined, undefined)).toBe('maker')
+    expect(getMakerShortName(null, null)).toBe('maker')
+  })
+
+  it('honors a custom fallback', () => {
+    expect(getMakerShortName(undefined, undefined, 'the maker')).toBe('the maker')
   })
 })
