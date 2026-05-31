@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getAuthenticatedUser, getAdminDb, hasSystemRole } from '@/lib/api/firebase-server-helpers'
+import { defaultBriefRole } from '@/lib/roles/brief-role'
 
 // POST /api/projects/claim — claim a project that was shared with you
 export async function POST(request: Request) {
@@ -60,6 +61,7 @@ export async function POST(request: Request) {
       user_id: auth.uid,
       email: auth.email,
       role: 'maker',
+      brief_role: defaultBriefRole('maker'),
       added_by: 'system-migration',
       created_at: now,
       updated_at: now,
