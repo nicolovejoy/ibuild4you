@@ -10,6 +10,7 @@ import {
 import { enrichProjects } from '@/lib/api/enrich-projects'
 import { sortProjectsByActivity } from '@/lib/api/sort-projects-by-activity'
 import { generateSlug } from '@/lib/utils'
+import { resolveBriefRole, defaultBriefRole } from '@/lib/roles/brief-role'
 import { copy } from '@/lib/copy'
 
 // Ensure slug is unique by appending -2, -3, etc. if needed
@@ -333,6 +334,7 @@ export async function POST(request: Request) {
     user_id: auth.uid,
     email: auth.email,
     role: 'owner',
+    brief_role: defaultBriefRole('owner'),
     added_by: auth.email,
     created_at: now,
     updated_at: now,
@@ -347,6 +349,7 @@ export async function POST(request: Request) {
       user_id: '',
       email: requesterEmail,
       role: 'maker',
+      brief_role: resolveBriefRole(body.brief_role, 'maker'),
       passcode,
       added_by: auth.email,
       created_at: now,

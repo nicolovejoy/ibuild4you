@@ -166,6 +166,40 @@ describe('POST /api/projects', () => {
     expect(typeof maker!.passcode).toBe('string')
   })
 
+  // --- Brief role (RAAC Phase 3a) ---
+
+  it('assigns brief_role originator to the maker and null to the owner', async () => {
+    await POST(makeRequest({ title: 'Test', requester_email: 'sam@example.com' }))
+
+    const members = addedDocs['project_members']
+    const owner = members.find((m) => m.role === 'owner')
+    const maker = members.find((m) => m.role === 'maker')
+    expect(owner!.brief_role).toBeNull()
+    expect(maker!.brief_role).toBe('originator')
+  })
+
+  it('honors an explicit brief_role override for the maker', async () => {
+    await POST(makeRequest({
+      title: 'Test',
+      requester_email: 'sam@example.com',
+      brief_role: 'contributor',
+    }))
+
+    const maker = addedDocs['project_members'].find((m) => m.role === 'maker')
+    expect(maker!.brief_role).toBe('contributor')
+  })
+
+  it('ignores an invalid brief_role and falls back to the default', async () => {
+    await POST(makeRequest({
+      title: 'Test',
+      requester_email: 'sam@example.com',
+      brief_role: 'nonsense',
+    }))
+
+    const maker = addedDocs['project_members'].find((m) => m.role === 'maker')
+    expect(maker!.brief_role).toBe('originator')
+  })
+
   it('does not create maker membership when requester_email is missing', async () => {
     await POST(makeRequest({ title: 'Test' }))
 

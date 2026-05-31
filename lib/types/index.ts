@@ -5,8 +5,14 @@ export interface BaseEntity {
   updated_at: string
 }
 
-// Project membership roles — each level includes everything below
+// Project membership roles — access tier; each level includes everything below
 export type MemberRole = 'owner' | 'builder' | 'apprentice' | 'maker'
+
+// Brief role — what a person is *doing* in a specific brief (RAAC vocabulary).
+// Distinct from MemberRole, which is the access tier. Today they overlap
+// (maker→originator, builder→reviewer, apprentice→contributor) but they're
+// conceptually separate axes; this field separates them in the data model.
+export type BriefRole = 'originator' | 'contributor' | 'reviewer'
 
 // Project members collection — role lives on the project-person relationship
 export interface ProjectMember extends BaseEntity {
@@ -14,6 +20,7 @@ export interface ProjectMember extends BaseEntity {
   user_id: string
   email: string
   role: MemberRole
+  brief_role?: BriefRole | null
   added_by: string // email of who added them
   passcode?: string
 }

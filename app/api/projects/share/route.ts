@@ -6,6 +6,7 @@ import {
   requireRole,
 } from '@/lib/api/firebase-server-helpers'
 import { generateWelcomeMessage } from '@/lib/agent/welcome-message'
+import { resolveBriefRole } from '@/lib/roles/brief-role'
 import { copy } from '@/lib/copy'
 import crypto from 'crypto'
 
@@ -19,7 +20,7 @@ export async function POST(request: Request) {
   if (auth.error) return auth.error
 
   const body = await request.json()
-  const { project_id, email, role: memberRole, first_name, last_name } = body
+  const { project_id, email, role: memberRole, brief_role, first_name, last_name } = body
 
   if (!project_id || !email?.trim()) {
     return NextResponse.json(
@@ -54,6 +55,7 @@ export async function POST(request: Request) {
 
   // Create or update project_members record
   const assignedRole = memberRole || 'maker'
+  const assignedBriefRole = resolveBriefRole(brief_role, assignedRole)
   const passcode = generatePasscode()
 
   const existingMember = await db
@@ -69,6 +71,7 @@ export async function POST(request: Request) {
       user_id: '', // will be set on claim
       email: normalizedEmail,
       role: assignedRole,
+      brief_role: assignedBriefRole,
       passcode,
       added_by: auth.email,
       created_at: now,
@@ -78,6 +81,7 @@ export async function POST(request: Request) {
     // Update role and regenerate passcode if re-sharing
     await existingMember.docs[0].ref.update({
       role: assignedRole,
+      brief_role: assignedBriefRole,
       passcode,
       updated_at: now,
     })

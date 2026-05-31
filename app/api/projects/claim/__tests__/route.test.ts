@@ -107,7 +107,7 @@ describe('POST /api/projects/claim', () => {
     const res = await POST(makeReq({ project_id: 'p1' }))
     expect(res.status).toBe(200)
     expect(mockMemberAdd).toHaveBeenCalledWith(
-      expect.objectContaining({ user_id: 'u1', role: 'maker' })
+      expect.objectContaining({ user_id: 'u1', role: 'maker', brief_role: 'originator' })
     )
   })
 })
