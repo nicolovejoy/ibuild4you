@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { getAdminDb } from '@/lib/api/firebase-server-helpers'
 import { regenerateBriefForProject } from '@/lib/api/briefs'
 import { NOTIFICATION_EMAILS } from '@/lib/constants'
+import { getMakerShortName } from '@/lib/copy'
 import { Resend } from 'resend'
 
 function getResend() {
@@ -40,10 +41,11 @@ export async function GET(request: Request) {
     const projectId = doc.id
     const title = (data.title as string) || 'Untitled project'
     const slug = (data.slug as string) || projectId
-    const makerName =
-      (data.requester_first_name as string) ||
-      (data.requester_email as string | undefined)?.split('@')[0] ||
+    const makerName = getMakerShortName(
+      data.requester_first_name as string | undefined,
+      data.requester_email as string | undefined,
       'the maker'
+    )
     const pendingSince = data.notify_pending_since as string | undefined
     const subject = `New messages from ${makerName} in ${title}`
     const body = [

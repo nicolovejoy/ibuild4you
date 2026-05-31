@@ -306,3 +306,14 @@ export function formatDisplayName(
   if (lastName) return `${firstName} ${lastName.charAt(0)}`
   return firstName
 }
+
+// Short maker name for inline references: first name, else the email local-part,
+// else a generic fallback. Centralizes the `first || email.split('@')[0] || …`
+// ladder repeated across the dashboard, builder view, and the notify cron.
+export function getMakerShortName(
+  firstName?: string | null,
+  email?: string | null,
+  fallback = 'maker'
+): string {
+  return firstName || email?.split('@')[0] || fallback
+}

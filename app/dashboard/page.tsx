@@ -16,7 +16,8 @@ import { Skeleton } from '@/components/ui/Skeleton'
 import { Modal } from '@/components/ui/Modal'
 import type { Project } from '@/lib/types'
 import { getTurnIndicator } from '@/lib/turn-indicator'
-import { copy, formatDisplayName } from '@/lib/copy'
+import { copy, formatDisplayName, getMakerShortName } from '@/lib/copy'
+import { getProjectShareLink } from '@/lib/url'
 import { parseNewProjectPayload } from '@/lib/api/import-payload'
 import { stripCodeFences } from '@/lib/utils'
 import { buildNewProjectPrompt } from '@/lib/agent/new-project-prompt'
@@ -533,9 +534,7 @@ function ShareModal({ project, onClose }: { project: Project; onClose: () => voi
   const [copied, setCopied] = useState(false)
   const [emailCopied, setEmailCopied] = useState(false)
   const shareProject = useShareProject()
-  const shareLink = typeof window !== 'undefined'
-    ? `${window.location.origin}/projects/${project.slug || project.id}`
-    : ''
+  const shareLink = getProjectShareLink(project.slug, project.id)
 
   const inviteEmailBody = copy.invite.body({ projectTitle: project.title, shareLink, email, passcode: shareProject.data?.passcode || null })
 
@@ -761,7 +760,7 @@ function makerDisplayName(project: Project): string | null {
 }
 
 function makerShortName(project: Project): string {
-  return project.requester_first_name || project.requester_email?.split('@')[0] || 'maker'
+  return getMakerShortName(project.requester_first_name, project.requester_email)
 }
 
 function formatRelativeTime(iso: string): string {

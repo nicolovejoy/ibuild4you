@@ -17,6 +17,8 @@ import { MessageContent } from '@/components/ui/MessageContent'
 import { MockupEditor } from './MockupEditor'
 import { parseNextConvoPayload } from '@/lib/api/import-payload'
 import { useEscapeBack } from '@/lib/hooks/useEscapeBack'
+import { useNudgeCopy } from '@/lib/hooks/useNudgeCopy'
+import { getProjectShareLink } from '@/lib/url'
 import { Modal } from '@/components/ui/Modal'
 import {
   useProject,
@@ -34,7 +36,7 @@ import {
   useProjectFiles,
 } from '@/lib/query/hooks'
 import { buildNextConvoPrompt } from '@/lib/agent/next-convo-prompt'
-import { copy } from '@/lib/copy'
+import { copy, getMakerShortName } from '@/lib/copy'
 import { apiFetch } from '@/lib/firebase/api-fetch'
 import { useStreamingChat } from '@/lib/hooks/useStreamingChat'
 import { useRealtimeMessages } from '@/lib/hooks/useRealtimeMessages'
@@ -958,9 +960,7 @@ function ShareModal({ project, onClose }: { project: Project; onClose: () => voi
 
   const passcode = shareProject.data?.passcode || fetchedPasscode || null
 
-  const shareLink = typeof window !== 'undefined'
-    ? `${window.location.origin}/projects/${project.slug || project.id}`
-    : ''
+  const shareLink = getProjectShareLink(project.slug, project.id)
 
   const handleShare = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -1250,12 +1250,11 @@ function EditableSetup({ project }: { project: Project }) {
 }
 
 function RenudgeCard({ project, projectId }: { project: Project; projectId: string }) {
-  const [copied, setCopied] = useState(false)
-  const updateProject = useUpdateProject()
+  const { copied, copyNudge } = useNudgeCopy(projectId)
 
-  const shareLink = typeof window !== 'undefined' ? `${window.location.origin}/projects/${project.slug || projectId}` : ''
+  const shareLink = getProjectShareLink(project.slug, projectId)
   const reminderMessage = copy.nudge.reminder({ projectTitle: project.title, shareLink })
-  const makerName = project.requester_first_name || project.requester_email?.split('@')[0] || 'maker'
+  const makerName = getMakerShortName(project.requester_first_name, project.requester_email)
 
   return (
     <Card hover={false}>
@@ -1269,13 +1268,7 @@ function RenudgeCard({ project, projectId }: { project: Project; projectId: stri
         </p>
         <textarea readOnly value={reminderMessage} rows={3} className="w-full px-2.5 py-1.5 bg-gray-50 border border-gray-300 rounded-md text-sm text-gray-700 resize-none mb-2" />
         <button
-          onClick={async () => {
-            await navigator.clipboard.writeText(reminderMessage)
-            setCopied(true)
-            setTimeout(() => setCopied(false), 2000)
-            const now = new Date().toISOString()
-            updateProject.mutate({ project_id: projectId, last_nudged_at: now, last_builder_activity_at: now })
-          }}
+          onClick={() => copyNudge(reminderMessage)}
           className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand-navy"
         >
           {copied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
@@ -1303,13 +1296,13 @@ function PrepNextSession({ project, projectId, sessionNumber }: {
   const [nudgeMessageOverride, setNudgeMessageOverride] = useState(project.nudge_message || '')
   const [nudgeNote, setNudgeNote] = useState('')
   const [created, setCreated] = useState(false)
-  const [nudgeCopied, setNudgeCopied] = useState(false)
 
   const updateProject = useUpdateProject()
   const generateWelcome = useGenerateWelcome()
   const createSession = useCreateSession()
+  const { copied: nudgeCopied, copyNudge } = useNudgeCopy(projectId)
 
-  const shareLink = typeof window !== 'undefined' ? `${window.location.origin}/projects/${project.slug || projectId}` : ''
+  const shareLink = getProjectShareLink(project.slug, projectId)
   const makerEmail = project.requester_email || ''
 
   useEffect(() => {
@@ -1360,14 +1353,7 @@ function PrepNextSession({ project, projectId, sessionNumber }: {
             <p className="text-sm font-medium text-green-800">New conversation created. Send {makerEmail} this message:</p>
             <textarea readOnly value={nudgeMessage} rows={6} className="w-full px-2.5 py-1.5 bg-white border border-gray-300 rounded-md text-sm text-gray-700 resize-none" />
             <button
-              onClick={async () => {
-                await navigator.clipboard.writeText(nudgeMessage)
-                setNudgeCopied(true)
-                setTimeout(() => setNudgeCopied(false), 2000)
-                // Track nudge as sent (copy = assumed sent)
-                const now = new Date().toISOString()
-                updateProject.mutate({ project_id: project.id, last_nudged_at: now, last_builder_activity_at: now })
-              }}
+              onClick={() => copyNudge(nudgeMessage)}
               className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand-navy"
             >
               {nudgeCopied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
