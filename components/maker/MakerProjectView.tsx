@@ -6,6 +6,7 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { ArrowLeft, Send, ChevronDown, ChevronUp, MessageSquare, HelpCircle, Paperclip, Pencil } from 'lucide-react'
 import { getTurnIndicator } from '@/lib/turn-indicator'
+import { isSupportedUpload, SUPPORTED_TYPES_LABEL } from '@/lib/files/supported-types'
 import { BuildTimestamp } from '@/components/build-timestamp'
 import { Card, CardBody } from '@/components/ui/Card'
 import { MessageContent } from '@/components/ui/MessageContent'
@@ -238,6 +239,21 @@ function MakerChat({
         filename: f.name, size: f.size, content_type: f.type,
       })))
       setError(`File "${oversized[0].name}" exceeds 25MB limit`)
+      return
+    }
+    // Reject types the agent can't read up front, so the maker gets an instant,
+    // clear reason instead of a file that uploads but the agent never sees.
+    // The /api/files/init route enforces the same rule server-side.
+    const unsupported = newFiles.filter(
+      (f) => !isSupportedUpload({ filename: f.name, contentType: f.type }),
+    )
+    if (unsupported.length > 0) {
+      console.warn('upload_rejected_unsupported_type', unsupported.map((f) => ({
+        filename: f.name, content_type: f.type,
+      })))
+      setError(
+        `Sorry, I can't open "${unsupported[0].name}". I can read ${SUPPORTED_TYPES_LABEL} — could you export it as a PDF and try again?`,
+      )
       return
     }
     setPendingFiles((prev) => [...prev, ...newFiles])

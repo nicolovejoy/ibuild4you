@@ -148,6 +148,59 @@ describe('POST /api/files/init', () => {
     })
   })
 
+  describe('content-type validation', () => {
+    it('returns 415 for an unsupported type (e.g. .pptx)', async () => {
+      const res = await POST(makeRequest({
+        project_id: 'p1',
+        filename: 'deck.pptx',
+        content_type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        size_bytes: 1024,
+      }))
+      expect(res.status).toBe(415)
+      const data = await res.json()
+      expect(data.error).toContain('deck.pptx')
+      // Message should guide the maker toward a format we can read.
+      expect(data.error.toLowerCase()).toContain('pdf')
+    })
+
+    it('returns 415 for HEIC images', async () => {
+      const res = await POST(makeRequest({
+        project_id: 'p1',
+        filename: 'photo.heic',
+        content_type: 'image/heic',
+        size_bytes: 1024,
+      }))
+      expect(res.status).toBe(415)
+    })
+
+    it('does not call presigner or write Firestore on type rejection', async () => {
+      await POST(makeRequest({
+        project_id: 'p1',
+        filename: 'deck.pptx',
+        content_type: '',
+        size_bytes: 1024,
+      }))
+      expect(mockGetSignedUrl).not.toHaveBeenCalled()
+      expect(mockSet).not.toHaveBeenCalled()
+    })
+
+    it('accepts .docx, .txt, and .md (the newly readable types)', async () => {
+      for (const [filename, content_type] of [
+        // The client sends 'application/octet-stream' when the browser gives no
+        // type (uploadOne: `file.type || 'application/octet-stream'`), so these
+        // mirror what actually arrives for .docx/.md.
+        ['notes.docx', 'application/octet-stream'],
+        ['notes.txt', 'text/plain'],
+        ['notes.md', 'application/octet-stream'],
+      ] as const) {
+        const res = await POST(makeRequest({
+          project_id: 'p1', filename, content_type, size_bytes: 1024,
+        }))
+        expect(res.status, `${filename} should be accepted`).toBe(201)
+      }
+    })
+  })
+
   describe('happy path', () => {
     it('returns 201 with file_id, upload_url, and storage_path', async () => {
       const res = await POST(makeRequest({

@@ -177,6 +177,31 @@ describe('MakerProjectView', () => {
     expect(screen.getByText(/a\.pdf/)).toBeDefined()
   })
 
+  it('rejects an unsupported file at picker time with a clear message', async () => {
+    const consoleWarn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    renderView()
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement
+    const deck = new File([new Blob([new Uint8Array(1024)])], 'deck.pptx', {
+      type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    })
+
+    await act(async () => {
+      Object.defineProperty(fileInput, 'files', { configurable: true, value: [deck] })
+      fireEvent.change(fileInput)
+    })
+
+    // The unsupported file is NOT queued, and the rejection is logged.
+    // (The maker-facing message goes through setError, which is stubbed by the
+    // useStreamingChat mock here — message wording is asserted on the server
+    // route in init.test.ts.)
+    expect(screen.queryByText(/deck\.pptx/)).toBeNull()
+    expect(consoleWarn).toHaveBeenCalledWith(
+      'upload_rejected_unsupported_type',
+      expect.arrayContaining([expect.objectContaining({ filename: 'deck.pptx' })]),
+    )
+    consoleWarn.mockRestore()
+  })
+
   it('rejects an oversized file at picker time and warns', async () => {
     const consoleWarn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     renderView()
