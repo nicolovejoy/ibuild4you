@@ -1,6 +1,6 @@
 import { getAuthenticatedUser, getAdminDb, getProjectRole, getUserDisplayName, hasSystemRole } from '@/lib/api/firebase-server-helpers'
 import { buildSystemPrompt } from '@/lib/agent/system-prompt'
-import { loadAttachmentBlocks, type AttachmentBlock } from '@/lib/agent/attachments'
+import { loadAttachmentBlocks, type AttachmentBlock, type DroppedAttachment } from '@/lib/agent/attachments'
 import { AGENT_MODEL, AGENT_MAX_TOKENS, AGENT_TEMPERATURE } from '@/lib/agent/constants'
 import { logAnthropicCall } from '@/lib/observability/anthropic'
 import Anthropic from '@anthropic-ai/sdk'
@@ -12,6 +12,28 @@ const NOTIFY_DEBOUNCE_MS = 5 * 60 * 1000
 
 function getAnthropic() {
   return new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+}
+
+// Turns dropped-attachment info into a note the agent acts on, so it tells the
+// maker "I couldn't open that file" instead of silently saying nothing came
+// through. Phrased as context (not a command) per Opus-4.x guidance.
+function buildAttachmentNote(dropped: DroppedAttachment[]): string {
+  const phrase = (d: DroppedAttachment) => {
+    switch (d.reason) {
+      case 'unsupported':
+        return `"${d.filename}" (a format I can't open — PDFs, images, text, and Word docs work)`
+      case 'pending':
+        return `"${d.filename}" (the upload may not have finished)`
+      default:
+        return `"${d.filename}" (I couldn't read the file)`
+    }
+  }
+  const list = dropped.map(phrase).join('; ')
+  return (
+    `<attachment_note>The maker tried to attach a file I could not read: ${list}. ` +
+    `Briefly let them know you couldn't open it and suggest re-sending it as a PDF ` +
+    `(or pasting the text directly). Do not pretend you can see its contents.</attachment_note>`
+  )
 }
 
 export async function POST(request: Request) {
@@ -117,20 +139,21 @@ export async function POST(request: Request) {
     role: 'user' | 'assistant'
     content: string | ContentBlock[]
   }
-  let claudeMessages: ClaudeMessage[]
+  let assembled: { message: ClaudeMessage; dropped: DroppedAttachment[] }[]
   try {
-    claudeMessages = await Promise.all(
-      storedMessages.map(async (m): Promise<ClaudeMessage> => {
+    assembled = await Promise.all(
+      storedMessages.map(async (m): Promise<{ message: ClaudeMessage; dropped: DroppedAttachment[] }> => {
         const role = m.role === 'user' ? 'user' : 'assistant'
         if (role === 'user' && m.file_ids.length > 0) {
-          const blocks = await loadAttachmentBlocks(db, m.file_ids, projectId)
+          const { blocks, dropped } = await loadAttachmentBlocks(db, m.file_ids, projectId)
           if (blocks.length > 0) {
             const contentBlocks: ContentBlock[] = [...blocks]
             contentBlocks.push({ type: 'text', text: m.content || '(file attached)' })
-            return { role, content: contentBlocks }
+            return { message: { role, content: contentBlocks }, dropped }
           }
+          return { message: { role, content: m.content }, dropped }
         }
-        return { role, content: m.content }
+        return { message: { role, content: m.content }, dropped: [] }
       }),
     )
   } catch (err) {
@@ -141,6 +164,26 @@ export async function POST(request: Request) {
       )
     }
     throw err
+  }
+  const claudeMessages: ClaudeMessage[] = assembled.map((a) => a.message)
+
+  // If the maker referenced files we couldn't read, annotate the most recent
+  // user turn that had drops with a note so the agent surfaces it instead of
+  // claiming nothing came through. Only the latest such turn is annotated, so
+  // the agent doesn't re-nag about files dropped earlier in the conversation.
+  for (let i = assembled.length - 1; i >= 0; i--) {
+    if (storedMessages[i].role !== 'user' || assembled[i].dropped.length === 0) continue
+    const note: ContentBlock = { type: 'text', text: buildAttachmentNote(assembled[i].dropped) }
+    const existing = claudeMessages[i].content
+    claudeMessages[i] = {
+      role: claudeMessages[i].role,
+      content: Array.isArray(existing)
+        ? [...existing, note]
+        : existing
+          ? [{ type: 'text', text: existing }, note]
+          : [note],
+    }
+    break
   }
 
   // Claude requires conversations to start with a user message.

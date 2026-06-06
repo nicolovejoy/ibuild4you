@@ -3,6 +3,7 @@ import { getAuthenticatedUser, getAdminDb, getProjectRole, getUserDisplayName } 
 import { PutObjectCommand } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { s3, S3_BUCKET } from '@/lib/s3/client'
+import { isSupportedUpload, SUPPORTED_TYPES_LABEL } from '@/lib/files/supported-types'
 import crypto from 'crypto'
 
 const MAX_FILE_SIZE = 25 * 1024 * 1024 // 25MB — Anthropic PDF cap is 32MB
@@ -51,6 +52,24 @@ export async function POST(request: Request) {
     return NextResponse.json(
       { error: `File "${filename}" exceeds 25MB limit` },
       { status: 413 },
+    )
+  }
+
+  // Reject types the agent can't read BEFORE storing anything. Otherwise we'd
+  // create a "ready" file the maker sees in their Files tab but the agent
+  // silently drops — the exact confusion we're fixing.
+  if (!isSupportedUpload({ filename, contentType: content_type })) {
+    console.warn('upload_rejected_unsupported_type', {
+      filename,
+      content_type,
+      project_id,
+      uid: auth.uid,
+    })
+    return NextResponse.json(
+      {
+        error: `Sorry, I can't open "${filename}". I can read ${SUPPORTED_TYPES_LABEL} — could you export it as a PDF and try again?`,
+      },
+      { status: 415 },
     )
   }
 

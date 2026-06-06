@@ -271,7 +271,7 @@ describe('POST /api/chat with attachments', () => {
     })
   })
 
-  it('falls back to plain text content when no eligible files resolve', async () => {
+  it('injects an attachment_note when a referenced file cannot be read', async () => {
     docData.files = { exists: false, data: () => ({}) } // file doc missing
     queryResults.messages = [
       {
@@ -287,10 +287,54 @@ describe('POST /api/chat with attachments', () => {
     const res = await POST(makeRequest({ session_id: 's1', content: 'next' }))
     await drain(res)
 
-    expect(streamCalls[0].messages[0]).toMatchObject({
-      role: 'user',
-      content: 'See attached',
-    })
+    // The agent must be told the file couldn't be read — not left to silently
+    // claim "nothing came through". The user's text is preserved alongside it.
+    const userMsg = streamCalls[0].messages[0] as {
+      role: string
+      content: Array<{ type: string; text?: string }>
+    }
+    expect(userMsg.role).toBe('user')
+    expect(Array.isArray(userMsg.content)).toBe(true)
+    const texts = userMsg.content.map((b) => b.text || '').join('\n')
+    expect(texts).toContain('See attached')
+    expect(texts).toContain('attachment_note')
+  })
+
+  it('names the unsupported file and suggests PDF in the note', async () => {
+    docData.files = {
+      exists: true,
+      data: () => ({
+        project_id: 'p1',
+        filename: 'deck.pptx',
+        content_type:
+          'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        storage_path: 'projects/p1/file-1/deck.pptx',
+        size_bytes: 2048,
+        status: 'ready',
+      }),
+    }
+    queryResults.messages = [
+      {
+        id: 'old-1',
+        data: () => ({
+          role: 'user',
+          content: "here's my deck",
+          file_ids: ['file-1'],
+          created_at: '2026-01-01T00:00:00Z',
+        }),
+      },
+    ]
+    const res = await POST(makeRequest({ session_id: 's1', content: 'go' }))
+    await drain(res)
+
+    const userMsg = streamCalls[0].messages[0] as {
+      content: Array<{ type: string; text?: string }>
+    }
+    const texts = userMsg.content.map((b) => b.text || '').join('\n')
+    expect(texts).toContain('deck.pptx')
+    expect(texts.toLowerCase()).toContain('pdf')
+    // The unsupported file never hits S3.
+    expect(mockS3Send).not.toHaveBeenCalled()
   })
 
   it('returns 413 when attachments exceed the per-message cap', async () => {
