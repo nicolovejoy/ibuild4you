@@ -51,15 +51,23 @@ describe('glossary (RAAC sweep)', () => {
     expect(copy.glossary.reviewer.term).toBe('Reviewer')
   })
 
-  it('drops the legacy role/agent keys swept in 3b', () => {
+  it('drops the legacy role/agent + nav keys', () => {
     expect(g.maker).toBeUndefined()
     expect(g.builder).toBeUndefined()
     expect(g.agent).toBeUndefined()
+    // Nav reframe (5a): builder tabs are now Sessions / Setup.
+    expect(g.conversation).toBeUndefined()
+    expect(g.nextConversation).toBeUndefined()
   })
 
-  it('keeps the builder-nav keys pending the nav reframe', () => {
-    expect(copy.glossary.conversation.short).toBeTruthy()
-    expect(copy.glossary.nextConversation.short).toBeTruthy()
+  it('uses Sessions/Setup as the builder-nav glossary keys', () => {
+    expect(copy.glossary.session.term).toBe('Session')
+    expect(copy.glossary.setup.term).toBe('Setup')
+  })
+
+  it('names the assistant Sam (chat) / Sam Scribe (glossary)', () => {
+    expect(copy.chat.agentLabel).toBe('Sam')
+    expect(copy.glossary.roan.term).toBe('Sam Scribe')
   })
 })
 

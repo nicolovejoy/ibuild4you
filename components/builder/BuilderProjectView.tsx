@@ -83,10 +83,10 @@ export function BuilderProjectView({ projectId, userEmail }: { projectId: string
 
   // Tab definitions used by both the desktop sidebar and mobile bottom tab bar.
   const tabs: { id: TabId; label: string; shortLabel: string; Icon: typeof MessageSquare; tooltip: string }[] = [
-    { id: 'sessions', label: 'Conversations', shortLabel: 'Chats', Icon: MessageSquare, tooltip: copy.glossary.conversation.short },
+    { id: 'sessions', label: 'Sessions', shortLabel: 'Sessions', Icon: MessageSquare, tooltip: copy.glossary.session.short },
     { id: 'brief', label: 'Brief', shortLabel: 'Brief', Icon: FileText, tooltip: copy.glossary.brief.short },
     { id: 'files', label: `Files${projectFiles?.length ? ` (${projectFiles.length})` : ''}`, shortLabel: 'Files', Icon: Upload, tooltip: copy.glossary.files.short },
-    { id: 'setup', label: 'Next Conversation', shortLabel: 'Next', Icon: Settings, tooltip: copy.glossary.nextConversation.short },
+    { id: 'setup', label: 'Setup', shortLabel: 'Setup', Icon: Settings, tooltip: copy.glossary.setup.short },
   ]
 
   return (
@@ -319,8 +319,8 @@ function SessionsTab({
     return (
       <EmptyState
         icon={MessageSquare}
-        title="No conversations yet"
-        description="Create a conversation in the Next Conversation tab to get started."
+        title="No sessions yet"
+        description="Create a session in the Setup tab to get started."
       />
     )
   }
@@ -345,7 +345,7 @@ function SessionsTab({
             >
               <div className="flex items-center gap-2">
                 <span className={`w-2 h-2 rounded-full shrink-0 ${isActive ? 'bg-green-500' : 'bg-gray-300'}`} />
-                <span className="font-medium text-gray-900">Conversation {sessions.length - i}</span>
+                <span className="font-medium text-gray-900">Session {sessions.length - i}</span>
                 <span className="text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">{mode}</span>
               </div>
               <div className="text-xs text-gray-400 mt-0.5 ml-4">
@@ -536,7 +536,7 @@ function ConfigUsed({ session }: { session: Session }) {
         <div className="mt-2 space-y-2 text-sm text-gray-600">
           {session.welcome_message && (
             <div>
-              <p className="text-xs font-medium text-gray-500 uppercase mb-1">Conversation opener</p>
+              <p className="text-xs font-medium text-gray-500 uppercase mb-1">Opening message</p>
               <p className="text-sm text-gray-700 bg-gray-50 rounded px-2.5 py-1.5 whitespace-pre-wrap">{session.welcome_message}</p>
             </div>
           )}
@@ -1173,10 +1173,10 @@ function EditableSetup({ project }: { project: Project }) {
           Agent setup
         </h2>
         <div className="space-y-5">
-          {/* Conversation opener */}
+          {/* Opening message */}
           <div>
             <div className="flex items-center justify-between mb-1.5">
-              <label className="text-sm font-medium text-gray-700">Conversation opener</label>
+              <label className="text-sm font-medium text-gray-700">Opening message</label>
               <LoadingButton variant="ghost" size="sm" loading={generateWelcome.isPending} loadingText="Generating..." onClick={async () => { const r = await generateWelcome.mutateAsync(project.id); setWelcomeMessage(r.welcome_message) }} icon={Sparkles}>
                 {welcomeMessage ? 'Regenerate' : 'Generate'}
               </LoadingButton>
@@ -1348,10 +1348,10 @@ function PrepNextSession({ project, projectId, sessionNumber }: {
         <CardBody>
           <h2 className="text-sm font-semibold text-brand-slate uppercase tracking-wide flex items-center gap-1.5 mb-3">
             <Check className="h-4 w-4 text-green-600" />
-            Conversation {sessionNumber} ready
+            Session {sessionNumber} ready
           </h2>
           <div className="space-y-3 p-3 bg-green-50 border border-green-200 rounded-lg">
-            <p className="text-sm font-medium text-green-800">New conversation created. Send {makerEmail} this message:</p>
+            <p className="text-sm font-medium text-green-800">New session created. Send {makerEmail} this message:</p>
             <textarea readOnly value={nudgeMessage} rows={6} className="w-full px-2.5 py-1.5 bg-white border border-gray-300 rounded-md text-sm text-gray-700 resize-none" />
             <button
               onClick={() => copyNudge(nudgeMessage)}
@@ -1397,10 +1397,10 @@ function PrepNextSession({ project, projectId, sessionNumber }: {
               <p className="text-xs text-gray-400 mt-1">Changes how the agent introduces itself and frames its role.</p>
             </div>
 
-            {/* Conversation opener */}
+            {/* Opening message */}
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <label className="text-sm font-medium text-gray-700">Conversation opener</label>
+                <label className="text-sm font-medium text-gray-700">Opening message</label>
                 <LoadingButton variant="ghost" size="sm" loading={generateWelcome.isPending} loadingText="Generating..." onClick={async () => { const r = await generateWelcome.mutateAsync(project.id); setWelcomeMessage(r.welcome_message) }} icon={Sparkles}>
                   {welcomeMessage ? 'Regenerate' : 'Generate'}
                 </LoadingButton>
