@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getAdminAuth, getAdminDb } from '@/lib/firebase/admin'
 import { ADMIN_EMAILS, isAdminEmail } from '@/lib/constants'
-import type { MemberRole, SystemRole } from '@/lib/types'
+import type { BriefRole, MemberRole, SystemRole } from '@/lib/types'
 import { getCachedUser, setCachedUser } from './auth-cache'
 
 export { ADMIN_EMAILS }
@@ -122,6 +122,35 @@ export async function getProjectRole(
   }
 
   ctx?.roleCache.set(projectId, null)
+  return null
+}
+
+// The viewer's stored brief_role on a project (what they're *doing*, vs their
+// access tier from getProjectRole). Looked up by user_id, then email (for
+// unclaimed members). Returns null for admins/owners and anyone with no row —
+// callers fall back to the access-tier default via viewerBriefRole().
+export async function getViewerBriefRole(
+  db: FirebaseFirestore.Firestore,
+  projectId: string,
+  userId: string,
+  email: string
+): Promise<BriefRole | null> {
+  const byUid = await db
+    .collection('project_members')
+    .where('project_id', '==', projectId)
+    .where('user_id', '==', userId)
+    .limit(1)
+    .get()
+  if (!byUid.empty) return (byUid.docs[0].data().brief_role as BriefRole | null) ?? null
+
+  const byEmail = await db
+    .collection('project_members')
+    .where('project_id', '==', projectId)
+    .where('email', '==', email)
+    .limit(1)
+    .get()
+  if (!byEmail.empty) return (byEmail.docs[0].data().brief_role as BriefRole | null) ?? null
+
   return null
 }
 

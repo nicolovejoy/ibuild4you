@@ -1,6 +1,6 @@
 import { copy } from '@/lib/copy'
 import type { BriefRole, MemberRole } from '@/lib/types'
-import { defaultBriefRole } from './brief-role'
+import { defaultBriefRole, isBriefRole } from './brief-role'
 
 // Display helpers for brief roles (RAAC vocab). The persisted/semantic side
 // lives in brief-role.ts; this module is the user-facing label layer.
@@ -16,11 +16,17 @@ export function briefRoleShort(role: BriefRole): string {
 }
 
 /**
- * The brief role to display for a viewer when we only know their access tier
- * (chrome badges don't load the stored brief_role). Owner/admin operate the
- * builder console in a reviewing capacity, so they fall back to 'reviewer'.
+ * The brief role to display for a viewer. Prefers their explicitly-stored
+ * brief_role (e.g. a Contributor whose access tier is `maker`); falls back to
+ * the role implied by the access tier when no stored role is known. Owner/admin
+ * operate the builder console in a reviewing capacity, so they fall back to
+ * 'reviewer'.
  */
-export function viewerBriefRole(accessTier?: MemberRole | 'admin' | null): BriefRole {
+export function viewerBriefRole(
+  accessTier?: MemberRole | 'admin' | null,
+  storedBriefRole?: BriefRole | null,
+): BriefRole {
+  if (isBriefRole(storedBriefRole)) return storedBriefRole
   if (accessTier && accessTier !== 'admin') {
     const implied = defaultBriefRole(accessTier)
     if (implied) return implied
