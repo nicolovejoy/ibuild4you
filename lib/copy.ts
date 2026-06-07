@@ -214,12 +214,11 @@ export const copy = {
   // Used by the About page and as tooltip text across the app.
   // Keep `short` ≤ 90 chars so it works as a hover tooltip.
   //
-  // NOTE: this is in transition. The new RAAC vocab (Roan / Originator /
-  // Contributor / Reviewer / Builder-as-downstream) lives alongside the legacy
-  // in-UI vocab (maker / builder / agent / conversation / nextConversation)
-  // until the Phase 3 sweep renames component references. About page renders
-  // the new vocab via an explicit list; existing tooltips continue to look up
-  // legacy keys.
+  // NOTE: RAAC vocab (Roan / Originator / Contributor / Reviewer /
+  // Builder-as-downstream) is now the UI's role vocabulary — chrome badges
+  // resolve labels via lib/roles/display.ts. The only legacy keys left are the
+  // builder-nav tab labels (conversation / nextConversation), held until the
+  // nav reframe decides what that nav actually is (CLAUDE.md item 5).
   glossary: {
     brief: {
       term: 'Brief',
@@ -264,20 +263,7 @@ export const copy = {
       short: "This brief hasn't been shared yet — still needs a link sent.",
     },
 
-    // --- Legacy keys (in-UI tooltips) — removed in Phase 3 ---
-    maker: {
-      term: 'Maker',
-      short: 'The person with the idea, chatting with the AI assistant. (That might be you.)',
-    },
-    builder: {
-      term: 'Builder',
-      short:
-        'The person who turns the brief into the built thing — sets context, reviews, follows up.',
-    },
-    agent: {
-      term: 'iBuild4you assistant',
-      short: 'The AI that asks questions, captures what you say, and updates the brief.',
-    },
+    // --- Legacy nav keys (builder tabs) — pending the nav reframe; see CLAUDE.md item 5 ---
     conversation: {
       term: 'Conversation',
       short: 'One chat between maker and assistant. You can come back across many.',

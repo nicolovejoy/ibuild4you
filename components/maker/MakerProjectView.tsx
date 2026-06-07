@@ -32,6 +32,7 @@ import { useStreamingChat } from '@/lib/hooks/useStreamingChat'
 import { useRealtimeMessages } from '@/lib/hooks/useRealtimeMessages'
 import { useEscapeBack } from '@/lib/hooks/useEscapeBack'
 import { copy } from '@/lib/copy'
+import { briefRoleLabel, briefRoleShort, viewerBriefRole } from '@/lib/roles/display'
 import { useQueryClient } from '@tanstack/react-query'
 import type { Session, WireframeMockup, ProjectFile } from '@/lib/types'
 
@@ -138,9 +139,9 @@ export function MakerProjectView({ projectId, userEmail }: { projectId: string; 
           <div className="flex items-center gap-2 mt-1.5 text-xs text-brand-slate">
             <span
               className="text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-500 text-white shrink-0"
-              title={copy.glossary.maker.short}
+              title={briefRoleShort(viewerBriefRole(project?.viewer_role))}
             >
-              Maker
+              {briefRoleLabel(viewerBriefRole(project?.viewer_role))}
             </span>
             <span className="flex items-center gap-1.5 truncate">
               <Image

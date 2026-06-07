@@ -37,6 +37,7 @@ import {
 } from '@/lib/query/hooks'
 import { buildNextConvoPrompt } from '@/lib/agent/next-convo-prompt'
 import { copy, getMakerShortName } from '@/lib/copy'
+import { briefRoleLabel, briefRoleShort, viewerBriefRole } from '@/lib/roles/display'
 import { apiFetch } from '@/lib/firebase/api-fetch'
 import { useStreamingChat } from '@/lib/hooks/useStreamingChat'
 import { useRealtimeMessages } from '@/lib/hooks/useRealtimeMessages'
@@ -106,9 +107,9 @@ export function BuilderProjectView({ projectId, userEmail }: { projectId: string
           </button>
           <span
             className="inline-block text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded bg-brand-navy text-white"
-            title={copy.glossary.builder.short}
+            title={briefRoleShort(viewerBriefRole(project?.viewer_role))}
           >
-            Builder
+            {briefRoleLabel(viewerBriefRole(project?.viewer_role))}
           </span>
         </div>
         <nav className="flex-1 p-2 space-y-1">
@@ -142,9 +143,9 @@ export function BuilderProjectView({ projectId, userEmail }: { projectId: string
               </button>
               <span
                 className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded bg-brand-navy text-white"
-                title={copy.glossary.builder.short}
+                title={briefRoleShort(viewerBriefRole(project?.viewer_role))}
               >
-                Builder
+                {briefRoleLabel(viewerBriefRole(project?.viewer_role))}
               </span>
             </div>
 

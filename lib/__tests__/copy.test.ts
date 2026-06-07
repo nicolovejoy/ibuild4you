@@ -42,6 +42,27 @@ describe('copy.invite.body', () => {
   })
 })
 
+describe('glossary (RAAC sweep)', () => {
+  const g = copy.glossary as Record<string, unknown>
+
+  it('exposes the RAAC role terms', () => {
+    expect(copy.glossary.originator.term).toBe('Originator')
+    expect(copy.glossary.contributor.term).toBe('Contributor')
+    expect(copy.glossary.reviewer.term).toBe('Reviewer')
+  })
+
+  it('drops the legacy role/agent keys swept in 3b', () => {
+    expect(g.maker).toBeUndefined()
+    expect(g.builder).toBeUndefined()
+    expect(g.agent).toBeUndefined()
+  })
+
+  it('keeps the builder-nav keys pending the nav reframe', () => {
+    expect(copy.glossary.conversation.short).toBeTruthy()
+    expect(copy.glossary.nextConversation.short).toBeTruthy()
+  })
+})
+
 describe('getMakerShortName', () => {
   it('prefers the first name', () => {
     expect(getMakerShortName('Sam', 'sam.lee@example.com')).toBe('Sam')
