@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { POST } from '../route'
+import { buildSystemPrompt } from '@/lib/agent/system-prompt'
 
 // =============================================================================
 // CHAT ROUTE TESTS
@@ -45,6 +46,11 @@ const mockCollection = vi.fn((name: string) => ({
     update: mockUpdate,
   })),
   where: vi.fn(() => ({
+    // Direct .where(...).get() (no orderBy/limit) — e.g. the project_members roster.
+    get: vi.fn(async () => {
+      const docs = queryResults[name] || []
+      return { docs, empty: docs.length === 0, size: docs.length }
+    }),
     orderBy: vi.fn(() => ({
       get: vi.fn(async () => {
         const docs = queryResults[name] || []
@@ -76,11 +82,15 @@ vi.mock('@/lib/api/firebase-server-helpers', () => ({
 
 // Mock Anthropic SDK — configurable stream events
 let mockStreamEvents: { type: string; delta: { type: string; text: string } }[] = []
+// Capture the args passed to messages.stream so tests can assert on the
+// conversation history actually sent to Claude (e.g. name-prefixed turns).
+let capturedStreamArgs: { messages?: { role: string; content: unknown }[] } | null = null
 
 vi.mock('@anthropic-ai/sdk', () => ({
   default: vi.fn(() => ({
     messages: {
-      stream: vi.fn(() => {
+      stream: vi.fn((args: { messages?: { role: string; content: unknown }[] }) => {
+        capturedStreamArgs = args
         let index = 0
         return {
           [Symbol.asyncIterator]: () => ({
@@ -146,6 +156,7 @@ describe('POST /api/chat', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     addCalls.length = 0
+    capturedStreamArgs = null
     mockGetProjectRole.mockResolvedValue('maker')
     mockGetUserDisplayName.mockResolvedValue('Test User')
     mockHasSystemRole.mockReturnValue(false)
@@ -312,5 +323,109 @@ describe('POST /api/chat', () => {
     expect(projectUpdate).toBeDefined()
     const args = projectUpdate![0] as Record<string, unknown>
     expect(typeof args.last_maker_message_at).toBe('string')
+  })
+
+  // --- Multi-human brief (5b) ---
+
+  it('does NOT name-prefix turns when only one human has posted', async () => {
+    queryResults.messages = [
+      { id: 'm1', data: () => ({ role: 'agent', content: 'Welcome!', created_at: '2026-01-01T00:00:00Z' }) },
+      {
+        id: 'm2',
+        data: () => ({
+          role: 'user',
+          content: 'My idea is a cafe app',
+          sender_email: 'maria@example.com',
+          sender_display_name: 'Maria',
+          created_at: '2026-01-01T00:01:00Z',
+        }),
+      },
+    ]
+
+    const res = await POST(makeRequest({ session_id: 's1', content: 'more' }))
+    await readSSE(res)
+
+    const userTurn = capturedStreamArgs!.messages!.find((m) => m.content === 'My idea is a cafe app')
+    expect(userTurn).toBeDefined() // unprefixed, byte-identical to single-maker behavior
+    expect(buildSystemPrompt).toHaveBeenCalledWith(
+      expect.objectContaining({ participants: undefined })
+    )
+  })
+
+  it('name-prefixes each user turn when 2+ humans have posted', async () => {
+    queryResults.messages = [
+      { id: 'm1', data: () => ({ role: 'agent', content: 'Welcome!', created_at: '2026-01-01T00:00:00Z' }) },
+      {
+        id: 'm2',
+        data: () => ({
+          role: 'user',
+          content: 'I want a cafe app',
+          sender_email: 'maria@example.com',
+          sender_display_name: 'Maria',
+          created_at: '2026-01-01T00:01:00Z',
+        }),
+      },
+      {
+        id: 'm3',
+        data: () => ({
+          role: 'user',
+          content: 'and online ordering',
+          sender_email: 'tom@example.com',
+          sender_display_name: 'Tom',
+          created_at: '2026-01-01T00:02:00Z',
+        }),
+      },
+    ]
+    queryResults.project_members = [
+      { id: 'pm1', data: () => ({ email: 'maria@example.com', brief_role: 'originator' }) },
+      { id: 'pm2', data: () => ({ email: 'tom@example.com', brief_role: 'contributor' }) },
+    ]
+
+    const res = await POST(makeRequest({ session_id: 's1', content: 'more' }))
+    await readSSE(res)
+
+    const contents = capturedStreamArgs!.messages!.map((m) => m.content)
+    expect(contents).toContain('Maria: I want a cafe app')
+    expect(contents).toContain('Tom: and online ordering')
+  })
+
+  it('passes a participant roster (name + brief_role) to the system prompt when multi-human', async () => {
+    queryResults.messages = [
+      {
+        id: 'm1',
+        data: () => ({
+          role: 'user',
+          content: 'a',
+          sender_email: 'maria@example.com',
+          sender_display_name: 'Maria',
+          created_at: '2026-01-01T00:01:00Z',
+        }),
+      },
+      {
+        id: 'm2',
+        data: () => ({
+          role: 'user',
+          content: 'b',
+          sender_email: 'tom@example.com',
+          sender_display_name: 'Tom',
+          created_at: '2026-01-01T00:02:00Z',
+        }),
+      },
+    ]
+    queryResults.project_members = [
+      { id: 'pm1', data: () => ({ email: 'maria@example.com', brief_role: 'originator' }) },
+      { id: 'pm2', data: () => ({ email: 'tom@example.com', brief_role: 'contributor' }) },
+    ]
+
+    await POST(makeRequest({ session_id: 's1', content: 'more' }))
+
+    expect(buildSystemPrompt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        participants: [
+          { name: 'Maria', brief_role: 'originator' },
+          { name: 'Tom', brief_role: 'contributor' },
+        ],
+      })
+    )
   })
 })

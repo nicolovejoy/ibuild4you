@@ -337,4 +337,47 @@ describe('buildSystemPrompt', () => {
     expect(discover).toContain('Their direction wins')
     expect(converge).toContain('Their direction wins')
   })
+
+  // ---------------------------------------------------------------------------
+  // Multi-human brief (5b)
+  // ---------------------------------------------------------------------------
+
+  it('omits the multi-human block for a single participant', () => {
+    const result = buildSystemPrompt({
+      ...minimalInput,
+      makerFirstName: 'Maria',
+      participants: [{ name: 'Maria', brief_role: 'originator' }],
+    })
+    expect(result).not.toContain("## Who's in this conversation")
+    // Single participant still gets the regular ## Maker framing.
+    expect(result).toContain('## Maker')
+    expect(result).toContain('**Name:** Maria')
+  })
+
+  it('renders the multi-human roster with role labels when 2+ participants', () => {
+    const result = buildSystemPrompt({
+      ...minimalInput,
+      makerFirstName: 'Maria',
+      participants: [
+        { name: 'Maria', brief_role: 'originator' },
+        { name: 'Tom', brief_role: 'contributor' },
+      ],
+    })
+    expect(result).toContain("## Who's in this conversation")
+    expect(result).toContain('- **Maria** — Originator')
+    expect(result).toContain('- **Tom** — Contributor')
+    // Multi-human mode replaces the single-maker block, not stacks with it.
+    expect(result).not.toContain('## Maker')
+  })
+
+  it('labels a participant without a brief_role as Participant', () => {
+    const result = buildSystemPrompt({
+      ...minimalInput,
+      participants: [
+        { name: 'Maria', brief_role: 'originator' },
+        { name: 'Owner', brief_role: null },
+      ],
+    })
+    expect(result).toContain('- **Owner** — Participant')
+  })
 })
