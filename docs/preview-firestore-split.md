@@ -5,7 +5,7 @@ sandboxed DB instead of overwriting production. Closes the May 23 footgun (a
 real maker's `requester_email` got overwritten from a preview write) and
 unblocks agent-driven Playwright on `preview.ibuild4you.com`.
 
-## Key insight: no app code changes
+## Key insight: env-var scoping + one code fix
 
 Both Firebase SDKs read entirely from environment variables:
 
@@ -14,9 +14,14 @@ Both Firebase SDKs read entirely from environment variables:
   `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN`, `NEXT_PUBLIC_FIREBASE_PROJECT_ID`,
   `NEXT_PUBLIC_FIREBASE_APP_ID`
 
-So the split is **env-var scoping + Firebase/Vercel console work**, not a code
-change. The whole job is: stand up a second Firebase project, then point
-Vercel's *Preview* environment at it.
+So the split is mostly **env-var scoping + Firebase/Vercel console work**: stand
+up a second Firebase project, then point Vercel's *Preview* environment at it.
+
+⚠️ **One code fix was required** (an earlier draft of this doc claimed none):
+`next.config.ts` rewrote `/__/auth/*` to a **hardcoded prod** `firebaseapp.com`,
+which would route preview's Google sign-in handshake through the prod project
+even with every env var flipped. Now derives the destination from
+`NEXT_PUBLIC_FIREBASE_PROJECT_ID` (defaults to prod — a no-op on prod). Done.
 
 Rules + indexes are version-controlled (`firebase.json` → `firestore.rules`,
 `firestore.indexes.json`), so "copy rules + indexes to preview" is one
@@ -40,17 +45,22 @@ Rules + indexes are version-controlled (`firebase.json` → `firestore.rules`,
 `firebase deploy` still targets prod. Always pass `--project preview` for the
 sandbox.
 
-## Phase 2 — create the preview Firebase project 👤
+## Phase 2 — create the preview Firebase project — MOSTLY DONE (2026-06-06)
 
-1. Firebase console → Add project. Suggested ID: `ibuild4you-preview` (if it
-   resolves to something else, update `.firebaserc`).
-2. Create a **Web app** in the project → copy its config (`apiKey`, `appId`,
-   `projectId`) — these become the `NEXT_PUBLIC_*` values in Phase 4.
-3. Project settings → Service accounts → **Generate new private key** → this
-   JSON becomes `FIREBASE_SERVICE_ACCOUNT` in Phase 4. Keep it out of the repo;
-   store in 1Password `dev-secrets` (e.g. `op://dev-secrets/ibuild4you-preview-sa`).
-4. Firestore → create database (production mode, same region as prod —
-   `us-*` to match).
+DONE via CLI (firebase + gcloud, authed as nlovejoy@me.com):
+- Project `ibuild4you-preview` created; `.firebaserc` alias confirmed real.
+- Firestore API enabled (gcloud); `(default)` DB created, `nam5` multi-region.
+- Web app registered. Public config (non-secret):
+  - `NEXT_PUBLIC_FIREBASE_PROJECT_ID` = `ibuild4you-preview`
+  - `NEXT_PUBLIC_FIREBASE_API_KEY` = `AIzaSyALL49WWM1tOqsvvaaEmr8gg_LqqEdeSiU`
+  - `NEXT_PUBLIC_FIREBASE_APP_ID` = `1:149838762833:web:2938264c76e7965fad3970`
+  - project number `149838762833`
+
+STILL 👤 (secret — needs your hands):
+- Project settings → Service accounts → **Generate new private key** → this JSON
+  becomes `FIREBASE_SERVICE_ACCOUNT`. Store in 1Password `dev-secrets`
+  (e.g. `op://dev-secrets/ibuild4you-preview-sa`).
+  https://console.firebase.google.com/project/ibuild4you-preview/settings/serviceaccounts/adminsdk
 
 ## Phase 3 — auth setup 👤
 
@@ -94,17 +104,17 @@ NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=preview.ibuild4you.com
 Then `op inject -i .env.preview.local.tpl -o .env.preview.local` (run it
 yourself — `op inject` is hook-blocked for the agent).
 
-## Phase 5 — deploy rules/indexes + seed 🤖 (with Nico authenticated)
+## Phase 5 — deploy rules/indexes + seed
 
-```
-firebase deploy --only firestore:rules,firestore:indexes --project preview
-```
+Rules + indexes: **DONE** (2026-06-06) —
+`firebase deploy --only firestore:rules,firestore:indexes --project preview`
+ran clean against the new DB.
 
-Then seed the preview DB so sign-in works and there's something to look at:
+`scripts/with-preview-env.mjs` wrapper: **DONE** (reads `.env.preview.local`).
 
-- Test admin: a preview-scoped run of `scripts/seed-test-admin.mjs` (needs a
-  `with-preview-env.mjs` wrapper analogous to `with-prod-env.mjs`, pointed at
-  `.env.preview.local`). Agent can add that wrapper.
+Still to seed (after the env flip + a real `.env.preview.local`):
+
+- Test admin: `node scripts/with-preview-env.mjs node scripts/seed-test-admin.mjs`.
 - Optionally a canonical test project or two for Playwright fixtures.
 
 ## Phase 6 — verify
