@@ -211,7 +211,7 @@ export function BuilderProjectView({ projectId, userEmail }: { projectId: string
                     Share
                   </button>
                 )}
-                {sessions && <span>{sessions.length} conversation{sessions.length === 1 ? '' : 's'}</span>}
+                {sessions && <span>{sessions.length} session{sessions.length === 1 ? '' : 's'}</span>}
               </div>
             )}
           </div>

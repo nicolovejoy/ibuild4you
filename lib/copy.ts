@@ -145,7 +145,7 @@ export const copy = {
 
   // --- Maker view ---
   maker: {
-    previousConversations: 'Previous conversations',
+    previousConversations: 'Previous sessions',
   },
 
   // --- Auth ---
