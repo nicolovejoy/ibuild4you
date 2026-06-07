@@ -170,7 +170,7 @@ Keep the code approachable — clarity over cleverness. Code should be:
 
 Full dated history: `docs/changelog.md`. Most recent below.
 
-**Shipped 2026-06-05 (file-attachment fix — read more types, stop silent drops):** PR #48 (`922169a`). Upload accepted any type but the agent's loader silently dropped what it couldn't read — file showed in Files tab while the agent got text-only. New `lib/files/supported-types.ts` (SOT, classifies by content-type AND extension). `/api/files/init` 415-rejects unsupported before storing, mirrored in `MakerProjectView`. `loadAttachmentBlocks` returns `{blocks, dropped}`; chat route injects `<attachment_note>` on the latest drop-bearing turn. Agent reads text/code/CSV/JSON (inlined) + `.docx` (mammoth) on top of PDF+images; `.pptx`/Pages/HEIC/legacy `.doc` degrade to "export as PDF". TDD, verified both paths on preview.
+**Shipped 2026-06-06 (reminders flip live + admin toggle + docs scrub):** commit `3d0bf64`. Reminders went live (deleted `REMINDER_DRY_RUN` + **redeployed** — env-var changes need a redeploy; validated a real send-to-self via `test-at-airport`; prntd safe — she'd replied so the cron skips). Admin per-brief auto-reminders Switch on `/admin/reminders` (`GET /api/admin/reminders/projects` + reuses `PATCH /api/projects`; TDD, 576 green). Docs scrub: moved the dated changelog here → `docs/changelog.md`; rewrote `reminders-plan.md` to an ops reference; accuracy-only pass on `iteration-architecture.md` / `conversational-posture-model.md` / `users-and-roles-concept.md`.
 
 ## Backlog (deeper queue)
 
