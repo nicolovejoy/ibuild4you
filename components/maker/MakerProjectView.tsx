@@ -138,9 +138,9 @@ export function MakerProjectView({ projectId, userEmail }: { projectId: string; 
           <div className="flex items-center gap-2 mt-1.5 text-xs text-brand-slate">
             <span
               className="text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-500 text-white shrink-0"
-              title={briefRoleShort(viewerBriefRole(project?.viewer_role))}
+              title={briefRoleShort(viewerBriefRole(project?.viewer_role, project?.viewer_brief_role))}
             >
-              {briefRoleLabel(viewerBriefRole(project?.viewer_role))}
+              {briefRoleLabel(viewerBriefRole(project?.viewer_role, project?.viewer_brief_role))}
             </span>
             <span className="truncate">Chatting with {copy.chat.agentLabel}</span>
             {turn && (

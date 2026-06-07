@@ -107,9 +107,9 @@ export function BuilderProjectView({ projectId, userEmail }: { projectId: string
           </button>
           <span
             className="inline-block text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded bg-brand-navy text-white"
-            title={briefRoleShort(viewerBriefRole(project?.viewer_role))}
+            title={briefRoleShort(viewerBriefRole(project?.viewer_role, project?.viewer_brief_role))}
           >
-            {briefRoleLabel(viewerBriefRole(project?.viewer_role))}
+            {briefRoleLabel(viewerBriefRole(project?.viewer_role, project?.viewer_brief_role))}
           </span>
         </div>
         <nav className="flex-1 p-2 space-y-1">
@@ -143,9 +143,9 @@ export function BuilderProjectView({ projectId, userEmail }: { projectId: string
               </button>
               <span
                 className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded bg-brand-navy text-white"
-                title={briefRoleShort(viewerBriefRole(project?.viewer_role))}
+                title={briefRoleShort(viewerBriefRole(project?.viewer_role, project?.viewer_brief_role))}
               >
-                {briefRoleLabel(viewerBriefRole(project?.viewer_role))}
+                {briefRoleLabel(viewerBriefRole(project?.viewer_role, project?.viewer_brief_role))}
               </span>
             </div>
 

@@ -83,6 +83,7 @@ export interface Project extends BaseEntity {
   brief_decision_count?: number | null
   brief_feature_count?: number | null
   viewer_role?: MemberRole | 'admin' | null
+  viewer_brief_role?: BriefRole | null // viewer's stored brief_role (chrome badges)
   has_active_session?: boolean
 }
 

@@ -4,6 +4,7 @@ import {
   getAuthenticatedUser,
   getAdminDb,
   getProjectRole,
+  getViewerBriefRole,
   requireRole,
   hasSystemRole,
 } from '@/lib/api/firebase-server-helpers'
@@ -63,8 +64,11 @@ export async function GET(request: Request) {
     const viewerRole = hasSystemRole(auth, 'admin')
       ? 'admin'
       : await getProjectRole(db, docId, auth.uid, auth.email, auth.systemRoles, auth)
+    // Viewer's stored brief_role so chrome badges reflect what they're *doing*
+    // (Contributor vs Originator), not just their access tier.
+    const viewerBriefRole = await getViewerBriefRole(db, docId, auth.uid, auth.email)
 
-    return NextResponse.json({ id: docId, ...docData, viewer_role: viewerRole })
+    return NextResponse.json({ id: docId, ...docData, viewer_role: viewerRole, viewer_brief_role: viewerBriefRole })
   }
 
   // Admins see all projects
