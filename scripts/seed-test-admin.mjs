@@ -158,7 +158,12 @@ console.log(`Admin email: ${ADMIN_EMAIL}`)
 console.log(`Test project: ${TEST_PROJECT_TITLE} (slug: ${TEST_PROJECT_SLUG})`)
 console.log()
 
-const passcode = generatePasscode()
+// Deterministic seeding: if SEED_PASSCODE is supplied (per-environment, stored
+// in 1Password), reuse it so re-seeding is idempotent and the value in Firestore
+// always matches what callers have on file. Falls back to a fresh random one.
+// Uppercased because the passcode-login route uppercases input before matching.
+const passcodeFromEnv = process.env.SEED_PASSCODE?.trim()
+const passcode = (passcodeFromEnv || generatePasscode()).toUpperCase()
 
 const authUser = await getOrCreateAuthUser()
 console.log(`Auth user: ${authUser.created ? 'create' : 'reuse'} → uid=${authUser.uid}`)
@@ -176,7 +181,11 @@ const result = await upsertMembership(project.id, passcode)
 console.log(`Membership: ${result.action}`)
 console.log()
 
-if (APPLY) {
+if (APPLY && passcodeFromEnv) {
+  // Deterministic run: the caller already has the passcode (it came from env).
+  // Nothing to copy or print — the value stays out of stdout entirely.
+  console.log('Passcode: reused from SEED_PASSCODE (deterministic seed).')
+} else if (APPLY) {
   // Pipe the passcode to pbcopy so it never lands in terminal scrollback or
   // chat history. Stdout only confirms success / instructions.
   const r = spawnSync('pbcopy', { input: passcode })

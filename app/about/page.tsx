@@ -1,4 +1,3 @@
-import Image from 'next/image'
 import Link from 'next/link'
 import { copy } from '@/lib/copy'
 import { SiteHeader } from '@/components/site-header'
@@ -16,24 +15,10 @@ export default function AboutPage() {
           <p className="text-brand-slate leading-relaxed">{copy.about.whatItIs}</p>
         </section>
 
-        {/* Meet Roan */}
+        {/* Meet the assistant */}
         <section className="space-y-3">
-          <div className="flex flex-col sm:flex-row sm:items-start sm:gap-6">
-            <div className="space-y-3 flex-1">
-              <h2 className="text-xl font-semibold text-brand-charcoal">{copy.about.whoIsRoanHeading}</h2>
-              <p className="text-brand-slate leading-relaxed">{copy.about.whoIsRoan}</p>
-            </div>
-            <div className="relative w-40 h-50 sm:w-40 sm:h-50 mx-auto sm:mx-0 shrink-0 mt-4 sm:mt-0">
-              <Image
-                src="/roan/roan-hero.webp"
-                alt="Roan"
-                fill
-                priority
-                sizes="(min-width: 640px) 160px, 160px"
-                className="object-contain"
-              />
-            </div>
-          </div>
+          <h2 className="text-xl font-semibold text-brand-charcoal">{copy.about.whoIsRoanHeading}</h2>
+          <p className="text-brand-slate leading-relaxed">{copy.about.whoIsRoan}</p>
         </section>
 
         {/* The brief */}

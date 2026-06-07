@@ -17,6 +17,7 @@ import { Modal } from '@/components/ui/Modal'
 import type { Project } from '@/lib/types'
 import { getTurnIndicator } from '@/lib/turn-indicator'
 import { copy, formatDisplayName, getMakerShortName } from '@/lib/copy'
+import { briefRoleLabel, briefRoleShort, viewerBriefRole } from '@/lib/roles/display'
 import { getProjectShareLink } from '@/lib/url'
 import { parseNewProjectPayload } from '@/lib/api/import-payload'
 import { stripCodeFences } from '@/lib/utils'
@@ -413,22 +414,21 @@ function ProjectList({ isAdmin }: { isAdmin: boolean }) {
                     onClick={() => router.push(`/projects/${project.slug || project.id}`)}
                   >
                     <div className="flex flex-wrap items-center gap-2 mb-1">
-                      {project.viewer_role && (
-                        <span
-                          className={`text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded shrink-0 ${
-                            project.viewer_role === 'maker'
-                              ? 'bg-amber-500 text-white'
-                              : 'bg-brand-navy text-white'
-                          }`}
-                          title={
-                            project.viewer_role === 'maker'
-                              ? 'You are the maker on this brief'
-                              : 'You are the builder on this brief'
-                          }
-                        >
-                          {project.viewer_role === 'maker' ? 'Maker' : 'Builder'}
-                        </span>
-                      )}
+                      {project.viewer_role && (() => {
+                        const briefRole = viewerBriefRole(project.viewer_role)
+                        return (
+                          <span
+                            className={`text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded shrink-0 ${
+                              briefRole === 'originator'
+                                ? 'bg-amber-500 text-white'
+                                : 'bg-brand-navy text-white'
+                            }`}
+                            title={briefRoleShort(briefRole)}
+                          >
+                            {briefRoleLabel(briefRole)}
+                          </span>
+                        )
+                      })()}
                       <h3 className="font-medium text-gray-900">{project.title}</h3>
                       {turn && (
                         <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${turn.className}`}>
@@ -444,7 +444,7 @@ function ProjectList({ isAdmin }: { isAdmin: boolean }) {
                       )}
                       {isAdmin && project.session_count !== undefined && project.session_count > 0 && (
                         <span className="text-gray-400">
-                          {project.session_count} conversation{project.session_count === 1 ? '' : 's'}
+                          {project.session_count} session{project.session_count === 1 ? '' : 's'}
                         </span>
                       )}
                       {project.brief_version != null && (

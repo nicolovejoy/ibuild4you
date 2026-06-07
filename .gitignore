@@ -51,3 +51,5 @@ next-env.d.ts
 
 # Claude Code per-project state (scheduled tasks lock, local settings)
 .claude/
+.ibuild4you-bypass
+.test-admin-passcode

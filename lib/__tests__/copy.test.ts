@@ -42,6 +42,35 @@ describe('copy.invite.body', () => {
   })
 })
 
+describe('glossary (RAAC sweep)', () => {
+  const g = copy.glossary as Record<string, unknown>
+
+  it('exposes the RAAC role terms', () => {
+    expect(copy.glossary.originator.term).toBe('Originator')
+    expect(copy.glossary.contributor.term).toBe('Contributor')
+    expect(copy.glossary.reviewer.term).toBe('Reviewer')
+  })
+
+  it('drops the legacy role/agent + nav keys', () => {
+    expect(g.maker).toBeUndefined()
+    expect(g.builder).toBeUndefined()
+    expect(g.agent).toBeUndefined()
+    // Nav reframe (5a): builder tabs are now Sessions / Setup.
+    expect(g.conversation).toBeUndefined()
+    expect(g.nextConversation).toBeUndefined()
+  })
+
+  it('uses Sessions/Setup as the builder-nav glossary keys', () => {
+    expect(copy.glossary.session.term).toBe('Session')
+    expect(copy.glossary.setup.term).toBe('Setup')
+  })
+
+  it('names the assistant Sam (chat) / Sam Scribe (glossary)', () => {
+    expect(copy.chat.agentLabel).toBe('Sam')
+    expect(copy.glossary.roan.term).toBe('Sam Scribe')
+  })
+})
+
 describe('getMakerShortName', () => {
   it('prefers the first name', () => {
     expect(getMakerShortName('Sam', 'sam.lee@example.com')).toBe('Sam')

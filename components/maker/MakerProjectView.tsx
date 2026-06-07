@@ -2,7 +2,6 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import Image from 'next/image'
 import Link from 'next/link'
 import { ArrowLeft, Send, ChevronDown, ChevronUp, MessageSquare, HelpCircle, Paperclip, Pencil } from 'lucide-react'
 import { getTurnIndicator } from '@/lib/turn-indicator'
@@ -32,6 +31,7 @@ import { useStreamingChat } from '@/lib/hooks/useStreamingChat'
 import { useRealtimeMessages } from '@/lib/hooks/useRealtimeMessages'
 import { useEscapeBack } from '@/lib/hooks/useEscapeBack'
 import { copy } from '@/lib/copy'
+import { briefRoleLabel, briefRoleShort, viewerBriefRole } from '@/lib/roles/display'
 import { useQueryClient } from '@tanstack/react-query'
 import type { Session, WireframeMockup, ProjectFile } from '@/lib/types'
 
@@ -138,20 +138,11 @@ export function MakerProjectView({ projectId, userEmail }: { projectId: string; 
           <div className="flex items-center gap-2 mt-1.5 text-xs text-brand-slate">
             <span
               className="text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-500 text-white shrink-0"
-              title={copy.glossary.maker.short}
+              title={briefRoleShort(viewerBriefRole(project?.viewer_role))}
             >
-              Maker
+              {briefRoleLabel(viewerBriefRole(project?.viewer_role))}
             </span>
-            <span className="flex items-center gap-1.5 truncate">
-              <Image
-                src="/roan/roan-avatar.png"
-                alt=""
-                width={20}
-                height={20}
-                className="rounded-full shrink-0"
-              />
-              <span className="truncate">Chatting with {copy.chat.agentLabel}</span>
-            </span>
+            <span className="truncate">Chatting with {copy.chat.agentLabel}</span>
             {turn && (
               <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium shrink-0 ${turn.className}`}>
                 {turn.label}
