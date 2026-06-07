@@ -87,7 +87,7 @@ Two changes to the platform would support this model:
 
 The current hardcoded identity ("You are the iBuild4you project intake assistant. Your job is to help the user describe their app or website idea") doesn't fit non-standard sessions like a format-review session or a "just build it" demand. The identity should be overridable at the project or session level, with a sensible default for standard intake sessions. The posture model works regardless of identity — a format review agent and a product intake agent both need the same set of postures, just with different gravity.
 
-**2. Add an open risks field to the brief.**
+**2. Add an open risks field to the brief.** *(SHIPPED — `brief.open_risks` exists and is injected into the system prompt; see `lib/agent/system-prompt.ts`.)*
 
 The brief currently captures what the user wants but not what's unresolved or risky. A place to record open risks ("cold start — no plan for first users," "pickup notation — format can't handle cross-section boundaries") gives the builder a natural input for session 2 directives. Risks become the seeds for Challenging posture in the next session.
 

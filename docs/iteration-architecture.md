@@ -27,7 +27,8 @@ session_mode: 'discover' | 'converge'   (default: discover)
 seed_questions: string[]                 (for discover mode)
 builder_directives: string[]             (for converge mode)
 welcome_message: string                  (greeting when session opens)
-style_guide: string                      (tone/approach notes)
+identity: string                         (optional — overrides the default agent identity)
+layout_mockups: WireframeMockup[]        (inline wireframes; see mockup-system.md)
 ```
 
 These are the "staging area" — the builder edits them while prepping the next session. When the session is created, they get snapshotted onto the session document.
@@ -35,7 +36,8 @@ These are the "staging area" — the builder edits them while prepping the next 
 ### Session-level fields (immutable snapshot)
 
 ```
-session_mode, seed_questions, builder_directives, welcome_message, style_guide
+session_mode, seed_questions, builder_directives, welcome_message,
+layout_mockups, identity
   — copied from project at session creation time
 model: string                            (e.g. "claude-sonnet-4-20250514")
 token_usage_input: number                (accumulated input tokens)
@@ -63,7 +65,7 @@ Decisions are extracted by the brief generation model — the builder cannot man
 2. Brief auto-updates with decisions extracted from conversation
 3. Builder reviews the brief on the project page
 4. Builder clicks "Prep session N+1" — expands full setup form
-5. Builder sets mode (discover/converge), questions/directives, welcome message, style guide
+5. Builder sets mode (discover/converge), questions/directives, welcome message
 6. Builder adds optional nudge note
 7. Builder clicks "Create session N+1 & copy nudge"
    - Config saves to project (staging area)
@@ -78,14 +80,14 @@ The builder always sees the locked config for completed sessions ("Session 1 set
 
 The system prompt is assembled in order:
 
-1. **Identity** — "You are the iBuild4you project intake assistant."
+1. **Identity** — the project's `identity` field, or `DEFAULT_IDENTITY` (configurable per project)
 2. **Behavior rules** — `AGENT_BEHAVIOR_RULES` (discover) or `CONVERGE_BEHAVIOR_RULES` (converge)
-3. **Style guide** — per-maker tone notes
-4. **Background** — project context
-5. **Seed questions** (discover) or **Builder directives** (converge)
-6. **Decisions already made** — from brief, so the agent doesn't revisit them
+3. **Background** — project context
+4. **Seed questions** (discover) or **Builder directives** (converge)
+5. **Decisions already made** — from brief, so the agent doesn't revisit them
+6. **Open risks** — from brief, if any (seeds for the Challenging posture next session)
 7. **Current brief** — what we know so far
-8. **Session context** — session number, greeting behavior
+8. **Session context** — session number, returning-after-gap recap, greeting behavior
 
 Config is read from the session document (snapshotted at creation), with fallback to project for sessions created before snapshotting was implemented.
 
@@ -111,7 +113,7 @@ The UI shows one or the other based on the current mode.
 ```
 Builder reviews brief
   ↓
-Opens "Prep session N+1" → sets mode, directives/questions, welcome, style
+Opens "Prep session N+1" → sets mode, directives/questions, welcome
   ↓
 Clicks "Create session & copy nudge" → config saved + snapshotted + session created
   ↓
@@ -152,7 +154,7 @@ Session 2 (converge):
 ## What Gets Tracked Per Session
 
 Each session document stores:
-- **Config snapshot**: mode, seed questions/directives, welcome message, style guide
+- **Config snapshot**: mode, seed questions/directives, welcome message, layout mockups, identity
 - **Usage**: model name, input tokens (accumulated), output tokens (accumulated)
 - **Status**: active → completed (when next session is created)
 

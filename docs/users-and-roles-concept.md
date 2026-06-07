@@ -10,7 +10,7 @@ Identity is fragmented across three places:
 
 Names are optional everywhere. Emails are the only guaranteed identifier, so they leak into the UI: chat bubbles, file uploads, project headers, share modals.
 
-Admin status is a hardcoded email list (`ADMIN_EMAILS` in `lib/constants.ts`).
+Admin status is now primarily a `system_roles: ['admin']` array on the `users` doc, with the hardcoded `ADMIN_EMAILS` list (`lib/constants.ts`) kept as a fallback. (The "move off hardcoded emails" open question below is effectively resolved.)
 
 ## Desired State
 

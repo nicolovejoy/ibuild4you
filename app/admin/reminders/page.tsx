@@ -5,7 +5,7 @@ import { useApproval } from '@/lib/hooks/useApproval'
 import { useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import { RefreshCw } from 'lucide-react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCurrentUser } from '@/lib/query/hooks'
 import { apiFetch } from '@/lib/firebase/api-fetch'
 import { useEscapeBack } from '@/lib/hooks/useEscapeBack'
@@ -27,6 +27,15 @@ interface ReminderDecision {
 interface RemindersResponse {
   rows: ReminderDecision[]
   truncated: boolean
+}
+
+interface ReminderProject {
+  id: string
+  title: string
+  requester_email?: string | null
+  auto_reminders_enabled: boolean
+  reminders_sent_count: number
+  last_reminder_sent_at?: string | null
 }
 
 const DECISION_FILTERS = ['all', 'sent', 'would_send', 'skipped', 'error'] as const
@@ -99,6 +108,8 @@ function RemindersDashboard() {
 
   return (
     <div className="space-y-6">
+      <AutoReminderToggles />
+
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-2">
           <span className="text-sm text-brand-slate">Decision:</span>
@@ -130,8 +141,8 @@ function RemindersDashboard() {
 
       <p className="text-xs text-brand-slate">
         Every daily cron decision is logged here. <span className="font-medium">would-send</span> rows
-        are dry-run previews (REMINDER_DRY_RUN on) — no email was sent and the cadence counter was not
-        advanced.
+        are dry-run previews (only when REMINDER_DRY_RUN is set) — no email was sent and the cadence
+        counter was not advanced.
       </p>
 
       {isLoading && (
@@ -161,6 +172,112 @@ function RemindersDashboard() {
         </div>
       )}
     </div>
+  )
+}
+
+function AutoReminderToggles() {
+  const queryClient = useQueryClient()
+  const [pendingId, setPendingId] = useState<string | null>(null)
+
+  const { data, isLoading, error } = useQuery<{ projects: ReminderProject[] }>({
+    queryKey: ['admin-reminder-projects'],
+    queryFn: async () => {
+      const res = await apiFetch('/api/admin/reminders/projects')
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body.error || `HTTP ${res.status}`)
+      }
+      return res.json()
+    },
+    staleTime: 60 * 1000,
+  })
+
+  const toggle = async (p: ReminderProject) => {
+    setPendingId(p.id)
+    try {
+      const res = await apiFetch('/api/projects', {
+        method: 'PATCH',
+        body: JSON.stringify({ project_id: p.id, auto_reminders_enabled: !p.auto_reminders_enabled }),
+      })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      // Refresh both the toggle list and the decision log (a flip changes what
+      // the next cron tick will do).
+      await queryClient.invalidateQueries({ queryKey: ['admin-reminder-projects'] })
+      await queryClient.invalidateQueries({ queryKey: ['admin-reminders'] })
+    } catch {
+      // Re-fetch to snap the switch back to the true server state on failure.
+      await queryClient.invalidateQueries({ queryKey: ['admin-reminder-projects'] })
+    } finally {
+      setPendingId(null)
+    }
+  }
+
+  return (
+    <div className="bg-white rounded-lg border border-gray-200">
+      <div className="px-4 py-3 border-b border-gray-100">
+        <h2 className="text-sm font-semibold text-brand-charcoal">Auto-reminders</h2>
+        <p className="text-xs text-brand-slate mt-0.5">
+          Toggle the daily reminder cron per brief. On = the maker gets nudged on the 2 / 5 / 10-day
+          cadence (max 3) until they reply.
+        </p>
+      </div>
+
+      {isLoading && <div className="px-4 py-6 text-sm text-gray-400 animate-pulse">Loading…</div>}
+
+      {error && (
+        <div className="px-4 py-3 text-sm text-red-700">
+          {error instanceof Error ? error.message : 'Failed to load projects'}
+        </div>
+      )}
+
+      {data && data.projects.length === 0 && !isLoading && (
+        <div className="px-4 py-6 text-sm text-gray-400">No briefs with a maker email yet.</div>
+      )}
+
+      {data && data.projects.length > 0 && (
+        <div className="divide-y divide-gray-100">
+          {data.projects.map((p) => (
+            <div key={p.id} className="flex items-center gap-3 px-4 py-3 text-sm">
+              <div className="flex-1 min-w-0">
+                <p className="text-brand-charcoal truncate">{p.title}</p>
+                <p className="text-xs text-gray-400 truncate">
+                  {p.requester_email}
+                  {p.reminders_sent_count > 0 ? ` · ${p.reminders_sent_count} sent` : ''}
+                </p>
+              </div>
+              <span className={`text-xs ${p.auto_reminders_enabled ? 'text-brand-navy' : 'text-gray-400'}`}>
+                {p.auto_reminders_enabled ? 'On' : 'Off'}
+              </span>
+              <Switch
+                on={p.auto_reminders_enabled}
+                disabled={pendingId === p.id}
+                onClick={() => toggle(p)}
+              />
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function Switch({ on, disabled, onClick }: { on: boolean; disabled?: boolean; onClick: () => void }) {
+  return (
+    <button
+      role="switch"
+      aria-checked={on}
+      disabled={disabled}
+      onClick={onClick}
+      className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-50 disabled:cursor-wait ${
+        on ? 'bg-brand-navy' : 'bg-gray-300'
+      }`}
+    >
+      <span
+        className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+          on ? 'translate-x-6' : 'translate-x-1'
+        }`}
+      />
+    </button>
   )
 }
 
