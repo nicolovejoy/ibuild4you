@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiFetch } from '@/lib/firebase/api-fetch'
 import { queryKeys } from './keys'
-import type { Project, Session, Message, Brief, SystemRole, ProjectFile } from '@/lib/types'
+import type { Project, Session, Message, Brief, SystemRole, ProjectFile, ProjectMemberSummary } from '@/lib/types'
 
 // --- Current user ---
 
@@ -83,10 +83,10 @@ export function useShareProject() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: async ({ project_id, email, first_name, last_name }: { project_id: string; email: string; first_name?: string; last_name?: string }) => {
+    mutationFn: async ({ project_id, email, first_name, last_name, role, brief_role }: { project_id: string; email: string; first_name?: string; last_name?: string; role?: string; brief_role?: string }) => {
       const res = await apiFetch('/api/projects/share', {
         method: 'POST',
-        body: JSON.stringify({ project_id, email, first_name, last_name }),
+        body: JSON.stringify({ project_id, email, first_name, last_name, role, brief_role }),
       })
       if (!res.ok) {
         const data = await res.json()
@@ -134,6 +134,47 @@ export function useResetPasscode() {
     },
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.passcode(variables) })
+    },
+  })
+}
+
+// --- Project members / roles (3c) ---
+
+export function useProjectMembers(projectId: string | undefined, enabled = true) {
+  return useQuery<ProjectMemberSummary[]>({
+    queryKey: queryKeys.members(projectId),
+    enabled: !!projectId && enabled,
+    queryFn: async () => {
+      const res = await apiFetch(`/api/projects/${projectId}/members`)
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error || 'Failed to load members')
+      }
+      const data = (await res.json()) as { members: ProjectMemberSummary[] }
+      return data.members
+    },
+  })
+}
+
+export function useSetBriefRole(projectId: string | undefined) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({ email, brief_role }: { email: string; brief_role: string | null }) => {
+      const res = await apiFetch('/api/projects/role', {
+        method: 'PATCH',
+        body: JSON.stringify({ project_id: projectId, email, brief_role }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error || 'Failed to update role')
+      }
+      return res.json() as Promise<{ ok: boolean; brief_role: string | null }>
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.members(projectId) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.project(projectId) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.resolveProject(projectId) })
     },
   })
 }

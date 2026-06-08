@@ -25,6 +25,17 @@ export interface ProjectMember extends BaseEntity {
   passcode?: string
 }
 
+// Member summary returned by GET /api/projects/[id]/members (Roles panel).
+export interface ProjectMemberSummary {
+  id: string
+  email: string
+  display_name: string
+  role: MemberRole | null
+  brief_role: BriefRole | null
+  added_by: string | null
+  created_at: string | null
+}
+
 // System-level roles — platform-wide capabilities (not project-scoped)
 export type SystemRole = 'admin' | 'support'
 
@@ -83,6 +94,7 @@ export interface Project extends BaseEntity {
   brief_decision_count?: number | null
   brief_feature_count?: number | null
   viewer_role?: MemberRole | 'admin' | null
+  viewer_brief_role?: BriefRole | null // viewer's stored brief_role (chrome badges)
   has_active_session?: boolean
 }
 

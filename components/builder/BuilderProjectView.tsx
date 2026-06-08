@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import {
   ArrowLeft, MessageSquare, Send, FileText, Sparkles, Plus, X,
   Share2, ChevronDown, ChevronUp, Copy, Check, Mail, RotateCw,
-  Lock, Trash2, Settings, Upload, ClipboardCopy,
+  Lock, Trash2, Settings, Upload, ClipboardCopy, Users,
 } from 'lucide-react'
 import { BuildTimestamp } from '@/components/build-timestamp'
 import { Card, CardBody } from '@/components/ui/Card'
@@ -34,6 +34,8 @@ import {
   useResetPasscode,
   useCreateSession,
   useProjectFiles,
+  useProjectMembers,
+  useSetBriefRole,
 } from '@/lib/query/hooks'
 import { buildNextConvoPrompt } from '@/lib/agent/next-convo-prompt'
 import { copy, getMakerShortName } from '@/lib/copy'
@@ -107,9 +109,9 @@ export function BuilderProjectView({ projectId, userEmail }: { projectId: string
           </button>
           <span
             className="inline-block text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded bg-brand-navy text-white"
-            title={briefRoleShort(viewerBriefRole(project?.viewer_role))}
+            title={briefRoleShort(viewerBriefRole(project?.viewer_role, project?.viewer_brief_role))}
           >
-            {briefRoleLabel(viewerBriefRole(project?.viewer_role))}
+            {briefRoleLabel(viewerBriefRole(project?.viewer_role, project?.viewer_brief_role))}
           </span>
         </div>
         <nav className="flex-1 p-2 space-y-1">
@@ -143,9 +145,9 @@ export function BuilderProjectView({ projectId, userEmail }: { projectId: string
               </button>
               <span
                 className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded bg-brand-navy text-white"
-                title={briefRoleShort(viewerBriefRole(project?.viewer_role))}
+                title={briefRoleShort(viewerBriefRole(project?.viewer_role, project?.viewer_brief_role))}
               >
-                {briefRoleLabel(viewerBriefRole(project?.viewer_role))}
+                {briefRoleLabel(viewerBriefRole(project?.viewer_role, project?.viewer_brief_role))}
               </span>
             </div>
 
@@ -909,6 +911,9 @@ function NextConversationTab({
         </Card>
       )}
 
+      {/* People on this brief — roster + per-person brief_role (3c) */}
+      {project.requester_email && <PeoplePanel project={project} onInvite={onShare} />}
+
       {/* Editable setup — shown when active conversation has no maker messages yet */}
       {!(activeSession && hasUserMessages) && (
         <EditableSetup project={project} />
@@ -947,6 +952,10 @@ function ShareModal({ project, onClose }: { project: Project; onClose: () => voi
   const [email, setEmail] = useState(project.requester_email || '')
   const [firstName, setFirstName] = useState(project.requester_first_name || '')
   const [lastName, setLastName] = useState(project.requester_last_name || '')
+  // Who this person is on the brief. Originator = the primary requester (default,
+  // preserves existing behavior); Contributor = a second human who also chats
+  // with Sam in the same brief. Both keep `maker` access so they can chat.
+  const [briefRole, setBriefRole] = useState<'originator' | 'contributor'>('originator')
   const [linkCopied, setLinkCopied] = useState(false)
   const [passcodeCopied, setPasscodeCopied] = useState(false)
   const [emailCopied, setEmailCopied] = useState(false)
@@ -971,6 +980,7 @@ function ShareModal({ project, onClose }: { project: Project; onClose: () => voi
       email: email.trim(),
       first_name: firstName.trim() || undefined,
       last_name: lastName.trim() || undefined,
+      brief_role: briefRole,
     })
   }
 
@@ -1104,6 +1114,17 @@ function ShareModal({ project, onClose }: { project: Project; onClose: () => voi
               className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
             />
           </div>
+          <div>
+            <label className="block text-xs text-gray-600 mb-1">Role on this brief</label>
+            <select
+              value={briefRole}
+              onChange={(e) => setBriefRole(e.target.value as 'originator' | 'contributor')}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
+            >
+              <option value="originator">{briefRoleLabel('originator')} — the person whose idea this is</option>
+              <option value="contributor">{briefRoleLabel('contributor')} — a second person who also chats with {copy.chat.agentLabel}</option>
+            </select>
+          </div>
           {shareProject.error && <StatusMessage type="error" message={shareProject.error.message} />}
           <div className="flex justify-end gap-2">
             <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800">Cancel</button>
@@ -1115,6 +1136,75 @@ function ShareModal({ project, onClose }: { project: Project; onClose: () => voi
       )}
       {resetPasscode.error && <StatusMessage type="error" message={resetPasscode.error.message} />}
     </Modal>
+  )
+}
+
+// People on this brief: lists members with their access tier + an editable
+// brief_role for chat participants (Originator/Contributor/Reviewer). Console
+// operators (owner/builder) operate in a reviewing capacity — shown read-only.
+function PeoplePanel({ project, onInvite }: { project: Project; onInvite: () => void }) {
+  const { data: members, isLoading, error } = useProjectMembers(project.id)
+  const setBriefRole = useSetBriefRole(project.id)
+  const [pendingEmail, setPendingEmail] = useState<string | null>(null)
+
+  return (
+    <Card hover={false}>
+      <CardBody>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-semibold text-brand-slate uppercase tracking-wide flex items-center gap-1.5">
+            <Users className="h-4 w-4" /> People on this brief
+          </h2>
+          <button onClick={onInvite} className="text-xs text-brand-navy hover:underline flex items-center gap-1">
+            <Plus className="h-3.5 w-3.5" /> Invite
+          </button>
+        </div>
+
+        {isLoading && <Skeleton className="h-12 w-full" />}
+        {error && <StatusMessage type="error" message={(error as Error).message} />}
+        {members && members.length === 0 && (
+          <p className="text-sm text-gray-500">No one yet. Invite someone to start the brief.</p>
+        )}
+
+        <ul className="divide-y divide-gray-100">
+          {members?.map((m) => {
+            const isConsole = m.role === 'owner' || m.role === 'builder'
+            return (
+              <li key={m.id} className="flex items-center justify-between gap-3 py-2">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-brand-charcoal truncate">{m.display_name}</p>
+                  <p className="text-xs text-gray-500 truncate">{m.email}</p>
+                </div>
+                {isConsole ? (
+                  <span className="text-xs text-gray-400 shrink-0" title={briefRoleShort('reviewer')}>
+                    {briefRoleLabel('reviewer')}
+                  </span>
+                ) : (
+                  <select
+                    value={m.brief_role ?? 'originator'}
+                    disabled={setBriefRole.isPending && pendingEmail === m.email}
+                    onChange={async (e) => {
+                      const value = e.target.value
+                      setPendingEmail(m.email)
+                      try {
+                        await setBriefRole.mutateAsync({ email: m.email, brief_role: value })
+                      } finally {
+                        setPendingEmail(null)
+                      }
+                    }}
+                    className="shrink-0 px-2 py-1 border border-gray-300 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-brand-navy"
+                  >
+                    <option value="originator">{briefRoleLabel('originator')}</option>
+                    <option value="contributor">{briefRoleLabel('contributor')}</option>
+                    <option value="reviewer">{briefRoleLabel('reviewer')}</option>
+                  </select>
+                )}
+              </li>
+            )
+          })}
+        </ul>
+        {setBriefRole.error && <StatusMessage type="error" message={(setBriefRole.error as Error).message} />}
+      </CardBody>
+    </Card>
   )
 }
 

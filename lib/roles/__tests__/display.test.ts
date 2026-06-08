@@ -31,4 +31,19 @@ describe('viewerBriefRole', () => {
     expect(viewerBriefRole(null)).toBe('reviewer')
     expect(viewerBriefRole(undefined)).toBe('reviewer')
   })
+
+  it('prefers an explicit stored brief_role over the access-tier default', () => {
+    // The bug 1d surfaced: a Contributor (access tier `maker`) was shown as
+    // Originator because the badge used the tier default. The stored role wins.
+    expect(viewerBriefRole('maker', 'contributor')).toBe('contributor')
+    expect(viewerBriefRole('maker', 'reviewer')).toBe('reviewer')
+    expect(viewerBriefRole('owner', 'originator')).toBe('originator')
+  })
+
+  it('ignores a null/invalid stored brief_role and uses the tier default', () => {
+    expect(viewerBriefRole('maker', null)).toBe('originator')
+    expect(viewerBriefRole('builder', undefined)).toBe('reviewer')
+    // owner's own brief_role is null by design → fall back to tier default
+    expect(viewerBriefRole('owner', null)).toBe('reviewer')
+  })
 })
