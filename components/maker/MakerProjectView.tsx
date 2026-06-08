@@ -31,6 +31,7 @@ import { useStreamingChat } from '@/lib/hooks/useStreamingChat'
 import { useRealtimeMessages } from '@/lib/hooks/useRealtimeMessages'
 import { useEscapeBack } from '@/lib/hooks/useEscapeBack'
 import { copy } from '@/lib/copy'
+import { shouldKickoff } from '@/lib/agent/kickoff'
 import { briefRoleLabel, briefRoleShort, viewerBriefRole } from '@/lib/roles/display'
 import { useQueryClient } from '@tanstack/react-query'
 import type { Session, WireframeMockup, ProjectFile } from '@/lib/types'
@@ -199,10 +200,11 @@ function MakerChat({
   const uploadFiles = useUploadFiles()
   const sessionId = activeSession?.id
 
-  const { messages, setMessages, streaming, error, setError, streamMessage } = useStreamingChat({ projectId })
+  const { messages, setMessages, streaming, error, setError, streamMessage, kickoff } = useStreamingChat({ projectId })
 
   const { data: savedMessages, isLoading: messagesLoading } = useMessages(sessionId)
   useRealtimeMessages(sessionId)
+  const kickoffAttempted = useRef(false)
 
   const [input, setInput] = useState('')
   const [pendingFiles, setPendingFiles] = useState<File[]>([])
@@ -221,6 +223,26 @@ function MakerChat({
       })))
     }
   }, [savedMessages, streaming, setMessages])
+
+  // Agent kickoff (#31): when the maker opens a stale session, have the agent
+  // greet them first (typing indicator + name-aware recap) instead of waiting
+  // for them to type. Predicate decides whether to fire; the server re-validates
+  // and is the authority on the reload/multi-tab guard. We attempt at most once
+  // per mount, plus a per-session sessionStorage lock to avoid redundant calls
+  // on remount within the same tab.
+  useEffect(() => {
+    if (!sessionId || !savedMessages || messagesLoading || streaming || kickoffAttempted.current) return
+    if (!shouldKickoff(savedMessages, Date.now())) return
+    const lockKey = `kickoff:${sessionId}`
+    try {
+      if (sessionStorage.getItem(lockKey)) return
+      sessionStorage.setItem(lockKey, '1')
+    } catch {
+      // sessionStorage unavailable (private mode) — server guard still protects us
+    }
+    kickoffAttempted.current = true
+    kickoff(sessionId)
+  }, [sessionId, savedMessages, messagesLoading, streaming, kickoff])
 
   const addFiles = useCallback((files: FileList | File[]) => {
     const newFiles = Array.from(files)
