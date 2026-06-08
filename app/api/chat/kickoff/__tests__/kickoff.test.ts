@@ -61,6 +61,8 @@ vi.mock('@/lib/api/firebase-server-helpers', () => ({
   })),
   getAdminDb: vi.fn(() => ({ collection: mockCollection })),
   getProjectRole: (...args: unknown[]) => mockGetProjectRole(...args),
+  // The opener (authenticated caller) — used to name them in a multi-human greeting.
+  getUserDisplayName: vi.fn(async () => 'Tomas'),
 }))
 
 let capturedStreamArgs: { messages?: { role: string; content: unknown }[] } | null = null
@@ -194,6 +196,22 @@ describe('POST /api/chat/kickoff', () => {
     const last = sent[sent.length - 1]
     expect(last.role).toBe('user')
     expect(String(last.content)).toContain('just opened the session')
+  })
+
+  it('names the opener in the synthetic turn for a multi-human brief', async () => {
+    setup({
+      messages: [
+        msg('user', 3 * HOUR, { sender_email: 'mara@x.com', sender_display_name: 'Mara O' }),
+        msg('user', 2 * HOUR, { sender_email: 'tomas@x.com', sender_display_name: 'Tomas' }),
+        msg('agent', 2 * HOUR),
+      ],
+      lastMakerMessageAt: iso(2 * HOUR),
+    })
+    await drain(await POST(makeRequest({ session_id: 'sess-1' })))
+    const sent = capturedStreamArgs?.messages || []
+    const last = sent[sent.length - 1]
+    expect(String(last.content)).toContain('Tomas') // the opener, via getUserDisplayName
+    expect(String(last.content)).toContain('just opened')
   })
 
   it('declines (no-op, no stream) when the maker is mid-turn', async () => {

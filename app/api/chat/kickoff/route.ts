@@ -1,4 +1,4 @@
-import { getAuthenticatedUser, getAdminDb, getProjectRole } from '@/lib/api/firebase-server-helpers'
+import { getAuthenticatedUser, getAdminDb, getProjectRole, getUserDisplayName } from '@/lib/api/firebase-server-helpers'
 import { buildSystemPrompt } from '@/lib/agent/system-prompt'
 import { AGENT_MODEL, AGENT_MAX_TOKENS, AGENT_TEMPERATURE } from '@/lib/agent/constants'
 import { logAnthropicCall } from '@/lib/observability/anthropic'
@@ -139,10 +139,17 @@ export async function POST(request: Request) {
     claudeMessages.unshift({ role: 'user', content: 'Hi' })
   }
   // Synthetic final user turn: satisfies the user-first rule and tells Claude
-  // to greet now. Not stored — it never appears in the visible history.
+  // to greet now. Not stored — it never appears in the visible history. In a
+  // multi-human brief we name the person who actually opened the session (the
+  // authenticated caller) so Sam greets *them* specifically rather than
+  // guessing — otherwise "the user" is ambiguous when several people share the
+  // brief.
+  const openerName = multiHuman ? await getUserDisplayName(db, auth.uid, auth.email) : null
   claudeMessages.push({
     role: 'user',
-    content: '(The user just opened the session — greet them now, picking up where things left off.)',
+    content: openerName
+      ? `(${openerName} just opened the session — greet them by name, picking up where things left off.)`
+      : '(The user just opened the session — greet them now, picking up where things left off.)',
   })
 
   // --- Session number, brief, config → system prompt (mirrors /api/chat) ---
