@@ -31,6 +31,8 @@ import { useStreamingChat } from '@/lib/hooks/useStreamingChat'
 import { useRealtimeMessages } from '@/lib/hooks/useRealtimeMessages'
 import { useEscapeBack } from '@/lib/hooks/useEscapeBack'
 import { copy } from '@/lib/copy'
+import { shouldKickoff } from '@/lib/agent/kickoff'
+import { UserMenu } from '@/components/user-menu'
 import { briefRoleLabel, briefRoleShort, viewerBriefRole } from '@/lib/roles/display'
 import { useQueryClient } from '@tanstack/react-query'
 import type { Session, WireframeMockup, ProjectFile } from '@/lib/types'
@@ -132,6 +134,9 @@ export function MakerProjectView({ projectId, userEmail }: { projectId: string; 
             >
               <HelpCircle className="h-4 w-4" />
             </Link>
+            {/* Identity + sign out — the maker lives on this page, so they need a
+                way to see who they're signed in as and switch accounts here. */}
+            <UserMenu />
           </div>
 
           {/* Row 2: role + context + status. "What you're doing here." */}
@@ -199,10 +204,11 @@ function MakerChat({
   const uploadFiles = useUploadFiles()
   const sessionId = activeSession?.id
 
-  const { messages, setMessages, streaming, error, setError, streamMessage } = useStreamingChat({ projectId })
+  const { messages, setMessages, streaming, error, setError, streamMessage, kickoff } = useStreamingChat({ projectId })
 
   const { data: savedMessages, isLoading: messagesLoading } = useMessages(sessionId)
   useRealtimeMessages(sessionId)
+  const kickoffAttempted = useRef(false)
 
   const [input, setInput] = useState('')
   const [pendingFiles, setPendingFiles] = useState<File[]>([])
@@ -221,6 +227,26 @@ function MakerChat({
       })))
     }
   }, [savedMessages, streaming, setMessages])
+
+  // Agent kickoff (#31): when the maker opens a stale session, have the agent
+  // greet them first (typing indicator + name-aware recap) instead of waiting
+  // for them to type. Predicate decides whether to fire; the server re-validates
+  // and is the authority on the reload/multi-tab guard. We attempt at most once
+  // per mount, plus a per-session sessionStorage lock to avoid redundant calls
+  // on remount within the same tab.
+  useEffect(() => {
+    if (!sessionId || !savedMessages || messagesLoading || streaming || kickoffAttempted.current) return
+    if (!shouldKickoff(savedMessages, Date.now())) return
+    const lockKey = `kickoff:${sessionId}`
+    try {
+      if (sessionStorage.getItem(lockKey)) return
+      sessionStorage.setItem(lockKey, '1')
+    } catch {
+      // sessionStorage unavailable (private mode) — server guard still protects us
+    }
+    kickoffAttempted.current = true
+    kickoff(sessionId)
+  }, [sessionId, savedMessages, messagesLoading, streaming, kickoff])
 
   const addFiles = useCallback((files: FileList | File[]) => {
     const newFiles = Array.from(files)
@@ -393,6 +419,27 @@ function MakerChat({
   // Build a lookup of file_id → ProjectFile for inline display
   const fileMap = new Map(projectFiles.map((f) => [f.id, f]))
 
+  // Multi-human briefs: give each participant a distinct bubble color so two
+  // people aren't an indistinguishable wall of navy. Assigned in first-speaking
+  // order (from chronological `messages`), so colors are stable across renders.
+  // Solo briefs are unchanged — the lone speaker gets brand-navy (palette[0]).
+  const HUMAN_BUBBLE_COLORS = [
+    'bg-brand-navy',
+    'bg-emerald-700',
+    'bg-purple-700',
+    'bg-rose-700',
+    'bg-cyan-700',
+    'bg-orange-700',
+  ]
+  const colorByEmail = new Map<string, string>()
+  for (const m of messages) {
+    if (m.role !== 'user') continue
+    const key = m.sender_email || ''
+    if (!colorByEmail.has(key)) {
+      colorByEmail.set(key, HUMAN_BUBBLE_COLORS[colorByEmail.size % HUMAN_BUBBLE_COLORS.length])
+    }
+  }
+
   return (
     <div className="space-y-3">
       {/* Input area */}
@@ -477,10 +524,10 @@ function MakerChat({
             <div key={msg.id || i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
               <div className={`max-w-[80%] rounded-lg px-4 py-2.5 ${
                 msg.role === 'user'
-                  ? 'bg-brand-navy text-white'
+                  ? `${colorByEmail.get(msg.sender_email || '') || 'bg-brand-navy'} text-white`
                   : 'bg-white border border-gray-200 text-gray-800'
               }`}>
-                <p className={`text-[10px] mb-1 ${msg.role === 'user' ? 'text-blue-200' : 'text-gray-400'}`}>
+                <p className={`text-[10px] mb-1 ${msg.role === 'user' ? 'text-white/70' : 'text-gray-400'}`}>
                   {msg.role === 'user' ? (msg.sender_display_name || msg.sender_email?.split('@')[0] || 'You') : copy.chat.agentLabel}
                   {msg.created_at ? ` \u00b7 ${formatTimestamp(msg.created_at)}` : ''}
                 </p>

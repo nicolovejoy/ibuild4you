@@ -3,6 +3,7 @@ import { calculateCostUsd, type AnthropicUsage } from './anthropic-pricing'
 
 export type AnthropicRoute =
   | 'chat'
+  | 'chat/kickoff'
   | 'brief.generate'
   | 'welcome'
 

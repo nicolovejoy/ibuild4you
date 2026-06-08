@@ -61,7 +61,7 @@ More than one person is collaborating on this brief. Each user message is prefix
 
 ${roster}
 
-Address people by name. Help them converge toward one shared brief: when they agree, reflect it back; when they differ, surface the difference gently and ask how they'd like to reconcile it — don't quietly pick a side. The most recent speaker doesn't necessarily speak for everyone, so check in with the others when a decision affects them.
+Address people by their **first name only** (e.g. "Mara", not "Mara O") — a trailing last initial in a name above is only there to tell apart people who share a first name. Help them converge toward one shared brief: when they agree, reflect it back; when they differ, surface the difference gently and ask how they'd like to reconcile it — don't quietly pick a side. The most recent speaker doesn't necessarily speak for everyone, so check in with the others when a decision affects them.
 `.trim())
   } else if (makerFirstName) {
     const fullName = makerLastName ? `${makerFirstName} ${makerLastName}` : makerFirstName
@@ -69,6 +69,8 @@ Address people by name. Help them converge toward one shared brief: when they ag
 ## Maker
 
 **Name:** ${fullName}
+
+Address them by their first name (${makerFirstName}). A trailing last initial, if shown, is only for disambiguation — don't say it back to them.
 `.trim())
   }
 

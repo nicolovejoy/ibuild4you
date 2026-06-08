@@ -26,6 +26,47 @@ export function useStreamingChat({ projectId }: { projectId: string }) {
   const [streaming, setStreaming] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // Append streamed text deltas onto the trailing (empty) agent placeholder.
+  // Shared by streamMessage and kickoff.
+  const consumeStream = useCallback(async (res: Response) => {
+    const reader = res.body?.getReader()
+    if (!reader) throw new Error('No response stream')
+
+    const decoder = new TextDecoder()
+    let buffer = ''
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || ''
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue
+        const data = line.slice(6)
+        if (data === '[DONE]') break
+
+        try {
+          const parsed = JSON.parse(data)
+          if (parsed.text) {
+            setMessages((prev) => {
+              const updated = [...prev]
+              const last = updated[updated.length - 1]
+              if (last.role === 'agent') {
+                updated[updated.length - 1] = { ...last, content: last.content + parsed.text }
+              }
+              return updated
+            })
+          }
+        } catch {
+          // skip malformed chunks
+        }
+      }
+    }
+  }, [])
+
   const streamMessage = useCallback(async (
     sessionId: string,
     content: string,
@@ -50,42 +91,7 @@ export function useStreamingChat({ projectId }: { projectId: string }) {
         throw new Error(data.error || 'Chat request failed')
       }
 
-      const reader = res.body?.getReader()
-      if (!reader) throw new Error('No response stream')
-
-      const decoder = new TextDecoder()
-      let buffer = ''
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop() || ''
-
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue
-          const data = line.slice(6)
-          if (data === '[DONE]') break
-
-          try {
-            const parsed = JSON.parse(data)
-            if (parsed.text) {
-              setMessages((prev) => {
-                const updated = [...prev]
-                const last = updated[updated.length - 1]
-                if (last.role === 'agent') {
-                  updated[updated.length - 1] = { ...last, content: last.content + parsed.text }
-                }
-                return updated
-              })
-            }
-          } catch {
-            // skip malformed chunks
-          }
-        }
-      }
+      await consumeStream(res)
 
       queryClient.invalidateQueries({ queryKey: ['messages', sessionId] })
       queryClient.invalidateQueries({ queryKey: ['sessions', projectId] })
@@ -102,7 +108,45 @@ export function useStreamingChat({ projectId }: { projectId: string }) {
     } finally {
       setStreaming(false)
     }
-  }, [projectId, queryClient])
+  }, [projectId, queryClient, consumeStream])
 
-  return { messages, setMessages, streaming, error, setError, streamMessage }
+  // Agent kickoff (#31): the agent greets the maker on session open without a
+  // maker turn. The route either streams a greeting (SSE) or, when a kickoff is
+  // correctly declined, returns a JSON no-op — in which case we add no bubble
+  // and stay silent. Errors are swallowed: a failed greeting must never block
+  // the maker from chatting normally.
+  const kickoff = useCallback(async (sessionId: string) => {
+    setStreaming(true)
+    let placeholderAdded = false
+    try {
+      const res = await apiFetch('/api/chat/kickoff', {
+        method: 'POST',
+        body: JSON.stringify({ session_id: sessionId }),
+      })
+
+      // No-op (declined) responses come back as JSON, not an event stream.
+      if (!res.ok || !res.headers.get('Content-Type')?.includes('text/event-stream')) return
+
+      setMessages((prev) => [...prev, { role: 'agent', content: '', created_at: new Date().toISOString() }])
+      placeholderAdded = true
+      await consumeStream(res)
+
+      queryClient.invalidateQueries({ queryKey: ['messages', sessionId] })
+      queryClient.invalidateQueries({ queryKey: ['sessions', projectId] })
+    } catch {
+      if (placeholderAdded) {
+        setMessages((prev) => {
+          const updated = [...prev]
+          if (updated[updated.length - 1]?.role === 'agent' && !updated[updated.length - 1]?.content) {
+            updated.pop()
+          }
+          return updated
+        })
+      }
+    } finally {
+      setStreaming(false)
+    }
+  }, [projectId, queryClient, consumeStream])
+
+  return { messages, setMessages, streaming, error, setError, streamMessage, kickoff }
 }
