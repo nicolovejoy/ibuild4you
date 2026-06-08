@@ -6,20 +6,10 @@ import {
   requireRole,
   getUserDisplayName,
 } from '@/lib/api/firebase-server-helpers'
-import type { BriefRole, MemberRole } from '@/lib/types'
+import type { BriefRole, MemberRole, ProjectMemberSummary } from '@/lib/types'
 
 // Display order: console operators first, then chat participants, then by time.
 const ROLE_RANK: Record<string, number> = { owner: 0, builder: 1, apprentice: 2, maker: 3 }
-
-export interface ProjectMemberSummary {
-  id: string
-  email: string
-  display_name: string
-  role: MemberRole | null
-  brief_role: BriefRole | null
-  added_by: string | null
-  created_at: string | null
-}
 
 // GET /api/projects/[id]/members — builder+ lists everyone on the brief with
 // their access tier + brief_role, for the Setup-tab Roles panel.
