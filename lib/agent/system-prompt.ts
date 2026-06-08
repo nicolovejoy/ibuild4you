@@ -1,5 +1,6 @@
 import { AGENT_BEHAVIOR_RULES, CONVERGE_BEHAVIOR_RULES, DEFAULT_IDENTITY } from './constants'
-import type { BriefContent, WireframeMockup } from '@/lib/types'
+import { briefRoleLabel } from '@/lib/roles/display'
+import type { BriefContent, BriefRole, WireframeMockup } from '@/lib/types'
 
 // Maker name and gap-since-last-message are read live per request (not
 // snapshotted into the session like seed_questions / directives) so that
@@ -16,6 +17,9 @@ interface SystemPromptInput {
   makerFirstName?: string
   makerLastName?: string
   gapSinceLastMakerMessageMs?: number
+  // Multi-human brief: who has posted in this session, in speaking order.
+  // When 2+, the prompt switches from single-maker framing to mediation.
+  participants?: { name: string; brief_role: BriefRole | null }[]
 }
 
 const ONE_HOUR_MS = 60 * 60 * 1000
@@ -28,7 +32,7 @@ function humanizeGap(ms: number): string {
   return 'over a week'
 }
 
-export function buildSystemPrompt({ briefContent, projectContext, sessionNumber, seedQuestions, builderDirectives, sessionMode, layoutMockups, identity, makerFirstName, makerLastName, gapSinceLastMakerMessageMs }: SystemPromptInput): string {
+export function buildSystemPrompt({ briefContent, projectContext, sessionNumber, seedQuestions, builderDirectives, sessionMode, layoutMockups, identity, makerFirstName, makerLastName, gapSinceLastMakerMessageMs, participants }: SystemPromptInput): string {
   const parts: string[] = []
 
   parts.push(identity || DEFAULT_IDENTITY)
@@ -44,7 +48,22 @@ ${projectContext}
 `.trim())
   }
 
-  if (makerFirstName) {
+  const multiHuman = !!participants && participants.length > 1
+
+  if (multiHuman) {
+    const roster = participants!
+      .map((p) => `- **${p.name}** — ${p.brief_role ? briefRoleLabel(p.brief_role) : 'Participant'}`)
+      .join('\n')
+    parts.push(`
+## Who's in this conversation
+
+More than one person is collaborating on this brief. Each user message is prefixed with the speaker's name (e.g. "Maria: ...") so you can tell them apart.
+
+${roster}
+
+Address people by name. Help them converge toward one shared brief: when they agree, reflect it back; when they differ, surface the difference gently and ask how they'd like to reconcile it — don't quietly pick a side. The most recent speaker doesn't necessarily speak for everyone, so check in with the others when a decision affects them.
+`.trim())
+  } else if (makerFirstName) {
     const fullName = makerLastName ? `${makerFirstName} ${makerLastName}` : makerFirstName
     parts.push(`
 ## Maker

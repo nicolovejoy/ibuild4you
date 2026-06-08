@@ -4,7 +4,7 @@ import { loadAttachmentBlocks, type AttachmentBlock, type DroppedAttachment } fr
 import { AGENT_MODEL, AGENT_MAX_TOKENS, AGENT_TEMPERATURE } from '@/lib/agent/constants'
 import { logAnthropicCall } from '@/lib/observability/anthropic'
 import Anthropic from '@anthropic-ai/sdk'
-import type { BriefContent } from '@/lib/types'
+import type { BriefContent, BriefRole } from '@/lib/types'
 
 // Debounce window for maker-activity notifications. The cron at /api/cron/notify
 // sends a digest email only once notify_after has passed with no new messages.
@@ -126,8 +126,29 @@ export async function POST(request: Request) {
       role: data.role as 'user' | 'agent',
       content: (data.content as string) || '',
       file_ids: (data.file_ids as string[] | undefined) || [],
+      sender_email: (data.sender_email as string | undefined) || '',
+      sender_display_name: (data.sender_display_name as string | undefined) || '',
     }
   })
+
+  // Multi-human brief: when more than one distinct person has posted in this
+  // session, Claude needs to tell the speakers apart. We prefix each user turn
+  // with the speaker's name. Solo sessions stay byte-identical (no prefix) so
+  // single-maker behavior never regresses.
+  const humanSenders = new Set(
+    storedMessages.filter((m) => m.role === 'user' && m.sender_email).map((m) => m.sender_email)
+  )
+  const multiHuman = humanSenders.size > 1
+  const speakerName = (m: { sender_display_name: string; sender_email: string }) =>
+    m.sender_display_name || m.sender_email.split('@')[0] || 'Someone'
+  const prefixUser = (
+    m: { role: 'user' | 'agent'; content: string; sender_display_name: string; sender_email: string },
+    fallback: string
+  ) => {
+    const text = m.content || fallback
+    if (m.role !== 'user' || !multiHuman || !text) return text
+    return `${speakerName(m)}: ${text}`
+  }
 
   // For user messages with attachments, fetch each file from S3 and inline it
   // into the Claude content array as a document/image block. Files attached
@@ -148,12 +169,12 @@ export async function POST(request: Request) {
           const { blocks, dropped } = await loadAttachmentBlocks(db, m.file_ids, projectId)
           if (blocks.length > 0) {
             const contentBlocks: ContentBlock[] = [...blocks]
-            contentBlocks.push({ type: 'text', text: m.content || '(file attached)' })
+            contentBlocks.push({ type: 'text', text: prefixUser(m, '(file attached)') })
             return { message: { role, content: contentBlocks }, dropped }
           }
-          return { message: { role, content: m.content }, dropped }
+          return { message: { role, content: prefixUser(m, '') }, dropped }
         }
-        return { message: { role, content: m.content }, dropped: [] }
+        return { message: { role, content: prefixUser(m, '') }, dropped: [] }
       }),
     )
   } catch (err) {
@@ -244,6 +265,27 @@ export async function POST(request: Request) {
     ? Date.now() - new Date(previousMakerMessageAt).getTime()
     : undefined
 
+  // Multi-human roster for the system prompt: who has actually posted in this
+  // session, in first-appearance order, tagged with their brief_role. Only
+  // built when 2+ humans are present, so solo sessions do one fewer read and
+  // keep the existing single-maker framing.
+  let participants: { name: string; brief_role: BriefRole | null }[] | undefined
+  if (multiHuman) {
+    const membersSnap = await db
+      .collection('project_members')
+      .where('project_id', '==', projectId)
+      .get()
+    const roleByEmail = new Map(
+      membersSnap.docs.map((d) => [d.data().email as string, (d.data().brief_role as BriefRole | null) ?? null])
+    )
+    const seen = new Map<string, string>()
+    for (const m of storedMessages) {
+      if (m.role !== 'user' || !m.sender_email || seen.has(m.sender_email)) continue
+      seen.set(m.sender_email, speakerName(m))
+    }
+    participants = [...seen].map(([email, name]) => ({ name, brief_role: roleByEmail.get(email) ?? null }))
+  }
+
   const systemPrompt = buildSystemPrompt({
     briefContent,
     projectContext,
@@ -256,6 +298,7 @@ export async function POST(request: Request) {
     makerFirstName,
     makerLastName,
     gapSinceLastMakerMessageMs,
+    participants,
   })
 
   // Stream response from Claude
