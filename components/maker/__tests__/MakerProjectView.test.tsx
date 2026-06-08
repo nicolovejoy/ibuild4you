@@ -98,6 +98,12 @@ vi.mock('@/components/build-timestamp', () => ({
   BuildTimestamp: () => null,
 }))
 
+// UserMenu pulls in the Firebase client SDK (getAuth), which throws without a
+// real config in the test env. It's chrome, not under test here — stub it.
+vi.mock('@/components/user-menu', () => ({
+  UserMenu: () => null,
+}))
+
 import { MakerProjectView } from '../MakerProjectView'
 
 function renderView() {

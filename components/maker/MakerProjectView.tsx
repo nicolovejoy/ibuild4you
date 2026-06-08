@@ -32,6 +32,7 @@ import { useRealtimeMessages } from '@/lib/hooks/useRealtimeMessages'
 import { useEscapeBack } from '@/lib/hooks/useEscapeBack'
 import { copy } from '@/lib/copy'
 import { shouldKickoff } from '@/lib/agent/kickoff'
+import { UserMenu } from '@/components/user-menu'
 import { briefRoleLabel, briefRoleShort, viewerBriefRole } from '@/lib/roles/display'
 import { useQueryClient } from '@tanstack/react-query'
 import type { Session, WireframeMockup, ProjectFile } from '@/lib/types'
@@ -133,6 +134,9 @@ export function MakerProjectView({ projectId, userEmail }: { projectId: string; 
             >
               <HelpCircle className="h-4 w-4" />
             </Link>
+            {/* Identity + sign out — the maker lives on this page, so they need a
+                way to see who they're signed in as and switch accounts here. */}
+            <UserMenu />
           </div>
 
           {/* Row 2: role + context + status. "What you're doing here." */}
