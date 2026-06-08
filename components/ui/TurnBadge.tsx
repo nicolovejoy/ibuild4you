@@ -38,7 +38,7 @@ export function TurnBadge({ turn, className }: { turn: Turn; className: string }
         <Info className="h-3 w-3 opacity-70" />
       </button>
       <span
-        className={`absolute top-full left-0 mt-1 z-30 w-64 rounded-lg border border-gray-200 bg-white p-3 text-left shadow-lg ${
+        className={`absolute top-full right-0 mt-1 z-30 w-64 max-w-[calc(100vw-1.5rem)] rounded-lg border border-gray-200 bg-white p-3 text-left shadow-lg ${
           pinned ? 'block' : 'hidden'
         } group-hover:block`}
         // Keep clicks inside the popover from bubbling to a parent card.
