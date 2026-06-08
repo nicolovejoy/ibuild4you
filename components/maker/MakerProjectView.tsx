@@ -415,6 +415,27 @@ function MakerChat({
   // Build a lookup of file_id → ProjectFile for inline display
   const fileMap = new Map(projectFiles.map((f) => [f.id, f]))
 
+  // Multi-human briefs: give each participant a distinct bubble color so two
+  // people aren't an indistinguishable wall of navy. Assigned in first-speaking
+  // order (from chronological `messages`), so colors are stable across renders.
+  // Solo briefs are unchanged — the lone speaker gets brand-navy (palette[0]).
+  const HUMAN_BUBBLE_COLORS = [
+    'bg-brand-navy',
+    'bg-emerald-700',
+    'bg-purple-700',
+    'bg-rose-700',
+    'bg-cyan-700',
+    'bg-orange-700',
+  ]
+  const colorByEmail = new Map<string, string>()
+  for (const m of messages) {
+    if (m.role !== 'user') continue
+    const key = m.sender_email || ''
+    if (!colorByEmail.has(key)) {
+      colorByEmail.set(key, HUMAN_BUBBLE_COLORS[colorByEmail.size % HUMAN_BUBBLE_COLORS.length])
+    }
+  }
+
   return (
     <div className="space-y-3">
       {/* Input area */}
@@ -499,10 +520,10 @@ function MakerChat({
             <div key={msg.id || i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
               <div className={`max-w-[80%] rounded-lg px-4 py-2.5 ${
                 msg.role === 'user'
-                  ? 'bg-brand-navy text-white'
+                  ? `${colorByEmail.get(msg.sender_email || '') || 'bg-brand-navy'} text-white`
                   : 'bg-white border border-gray-200 text-gray-800'
               }`}>
-                <p className={`text-[10px] mb-1 ${msg.role === 'user' ? 'text-blue-200' : 'text-gray-400'}`}>
+                <p className={`text-[10px] mb-1 ${msg.role === 'user' ? 'text-white/70' : 'text-gray-400'}`}>
                   {msg.role === 'user' ? (msg.sender_display_name || msg.sender_email?.split('@')[0] || 'You') : copy.chat.agentLabel}
                   {msg.created_at ? ` \u00b7 ${formatTimestamp(msg.created_at)}` : ''}
                 </p>

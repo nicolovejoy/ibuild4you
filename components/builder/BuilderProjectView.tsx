@@ -46,6 +46,7 @@ import { useRealtimeMessages } from '@/lib/hooks/useRealtimeMessages'
 import { useQueryClient } from '@tanstack/react-query'
 import { BuilderFilesTab } from './BuilderFilesTab'
 import { getTurnIndicator } from '@/lib/turn-indicator'
+import { TurnBadge } from '@/components/ui/TurnBadge'
 import type { Project, Session, BriefContent, WireframeMockup } from '@/lib/types'
 
 type TabId = 'sessions' | 'brief' | 'files' | 'setup'
@@ -184,12 +185,7 @@ export function BuilderProjectView({ projectId, userEmail }: { projectId: string
                 <BuildTimestamp />
               </div>
               {turn && (
-                <span
-                  className={`text-xs px-2.5 py-1 rounded-full font-medium shrink-0 ${turn.className}`}
-                  title={turn.label === 'Needs setup' ? copy.glossary.needsSetup.short : undefined}
-                >
-                  {turn.label}
-                </span>
+                <TurnBadge turn={turn} className={`text-xs px-2.5 py-1 rounded-full font-medium shrink-0 ${turn.className}`} />
               )}
             </div>
 

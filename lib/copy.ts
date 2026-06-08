@@ -260,6 +260,9 @@ export const copy = {
     needsSetup: {
       term: 'Needs setup',
       short: "This brief hasn't been shared yet — still needs a link sent.",
+      detail:
+        "No conversation has started yet. Until you share this brief with the person it's for and they send their first message, Sam has nothing to work with.",
+      todo: 'Share the brief link with the requester to start their first conversation.',
     },
   },
 

@@ -16,6 +16,7 @@ import { Skeleton } from '@/components/ui/Skeleton'
 import { Modal } from '@/components/ui/Modal'
 import type { Project } from '@/lib/types'
 import { getTurnIndicator } from '@/lib/turn-indicator'
+import { TurnBadge } from '@/components/ui/TurnBadge'
 import { copy, formatDisplayName, getMakerShortName } from '@/lib/copy'
 import { briefRoleLabel, briefRoleShort, viewerBriefRole } from '@/lib/roles/display'
 import { getProjectShareLink } from '@/lib/url'
@@ -431,9 +432,7 @@ function ProjectList({ isAdmin }: { isAdmin: boolean }) {
                       })()}
                       <h3 className="font-medium text-gray-900">{project.title}</h3>
                       {turn && (
-                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${turn.className}`}>
-                          {turn.label}
-                        </span>
+                        <TurnBadge turn={turn} className={`text-xs px-2 py-0.5 rounded-full font-medium ${turn.className}`} />
                       )}
                     </div>
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-sm text-gray-500">
