@@ -77,6 +77,15 @@ export const copy = {
     builderActivity: (time: string) => `You edited ${time}`,
     nudgedAt: (time: string) => `Nudged ${time}`,
     sharedAt: (time: string) => `Shared ${time}`,
+    // Role/turn-state sections (#44). Titles head each group; emptyHint shows on
+    // empty role sections only (awaiting/done skip the hint to avoid clutter).
+    sections: {
+      awaiting: { title: 'Awaiting you' },
+      yours: { title: 'Yours', emptyHint: 'No briefs you started.' },
+      reviewing: { title: 'Reviewing', emptyHint: 'Nothing to review right now.' },
+      contributing: { title: 'Contributing', emptyHint: "No briefs you're contributing to." },
+      done: { title: 'Done' },
+    },
   },
 
   // --- New brief modal (internal key kept as `newProject` to match data model) ---

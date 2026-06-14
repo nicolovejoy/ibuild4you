@@ -14,7 +14,6 @@ interface ProjectActivity {
   created_at?: string | null
   last_message_at?: string | null
   last_builder_activity_at?: string | null
-  [key: string]: unknown
 }
 
 export function projectActivityKey(p: ProjectActivity): string {
