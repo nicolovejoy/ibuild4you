@@ -65,6 +65,10 @@ export function BuilderProjectView({ projectId, userEmail }: { projectId: string
   const [showShareModal, setShowShareModal] = useState(false)
   const [editingTitle, setEditingTitle] = useState(false)
   const [titleDraft, setTitleDraft] = useState('')
+  // After a next-convo JSON import, hand the builder straight to the next step
+  // (Setup tab, prep section expanded) instead of leaving them on the Brief tab
+  // with no cue (#25). Consumed one-shot by NextConversationTab on mount.
+  const [justImported, setJustImported] = useState(false)
   const tabParam = searchParams.get('tab') as TabId | null
   const defaultTab: TabId = (!project || !project.requester_email) ? 'setup' : 'sessions'
   const activeTab: TabId = tabParam && ['sessions', 'brief', 'files', 'setup'].includes(tabParam) ? tabParam : defaultTab
@@ -226,7 +230,12 @@ export function BuilderProjectView({ projectId, userEmail }: { projectId: string
             />
           )}
           {activeTab === 'brief' && (
-            <BriefTab projectId={projectId} brief={brief} project={project} />
+            <BriefTab
+              projectId={projectId}
+              brief={brief}
+              project={project}
+              onImported={() => { setJustImported(true); setTab('setup') }}
+            />
           )}
           {activeTab === 'files' && (
             <BuilderFilesTab projectId={projectId} files={projectFiles || []} />
@@ -238,6 +247,8 @@ export function BuilderProjectView({ projectId, userEmail }: { projectId: string
               sessions={sessions || []}
               activeSession={activeSession || null}
               onShare={() => setShowShareModal(true)}
+              justImported={justImported}
+              onImportedConsumed={() => setJustImported(false)}
             />
           )}
         </main>
@@ -567,10 +578,12 @@ function BriefTab({
   projectId,
   brief,
   project,
+  onImported,
 }: {
   projectId: string
   brief: { version: number; content: BriefContent } | null | undefined
   project: Project | undefined
+  onImported?: () => void
 }) {
   const [payloadCopied, setPayloadCopied] = useState(false)
   const [briefCopied, setBriefCopied] = useState(false)
@@ -669,6 +682,9 @@ function BriefTab({
         await updateBrief.mutateAsync({ project_id: projectId, content: result.value.brief as BriefContent })
       }
       setPasteJson('')
+      // Import succeeded — hand the builder to the next step instead of leaving
+      // them staring at the updated brief with no cue (#25).
+      onImported?.()
     } catch (err) {
       setPasteError(err instanceof Error ? err.message : 'Failed to save')
     }
@@ -859,15 +875,28 @@ function NextConversationTab({
   sessions,
   activeSession,
   onShare,
+  justImported = false,
+  onImportedConsumed,
 }: {
   project: Project
   projectId: string
   sessions: Session[]
   activeSession: Session | null
   onShare: () => void
+  justImported?: boolean
+  onImportedConsumed?: () => void
 }) {
   const { data: activeMessages } = useMessages(activeSession?.id)
   const hasUserMessages = activeMessages?.some((m) => m.role === 'user') ?? false
+
+  // Capture the import signal at mount so it survives the parent resetting the
+  // one-shot flag, then clear it. Drives the confirmation banner + auto-expanded
+  // prep section so a JSON import lands the builder on the next step (#25).
+  const [arrivedFromImport] = useState(justImported)
+  useEffect(() => {
+    if (justImported) onImportedConsumed?.()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // First-conversation banner — project is configured but maker hasn't chatted yet
   const isFirstSetup = !!project.requester_email && !!activeSession && !hasUserMessages
@@ -886,6 +915,18 @@ function NextConversationTab({
 
   return (
     <div className="space-y-6">
+      {/* Post-import confirmation — the brief was just updated from a paste (#25) */}
+      {arrivedFromImport && (
+        <Card hover={false}>
+          <CardBody>
+            <p className="text-sm text-green-700 flex items-center gap-1.5">
+              <Check className="h-4 w-4 shrink-0" />
+              Brief updated. Review the setup, then prep and send the next conversation below.
+            </p>
+          </CardBody>
+        </Card>
+      )}
+
       {/* First-conversation banner */}
       {isFirstSetup && (
         <Card hover={false}>
@@ -938,6 +979,7 @@ function NextConversationTab({
           project={project}
           projectId={projectId}
           sessionNumber={sessions.length + 1}
+          autoExpand={arrivedFromImport}
         />
       )}
     </div>
@@ -1366,12 +1408,13 @@ function RenudgeCard({ project, projectId }: { project: Project; projectId: stri
   )
 }
 
-function PrepNextSession({ project, projectId, sessionNumber }: {
+function PrepNextSession({ project, projectId, sessionNumber, autoExpand = false }: {
   project: Project
   projectId: string
   sessionNumber: number
+  autoExpand?: boolean
 }) {
-  const [expanded, setExpanded] = useState(false)
+  const [expanded, setExpanded] = useState(autoExpand)
   const [sessionMode, setSessionMode] = useState<'discover' | 'converge'>(project.session_mode || 'discover')
   const [welcomeMessage, setWelcomeMessage] = useState(project.welcome_message || '')
   const [seedQuestions, setSeedQuestions] = useState<string[]>(project.seed_questions || [])
