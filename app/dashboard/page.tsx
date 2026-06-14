@@ -17,6 +17,8 @@ import { Modal } from '@/components/ui/Modal'
 import type { Project } from '@/lib/types'
 import { getTurnIndicator } from '@/lib/turn-indicator'
 import { TurnBadge } from '@/components/ui/TurnBadge'
+import { BriefBadge } from '@/components/ui/BriefBadge'
+import { briefIdentity } from '@/lib/brief-identity'
 import { copy, formatDisplayName, getMakerShortName } from '@/lib/copy'
 import { briefRoleLabel, briefRoleShort, viewerBriefRole } from '@/lib/roles/display'
 import { getProjectShareLink } from '@/lib/url'
@@ -407,7 +409,7 @@ function ProjectList({ isAdmin }: { isAdmin: boolean }) {
         {projects.map((project) => {
           const turn = getTurnIndicator(project, project.viewer_role ?? null)
           return (
-            <Card key={project.id}>
+            <Card key={project.id} style={{ borderLeft: `6px solid ${briefIdentity(project.id).color}` }}>
               <CardBody>
                 <div className="flex items-center justify-between">
                   <div
@@ -415,6 +417,7 @@ function ProjectList({ isAdmin }: { isAdmin: boolean }) {
                     onClick={() => router.push(`/projects/${project.slug || project.id}`)}
                   >
                     <div className="flex flex-wrap items-center gap-2 mb-1">
+                      <BriefBadge id={project.id} showCode size={18} />
                       {project.viewer_role && (() => {
                         const briefRole = viewerBriefRole(project.viewer_role)
                         return (

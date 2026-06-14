@@ -13,6 +13,7 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { StatusMessage } from '@/components/ui/StatusMessage'
 import { SectionHeader } from '@/components/section-header'
+import { BriefBadge } from '@/components/ui/BriefBadge'
 import type { Brief, BriefContent } from '@/lib/types'
 
 export default function BriefPage() {
@@ -63,7 +64,12 @@ export default function BriefPage() {
         backHref={`/projects/${slugOrId}`}
         title="Brief"
         icon={<FileText className="h-5 w-5 text-brand-navy" />}
-        meta={brief && <span className="text-xs text-brand-slate ml-2">v{brief.version}</span>}
+        meta={
+          <span className="flex items-center gap-2 ml-2">
+            <BriefBadge id={projectId} showCode size={14} />
+            {brief && <span className="text-xs text-brand-slate">v{brief.version}</span>}
+          </span>
+        }
         sticky={false}
       />
 
