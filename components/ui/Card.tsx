@@ -5,9 +5,10 @@ interface CardProps {
   className?: string
   onClick?: () => void
   hover?: boolean
+  style?: React.CSSProperties
 }
 
-export function Card({ children, className = '', onClick, hover = true }: CardProps) {
+export function Card({ children, className = '', onClick, hover = true, style }: CardProps) {
   const baseClasses = 'bg-white rounded-lg border border-gray-200'
   const hoverClasses = hover ? 'hover:shadow-lg transition-shadow' : ''
   const clickableClasses = onClick ? 'cursor-pointer' : ''
@@ -16,6 +17,7 @@ export function Card({ children, className = '', onClick, hover = true }: CardPr
     <div
       className={`${baseClasses} ${hoverClasses} ${clickableClasses} ${className}`}
       onClick={onClick}
+      style={style}
     >
       {children}
     </div>
