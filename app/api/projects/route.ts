@@ -13,6 +13,7 @@ import { sortProjectsByActivity } from '@/lib/api/sort-projects-by-activity'
 import { generateSlug } from '@/lib/utils'
 import { resolveBriefRole, defaultBriefRole } from '@/lib/roles/brief-role'
 import { copy } from '@/lib/copy'
+import type { BriefRole } from '@/lib/types'
 
 // Ensure slug is unique by appending -2, -3, etc. if needed
 async function ensureUniqueSlug(db: FirebaseFirestore.Firestore, slug: string, excludeProjectId?: string): Promise<string> {
@@ -85,13 +86,15 @@ export async function GET(request: Request) {
       .where('email', '==', auth.email)
       .get()
     const viewerRoles = new Map<string, string>()
+    const viewerBriefRoles = new Map<string, BriefRole | null>()
     for (const doc of projects) viewerRoles.set(doc.id, 'admin')
     for (const doc of adminMemberSnap.docs) {
       const d = doc.data()
       viewerRoles.set(d.project_id as string, d.role as string)
+      viewerBriefRoles.set(d.project_id as string, (d.brief_role as BriefRole | null) ?? null)
     }
 
-    const enriched = await enrichProjects(db, projects, viewerRoles)
+    const enriched = await enrichProjects(db, projects, viewerRoles, viewerBriefRoles)
     return NextResponse.json(sortProjectsByActivity(enriched))
   }
 
@@ -146,20 +149,24 @@ export async function GET(request: Request) {
     }
   }
 
-  // Build viewer_role map from membership queries
+  // Build viewer_role + viewer_brief_role maps from the same membership docs
+  // (the brief_role ride-along is free — no extra Firestore reads).
   const viewerRoles = new Map<string, string>()
+  const viewerBriefRoles = new Map<string, BriefRole | null>()
   for (const doc of memberSnap.docs) {
     const d = doc.data()
     viewerRoles.set(d.project_id as string, d.role as string)
+    viewerBriefRoles.set(d.project_id as string, (d.brief_role as BriefRole | null) ?? null)
   }
   for (const doc of memberByEmail.docs) {
     const d = doc.data()
     if (!viewerRoles.has(d.project_id as string)) {
       viewerRoles.set(d.project_id as string, d.role as string)
+      viewerBriefRoles.set(d.project_id as string, (d.brief_role as BriefRole | null) ?? null)
     }
   }
 
-  const enriched = await enrichProjects(db, projects, viewerRoles)
+  const enriched = await enrichProjects(db, projects, viewerRoles, viewerBriefRoles)
   return NextResponse.json(sortProjectsByActivity(enriched))
 }
 

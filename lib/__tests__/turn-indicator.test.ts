@@ -27,16 +27,19 @@ describe('getTurnIndicator', () => {
   it('returns Completed when project status is completed', () => {
     const result = getTurnIndicator(makeProject({ status: 'completed' }), 'builder')
     expect(result?.label).toBe('Completed')
+    expect(result?.state).toBe('completed')
   })
 
   it('returns Needs setup when no requester email', () => {
     const result = getTurnIndicator(makeProject({ requester_email: undefined }), 'builder')
     expect(result?.label).toBe('Needs setup')
+    expect(result?.state).toBe('needs_setup')
   })
 
   it('returns Needs setup when no sessions', () => {
     const result = getTurnIndicator(makeProject({ session_count: 0 }), 'builder')
     expect(result?.label).toBe('Needs setup')
+    expect(result?.state).toBe('needs_setup')
   })
 
   it('hides the Needs setup badge from makers (builder-side concern)', () => {
@@ -55,17 +58,20 @@ describe('getTurnIndicator', () => {
       const result = getTurnIndicator(project, 'builder')
       expect(result?.label).toBe('Waiting on Sam')
       expect(result?.className).toContain('blue')
+      expect(result?.state).toBe('waiting')
     })
 
     it('admin sees "Waiting on {name}"', () => {
       const result = getTurnIndicator(project, 'admin')
       expect(result?.label).toBe('Waiting on Sam')
+      expect(result?.state).toBe('waiting')
     })
 
     it('maker sees "Your turn"', () => {
       const result = getTurnIndicator(project, 'maker')
       expect(result?.label).toBe('Your turn')
       expect(result?.className).toContain('amber')
+      expect(result?.state).toBe('your_turn')
     })
   })
 
@@ -79,12 +85,14 @@ describe('getTurnIndicator', () => {
       const result = getTurnIndicator(project, 'builder')
       expect(result?.label).toBe('Your turn')
       expect(result?.className).toContain('amber')
+      expect(result?.state).toBe('your_turn')
     })
 
     it('maker sees "Waiting for builder"', () => {
       const result = getTurnIndicator(project, 'maker')
       expect(result?.label).toBe('Waiting for builder')
       expect(result?.className).toContain('blue')
+      expect(result?.state).toBe('waiting')
     })
   })
 
