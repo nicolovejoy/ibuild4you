@@ -541,7 +541,7 @@ function ProjectList({ isAdmin }: { isAdmin: boolean }) {
               if (!section.emptyHint) return null
               return (
                 <div key={section.key}>
-                  <SectionHeader title={section.title} count={0} isAdmin={isAdmin} />
+                  <SectionHeader title={section.title} count={0} isAdmin={isAdmin} accent={section.key === 'awaiting'} />
                   <p className={`text-sm ${isAdmin ? 'text-slate-500' : 'text-gray-400'}`}>
                     {section.emptyHint}
                   </p>
@@ -550,7 +550,7 @@ function ProjectList({ isAdmin }: { isAdmin: boolean }) {
             }
             return (
               <div key={section.key}>
-                <SectionHeader title={section.title} count={section.briefs.length} isAdmin={isAdmin} />
+                <SectionHeader title={section.title} count={section.briefs.length} isAdmin={isAdmin} accent={section.key === 'awaiting'} />
                 <div className="space-y-3">{section.briefs.map(renderCard)}</div>
               </div>
             )
@@ -803,14 +803,39 @@ function DeleteProjectModal({ project, onClose }: { project: Project; onClose: (
   )
 }
 
-function SectionHeader({ title, count, isAdmin }: { title: string; count: number; isAdmin: boolean }) {
+function SectionHeader({
+  title,
+  count,
+  isAdmin,
+  accent,
+}: {
+  title: string
+  count: number
+  isAdmin: boolean
+  accent?: boolean
+}) {
+  // "Awaiting you" is the action list — give it an amber accent + dot so the eye
+  // lands there first. Other sections get a quieter but still bold treatment.
+  const titleColor = accent
+    ? isAdmin
+      ? 'text-amber-300'
+      : 'text-amber-600'
+    : isAdmin
+      ? 'text-slate-200'
+      : 'text-gray-800'
+  const countColor = accent
+    ? isAdmin
+      ? 'bg-amber-400/15 text-amber-300'
+      : 'bg-amber-100 text-amber-700'
+    : isAdmin
+      ? 'bg-slate-700/60 text-slate-300'
+      : 'bg-gray-200 text-gray-600'
   return (
-    <div className="flex items-baseline gap-2 mb-3">
-      <h3 className={`text-xs font-semibold uppercase tracking-wider ${isAdmin ? 'text-slate-400' : 'text-gray-500'}`}>
-        {title}
-      </h3>
+    <div className={`flex items-center gap-2 mb-3 pb-1.5 border-b ${isAdmin ? 'border-slate-700/60' : 'border-gray-200'}`}>
+      {accent && <span className="h-2 w-2 rounded-full bg-amber-400 shrink-0" />}
+      <h3 className={`text-sm font-bold uppercase tracking-widest ${titleColor}`}>{title}</h3>
       {count > 0 && (
-        <span className={`text-xs ${isAdmin ? 'text-slate-500' : 'text-gray-400'}`}>{count}</span>
+        <span className={`text-xs font-semibold rounded-full px-2 py-0.5 ${countColor}`}>{count}</span>
       )}
     </div>
   )
@@ -832,11 +857,11 @@ function DoneSection({
     <div>
       <button
         onClick={() => setOpen((v) => !v)}
-        className={`flex items-center gap-1.5 mb-3 ${isAdmin ? 'text-slate-400 hover:text-slate-200' : 'text-gray-500 hover:text-gray-700'}`}
+        className={`flex items-center gap-2 mb-3 pb-1.5 border-b w-full ${isAdmin ? 'border-slate-700/60 text-slate-300 hover:text-slate-100' : 'border-gray-200 text-gray-700 hover:text-gray-900'}`}
       >
-        <Chevron className="h-3.5 w-3.5" />
-        <span className="text-xs font-semibold uppercase tracking-wider">{section.title}</span>
-        <span className={isAdmin ? 'text-xs text-slate-500' : 'text-xs text-gray-400'}>{section.briefs.length}</span>
+        <Chevron className="h-4 w-4" />
+        <span className="text-sm font-bold uppercase tracking-widest">{section.title}</span>
+        <span className={`text-xs font-semibold rounded-full px-2 py-0.5 ${isAdmin ? 'bg-slate-700/60 text-slate-300' : 'bg-gray-200 text-gray-600'}`}>{section.briefs.length}</span>
       </button>
       {open && <div className="space-y-3">{section.briefs.map(renderCard)}</div>}
     </div>
