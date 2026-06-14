@@ -23,6 +23,7 @@ export interface ProjectMember extends BaseEntity {
   brief_role?: BriefRole | null
   added_by: string // email of who added them
   passcode?: string
+  archived_at?: string | null // when this viewer archived the brief from their dashboard (per-viewer)
 }
 
 // Member summary returned by GET /api/projects/[id]/members (Roles panel).
@@ -96,6 +97,7 @@ export interface Project extends BaseEntity {
   brief_feature_count?: number | null
   viewer_role?: MemberRole | 'admin' | null
   viewer_brief_role?: BriefRole | null // viewer's stored brief_role (chrome badges)
+  viewer_archived?: boolean // whether the viewer archived this brief (per-viewer, from their membership)
   has_active_session?: boolean
 }
 

@@ -8,7 +8,7 @@ import type { Project } from '@/lib/types'
 // everything from each enriched project (its viewer_role / viewer_brief_role /
 // turn fields), so it's fully unit-testable with no React or data fetching.
 
-export type SectionKey = 'awaiting' | 'yours' | 'reviewing' | 'contributing' | 'done'
+export type SectionKey = 'awaiting' | 'yours' | 'reviewing' | 'contributing' | 'done' | 'archived'
 
 export interface BriefSection {
   key: SectionKey
@@ -18,8 +18,9 @@ export interface BriefSection {
   emptyHint?: string
 }
 
-// Fixed render order. Awaiting (today's action list) first; Done last.
-const SECTION_ORDER: SectionKey[] = ['awaiting', 'yours', 'reviewing', 'contributing', 'done']
+// Fixed render order. Awaiting (today's action list) first; the two collapsed
+// folders (Done, then Archived) last.
+const SECTION_ORDER: SectionKey[] = ['awaiting', 'yours', 'reviewing', 'contributing', 'done', 'archived']
 
 const SECTION_META: Record<SectionKey, { title: string; emptyHint?: string }> = {
   awaiting: { title: copy.dashboard.sections.awaiting.title },
@@ -36,6 +37,7 @@ const SECTION_META: Record<SectionKey, { title: string; emptyHint?: string }> = 
     emptyHint: copy.dashboard.sections.contributing.emptyHint,
   },
   done: { title: copy.dashboard.sections.done.title },
+  archived: { title: copy.dashboard.sections.archived.title },
 }
 
 const ROLE_SECTION = {
@@ -58,6 +60,9 @@ function turnStateFor(project: Project): TurnState | null {
 }
 
 function sectionFor(project: Project): SectionKey {
+  // Archive is a manual "hide from active view" and wins over everything,
+  // including completed — an archived brief belongs in the Archived folder.
+  if (project.viewer_archived) return 'archived'
   if (project.status === 'completed') return 'done'
   const turn = turnStateFor(project)
   if (turn === 'your_turn' || turn === 'needs_setup') return 'awaiting'
@@ -82,6 +87,7 @@ export function groupBriefs(projects: Project[]): BriefSection[] {
     reviewing: [],
     contributing: [],
     done: [],
+    archived: [],
   }
   for (const p of projects) buckets[sectionFor(p)].push(p)
 
@@ -98,6 +104,10 @@ export function groupBriefs(projects: Project[]): BriefSection[] {
 const FLATTEN_THRESHOLD = 3
 
 export function shouldFlatten(sections: BriefSection[]): boolean {
+  // Any archived brief forces the sectioned view: the flat list renders every
+  // brief inline, which would defeat archiving. Keep the collapsed folder.
+  const hasArchived = sections.some((s) => s.key === 'archived' && s.briefs.length > 0)
+  if (hasArchived) return false
   const nonEmpty = sections.filter((s) => s.briefs.length > 0)
   const total = nonEmpty.reduce((n, s) => n + s.briefs.length, 0)
   return nonEmpty.length <= 1 || total <= FLATTEN_THRESHOLD

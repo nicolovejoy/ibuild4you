@@ -87,14 +87,16 @@ export async function GET(request: Request) {
       .get()
     const viewerRoles = new Map<string, string>()
     const viewerBriefRoles = new Map<string, BriefRole | null>()
+    const viewerArchived = new Map<string, boolean>()
     for (const doc of projects) viewerRoles.set(doc.id, 'admin')
     for (const doc of adminMemberSnap.docs) {
       const d = doc.data()
       viewerRoles.set(d.project_id as string, d.role as string)
       viewerBriefRoles.set(d.project_id as string, (d.brief_role as BriefRole | null) ?? null)
+      viewerArchived.set(d.project_id as string, !!d.archived_at)
     }
 
-    const enriched = await enrichProjects(db, projects, viewerRoles, viewerBriefRoles)
+    const enriched = await enrichProjects(db, projects, viewerRoles, viewerBriefRoles, viewerArchived)
     return NextResponse.json(sortProjectsByActivity(enriched))
   }
 
@@ -153,20 +155,23 @@ export async function GET(request: Request) {
   // (the brief_role ride-along is free — no extra Firestore reads).
   const viewerRoles = new Map<string, string>()
   const viewerBriefRoles = new Map<string, BriefRole | null>()
+  const viewerArchived = new Map<string, boolean>()
   for (const doc of memberSnap.docs) {
     const d = doc.data()
     viewerRoles.set(d.project_id as string, d.role as string)
     viewerBriefRoles.set(d.project_id as string, (d.brief_role as BriefRole | null) ?? null)
+    viewerArchived.set(d.project_id as string, !!d.archived_at)
   }
   for (const doc of memberByEmail.docs) {
     const d = doc.data()
     if (!viewerRoles.has(d.project_id as string)) {
       viewerRoles.set(d.project_id as string, d.role as string)
       viewerBriefRoles.set(d.project_id as string, (d.brief_role as BriefRole | null) ?? null)
+      viewerArchived.set(d.project_id as string, !!d.archived_at)
     }
   }
 
-  const enriched = await enrichProjects(db, projects, viewerRoles, viewerBriefRoles)
+  const enriched = await enrichProjects(db, projects, viewerRoles, viewerBriefRoles, viewerArchived)
   return NextResponse.json(sortProjectsByActivity(enriched))
 }
 

@@ -29,7 +29,7 @@ function ids(sections: ReturnType<typeof groupBriefs>, key: SectionKey) {
 }
 
 describe('groupBriefs', () => {
-  it('returns the five sections in fixed order', () => {
+  it('returns the six sections in fixed order', () => {
     const out = groupBriefs([])
     expect(out.map((s) => s.key)).toEqual([
       'awaiting',
@@ -37,6 +37,7 @@ describe('groupBriefs', () => {
       'reviewing',
       'contributing',
       'done',
+      'archived',
     ])
   })
 
@@ -86,6 +87,26 @@ describe('groupBriefs', () => {
     ])
     expect(ids(out, 'done')).toEqual(['done'])
     expect(ids(out, 'awaiting')).toEqual([])
+  })
+
+  it('routes an archived brief to Archived, overriding turn state and role', () => {
+    const out = groupBriefs([
+      brief({ id: 'arch', viewer_role: 'maker', viewer_archived: true }),
+    ])
+    expect(ids(out, 'archived')).toEqual(['arch'])
+    expect(ids(out, 'awaiting')).toEqual([])
+  })
+
+  it('archived overrides completed', () => {
+    const out = groupBriefs([
+      brief({ id: 'both', status: 'completed', viewer_archived: true }),
+    ])
+    expect(ids(out, 'archived')).toEqual(['both'])
+    expect(ids(out, 'done')).toEqual([])
+  })
+
+  it('carries the Archived section title from copy', () => {
+    expect(section(groupBriefs([]), 'archived').title).toBe('Archived')
   })
 
   it('sorts within a section by activity, newest first', () => {
@@ -146,6 +167,16 @@ describe('shouldFlatten', () => {
     const out = groupBriefs([
       ...mk(2, { viewer_role: 'maker' }), // awaiting
       ...mk(2, { viewer_role: 'builder', viewer_brief_role: 'reviewer' }), // reviewing
+    ])
+    expect(shouldFlatten(out)).toBe(false)
+  })
+
+  it('does not flatten when any brief is archived, even on a small dashboard', () => {
+    // 1 active + 1 archived: must stay sectioned so the archived folder is
+    // separate and the archived brief never shows inline.
+    const out = groupBriefs([
+      brief({ id: 'a', viewer_role: 'maker' }),
+      brief({ id: 'arch', viewer_role: 'maker', viewer_archived: true }),
     ])
     expect(shouldFlatten(out)).toBe(false)
   })
