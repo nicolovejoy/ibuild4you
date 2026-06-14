@@ -206,6 +206,39 @@ describe('POST /api/chat', () => {
     expect(res.status).toBe(400)
   })
 
+  it('returns a JSON 400 (not a raw 500) on a malformed JSON body', async () => {
+    const req = new Request('http://localhost/api/chat', {
+      method: 'POST',
+      body: '{not valid json',
+      headers: { 'Content-Type': 'application/json' },
+    })
+    const res = await POST(req)
+    expect(res.status).toBe(400)
+    expect(res.headers.get('Content-Type')).toContain('application/json')
+    const data = await res.json()
+    expect(data.error).toBeTruthy()
+  })
+
+  // --- Defensive: unexpected failures return a parseable JSON 500 ---
+
+  it('returns a JSON 500 envelope (not a framework HTML 500) when a read throws', async () => {
+    mockGetProjectRole.mockRejectedValue(new Error('firestore unavailable'))
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    const res = await POST(makeRequest({ session_id: 's1', content: 'Hello' }))
+
+    expect(res.status).toBe(500)
+    expect(res.headers.get('Content-Type')).toContain('application/json')
+    // Body must be valid JSON the client can parse off res.json().
+    const data = await res.json()
+    expect(data.error).toBeTruthy()
+    // And the failure is logged with a diagnosable tag.
+    expect(errSpy).toHaveBeenCalledWith('chat_request_error', expect.objectContaining({
+      message: 'firestore unavailable',
+    }))
+    errSpy.mockRestore()
+  })
+
   // --- Auth / not found ---
 
   it('returns 404 when session does not exist', async () => {
