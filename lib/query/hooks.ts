@@ -11,6 +11,7 @@ export type CurrentUser = {
   system_roles: SystemRole[]
   first_name: string | null
   last_name: string | null
+  account_label: string | null
 }
 
 export function useCurrentUser() {
@@ -28,7 +29,11 @@ export function useCurrentUser() {
 export function useUpdateCurrentUser() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async (data: { first_name: string; last_name?: string }) => {
+    mutationFn: async (data: {
+      first_name?: string
+      last_name?: string
+      account_label?: string
+    }) => {
       const res = await apiFetch('/api/users/me', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
