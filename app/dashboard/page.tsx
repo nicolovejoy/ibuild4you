@@ -5,9 +5,9 @@ import { useApproval } from '@/lib/hooks/useApproval'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { Plus, FolderOpen, Share2, Copy, Check, Mail, Trash2, Settings, ChevronRight, ChevronDown } from 'lucide-react'
+import { Plus, FolderOpen, Share2, Copy, Check, Mail, Trash2, Settings, ChevronRight, ChevronDown, Archive, ArchiveRestore } from 'lucide-react'
 import { SiteHeader } from '@/components/site-header'
-import { useProjects, useCreateProject, useShareProject, useDeleteProject, useCurrentUser } from '@/lib/query/hooks'
+import { useProjects, useCreateProject, useShareProject, useDeleteProject, useCurrentUser, useArchiveProject } from '@/lib/query/hooks'
 import { LoadingButton } from '@/components/ui/LoadingButton'
 import { Card, CardBody } from '@/components/ui/Card'
 import { EmptyState } from '@/components/ui/EmptyState'
@@ -21,7 +21,7 @@ import { BriefBadge } from '@/components/ui/BriefBadge'
 import { briefIdentity } from '@/lib/brief-identity'
 import { copy, formatDisplayName, getMakerShortName } from '@/lib/copy'
 import { briefRoleLabel, briefRoleShort, viewerBriefRole } from '@/lib/roles/display'
-import { groupBriefs, shouldFlatten, type BriefSection } from '@/lib/dashboard/group-briefs'
+import { groupBriefs, shouldFlatten, type SectionKey } from '@/lib/dashboard/group-briefs'
 import { getProjectShareLink } from '@/lib/url'
 import { parseNewProjectPayload } from '@/lib/api/import-payload'
 import { stripCodeFences } from '@/lib/utils'
@@ -378,6 +378,7 @@ function NewProjectButton() {
 function ProjectList({ isAdmin }: { isAdmin: boolean }) {
   const { data: projects, isLoading, error } = useProjects()
   const router = useRouter()
+  const archiveProject = useArchiveProject()
   const [sharingProject, setSharingProject] = useState<Project | null>(null)
   const [deletingProject, setDeletingProject] = useState<Project | null>(null)
 
@@ -481,6 +482,19 @@ function ProjectList({ isAdmin }: { isAdmin: boolean }) {
               </div>
             </div>
             <div className="flex items-center gap-2">
+              {/* Archive is self-service — any viewer can hide a brief from their
+                  own dashboard (per-viewer; doesn't affect others). */}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  archiveProject.mutate({ project_id: project.id, archived: !project.viewer_archived })
+                }}
+                disabled={archiveProject.isPending}
+                className="p-1.5 text-gray-400 hover:text-brand-navy hover:bg-gray-100 rounded disabled:opacity-50"
+                title={project.viewer_archived ? copy.dashboard.unarchive : copy.dashboard.archive}
+              >
+                {project.viewer_archived ? <ArchiveRestore className="h-4 w-4" /> : <Archive className="h-4 w-4" />}
+              </button>
               {isAdmin && (
                 <>
                   <button
@@ -524,20 +538,9 @@ function ProjectList({ isAdmin }: { isAdmin: boolean }) {
       ) : (
         <div className="space-y-8">
           {sections.map((section) => {
-            if (section.key === 'done') {
-              if (section.briefs.length === 0) return null
-              return (
-                <DoneSection
-                  key="done"
-                  section={section}
-                  isAdmin={isAdmin}
-                  renderCard={renderCard}
-                />
-              )
-            }
             if (section.briefs.length === 0) {
               // Role sections show a one-line "your queue is clear" hint; the
-              // cross-role Awaiting section stays silent when empty.
+              // cross-role Awaiting + the two bottom folders stay silent when empty.
               if (!section.emptyHint) return null
               return (
                 <div key={section.key}>
@@ -549,10 +552,17 @@ function ProjectList({ isAdmin }: { isAdmin: boolean }) {
               )
             }
             return (
-              <div key={section.key}>
-                <SectionHeader title={section.title} count={section.briefs.length} isAdmin={isAdmin} accent={section.key === 'awaiting'} />
+              <CollapsibleSection
+                key={section.key}
+                sectionKey={section.key}
+                title={section.title}
+                count={section.briefs.length}
+                isAdmin={isAdmin}
+                accent={section.key === 'awaiting'}
+                defaultOpen={DEFAULT_SECTION_OPEN[section.key]}
+              >
                 <div className="space-y-3">{section.briefs.map(renderCard)}</div>
-              </div>
+              </CollapsibleSection>
             )
           })}
         </div>
@@ -841,29 +851,80 @@ function SectionHeader({
   )
 }
 
-// Done is collapsed by default — finished briefs shouldn't crowd the live work.
-function DoneSection({
-  section,
+// Default open/collapsed per section: live work expanded, the two bottom
+// folders collapsed. A viewer's manual toggle overrides this and persists.
+const DEFAULT_SECTION_OPEN: Record<SectionKey, boolean> = {
+  awaiting: true,
+  yours: true,
+  reviewing: true,
+  contributing: true,
+  done: false,
+  archived: false,
+}
+
+const SECTION_OPEN_PREFIX = 'dashboard:section:'
+
+// A collapsible section with a chevron header. Open state persists per section
+// in localStorage so a viewer's choice survives reloads. Initialized from the
+// default to avoid an SSR/client hydration mismatch, then synced from storage.
+function CollapsibleSection({
+  sectionKey,
+  title,
+  count,
   isAdmin,
-  renderCard,
+  accent,
+  defaultOpen,
+  children,
 }: {
-  section: BriefSection
+  sectionKey: SectionKey
+  title: string
+  count: number
   isAdmin: boolean
-  renderCard: (project: Project) => React.ReactNode
+  accent?: boolean
+  defaultOpen: boolean
+  children: React.ReactNode
 }) {
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(defaultOpen)
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(SECTION_OPEN_PREFIX + sectionKey)
+      if (stored !== null) setOpen(stored === '1')
+    } catch {
+      // localStorage unavailable — keep the default
+    }
+  }, [sectionKey])
+
+  const toggle = () =>
+    setOpen((prev) => {
+      const next = !prev
+      try {
+        localStorage.setItem(SECTION_OPEN_PREFIX + sectionKey, next ? '1' : '0')
+      } catch {
+        // ignore persistence failures
+      }
+      return next
+    })
+
   const Chevron = open ? ChevronDown : ChevronRight
+  const titleColor = accent
+    ? isAdmin ? 'text-amber-300' : 'text-amber-600'
+    : isAdmin ? 'text-slate-200' : 'text-gray-800'
+  const countColor = accent
+    ? isAdmin ? 'bg-amber-400/15 text-amber-300' : 'bg-amber-100 text-amber-700'
+    : isAdmin ? 'bg-slate-700/60 text-slate-300' : 'bg-gray-200 text-gray-600'
+
   return (
     <div>
       <button
-        onClick={() => setOpen((v) => !v)}
-        className={`flex items-center gap-2 mb-3 pb-1.5 border-b w-full ${isAdmin ? 'border-slate-700/60 text-slate-300 hover:text-slate-100' : 'border-gray-200 text-gray-700 hover:text-gray-900'}`}
+        onClick={toggle}
+        className={`flex items-center gap-2 mb-3 pb-1.5 border-b w-full ${isAdmin ? 'border-slate-700/60' : 'border-gray-200'}`}
       >
-        <Chevron className="h-4 w-4" />
-        <span className="text-sm font-bold uppercase tracking-widest">{section.title}</span>
-        <span className={`text-xs font-semibold rounded-full px-2 py-0.5 ${isAdmin ? 'bg-slate-700/60 text-slate-300' : 'bg-gray-200 text-gray-600'}`}>{section.briefs.length}</span>
+        <Chevron className={`h-4 w-4 shrink-0 ${isAdmin ? 'text-slate-400' : 'text-gray-400'}`} />
+        {accent && <span className="h-2 w-2 rounded-full bg-amber-400 shrink-0" />}
+        <h3 className={`text-sm font-bold uppercase tracking-widest ${titleColor}`}>{title}</h3>
+        <span className={`text-xs font-semibold rounded-full px-2 py-0.5 ${countColor}`}>{count}</span>
       </button>
-      {open && <div className="space-y-3">{section.briefs.map(renderCard)}</div>}
+      {open && children}
     </div>
   )
 }
