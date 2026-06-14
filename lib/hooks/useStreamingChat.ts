@@ -3,6 +3,7 @@
 import { useState, useCallback } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { apiFetch } from '@/lib/firebase/api-fetch'
+import { errorMessageFromResponse } from './chat-error'
 
 export type ChatMessage = {
   id?: string
@@ -87,8 +88,7 @@ export function useStreamingChat({ projectId }: { projectId: string }) {
       })
 
       if (!res.ok) {
-        const data = await res.json()
-        throw new Error(data.error || 'Chat request failed')
+        throw new Error(await errorMessageFromResponse(res))
       }
 
       await consumeStream(res)

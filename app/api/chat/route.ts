@@ -14,6 +14,16 @@ function getAnthropic() {
   return new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 }
 
+// Small helper so every error path returns a parseable JSON envelope (never a
+// raw framework HTML 500). The client reads `error` off this — see
+// useStreamingChat's tolerant error handling.
+function jsonError(error: string, status: number) {
+  return new Response(JSON.stringify({ error }), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  })
+}
+
 // Turns dropped-attachment info into a note the agent acts on, so it tells the
 // maker "I couldn't open that file" instead of silently saying nothing came
 // through. Phrased as context (not a command) per Opus-4.x guidance.
@@ -36,18 +46,37 @@ function buildAttachmentNote(dropped: DroppedAttachment[]): string {
   )
 }
 
+// Thin wrapper: everything before the SSE response runs synchronously and can
+// throw (Firestore reads, attachment loads, prompt assembly). A raw throw here
+// would surface as a framework HTML 500 that the client can't parse — so we
+// catch and return a JSON envelope. Errors during streaming are handled
+// separately inside the ReadableStream (chat_stream_error).
 export async function POST(request: Request) {
+  try {
+    return await handleChat(request)
+  } catch (err) {
+    console.error('chat_request_error', {
+      message: err instanceof Error ? err.message : String(err),
+      stack: err instanceof Error ? err.stack : undefined,
+    })
+    return jsonError('Something went wrong. Please try again.', 500)
+  }
+}
+
+async function handleChat(request: Request): Promise<Response> {
   const auth = await getAuthenticatedUser(request)
   if (auth.error) return auth.error
 
-  const body = await request.json()
+  let body
+  try {
+    body = await request.json()
+  } catch {
+    return jsonError('Invalid JSON body', 400)
+  }
   const { session_id, content, file_ids } = body
 
   if (!session_id || (!content?.trim() && (!file_ids || file_ids.length === 0))) {
-    return new Response(JSON.stringify({ error: 'session_id and content (or file_ids) are required' }), {
-      status: 400,
-      headers: { 'Content-Type': 'application/json' },
-    })
+    return jsonError('session_id and content (or file_ids) are required', 400)
   }
 
   const db = getAdminDb()
@@ -55,10 +84,7 @@ export async function POST(request: Request) {
   // Look up session → project, verify membership (chat = maker+)
   const sessionDoc = await db.collection('sessions').doc(session_id).get()
   if (!sessionDoc.exists) {
-    return new Response(JSON.stringify({ error: 'Session not found' }), {
-      status: 404,
-      headers: { 'Content-Type': 'application/json' },
-    })
+    return jsonError('Session not found', 404)
   }
 
   const projectId = sessionDoc.data()?.project_id
@@ -67,10 +93,7 @@ export async function POST(request: Request) {
 
   const role = await getProjectRole(db, projectId, auth.uid, auth.email, auth.systemRoles, auth)
   if (!projectDoc.exists || !role) {
-    return new Response(JSON.stringify({ error: 'Not found' }), {
-      status: 404,
-      headers: { 'Content-Type': 'application/json' },
-    })
+    return jsonError('Not found', 404)
   }
 
   const now = new Date().toISOString()
@@ -179,10 +202,7 @@ export async function POST(request: Request) {
     )
   } catch (err) {
     if (err instanceof Error && err.message.startsWith('attachments_too_large')) {
-      return new Response(
-        JSON.stringify({ error: 'Attachments exceed the 25MB per-message limit.' }),
-        { status: 413, headers: { 'Content-Type': 'application/json' } },
-      )
+      return jsonError('Attachments exceed the 25MB per-message limit.', 413)
     }
     throw err
   }
