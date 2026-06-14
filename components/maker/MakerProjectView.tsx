@@ -34,7 +34,7 @@ import { copy } from '@/lib/copy'
 import { shouldKickoff } from '@/lib/agent/kickoff'
 import { UserMenu } from '@/components/user-menu'
 import { briefRoleLabel, briefRoleShort, viewerBriefRole } from '@/lib/roles/display'
-import { BriefBadge } from '@/components/ui/BriefBadge'
+import { BriefSwitcher } from '@/components/brief-switcher'
 import { useQueryClient } from '@tanstack/react-query'
 import type { Session, WireframeMockup, ProjectFile } from '@/lib/types'
 
@@ -80,10 +80,7 @@ export function MakerProjectView({ projectId, userEmail }: { projectId: string; 
               <ArrowLeft className="h-5 w-5 text-gray-600" />
             </button>
             <div className="group relative flex-1 min-w-0 flex items-center gap-2">
-              {project && <BriefBadge id={project.id} size={16} />}
-              <span className="font-semibold text-brand-charcoal truncate">
-                {projectLoading ? '...' : project?.title}
-              </span>
+              <BriefSwitcher currentId={project?.id} currentTitle={project?.title} loading={projectLoading} />
               <BuildTimestamp />
             </div>
             {displayName && !editingName && (

@@ -47,7 +47,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { BuilderFilesTab } from './BuilderFilesTab'
 import { getTurnIndicator } from '@/lib/turn-indicator'
 import { TurnBadge } from '@/components/ui/TurnBadge'
-import { BriefBadge } from '@/components/ui/BriefBadge'
+import { BriefSwitcher } from '@/components/brief-switcher'
 import type { Project, Session, BriefContent, WireframeMockup } from '@/lib/types'
 
 type TabId = 'sessions' | 'brief' | 'files' | 'setup'
@@ -160,7 +160,7 @@ export function BuilderProjectView({ projectId, userEmail }: { projectId: string
             {/* Title + turn indicator */}
             <div className="flex items-center justify-between gap-3">
               <div className="group relative min-w-0 flex items-center gap-2">
-                {project && <BriefBadge id={project.id} size={16} />}
+                <BriefSwitcher currentId={project?.id} currentTitle={project?.title} loading={projectLoading} compact />
                 {editingTitle ? (
                   <input
                     type="text"

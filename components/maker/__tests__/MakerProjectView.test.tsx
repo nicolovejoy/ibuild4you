@@ -60,6 +60,8 @@ vi.mock('@/lib/query/hooks', () => ({
   useUpdateCurrentUser: () => mockUseUpdateCurrentUser(),
   useCreateSession: () => mockUseCreateSession(),
   useUploadFiles: () => mockUseUploadFiles(),
+  // BriefSwitcher in the header reads the brief list; empty = no switcher.
+  useProjects: () => ({ data: [] }),
 }))
 
 vi.mock('@/lib/hooks/useStreamingChat', () => ({
