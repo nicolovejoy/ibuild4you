@@ -12,7 +12,8 @@ export async function enrichProjects(
   db: FirebaseFirestore.Firestore,
   projectDocs: { id: string; [key: string]: unknown }[],
   viewerRoles?: Map<string, string>, // project_id → access-tier role
-  viewerBriefRoles?: Map<string, BriefRole | null> // project_id → stored brief_role
+  viewerBriefRoles?: Map<string, BriefRole | null>, // project_id → stored brief_role
+  viewerArchived?: Map<string, boolean> // project_id → viewer archived this brief
 ) {
   return Promise.all(
     projectDocs.map(async (project) => {
@@ -123,6 +124,7 @@ export async function enrichProjects(
         brief_feature_count: briefFeatureCount,
         viewer_role: viewerRoles?.get(project.id) ?? null,
         viewer_brief_role: viewerBriefRoles?.get(project.id) ?? null,
+        viewer_archived: viewerArchived?.get(project.id) ?? false,
         has_active_session: hasActiveSession,
       }
     })

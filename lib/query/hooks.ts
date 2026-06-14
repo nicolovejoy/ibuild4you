@@ -261,6 +261,28 @@ export function useDeleteProject() {
   })
 }
 
+// Archive/unarchive a brief from the caller's own dashboard (per-viewer).
+export function useArchiveProject() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({ project_id, archived }: { project_id: string; archived: boolean }) => {
+      const res = await apiFetch('/api/projects/archive', {
+        method: 'PATCH',
+        body: JSON.stringify({ project_id, archived }),
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || 'Failed to update archive state')
+      }
+      return res.json()
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.projects() })
+    },
+  })
+}
+
 export function useClaimProject() {
   const queryClient = useQueryClient()
 
