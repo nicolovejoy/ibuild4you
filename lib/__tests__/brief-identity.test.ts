@@ -55,6 +55,20 @@ describe('briefIdentity', () => {
     expect(quadrants.size).toBe(4)
   })
 
+  it('spreads glyphs roughly evenly across the set (not all one shape)', () => {
+    const counts = new Map<string, number>()
+    for (let i = 0; i < 2000; i++) {
+      const { glyphKey } = briefIdentity(`firestore-doc-id-${i}`)
+      counts.set(glyphKey, (counts.get(glyphKey) ?? 0) + 1)
+    }
+    // Every glyph should appear, and none should dominate (~250 expected each).
+    expect(counts.size).toBe(GLYPH_KEYS.length)
+    for (const n of counts.values()) {
+      expect(n).toBeGreaterThan(150)
+      expect(n).toBeLessThan(400)
+    }
+  })
+
   it('rarely collides on the full identity for distinct ids', () => {
     const ids = Array.from({ length: 300 }, (_, i) => `id-${i}-${i * 7}`)
     const fingerprints = new Set(
