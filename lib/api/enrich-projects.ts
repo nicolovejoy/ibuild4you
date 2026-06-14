@@ -1,3 +1,5 @@
+import type { BriefRole } from '@/lib/types'
+
 // Enrich project docs with last activity, session count, and brief metadata.
 //
 // Per project: 1 sessions query (narrowed with .select) + at most 2 message
@@ -9,7 +11,8 @@
 export async function enrichProjects(
   db: FirebaseFirestore.Firestore,
   projectDocs: { id: string; [key: string]: unknown }[],
-  viewerRoles?: Map<string, string> // project_id → role
+  viewerRoles?: Map<string, string>, // project_id → access-tier role
+  viewerBriefRoles?: Map<string, BriefRole | null> // project_id → stored brief_role
 ) {
   return Promise.all(
     projectDocs.map(async (project) => {
@@ -119,6 +122,7 @@ export async function enrichProjects(
         brief_decision_count: briefDecisionCount,
         brief_feature_count: briefFeatureCount,
         viewer_role: viewerRoles?.get(project.id) ?? null,
+        viewer_brief_role: viewerBriefRoles?.get(project.id) ?? null,
         has_active_session: hasActiveSession,
       }
     })

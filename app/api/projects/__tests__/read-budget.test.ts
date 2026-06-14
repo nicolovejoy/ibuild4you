@@ -181,6 +181,32 @@ describe('enrichProjects read budget', () => {
     expect(first.brief_feature_count).toBe(1)
   })
 
+  it('carries viewer_role and viewer_brief_role from the supplied maps (zero extra reads)', async () => {
+    const fixture = makeFixture()
+    const db = makeFakeDb(fixture)
+    const viewerRoles = new Map<string, string>([['project-0', 'maker']])
+    const viewerBriefRoles = new Map<string, 'originator' | 'contributor' | 'reviewer' | null>([
+      ['project-0', 'contributor'],
+    ])
+
+    const result = await enrichProjects(
+      db,
+      fixture.projects.map((p) => ({ ...p })),
+      viewerRoles,
+      viewerBriefRoles
+    )
+
+    const p0 = result.find((p) => p.id === 'project-0')!
+    expect(p0.viewer_role).toBe('maker')
+    expect(p0.viewer_brief_role).toBe('contributor')
+    // A project not in the maps falls back to null on both axes.
+    const p1 = result.find((p) => p.id === 'project-1')!
+    expect(p1.viewer_role).toBeNull()
+    expect(p1.viewer_brief_role).toBeNull()
+    // Read budget unchanged — the maps are in-memory, no Firestore hit.
+    expect(db._getCount()).toBeLessThanOrEqual(40)
+  })
+
   it('skips the maker-message query when requester_email is missing', async () => {
     const fixture = makeFixture()
     // Strip requester_email from project-0 only.
