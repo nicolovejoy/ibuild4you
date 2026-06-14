@@ -5,7 +5,7 @@ import { useApproval } from '@/lib/hooks/useApproval'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { Plus, FolderOpen, Share2, Copy, Check, Mail, Trash2, Settings } from 'lucide-react'
+import { Plus, FolderOpen, Share2, Copy, Check, Mail, Trash2, Settings, ChevronRight, ChevronDown } from 'lucide-react'
 import { SiteHeader } from '@/components/site-header'
 import { useProjects, useCreateProject, useShareProject, useDeleteProject, useCurrentUser } from '@/lib/query/hooks'
 import { LoadingButton } from '@/components/ui/LoadingButton'
@@ -21,6 +21,7 @@ import { BriefBadge } from '@/components/ui/BriefBadge'
 import { briefIdentity } from '@/lib/brief-identity'
 import { copy, formatDisplayName, getMakerShortName } from '@/lib/copy'
 import { briefRoleLabel, briefRoleShort, viewerBriefRole } from '@/lib/roles/display'
+import { groupBriefs, shouldFlatten, type BriefSection } from '@/lib/dashboard/group-briefs'
 import { getProjectShareLink } from '@/lib/url'
 import { parseNewProjectPayload } from '@/lib/api/import-payload'
 import { stripCodeFences } from '@/lib/utils'
@@ -403,114 +404,159 @@ function ProjectList({ isAdmin }: { isAdmin: boolean }) {
     )
   }
 
+  const renderCard = (project: Project) => {
+    const turn = getTurnIndicator(project, project.viewer_role ?? null)
+    return (
+      <Card key={project.id} style={{ borderLeft: `6px solid ${briefIdentity(project.id).color}` }}>
+        <CardBody>
+          <div className="flex items-center justify-between">
+            <div
+              className="flex-1 cursor-pointer"
+              onClick={() => router.push(`/projects/${project.slug || project.id}`)}
+            >
+              <div className="flex flex-wrap items-center gap-2 mb-1">
+                <BriefBadge id={project.id} showCode size={18} />
+                {project.viewer_role && (() => {
+                  // Read the stored brief_role (#44 Phase 0 threaded it through),
+                  // falling back to the access-tier default — fixes Contributor
+                  // mislabeled as Originator.
+                  const briefRole = viewerBriefRole(project.viewer_role, project.viewer_brief_role)
+                  return (
+                    <span
+                      className={`text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded shrink-0 ${
+                        briefRole === 'originator'
+                          ? 'bg-amber-500 text-white'
+                          : 'bg-brand-navy text-white'
+                      }`}
+                      title={briefRoleShort(briefRole)}
+                    >
+                      {briefRoleLabel(briefRole)}
+                    </span>
+                  )
+                })()}
+                <h3 className="font-medium text-gray-900">{project.title}</h3>
+                {turn && (
+                  <TurnBadge turn={turn} className={`text-xs px-2 py-0.5 rounded-full font-medium ${turn.className}`} />
+                )}
+              </div>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-sm text-gray-500">
+                {project.requester_email && (
+                  <span className="text-brand-slate">
+                    {makerDisplayName(project) || project.requester_email?.split('@')[0]}
+                  </span>
+                )}
+                {isAdmin && project.session_count !== undefined && project.session_count > 0 && (
+                  <span className="text-gray-400">
+                    {project.session_count} session{project.session_count === 1 ? '' : 's'}
+                  </span>
+                )}
+                {project.brief_version != null && (
+                  <span className="text-gray-400">
+                    Brief
+                    {(project.brief_feature_count ?? 0) > 0 && (
+                      <> &middot; {project.brief_feature_count} feature{project.brief_feature_count === 1 ? '' : 's'}</>
+                    )}
+                    {(project.brief_decision_count ?? 0) > 0 && (
+                      <> &middot; {project.brief_decision_count} decision{project.brief_decision_count === 1 ? '' : 's'}</>
+                    )}
+                  </span>
+                )}
+              </div>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-gray-400 mt-1">
+                {project.last_maker_message_at && (
+                  <span>{makerShortName(project)} messaged {formatRelativeTime(project.last_maker_message_at)}</span>
+                )}
+                {project.last_message_at && project.last_message_by === 'agent' && (
+                  <span>{copy.dashboard.activityAgent(formatRelativeTime(project.last_message_at))}</span>
+                )}
+                {project.last_builder_activity_at && (
+                  <span>{copy.dashboard.builderActivity(formatRelativeTime(project.last_builder_activity_at))}</span>
+                )}
+                {!project.last_maker_message_at && project.shared_at && (
+                  <span>{copy.dashboard.sharedAt(formatRelativeTime(project.shared_at))}</span>
+                )}
+                {project.last_nudged_at && (
+                  <span>{copy.dashboard.nudgedAt(formatRelativeTime(project.last_nudged_at))}</span>
+                )}
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              {isAdmin && (
+                <>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setSharingProject(project)
+                    }}
+                    className="p-1.5 text-gray-400 hover:text-brand-navy hover:bg-gray-100 rounded"
+                    title="Share with someone"
+                  >
+                    <Share2 className="h-4 w-4" />
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setDeletingProject(project)
+                    }}
+                    className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded"
+                    title="Delete brief"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        </CardBody>
+      </Card>
+    )
+  }
+
+  // Group into role/turn-state sections (#44). When grouping earns nothing
+  // (one bucket, or a small total), fall back to the flat activity-sorted list
+  // exactly as before — only multi-bucket dashboards get section headers.
+  const sections = groupBriefs(projects)
+
   return (
     <>
-      <div className="space-y-3">
-        {projects.map((project) => {
-          const turn = getTurnIndicator(project, project.viewer_role ?? null)
-          return (
-            <Card key={project.id} style={{ borderLeft: `6px solid ${briefIdentity(project.id).color}` }}>
-              <CardBody>
-                <div className="flex items-center justify-between">
-                  <div
-                    className="flex-1 cursor-pointer"
-                    onClick={() => router.push(`/projects/${project.slug || project.id}`)}
-                  >
-                    <div className="flex flex-wrap items-center gap-2 mb-1">
-                      <BriefBadge id={project.id} showCode size={18} />
-                      {project.viewer_role && (() => {
-                        const briefRole = viewerBriefRole(project.viewer_role)
-                        return (
-                          <span
-                            className={`text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded shrink-0 ${
-                              briefRole === 'originator'
-                                ? 'bg-amber-500 text-white'
-                                : 'bg-brand-navy text-white'
-                            }`}
-                            title={briefRoleShort(briefRole)}
-                          >
-                            {briefRoleLabel(briefRole)}
-                          </span>
-                        )
-                      })()}
-                      <h3 className="font-medium text-gray-900">{project.title}</h3>
-                      {turn && (
-                        <TurnBadge turn={turn} className={`text-xs px-2 py-0.5 rounded-full font-medium ${turn.className}`} />
-                      )}
-                    </div>
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-sm text-gray-500">
-                      {project.requester_email && (
-                        <span className="text-brand-slate">
-                          {makerDisplayName(project) || project.requester_email?.split('@')[0]}
-                        </span>
-                      )}
-                      {isAdmin && project.session_count !== undefined && project.session_count > 0 && (
-                        <span className="text-gray-400">
-                          {project.session_count} session{project.session_count === 1 ? '' : 's'}
-                        </span>
-                      )}
-                      {project.brief_version != null && (
-                        <span className="text-gray-400">
-                          Brief
-                          {(project.brief_feature_count ?? 0) > 0 && (
-                            <> &middot; {project.brief_feature_count} feature{project.brief_feature_count === 1 ? '' : 's'}</>
-                          )}
-                          {(project.brief_decision_count ?? 0) > 0 && (
-                            <> &middot; {project.brief_decision_count} decision{project.brief_decision_count === 1 ? '' : 's'}</>
-                          )}
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-gray-400 mt-1">
-                      {project.last_maker_message_at && (
-                        <span>{makerShortName(project)} messaged {formatRelativeTime(project.last_maker_message_at)}</span>
-                      )}
-                      {project.last_message_at && project.last_message_by === 'agent' && (
-                        <span>{copy.dashboard.activityAgent(formatRelativeTime(project.last_message_at))}</span>
-                      )}
-                      {project.last_builder_activity_at && (
-                        <span>{copy.dashboard.builderActivity(formatRelativeTime(project.last_builder_activity_at))}</span>
-                      )}
-                      {!project.last_maker_message_at && project.shared_at && (
-                        <span>{copy.dashboard.sharedAt(formatRelativeTime(project.shared_at))}</span>
-                      )}
-                      {project.last_nudged_at && (
-                        <span>{copy.dashboard.nudgedAt(formatRelativeTime(project.last_nudged_at))}</span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {isAdmin && (
-                      <>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            setSharingProject(project)
-                          }}
-                          className="p-1.5 text-gray-400 hover:text-brand-navy hover:bg-gray-100 rounded"
-                          title="Share with someone"
-                        >
-                          <Share2 className="h-4 w-4" />
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            setDeletingProject(project)
-                          }}
-                          className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded"
-                          title="Delete brief"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </>
-                    )}
-                  </div>
+      {shouldFlatten(sections) ? (
+        <div className="space-y-3">{projects.map(renderCard)}</div>
+      ) : (
+        <div className="space-y-8">
+          {sections.map((section) => {
+            if (section.key === 'done') {
+              if (section.briefs.length === 0) return null
+              return (
+                <DoneSection
+                  key="done"
+                  section={section}
+                  isAdmin={isAdmin}
+                  renderCard={renderCard}
+                />
+              )
+            }
+            if (section.briefs.length === 0) {
+              // Role sections show a one-line "your queue is clear" hint; the
+              // cross-role Awaiting section stays silent when empty.
+              if (!section.emptyHint) return null
+              return (
+                <div key={section.key}>
+                  <SectionHeader title={section.title} count={0} isAdmin={isAdmin} />
+                  <p className={`text-sm ${isAdmin ? 'text-slate-500' : 'text-gray-400'}`}>
+                    {section.emptyHint}
+                  </p>
                 </div>
-              </CardBody>
-            </Card>
-          )
-        })}
-      </div>
+              )
+            }
+            return (
+              <div key={section.key}>
+                <SectionHeader title={section.title} count={section.briefs.length} isAdmin={isAdmin} />
+                <div className="space-y-3">{section.briefs.map(renderCard)}</div>
+              </div>
+            )
+          })}
+        </div>
+      )}
 
       {sharingProject && (
         <ShareModal
@@ -754,6 +800,46 @@ function DeleteProjectModal({ project, onClose }: { project: Project; onClose: (
         </div>
       </div>
     </Modal>
+  )
+}
+
+function SectionHeader({ title, count, isAdmin }: { title: string; count: number; isAdmin: boolean }) {
+  return (
+    <div className="flex items-baseline gap-2 mb-3">
+      <h3 className={`text-xs font-semibold uppercase tracking-wider ${isAdmin ? 'text-slate-400' : 'text-gray-500'}`}>
+        {title}
+      </h3>
+      {count > 0 && (
+        <span className={`text-xs ${isAdmin ? 'text-slate-500' : 'text-gray-400'}`}>{count}</span>
+      )}
+    </div>
+  )
+}
+
+// Done is collapsed by default — finished briefs shouldn't crowd the live work.
+function DoneSection({
+  section,
+  isAdmin,
+  renderCard,
+}: {
+  section: BriefSection
+  isAdmin: boolean
+  renderCard: (project: Project) => React.ReactNode
+}) {
+  const [open, setOpen] = useState(false)
+  const Chevron = open ? ChevronDown : ChevronRight
+  return (
+    <div>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className={`flex items-center gap-1.5 mb-3 ${isAdmin ? 'text-slate-400 hover:text-slate-200' : 'text-gray-500 hover:text-gray-700'}`}
+      >
+        <Chevron className="h-3.5 w-3.5" />
+        <span className="text-xs font-semibold uppercase tracking-wider">{section.title}</span>
+        <span className={isAdmin ? 'text-xs text-slate-500' : 'text-xs text-gray-400'}>{section.briefs.length}</span>
+      </button>
+      {open && <div className="space-y-3">{section.briefs.map(renderCard)}</div>}
+    </div>
   )
 }
 
