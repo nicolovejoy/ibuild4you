@@ -10,6 +10,7 @@ export { ADMIN_EMAILS }
 export type CachedUserData = {
   first_name: string | null
   last_name: string | null
+  account_label: string | null
 }
 
 // Firestore Admin error codes we care about for HTTP-status mapping.
@@ -246,6 +247,7 @@ export async function getAuthenticatedUser(request: Request): Promise<AuthSucces
         ? {
             first_name: (raw.first_name as string | undefined) ?? null,
             last_name: (raw.last_name as string | undefined) ?? null,
+            account_label: (raw.account_label as string | undefined) ?? null,
           }
         : null
       setCachedUser(uid, { systemRoles, userData })

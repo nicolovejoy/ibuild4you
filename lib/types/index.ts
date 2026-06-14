@@ -45,6 +45,7 @@ export interface AppUser extends BaseEntity {
   display_name?: string
   first_name?: string
   last_name?: string
+  account_label?: string // self-assigned nav label ("main", "test account")
   system_roles?: SystemRole[]
 }
 

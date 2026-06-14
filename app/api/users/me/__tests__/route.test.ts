@@ -82,8 +82,18 @@ describe('GET /api/users/me', () => {
       system_roles: ['admin'],
       first_name: 'Sam',
       last_name: 'Lee',
+      account_label: null,
     })
     expect(mockUserGet).not.toHaveBeenCalled()
+  })
+
+  it('returns the account_label when set', async () => {
+    authResult = {
+      ...authResult,
+      userData: { first_name: 'Sam', last_name: 'Lee', account_label: 'test account' },
+    }
+    const res = await GET(new Request('http://localhost/api/users/me'))
+    await expect(res.json()).resolves.toMatchObject({ account_label: 'test account' })
   })
 })
 
@@ -101,10 +111,39 @@ describe('PATCH /api/users/me', () => {
     requesterProjects = []
   })
 
-  it('returns 400 when first_name is not a string', async () => {
+  it('returns 400 when no updatable field is provided', async () => {
     const res = await PATCH(patchReq({ last_name: 'Lee' }))
     expect(res.status).toBe(400)
     expect(mockUserUpdate).not.toHaveBeenCalled()
+  })
+
+  it('returns 400 when account_label is not a string', async () => {
+    const res = await PATCH(patchReq({ account_label: 123 }))
+    expect(res.status).toBe(400)
+    expect(mockUserUpdate).not.toHaveBeenCalled()
+  })
+
+  it('updates account_label alone without requiring a name or syncing projects', async () => {
+    requesterProjects = [{ ref: { id: 'p1' } }]
+    const res = await PATCH(patchReq({ account_label: '  test account  ' }))
+    expect(res.status).toBe(200)
+    expect(mockUserUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ account_label: 'test account' })
+    )
+    // name-only fields untouched; no requester-name sync for a label-only edit
+    expect(mockUserUpdate).toHaveBeenCalledWith(
+      expect.not.objectContaining({ first_name: expect.anything() })
+    )
+    expect(mockBatchCommit).not.toHaveBeenCalled()
+    expect(mockInvalidateUser).toHaveBeenCalledWith('u1')
+  })
+
+  it('clears account_label when passed an empty string', async () => {
+    const res = await PATCH(patchReq({ account_label: '' }))
+    expect(res.status).toBe(200)
+    expect(mockUserUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ account_label: '' })
+    )
   })
 
   it('updates an existing users doc and busts the auth cache', async () => {
