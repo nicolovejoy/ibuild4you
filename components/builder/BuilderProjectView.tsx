@@ -1384,9 +1384,10 @@ function EditableSetup({ project }: { project: Project }) {
   )
 }
 
-// Builder-clicks-Send button: emails the maker directly via Resend. Two-step
-// (click → confirm with the recipient shown) so a real email never fires on a
-// single stray click. Reused for invite / nudge / reminder.
+// Builder-clicks-Send button: emails the maker directly via Resend. Opens a
+// confirmation Modal (recipient shown, a real Send button with a spinner) so a
+// real email never fires on one stray click and the pending/done state is
+// obvious. Reused for invite / nudge / reminder.
 function SendToMakerButton({
   projectId,
   kind,
@@ -1401,46 +1402,27 @@ function SendToMakerButton({
   idleLabel: string
 }) {
   const sendEmail = useSendMakerEmail()
-  const [confirming, setConfirming] = useState(false)
+  const [open, setOpen] = useState(false)
   const [sentTo, setSentTo] = useState<string | null>(null)
 
   if (sentTo) {
     return (
-      <span className="flex items-center gap-1.5 text-xs text-green-600">
+      <span className="flex items-center gap-1.5 text-xs text-green-600 font-medium">
         <Check className="h-3.5 w-3.5" /> Sent to {sentTo}
       </span>
     )
   }
 
-  if (confirming) {
-    return (
-      <span className="flex items-center gap-2 text-xs">
-        <span className="text-gray-600">Email {makerEmail || 'the maker'}?</span>
-        <button
-          onClick={async () => {
-            try {
-              const r = await sendEmail.mutateAsync({ project_id: projectId, kind, note })
-              setSentTo(r.to)
-            } finally {
-              setConfirming(false)
-            }
-          }}
-          disabled={sendEmail.isPending}
-          className="font-medium text-brand-navy hover:underline disabled:opacity-50"
-        >
-          {sendEmail.isPending ? 'Sending…' : 'Send'}
-        </button>
-        <button onClick={() => setConfirming(false)} className="text-gray-400 hover:text-gray-600">
-          Cancel
-        </button>
-      </span>
-    )
-  }
+  const kindLabel =
+    kind === 'invite' ? 'invitation' : kind === 'reminder' ? 'reminder' : 'new-conversation message'
 
   return (
-    <div className="flex flex-col gap-1">
+    <>
       <button
-        onClick={() => setConfirming(true)}
+        onClick={() => {
+          sendEmail.reset()
+          setOpen(true)
+        }}
         disabled={!makerEmail}
         title={makerEmail ? undefined : 'No maker email on this brief'}
         className="flex items-center gap-1.5 text-xs font-medium text-brand-navy hover:underline disabled:opacity-40 disabled:no-underline"
@@ -1448,10 +1430,52 @@ function SendToMakerButton({
         <Send className="h-3.5 w-3.5" />
         {idleLabel}
       </button>
-      {sendEmail.isError && (
-        <span className="text-xs text-red-600">{sendEmail.error.message}</span>
-      )}
-    </div>
+
+      <Modal
+        isOpen={open}
+        onClose={() => {
+          if (!sendEmail.isPending) setOpen(false)
+        }}
+        title="Send this email now?"
+        size="sm"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600">
+            This sends the {kindLabel} email to{' '}
+            <span className="font-medium text-gray-900">{makerEmail}</span> right now. Their replies
+            come back to you.
+          </p>
+          {sendEmail.isError && <StatusMessage type="error" message={sendEmail.error.message} />}
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              disabled={sendEmail.isPending}
+              className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <LoadingButton
+              variant="primary"
+              loading={sendEmail.isPending}
+              loadingText="Sending…"
+              icon={Send}
+              onClick={async () => {
+                try {
+                  const r = await sendEmail.mutateAsync({ project_id: projectId, kind, note })
+                  setSentTo(r.to)
+                  setOpen(false)
+                } catch {
+                  // Error surfaced in the modal via sendEmail.isError; keep it open.
+                }
+              }}
+            >
+              Send to {makerEmail}
+            </LoadingButton>
+          </div>
+        </div>
+      </Modal>
+    </>
   )
 }
 
