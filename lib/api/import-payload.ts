@@ -1,5 +1,5 @@
 import type { BriefContent } from '@/lib/types'
-import { stripCodeFences } from '@/lib/utils'
+import { parseLooseJson } from '@/lib/utils'
 
 // Pure parsers for the two pasted JSON payload shapes:
 //   - "new-project" → consumed by POST /api/projects (Dashboard's Import JSON modal)
@@ -39,7 +39,7 @@ export const NEXT_CONVO_IMPORT_FIELDS = [
 function parseJsonObject(raw: string): ParseResult<Record<string, unknown>> {
   let parsed: unknown
   try {
-    parsed = JSON.parse(stripCodeFences(raw))
+    parsed = parseLooseJson(raw)
   } catch {
     return { ok: false, error: 'Invalid JSON — check the format and try again' }
   }

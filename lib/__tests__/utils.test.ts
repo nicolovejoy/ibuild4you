@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { stripCodeFences, generateSlug } from '../utils'
+import { stripCodeFences, generateSlug, parseLooseJson } from '../utils'
 
 // stripCodeFences removes markdown code fences so pasted JSON from
 // Claude/ChatGPT can be parsed directly. These tests verify each
@@ -65,5 +65,46 @@ describe('generateSlug', () => {
 
   it('handles numbers', () => {
     expect(generateSlug("Rob's Tuesday Night Build 2")).toBe('robs-tuesday-night-build-2')
+  })
+})
+
+// parseLooseJson repairs structure-breaking characters from copy-paste (#68) but
+// ONLY as a fallback after a normal parse fails — so legitimate content is never
+// rewritten. Smart quotes built with \u escapes so the intent is unambiguous.
+describe('parseLooseJson', () => {
+  const LDQUO = '“', RDQUO = '”' // “ ”
+  const RSQUO = '’' // ’
+  const NBSP = ' '
+
+  it('parses plain valid JSON', () => {
+    expect(parseLooseJson('{"a":1}')).toEqual({ a: 1 })
+  })
+
+  it('strips code fences before parsing', () => {
+    expect(parseLooseJson('```json\n{"a":1}\n```')).toEqual({ a: 1 })
+  })
+
+  it('repairs smart double quotes used as delimiters', () => {
+    const input = `{${LDQUO}title${RDQUO}:${LDQUO}Sam App${RDQUO}}`
+    expect(parseLooseJson(input)).toEqual({ title: 'Sam App' })
+  })
+
+  it('repairs non-breaking spaces between tokens', () => {
+    expect(parseLooseJson(`{"title":${NBSP}"X"}`)).toEqual({ title: 'X' })
+  })
+
+  it('preserves a curly apostrophe INSIDE a value byte-for-byte (no false repair)', () => {
+    const r = parseLooseJson(`{"title":"Sam${RSQUO}s Cafe"}`) as { title: string }
+    expect(r.title).toBe(`Sam${RSQUO}s Cafe`)
+    expect(r.title).toContain(RSQUO) // not straightened
+  })
+
+  it('preserves emoji in values', () => {
+    const r = parseLooseJson('{"welcome_message":"hi \u{1F44B}"}') as { welcome_message: string }
+    expect(r.welcome_message).toBe('hi \u{1F44B}')
+  })
+
+  it('throws on genuinely malformed JSON', () => {
+    expect(() => parseLooseJson('{nope')).toThrow()
   })
 })

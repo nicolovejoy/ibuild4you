@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { decideReminder } from '../reminder-cadence'
+import { decideReminder, nextReminderAt } from '../reminder-cadence'
 
 // Fixed reference time so the suite is deterministic regardless of when
 // it runs. `day(n)` is `n` days before `now` — both anchored to the same
@@ -195,5 +195,70 @@ describe('decideReminder — reference-timestamp precedence', () => {
     )
     expect(decision.send).toBe(false)
     if (!decision.send) expect(decision.reason).toMatch(/cadence_not_elapsed/)
+  })
+})
+
+// nextReminderAt powers the read-only Setup status strip (#67). It mirrors
+// decideReminder's gating but returns WHEN the next reminder is due (or why none
+// is), without the cadence-elapsed check (the strip shows future dates too).
+describe('nextReminderAt', () => {
+  const DAY = 24 * 60 * 60 * 1000
+
+  it('blocks when reminders are disabled', () => {
+    expect(nextReminderAt({ requesterEmail: 'm@x.com', latestSessionCreatedAt: day(1) }))
+      .toEqual({ at: null, block: 'disabled' })
+  })
+
+  it('blocks when no maker email', () => {
+    expect(nextReminderAt({ autoRemindersEnabled: true, latestSessionCreatedAt: day(1) }))
+      .toEqual({ at: null, block: 'no_maker_email' })
+  })
+
+  it('blocks when the 3-send cap is reached', () => {
+    expect(
+      nextReminderAt({
+        autoRemindersEnabled: true,
+        requesterEmail: 'm@x.com',
+        remindersSentCount: 3,
+        latestSessionCreatedAt: day(1),
+      }),
+    ).toEqual({ at: null, block: 'cap_reached' })
+  })
+
+  it('blocks when the maker already responded', () => {
+    expect(
+      nextReminderAt({
+        autoRemindersEnabled: true,
+        requesterEmail: 'm@x.com',
+        latestSessionCreatedAt: day(3),
+        lastMakerMessageAt: day(1),
+      }),
+    ).toEqual({ at: null, block: 'maker_already_responded' })
+  })
+
+  it('blocks when there is no reference timestamp', () => {
+    expect(nextReminderAt({ autoRemindersEnabled: true, requesterEmail: 'm@x.com' }))
+      .toEqual({ at: null, block: 'no_reference_timestamp' })
+  })
+
+  it('schedules reminder #1 two days after the latest session', () => {
+    const session = day(0) // anchor at `now`
+    const r = nextReminderAt({
+      autoRemindersEnabled: true,
+      requesterEmail: 'm@x.com',
+      latestSessionCreatedAt: session,
+    })
+    expect(r.at).toBe(new Date(Date.parse(session) + 2 * DAY).toISOString())
+  })
+
+  it('uses the 5-day gap (from last reminder) for reminder #2', () => {
+    const last = day(0)
+    const r = nextReminderAt({
+      autoRemindersEnabled: true,
+      requesterEmail: 'm@x.com',
+      remindersSentCount: 1,
+      lastReminderSentAt: last,
+    })
+    expect(r.at).toBe(new Date(Date.parse(last) + 5 * DAY).toISOString())
   })
 })

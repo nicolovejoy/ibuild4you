@@ -28,8 +28,45 @@ export type CadenceDecision =
   | { send: true; reminderNumber: 1 | 2 | 3; daysSinceLastTouch: number }
 
 const DAY_MS = 24 * 60 * 60 * 1000
-const CADENCE_DAYS = [2, 5, 10] as const // gap before reminders #1, #2, #3
-const MAX_REMINDERS = 3
+export const CADENCE_DAYS = [2, 5, 10] as const // gap before reminders #1, #2, #3
+export const MAX_REMINDERS = 3
+
+// Why no next reminder is scheduled — mirrors decideReminder's gating so the UI
+// can explain the state instead of just hiding the date.
+export type ReminderBlock =
+  | 'disabled'
+  | 'no_maker_email'
+  | 'cap_reached'
+  | 'maker_already_responded'
+  | 'no_reference_timestamp'
+
+// When the next maker reminder is due (ISO), or the reason none is scheduled.
+// Read-only companion to decideReminder for surfacing status on the Setup tab
+// (#67); the cron itself still drives sends via decideReminder.
+export function nextReminderAt(
+  state: ReminderState,
+): { at: string; block?: undefined } | { at: null; block: ReminderBlock } {
+  if (state.autoRemindersEnabled !== true) return { at: null, block: 'disabled' }
+  if (!state.requesterEmail) return { at: null, block: 'no_maker_email' }
+
+  const count = state.remindersSentCount ?? 0
+  if (count >= MAX_REMINDERS) return { at: null, block: 'cap_reached' }
+
+  if (
+    state.lastMakerMessageAt &&
+    state.latestSessionCreatedAt &&
+    state.lastMakerMessageAt > state.latestSessionCreatedAt
+  ) {
+    return { at: null, block: 'maker_already_responded' }
+  }
+
+  const referenceTs =
+    state.lastReminderSentAt || state.latestSessionCreatedAt || state.sharedAt
+  const referenceMs = referenceTs ? Date.parse(referenceTs) : NaN
+  if (Number.isNaN(referenceMs)) return { at: null, block: 'no_reference_timestamp' }
+
+  return { at: new Date(referenceMs + CADENCE_DAYS[count] * DAY_MS).toISOString() }
+}
 
 export function decideReminder(state: ReminderState, now: Date): CadenceDecision {
   if (state.autoRemindersEnabled !== true) {

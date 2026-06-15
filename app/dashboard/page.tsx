@@ -24,7 +24,7 @@ import { briefRoleLabel, briefRoleShort, viewerBriefRole } from '@/lib/roles/dis
 import { groupBriefs, shouldFlatten, type SectionKey } from '@/lib/dashboard/group-briefs'
 import { getProjectShareLink } from '@/lib/url'
 import { parseNewProjectPayload } from '@/lib/api/import-payload'
-import { stripCodeFences } from '@/lib/utils'
+import { parseLooseJson } from '@/lib/utils'
 import { buildNewProjectPrompt } from '@/lib/agent/new-project-prompt'
 
 export default function DashboardPage() {
@@ -164,7 +164,17 @@ function NewProjectButton() {
   const jsonPreview = (() => {
     if (!jsonInput.trim()) return null
     try {
-      const obj = JSON.parse(stripCodeFences(jsonInput))
+      const obj = parseLooseJson(jsonInput) as {
+        title?: string
+        requester_email?: string
+        session_mode?: string
+        seed_questions?: unknown
+        builder_directives?: unknown
+        welcome_message?: string
+        session_opener?: string
+        layout_mockups?: unknown
+        brief?: unknown
+      }
       if (!obj?.title) return null
       const fields: string[] = []
       if (obj.requester_email) fields.push(obj.requester_email)

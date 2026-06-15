@@ -58,6 +58,18 @@ describe('parseNewProjectPayload', () => {
     expect(r.ok).toBe(true)
     if (r.ok) expect(r.value.title).toBe('Test')
   })
+
+  it('tolerates smart double quotes used as delimiters (#68)', () => {
+    const r = parseNewProjectPayload('{“title”:“Sam App”}')
+    expect(r.ok).toBe(true)
+    if (r.ok) expect(r.value.title).toBe('Sam App')
+  })
+
+  it('preserves a curly apostrophe inside a value (no corruption)', () => {
+    const r = parseNewProjectPayload('{"title":"Sam’s Cafe"}')
+    expect(r.ok).toBe(true)
+    if (r.ok) expect(r.value.title).toBe('Sam’s Cafe')
+  })
 })
 
 describe('parseNextConvoPayload', () => {
