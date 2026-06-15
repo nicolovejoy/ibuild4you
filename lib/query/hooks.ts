@@ -109,6 +109,38 @@ export function useShareProject() {
   })
 }
 
+// Builder-initiated direct email to the maker via Resend (invite / nudge /
+// reminder). Server resolves the recipient + body; we just pick the kind.
+export function useSendMakerEmail() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({
+      project_id,
+      kind,
+      note,
+    }: {
+      project_id: string
+      kind: 'invite' | 'nudge' | 'reminder'
+      note?: string
+    }) => {
+      const res = await apiFetch(`/api/projects/${project_id}/email`, {
+        method: 'POST',
+        body: JSON.stringify({ kind, note }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error || 'Failed to send email')
+      }
+      return res.json() as Promise<{ ok: true; emailId: string; to: string }>
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.projects() })
+      queryClient.invalidateQueries({ queryKey: queryKeys.project(variables.project_id) })
+    },
+  })
+}
+
 export function useProjectPasscode(projectId: string | undefined) {
   return useQuery<string | null>({
     queryKey: queryKeys.passcode(projectId),

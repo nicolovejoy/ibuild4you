@@ -8,11 +8,7 @@ import {
 import { generateWelcomeMessage } from '@/lib/agent/welcome-message'
 import { resolveBriefRole } from '@/lib/roles/brief-role'
 import { copy } from '@/lib/copy'
-import crypto from 'crypto'
-
-function generatePasscode(): string {
-  return crypto.randomBytes(4).toString('base64url').slice(0, 6).toUpperCase()
-}
+import { generatePasscode } from '@/lib/passcode'
 
 // POST /api/projects/share — share a project with a maker (builder+)
 export async function POST(request: Request) {

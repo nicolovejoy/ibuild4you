@@ -59,6 +59,16 @@ export const copy = {
       ].join('\n'),
   },
 
+  // Subjects for builder-initiated outbound email (sent via Resend from the
+  // builder Setup tab). Bodies reuse copy.invite.body / copy.nudge.* above.
+  email: {
+    subject: {
+      invite: (projectTitle: string) => `Your brief for "${projectTitle}"`,
+      nudge: (projectTitle: string) => `New conversation ready for "${projectTitle}"`,
+      reminder: (projectTitle: string) => `Your conversation for "${projectTitle}" is ready`,
+    },
+  },
+
   // --- Dashboard ---
   // NOTE: in the UI the umbrella construct is called "brief". The internal data
   // model + API + collection are still named `project` / `projects` (avoiding a
