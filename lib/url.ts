@@ -10,3 +10,13 @@ export function getProjectShareLink(slug: string | undefined, idFallback: string
   if (typeof window === 'undefined') return ''
   return `${window.location.origin}/projects/${slug || idFallback}`
 }
+
+/**
+ * Server-side share link (no `window`). Used by API routes that build outbound
+ * email. Defaults to the production origin — matching the reminder cron — since
+ * outbound email should always point at prod; override with NEXT_PUBLIC_APP_URL.
+ */
+export function getServerShareLink(slugOrId: string): string {
+  const base = process.env.NEXT_PUBLIC_APP_URL || 'https://ibuild4you.com'
+  return `${base}/projects/${slugOrId}`
+}

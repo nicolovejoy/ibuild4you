@@ -36,6 +36,7 @@ import {
   useProjectFiles,
   useProjectMembers,
   useSetBriefRole,
+  useSendMakerEmail,
 } from '@/lib/query/hooks'
 import { buildNextConvoPrompt } from '@/lib/agent/next-convo-prompt'
 import { copy, getMakerShortName } from '@/lib/copy'
@@ -1116,10 +1117,13 @@ function ShareModal({ project, onClose }: { project: Project; onClose: () => voi
           <div>
             <p className="text-xs text-gray-600 mb-1 flex items-center gap-1"><Mail className="h-3.5 w-3.5" /> Invite message</p>
             <textarea readOnly value={inviteEmailBody} rows={8} className="w-full px-2.5 py-1.5 bg-gray-50 border border-gray-300 rounded-md text-sm text-gray-700 resize-none" />
-            <button onClick={async () => { await navigator.clipboard.writeText(inviteEmailBody); setEmailCopied(true); setTimeout(() => setEmailCopied(false), 2000) }} className="mt-1 flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand-navy">
-              {emailCopied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
-              {emailCopied ? 'Copied!' : 'Copy message'}
-            </button>
+            <div className="mt-1 flex items-center gap-4">
+              <SendToMakerButton projectId={project.id} kind="invite" makerEmail={sharedEmail} idleLabel={`Send to ${sharedEmail}`} />
+              <button onClick={async () => { await navigator.clipboard.writeText(inviteEmailBody); setEmailCopied(true); setTimeout(() => setEmailCopied(false), 2000) }} className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand-navy">
+                {emailCopied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+                {emailCopied ? 'Copied!' : 'Copy message'}
+              </button>
+            </div>
           </div>
           <div className="flex justify-end">
             <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800">Done</button>
@@ -1380,6 +1384,101 @@ function EditableSetup({ project }: { project: Project }) {
   )
 }
 
+// Builder-clicks-Send button: emails the maker directly via Resend. Opens a
+// confirmation Modal (recipient shown, a real Send button with a spinner) so a
+// real email never fires on one stray click and the pending/done state is
+// obvious. Reused for invite / nudge / reminder.
+function SendToMakerButton({
+  projectId,
+  kind,
+  makerEmail,
+  note,
+  idleLabel,
+}: {
+  projectId: string
+  kind: 'invite' | 'nudge' | 'reminder'
+  makerEmail: string
+  note?: string
+  idleLabel: string
+}) {
+  const sendEmail = useSendMakerEmail()
+  const [open, setOpen] = useState(false)
+  const [sentTo, setSentTo] = useState<string | null>(null)
+
+  if (sentTo) {
+    return (
+      <span className="flex items-center gap-1.5 text-xs text-green-600 font-medium">
+        <Check className="h-3.5 w-3.5" /> Sent to {sentTo}
+      </span>
+    )
+  }
+
+  const kindLabel =
+    kind === 'invite' ? 'invitation' : kind === 'reminder' ? 'reminder' : 'new-conversation message'
+
+  return (
+    <>
+      <button
+        onClick={() => {
+          sendEmail.reset()
+          setOpen(true)
+        }}
+        disabled={!makerEmail}
+        title={makerEmail ? undefined : 'No maker email on this brief'}
+        className="flex items-center gap-1.5 text-xs font-medium text-brand-navy hover:underline disabled:opacity-40 disabled:no-underline"
+      >
+        <Send className="h-3.5 w-3.5" />
+        {idleLabel}
+      </button>
+
+      <Modal
+        isOpen={open}
+        onClose={() => {
+          if (!sendEmail.isPending) setOpen(false)
+        }}
+        title="Send this email now?"
+        size="sm"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600">
+            This sends the {kindLabel} email to{' '}
+            <span className="font-medium text-gray-900">{makerEmail}</span> right now. Their replies
+            come back to you.
+          </p>
+          {sendEmail.isError && <StatusMessage type="error" message={sendEmail.error.message} />}
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              disabled={sendEmail.isPending}
+              className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <LoadingButton
+              variant="primary"
+              loading={sendEmail.isPending}
+              loadingText="Sending…"
+              icon={Send}
+              onClick={async () => {
+                try {
+                  const r = await sendEmail.mutateAsync({ project_id: projectId, kind, note })
+                  setSentTo(r.to)
+                  setOpen(false)
+                } catch {
+                  // Error surfaced in the modal via sendEmail.isError; keep it open.
+                }
+              }}
+            >
+              Send to {makerEmail}
+            </LoadingButton>
+          </div>
+        </div>
+      </Modal>
+    </>
+  )
+}
+
 function RenudgeCard({ project, projectId }: { project: Project; projectId: string }) {
   const { copied, copyNudge } = useNudgeCopy(projectId)
 
@@ -1398,13 +1497,16 @@ function RenudgeCard({ project, projectId }: { project: Project; projectId: stri
           {makerName} hasn&apos;t responded yet. Send a reminder:
         </p>
         <textarea readOnly value={reminderMessage} rows={3} className="w-full px-2.5 py-1.5 bg-gray-50 border border-gray-300 rounded-md text-sm text-gray-700 resize-none mb-2" />
-        <button
-          onClick={() => copyNudge(reminderMessage)}
-          className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand-navy"
-        >
-          {copied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
-          {copied ? 'Copied!' : 'Copy reminder'}
-        </button>
+        <div className="flex items-center gap-4">
+          <SendToMakerButton projectId={projectId} kind="reminder" makerEmail={project.requester_email || ''} idleLabel="Send reminder" />
+          <button
+            onClick={() => copyNudge(reminderMessage)}
+            className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand-navy"
+          >
+            {copied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+            {copied ? 'Copied!' : 'Copy reminder'}
+          </button>
+        </div>
       </CardBody>
     </Card>
   )
@@ -1484,13 +1586,16 @@ function PrepNextSession({ project, projectId, sessionNumber, autoExpand = false
           <div className="space-y-3 p-3 bg-green-50 border border-green-200 rounded-lg">
             <p className="text-sm font-medium text-green-800">New session created. Send {makerEmail} this message:</p>
             <textarea readOnly value={nudgeMessage} rows={6} className="w-full px-2.5 py-1.5 bg-white border border-gray-300 rounded-md text-sm text-gray-700 resize-none" />
-            <button
-              onClick={() => copyNudge(nudgeMessage)}
-              className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand-navy"
-            >
-              {nudgeCopied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
-              {nudgeCopied ? 'Copied!' : 'Copy message'}
-            </button>
+            <div className="flex items-center gap-4">
+              <SendToMakerButton projectId={projectId} kind="nudge" makerEmail={makerEmail} note={nudgeNote || undefined} idleLabel={makerEmail ? `Send to ${makerEmail}` : 'Send to maker'} />
+              <button
+                onClick={() => copyNudge(nudgeMessage)}
+                className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand-navy"
+              >
+                {nudgeCopied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+                {nudgeCopied ? 'Copied!' : 'Copy message'}
+              </button>
+            </div>
           </div>
         </CardBody>
       </Card>
