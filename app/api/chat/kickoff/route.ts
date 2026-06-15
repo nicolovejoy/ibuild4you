@@ -89,18 +89,26 @@ export async function POST(request: Request) {
   })
 
   // --- Guards (server is the authority; mirrors lib/agent/kickoff.ts) ---
-  if (storedMessages.length === 0) return noop('empty_session')
+  // The maker is mid-turn if the last stored message is theirs — don't
+  // interrupt. An empty session is fine: since #70 a return session starts with
+  // no canned welcome, and we still want to greet if the project has history.
+  if (storedMessages.length > 0) {
+    const last = storedMessages[storedMessages.length - 1]
+    if (last.role !== 'agent') return noop('maker_mid_turn')
+  }
 
-  const last = storedMessages[storedMessages.length - 1]
-  if (last.role !== 'agent') return noop('maker_mid_turn')
-
+  // Prior maker activity to recap — judged at the project level, not just this
+  // session (so a blank return session still qualifies). A true first-ever
+  // session (no history anywhere) is declined; the welcome message greets them.
   const makerMessages = storedMessages.filter((m) => m.role === 'user')
-  if (makerMessages.length === 0) return noop('no_maker_history')
-
-  const lastMakerAtMs = makerMessages.reduce((max, m) => {
+  const lastMakerInSessionMs = makerMessages.reduce((max, m) => {
     const t = m.created_at ? new Date(m.created_at).getTime() : 0
     return t > max ? t : max
   }, 0)
+  const projectLastMakerAt = projectData.last_maker_message_at as string | undefined | null
+  const projectLastMakerMs = projectLastMakerAt ? new Date(projectLastMakerAt).getTime() : 0
+  const lastMakerAtMs = Math.max(lastMakerInSessionMs, projectLastMakerMs)
+  if (!lastMakerAtMs) return noop('no_maker_history')
 
   const lastKickoffAt = sessionData.last_kickoff_at as string | undefined | null
   const lastKickoffMs = lastKickoffAt ? new Date(lastKickoffAt).getTime() : 0

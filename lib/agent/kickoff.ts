@@ -11,29 +11,40 @@ type KickoffMessage = { role: 'user' | 'agent'; created_at?: string }
 /**
  * Decide whether to fire an agent kickoff greeting on session open.
  *
- * Scope (locked 2026-06-07): returning-after-a-break only. We fire only when
- * the maker already has messages in this session AND it's been ≥1hr since their
- * last one. Fresh sessions are skipped entirely — the stored welcome message
- * already greets them, so kicking off there would double-greet.
+ * Scope (locked 2026-06-07; relaxed for #70): returning-after-a-break only. We
+ * fire when there's prior maker activity to recap AND it's been ≥1hr since the
+ * maker's last message. Prior activity is judged at the **project** level, not
+ * just this session — since #70 a return session starts empty (no canned
+ * welcome), so a builder-pre-created blank session still earns a state-aware
+ * recap. A true first-ever session (no maker history anywhere) is skipped: the
+ * stored welcome message already greets them, so kicking off would double-greet.
  *
  * @param messages chronological (oldest first; last element is newest)
  * @param nowMs    current time in epoch ms
+ * @param opts.projectLastMakerMessageAt latest maker message across the whole
+ *        project (ISO). Lets an empty return session recognize prior history.
  */
-export function shouldKickoff(messages: KickoffMessage[], nowMs: number): boolean {
-  if (messages.length === 0) return false
-
+export function shouldKickoff(
+  messages: KickoffMessage[],
+  nowMs: number,
+  opts?: { projectLastMakerMessageAt?: string | null },
+): boolean {
   // The maker is mid-turn if the last message is theirs — don't interrupt.
   const last = messages[messages.length - 1]
-  if (last.role !== 'agent') return false
+  if (last && last.role !== 'agent') return false
 
-  // Returning-after-a-break only: there must be prior maker activity to recap.
-  const makerMessages = messages.filter((m) => m.role === 'user')
-  if (makerMessages.length === 0) return false
-
-  const lastMakerAtMs = makerMessages.reduce((max, m) => {
-    const t = m.created_at ? new Date(m.created_at).getTime() : 0
-    return t > max ? t : max
-  }, 0)
+  // Returning-after-a-break only: there must be prior maker activity to recap,
+  // either in this session or anywhere else on the project.
+  const lastMakerInSessionMs = messages
+    .filter((m) => m.role === 'user')
+    .reduce((max, m) => {
+      const t = m.created_at ? new Date(m.created_at).getTime() : 0
+      return t > max ? t : max
+    }, 0)
+  const projectMakerMs = opts?.projectLastMakerMessageAt
+    ? new Date(opts.projectLastMakerMessageAt).getTime()
+    : 0
+  const lastMakerAtMs = Math.max(lastMakerInSessionMs, projectMakerMs)
   if (!lastMakerAtMs) return false
 
   return nowMs - lastMakerAtMs >= KICKOFF_GAP_MS

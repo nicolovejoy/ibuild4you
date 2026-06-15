@@ -43,6 +43,10 @@ let mockProjectExists = true
 // --- Mock active sessions query ---
 let mockActiveSessionDocs: { ref: { id: string } }[] = []
 
+// --- Mock "does any session already exist" query (#70 first-session check) ---
+// empty === true means this is the project's first session.
+let mockExistingSessionsEmpty = true
+
 // --- Mock sessions list (for GET) ---
 let mockSessionDocs: { id: string; data: () => Record<string, unknown> }[] = []
 
@@ -50,9 +54,13 @@ let mockSessionDocs: { id: string; data: () => Record<string, unknown> }[] = []
 const mockGet = vi.fn()
 const mockOrderBy = vi.fn(() => ({ get: mockGet }))
 const mockWhere2 = vi.fn(() => ({ get: vi.fn(async () => ({ docs: mockActiveSessionDocs })) }))
+const mockLimit = vi.fn(() => ({
+  get: vi.fn(async () => ({ empty: mockExistingSessionsEmpty })),
+}))
 const mockWhere = vi.fn(() => ({
   where: mockWhere2,
   orderBy: mockOrderBy,
+  limit: mockLimit,
 }))
 
 const mockDoc = vi.fn((id?: string) => ({
@@ -149,6 +157,7 @@ describe('POST /api/sessions', () => {
       welcome_message: 'Hello maker!',
     }
     mockActiveSessionDocs = []
+    mockExistingSessionsEmpty = true // default: this is the project's first session
   })
 
   // --- Validation ---
@@ -230,6 +239,29 @@ describe('POST /api/sessions', () => {
     const msgSet = batchSets.find((s) => s.data.role === 'agent')
     expect(msgSet).toBeDefined()
     expect(msgSet!.data.content).toBe(copy.chat.defaultWelcomeMessage('No Welcome'))
+  })
+
+  // #70: the canned welcome is first-contact copy — it should NOT replay on
+  // return sessions. On session 2+, no agent message is inserted; Sam greets
+  // contextually instead.
+  it('does NOT insert the canned welcome on a return session (one already exists)', async () => {
+    mockExistingSessionsEmpty = false // a session already exists → this is a return
+
+    await POST(makePostRequest({ project_id: 'proj1' }))
+
+    // Only the session is written — no welcome message.
+    expect(batchSets).toHaveLength(1)
+    expect(batchSets.find((s) => s.data.role === 'agent')).toBeUndefined()
+    expect(batchSets[0].data.project_id).toBe('proj1')
+  })
+
+  it('inserts the welcome only on the first session (none exist yet)', async () => {
+    mockExistingSessionsEmpty = true
+
+    await POST(makePostRequest({ project_id: 'proj1' }))
+
+    expect(batchSets).toHaveLength(2)
+    expect(batchSets.find((s) => s.data.role === 'agent')).toBeDefined()
   })
 
   // --- Completing old sessions ---

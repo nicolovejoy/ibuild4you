@@ -164,6 +164,7 @@ export function MakerProjectView({ projectId, userEmail }: { projectId: string; 
           activeSession={activeSession || null}
           sessionsLoaded={!!sessions}
           projectFiles={projectFiles || []}
+          projectLastMakerMessageAt={project?.last_maker_message_at ?? null}
         />
 
         {/* Layout mockups from the active session */}
@@ -191,12 +192,14 @@ function MakerChat({
   activeSession,
   sessionsLoaded,
   projectFiles,
+  projectLastMakerMessageAt,
 }: {
   projectId: string
   userEmail: string
   activeSession: Session | null
   sessionsLoaded: boolean
   projectFiles: ProjectFile[]
+  projectLastMakerMessageAt: string | null
 }) {
   const queryClient = useQueryClient()
   const createSession = useCreateSession()
@@ -235,7 +238,7 @@ function MakerChat({
   // on remount within the same tab.
   useEffect(() => {
     if (!sessionId || !savedMessages || messagesLoading || streaming || kickoffAttempted.current) return
-    if (!shouldKickoff(savedMessages, Date.now())) return
+    if (!shouldKickoff(savedMessages, Date.now(), { projectLastMakerMessageAt })) return
     const lockKey = `kickoff:${sessionId}`
     try {
       if (sessionStorage.getItem(lockKey)) return
@@ -245,7 +248,7 @@ function MakerChat({
     }
     kickoffAttempted.current = true
     kickoff(sessionId)
-  }, [sessionId, savedMessages, messagesLoading, streaming, kickoff])
+  }, [sessionId, savedMessages, messagesLoading, streaming, kickoff, projectLastMakerMessageAt])
 
   const addFiles = useCallback((files: FileList | File[]) => {
     const newFiles = Array.from(files)
@@ -328,6 +331,9 @@ function MakerChat({
       try {
         const newSession = await createSession.mutateAsync({ project_id: projectId })
         targetSessionId = newSession.id
+        // The maker just engaged by typing — don't let the kickoff effect also
+        // auto-greet this brand-new (now empty, since #70) session.
+        kickoffAttempted.current = true
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to start session')
         setCreatingSession(false)

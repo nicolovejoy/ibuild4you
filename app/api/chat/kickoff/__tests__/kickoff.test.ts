@@ -239,8 +239,28 @@ describe('POST /api/chat/kickoff', () => {
     expect(addCalls.filter((c) => c.collection === 'messages')).toHaveLength(0)
   })
 
-  it('declines a fresh session with only a welcome message', async () => {
-    setup({ messages: [msg('agent', 2 * HOUR)] })
+  it('declines a fresh session with no maker history anywhere (true first-ever)', async () => {
+    setup({ messages: [msg('agent', 2 * HOUR)] }) // no lastMakerMessageAt
+    const res = await POST(makeRequest({ session_id: 'sess-1' }))
+    const body = await res.json()
+    expect(body.kicked_off).toBe(false)
+    expect(body.reason).toBe('no_maker_history')
+  })
+
+  // #70: a return session now starts empty (no canned welcome). The agent should
+  // still greet when the project has prior maker history.
+  it('fires on an empty return session when the project has prior maker history', async () => {
+    setup({ messages: [], lastMakerMessageAt: iso(3 * HOUR) })
+    const res = await POST(makeRequest({ session_id: 'sess-1' }))
+    expect(res.headers.get('Content-Type')).toBe('text/event-stream')
+    await drain(res)
+    const stored = addCalls.filter((c) => c.collection === 'messages')
+    expect(stored).toHaveLength(1)
+    expect(stored[0].data.role).toBe('agent')
+  })
+
+  it('declines an empty session with no project history', async () => {
+    setup({ messages: [], lastMakerMessageAt: null })
     const res = await POST(makeRequest({ session_id: 'sess-1' }))
     const body = await res.json()
     expect(body.kicked_off).toBe(false)

@@ -48,4 +48,29 @@ describe('shouldKickoff', () => {
     ]
     expect(shouldKickoff(messages, NOW)).toBe(false)
   })
+
+  // #70: a return session starts empty (no canned welcome). It should still earn
+  // a kickoff when the project has prior maker history past the gap.
+  it('fires on an empty session when the project has prior maker history past the gap', () => {
+    expect(
+      shouldKickoff([], NOW, { projectLastMakerMessageAt: ago(2 * KICKOFF_GAP_MS) }),
+    ).toBe(true)
+  })
+
+  it('does not fire on an empty session with no project history (true first-ever)', () => {
+    expect(shouldKickoff([], NOW, { projectLastMakerMessageAt: null })).toBe(false)
+  })
+
+  it('does not fire when project history is under the gap threshold', () => {
+    expect(
+      shouldKickoff([], NOW, { projectLastMakerMessageAt: ago(KICKOFF_GAP_MS - 1000) }),
+    ).toBe(false)
+  })
+
+  it('does not fire when the maker is mid-turn even if project history is stale', () => {
+    const messages = [{ role: 'user' as const, created_at: ago(KICKOFF_GAP_MS / 2) }]
+    expect(
+      shouldKickoff(messages, NOW, { projectLastMakerMessageAt: ago(2 * KICKOFF_GAP_MS) }),
+    ).toBe(false)
+  })
 })
