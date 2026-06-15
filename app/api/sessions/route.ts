@@ -58,6 +58,18 @@ export async function POST(request: Request) {
   const projectData = projectDoc.data()!
   const now = new Date().toISOString()
 
+  // Is this the project's first session? Only the first session gets the canned
+  // welcome message. On session 2+ the maker is returning — Sam picks up where
+  // things left off (a state-aware recap via kickoff, or a normal contextual
+  // reply to whatever they type) instead of replaying the static first-hello
+  // opener verbatim every time (#70).
+  const existingSessions = await db
+    .collection('sessions')
+    .where('project_id', '==', project_id)
+    .limit(1)
+    .get()
+  const isFirstSession = existingSessions.empty
+
   // Mark any existing active sessions as completed
   const activeSessions = await db
     .collection('sessions')
@@ -96,17 +108,20 @@ export async function POST(request: Request) {
     updated_at: now,
   })
 
-  // Add welcome message as first message in the new session
-  const welcomeMessage = (projectData.welcome_message as string | undefined)
-    || copy.chat.defaultWelcomeMessage(projectData.title as string)
-  const msgRef = db.collection('messages').doc()
-  batch.set(msgRef, {
-    session_id: docRef.id,
-    role: 'agent',
-    content: welcomeMessage,
-    created_at: now,
-    updated_at: now,
-  })
+  // Add the welcome message as the first message — but only on the project's
+  // first session. On return sessions Sam greets contextually instead (#70).
+  if (isFirstSession) {
+    const welcomeMessage = (projectData.welcome_message as string | undefined)
+      || copy.chat.defaultWelcomeMessage(projectData.title as string)
+    const msgRef = db.collection('messages').doc()
+    batch.set(msgRef, {
+      session_id: docRef.id,
+      role: 'agent',
+      content: welcomeMessage,
+      created_at: now,
+      updated_at: now,
+    })
+  }
 
   await batch.commit()
 
