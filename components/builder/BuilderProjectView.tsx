@@ -16,6 +16,7 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { MessageContent } from '@/components/ui/MessageContent'
 import { MockupEditor } from './MockupEditor'
 import { parseNextConvoPayload } from '@/lib/api/import-payload'
+import { nextReminderAt } from '@/lib/api/reminder-cadence'
 import { useEscapeBack } from '@/lib/hooks/useEscapeBack'
 import { useNudgeCopy } from '@/lib/hooks/useNudgeCopy'
 import { getProjectShareLink } from '@/lib/url'
@@ -1299,6 +1300,37 @@ function EditableSetup({ project }: { project: Project }) {
     setTimeout(() => setSaved(false), 2000)
   }
 
+  // Reminder status line (#67): read-only, derived from persisted fields + the
+  // live toggle. Same gating as the cron via nextReminderAt() so it never shows a
+  // phantom send (e.g. after the maker replied, or once the 3-send cap is hit).
+  const reminderNext = nextReminderAt({
+    autoRemindersEnabled: autoReminders,
+    remindersSentCount: project.reminders_sent_count,
+    lastReminderSentAt: project.last_reminder_sent_at,
+    latestSessionCreatedAt: project.latest_session_created_at,
+    sharedAt: project.shared_at,
+    lastMakerMessageAt: project.last_maker_message_at,
+    requesterEmail: project.requester_email,
+  })
+  const fmtDate = (iso: string) =>
+    new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  let reminderNextLine: string
+  if (reminderNext.at !== null) {
+    const days = Math.ceil((Date.parse(reminderNext.at) - Date.now()) / 86400000)
+    reminderNextLine =
+      days <= 0
+        ? 'Next reminder: due now (goes out on the next daily run)'
+        : `Next reminder: in ~${days} day${days === 1 ? '' : 's'} (${fmtDate(reminderNext.at)})`
+  } else {
+    reminderNextLine = {
+      no_maker_email: 'No maker email set — add one to enable reminders.',
+      cap_reached: 'All 3 reminders sent — paused until the maker replies.',
+      maker_already_responded: 'Maker has replied — reminders paused.',
+      no_reference_timestamp: 'No conversation shared yet — nothing to remind about.',
+      disabled: 'Reminders are off.',
+    }[reminderNext.block]
+  }
+
   return (
     <Card hover={false}>
       <CardBody>
@@ -1358,6 +1390,17 @@ function EditableSetup({ project }: { project: Project }) {
               <p className="text-xs text-gray-400">Sends up to 3 reminder emails on a 2 / 5 / 10 day cadence after a new conversation is ready. Stops the moment the maker replies.</p>
             </div>
           </label>
+
+          {/* Reminder status (#67) — only meaningful when reminders are on */}
+          {autoReminders && (
+            <div className="ml-6 -mt-2 rounded-md bg-gray-50 border border-gray-100 px-3 py-2 text-xs text-gray-600 space-y-0.5">
+              <div>
+                {(project.reminders_sent_count ?? 0)} of 3 reminders sent this round
+                {project.last_reminder_sent_at ? ` · last ${fmtDate(project.last_reminder_sent_at)}` : ''}
+              </div>
+              <div className="text-gray-500">{reminderNextLine}</div>
+            </div>
+          )}
 
           {/* GitHub repo — destination for "Convert to GitHub issue" in the feedback inbox */}
           <div>

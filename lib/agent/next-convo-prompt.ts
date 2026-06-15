@@ -18,7 +18,7 @@ Do NOT include \`title\`, \`requester_email\`, or maker names — those are crea
 
 I'm a project builder managing an intake project. I need your help preparing for the next session with my maker (the person whose app idea we're exploring).
 
-When I say "give me the output", produce ONLY valid JSON matching this schema (no markdown, no code fences). \`_payload_type\` MUST be the first key.
+When I say "give me the output", produce ONLY valid JSON matching this schema (no markdown, no code fences). Use straight ASCII quotes only (" and '), never curly/smart quotes, and no non-breaking spaces. \`_payload_type\` MUST be the first key.
 
 {
   "_payload_type": "next-convo",

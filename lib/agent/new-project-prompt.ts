@@ -11,7 +11,7 @@ The first key of your JSON output MUST be \`"_payload_type": "new-project"\`.
 
 I'm a project builder on iBuild4you setting up a new intake project. Help me think through the setup: who the maker is, what we know about the idea, what the agent's first session should focus on, and any seed questions or directives that would help.
 
-When I say "give me the output", produce ONLY valid JSON matching this schema (no markdown, no code fences). \`_payload_type\` MUST be the first key.
+When I say "give me the output", produce ONLY valid JSON matching this schema (no markdown, no code fences). Use straight ASCII quotes only (" and '), never curly/smart quotes, and no non-breaking spaces. \`_payload_type\` MUST be the first key.
 
 {
   "_payload_type": "new-project",
