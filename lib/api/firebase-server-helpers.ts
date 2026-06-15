@@ -279,6 +279,11 @@ export async function getUserDisplayName(
   uid: string,
   email: string
 ): Promise<string> {
+  // A member who hasn't signed in yet has no user_id. Firestore's .doc('')
+  // throws ("documentPath must be a non-empty string"), which would 500 the
+  // /members route — skip the lookup and fall back to the email prefix.
+  if (!uid) return email.split('@')[0]
+
   const userDoc = await db.collection('users').doc(uid).get()
   if (userDoc.exists) {
     const data = userDoc.data()!

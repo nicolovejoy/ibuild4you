@@ -6,6 +6,7 @@ import {
   canConfigure,
   canManage,
   getAuthenticatedUser,
+  getUserDisplayName,
   hasSystemRole,
 } from '../firebase-server-helpers'
 import { _resetAuthCache } from '../auth-cache'
@@ -138,6 +139,46 @@ describe('permission helpers', () => {
     expect(canManage('builder')).toBe(false)
     expect(canManage('owner')).toBe(true)
     expect(canManage(null)).toBe(false)
+  })
+})
+
+describe('getUserDisplayName', () => {
+  // Fake db whose .doc('') throws, mirroring the real Firestore Admin SDK:
+  // doc() rejects an empty/whitespace path with "documentPath must be a
+  // non-empty string". A member who hasn't signed in yet has no user_id.
+  function fakeDb(users: Record<string, { first_name?: string; last_name?: string }>) {
+    return {
+      collection: () => ({
+        doc: (id: string) => {
+          if (!id) {
+            throw new Error(
+              'Value for argument "documentPath" is not a valid resource path. Path must be a non-empty string.'
+            )
+          }
+          const data = users[id]
+          return {
+            get: async () => ({ exists: !!data, data: () => data }),
+          }
+        },
+      }),
+    } as unknown as FirebaseFirestore.Firestore
+  }
+
+  it('returns the email prefix without touching Firestore when uid is empty', async () => {
+    // Regression: an unsigned-in member (no user_id) used to throw on doc('')
+    // and 500 the whole /members route.
+    const name = await getUserDisplayName(fakeDb({}), '', 'matt@example.com')
+    expect(name).toBe('matt')
+  })
+
+  it('returns "First L" when the users doc has first and last name', async () => {
+    const db = fakeDb({ 'uid-1': { first_name: 'Sam', last_name: 'Lee' } })
+    expect(await getUserDisplayName(db, 'uid-1', 'sam@example.com')).toBe('Sam L')
+  })
+
+  it('falls back to email prefix when the users doc is missing', async () => {
+    const db = fakeDb({})
+    expect(await getUserDisplayName(db, 'uid-missing', 'jo@example.com')).toBe('jo')
   })
 })
 
