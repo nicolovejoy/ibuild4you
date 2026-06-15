@@ -380,4 +380,32 @@ describe('buildSystemPrompt', () => {
     })
     expect(result).toContain('- **Owner** — Participant')
   })
+
+  // ---------------------------------------------------------------------------
+  // Agent self-awareness (#69): role disclosure + capability honesty
+  // ---------------------------------------------------------------------------
+
+  it('default identity frames Sam as intake, not the developer', () => {
+    expect(DEFAULT_IDENTITY).toContain('intake step, not the developer')
+  })
+
+  it('guardrails clarify Sam is intake not the builder, in both modes', () => {
+    const discover = buildSystemPrompt(minimalInput)
+    const converge = buildSystemPrompt({ ...minimalInput, sessionMode: 'converge' })
+    expect(discover).toContain("intake, not the builder")
+    expect(converge).toContain("intake, not the builder")
+  })
+
+  it('guardrails tell Sam to admit it cannot see the running app, in both modes', () => {
+    const discover = buildSystemPrompt(minimalInput)
+    const converge = buildSystemPrompt({ ...minimalInput, sessionMode: 'converge' })
+    expect(discover).toContain("You can't see their app")
+    expect(discover).toContain('paste a screenshot')
+    expect(converge).toContain("You can't see their app")
+  })
+
+  it('first-session intro discloses the intake role', () => {
+    const result = buildSystemPrompt({ ...minimalInput, sessionNumber: 1 })
+    expect(result).toContain("their developer will build from")
+  })
 })

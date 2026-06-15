@@ -180,7 +180,7 @@ This is session #${sessionNumber} with this user. They've chatted before, so gre
     parts.push(`
 ## Context
 
-This is the first session. Introduce yourself briefly and ask the user to tell you about their idea. Keep it casual and welcoming.
+This is the first session. Introduce yourself briefly — including that you capture their idea into a brief their developer will build from (you're not the one building it) — then ask the user to tell you about their idea. Keep it casual and welcoming.
 `.trim())
   }
 
