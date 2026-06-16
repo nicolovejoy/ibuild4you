@@ -4,9 +4,8 @@ import { GET } from '../route'
 // =============================================================================
 // CRON NOTIFY TESTS
 //
-// The route does two things on each tick:
-//   1. Send digest emails for projects whose notify_after has passed
-//   2. Auto-regenerate briefs for projects idle ≥10 min with stale briefs
+// The route auto-regenerates briefs for projects idle ≥10 min with stale
+// briefs. (Notification email moved out to /api/cron/notify-digest — #65.)
 //
 // The mock supports multiple where() calls per collection by keying results
 // on the field name passed to .where(). The briefs lookup uses
@@ -83,11 +82,10 @@ const req = (auth?: string) =>
     headers: auth ? { Authorization: auth } : {},
   })
 
-describe('GET /api/cron/notify — auth + notification digests', () => {
+describe('GET /api/cron/notify — auth', () => {
   it('rejects requests without the cron secret', async () => {
     const res = await GET(req())
     expect(res.status).toBe(401)
-    expect(mockSend).not.toHaveBeenCalled()
   })
 
   it('accepts requests with the cron secret', async () => {
@@ -95,41 +93,17 @@ describe('GET /api/cron/notify — auth + notification digests', () => {
     expect(res.status).toBe(200)
   })
 
-  it('sends no email when no projects are ready', async () => {
-    const res = await GET(req('Bearer test-secret'))
-    expect(res.status).toBe(200)
-    const body = await res.json()
-    expect(body.sent).toBe(0)
-    expect(mockSend).not.toHaveBeenCalled()
-  })
-
-  it('sends email and clears notify_after for ready projects', async () => {
+  it('sends no notification email — that moved to /api/cron/notify-digest', async () => {
     whereResults.projects.notify_after = [
       {
         id: 'p1',
-        data: () => ({
-          title: 'Cafe App',
-          slug: 'cafe-app',
-          requester_first_name: 'Sam',
-          requester_email: 'sam@example.com',
-          notify_pending_since: '2026-04-14T17:00:00Z',
-        }),
+        data: () => ({ title: 'Cafe App', slug: 'cafe-app', notify_pending_since: '2026-04-14T17:00:00Z' }),
         ref: { update: mockDoc.update },
       },
     ]
-
     const res = await GET(req('Bearer test-secret'))
     expect(res.status).toBe(200)
-    const body = await res.json()
-    expect(body.sent).toBe(1)
-    expect(mockSend).toHaveBeenCalledOnce()
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const call = (mockSend.mock.calls as any[][])[0][0] as { subject: string; to: string[] }
-    expect(call.subject).toContain('Cafe App')
-    expect(call.subject).toContain('Sam')
-    expect(mockDoc.update).toHaveBeenCalledWith(
-      expect.objectContaining({ notify_after: null, notify_pending_since: null }),
-    )
+    expect(mockSend).not.toHaveBeenCalled()
   })
 })
 
