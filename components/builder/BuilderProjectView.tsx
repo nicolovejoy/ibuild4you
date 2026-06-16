@@ -66,6 +66,14 @@ export function BuilderProjectView({ projectId, userEmail }: { projectId: string
   const updateProject = useUpdateProject()
   const activeSession = sessions?.find((s) => s.status === 'active')
   const [showShareModal, setShowShareModal] = useState(false)
+  // 'maker' = first share / re-share the originator (link + passcode view).
+  // 'add'  = invite an additional person — always opens the entry form so a
+  // shared brief can still grow its roster (PeoplePanel "+ Invite").
+  const [shareMode, setShareMode] = useState<'maker' | 'add'>('maker')
+  const openShare = (mode: 'maker' | 'add' = 'maker') => {
+    setShareMode(mode)
+    setShowShareModal(true)
+  }
   const [editingTitle, setEditingTitle] = useState(false)
   const [titleDraft, setTitleDraft] = useState('')
   // After a next-convo JSON import, hand the builder straight to the next step
@@ -202,7 +210,7 @@ export function BuilderProjectView({ projectId, userEmail }: { projectId: string
               <div className="flex items-center gap-3 text-sm text-gray-500">
                 {project.requester_email ? (
                   <button
-                    onClick={() => setShowShareModal(true)}
+                    onClick={() => openShare('maker')}
                     className="flex items-center gap-1.5 hover:text-brand-navy transition-colors"
                   >
                     <Share2 className="h-3.5 w-3.5" />
@@ -210,7 +218,7 @@ export function BuilderProjectView({ projectId, userEmail }: { projectId: string
                   </button>
                 ) : (
                   <button
-                    onClick={() => setShowShareModal(true)}
+                    onClick={() => openShare('maker')}
                     className="flex items-center gap-1.5 text-brand-navy hover:text-brand-navy-light transition-colors font-medium"
                   >
                     <Share2 className="h-3.5 w-3.5" />
@@ -250,7 +258,7 @@ export function BuilderProjectView({ projectId, userEmail }: { projectId: string
               projectId={projectId}
               sessions={sessions || []}
               activeSession={activeSession || null}
-              onShare={() => setShowShareModal(true)}
+              onShare={openShare}
               justImported={justImported}
               onImportedConsumed={() => setJustImported(false)}
             />
@@ -276,7 +284,7 @@ export function BuilderProjectView({ projectId, userEmail }: { projectId: string
 
       {/* Share modal */}
       {project && showShareModal && (
-        <ShareModal project={project} onClose={() => setShowShareModal(false)} />
+        <ShareModal project={project} mode={shareMode} onClose={() => setShowShareModal(false)} />
       )}
     </div>
   )
@@ -886,7 +894,7 @@ function NextConversationTab({
   projectId: string
   sessions: Session[]
   activeSession: Session | null
-  onShare: () => void
+  onShare: (mode?: 'maker' | 'add') => void
   justImported?: boolean
   onImportedConsumed?: () => void
 }) {
@@ -945,7 +953,7 @@ function NextConversationTab({
             <p className="text-sm text-gray-600 mb-4">
               Review the setup below, then share with the maker to start the conversation.
             </p>
-            <LoadingButton variant="primary" icon={Share2} onClick={onShare}>
+            <LoadingButton variant="primary" icon={Share2} onClick={() => onShare('maker')}>
               Share with maker
             </LoadingButton>
           </CardBody>
@@ -953,7 +961,7 @@ function NextConversationTab({
       )}
 
       {/* People on this brief — roster + per-person brief_role (3c) */}
-      {project.requester_email && <PeoplePanel project={project} onInvite={onShare} />}
+      {project.requester_email && <PeoplePanel project={project} onInvite={() => onShare('add')} />}
 
       {/* Editable setup — shown when active conversation has no maker messages yet */}
       {!(activeSession && hasUserMessages) && (
@@ -971,7 +979,7 @@ function NextConversationTab({
             <p className="text-sm text-gray-600 mb-4">
               Share this project with a maker to start the first conversation. You&apos;ll get a link and passcode to send them.
             </p>
-            <LoadingButton variant="primary" icon={Share2} onClick={onShare}>
+            <LoadingButton variant="primary" icon={Share2} onClick={() => onShare('maker')}>
               Share project
             </LoadingButton>
           </CardBody>
@@ -990,14 +998,18 @@ function NextConversationTab({
   )
 }
 
-function ShareModal({ project, onClose }: { project: Project; onClose: () => void }) {
-  const [email, setEmail] = useState(project.requester_email || '')
-  const [firstName, setFirstName] = useState(project.requester_first_name || '')
-  const [lastName, setLastName] = useState(project.requester_last_name || '')
+function ShareModal({ project, onClose, mode = 'maker' }: { project: Project; onClose: () => void; mode?: 'maker' | 'add' }) {
+  // 'add' mode invites an *additional* person to an already-shared brief, so the
+  // form starts blank and defaults the role to Contributor. 'maker' mode keeps
+  // the original behavior (first share / re-share the originator).
+  const isAdd = mode === 'add'
+  const [email, setEmail] = useState(isAdd ? '' : project.requester_email || '')
+  const [firstName, setFirstName] = useState(isAdd ? '' : project.requester_first_name || '')
+  const [lastName, setLastName] = useState(isAdd ? '' : project.requester_last_name || '')
   // Who this person is on the brief. Originator = the primary requester (default,
   // preserves existing behavior); Contributor = a second human who also chats
   // with Sam in the same brief. Both keep `maker` access so they can chat.
-  const [briefRole, setBriefRole] = useState<'originator' | 'contributor'>('originator')
+  const [briefRole, setBriefRole] = useState<'originator' | 'contributor'>(isAdd ? 'contributor' : 'originator')
   const [linkCopied, setLinkCopied] = useState(false)
   const [passcodeCopied, setPasscodeCopied] = useState(false)
   const [emailCopied, setEmailCopied] = useState(false)
@@ -1010,7 +1022,9 @@ function ShareModal({ project, onClose }: { project: Project; onClose: () => voi
   const { data: fetchedPasscode } = useProjectPasscode(alreadyShared ? project.id : undefined)
   const resetPasscode = useResetPasscode()
 
-  const passcode = shareProject.data?.passcode || fetchedPasscode || null
+  // In add mode the originator's stored passcode (fetchedPasscode) is irrelevant —
+  // only the freshly invited person's passcode (from the POST response) applies.
+  const passcode = shareProject.data?.passcode || (isAdd ? null : fetchedPasscode) || null
 
   const shareLink = getProjectShareLink(project.slug, project.id)
 
@@ -1031,29 +1045,35 @@ function ShareModal({ project, onClose }: { project: Project; onClose: () => voi
     void result
   }
 
-  const sharedEmail = alreadyShared ? project.requester_email! : email
+  // Show the confirmation (link/passcode/invite) after a successful share in
+  // this modal, or — only in maker mode — when the brief was already shared.
+  // Add mode always shows the form until the new person is actually invited.
+  const showConfirmation = shareProject.isSuccess || (!isAdd && alreadyShared)
+  // The person the confirmation refers to: the just-invited person on success,
+  // otherwise the stored originator.
+  const sharedEmail = shareProject.isSuccess ? email : project.requester_email || email
 
   const inviteEmailBody = copy.invite.body({ projectTitle: project.title, shareLink, email: sharedEmail, passcode })
 
   return (
-    <Modal isOpen onClose={onClose} title="Share with maker">
-      {alreadyShared || shareProject.isSuccess ? (
+    <Modal isOpen onClose={onClose} title={isAdd ? 'Invite someone to this brief' : 'Share with maker'}>
+      {showConfirmation ? (
         <div className="space-y-3">
           <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-green-800">Shared with {sharedEmail}</p>
-                {!editingName && (editFirstName || editLastName) && (
+                {!isAdd && !editingName && (editFirstName || editLastName) && (
                   <p className="text-xs text-green-700 mt-0.5">{[editFirstName, editLastName].filter(Boolean).join(' ')}</p>
                 )}
               </div>
-              {!editingName && (
+              {!isAdd && !editingName && (
                 <button onClick={() => setEditingName(true)} className="text-xs text-green-700 hover:text-green-900 underline">
                   Edit name
                 </button>
               )}
             </div>
-            {editingName && (
+            {!isAdd && editingName && (
               <div className="mt-2 flex items-center gap-2">
                 <input
                   type="text"

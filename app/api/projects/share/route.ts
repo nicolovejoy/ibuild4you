@@ -83,14 +83,24 @@ export async function POST(request: Request) {
     })
   }
 
-  // Keep requester info on the project for dashboard display
-  const projectUpdate: Record<string, unknown> = {
-    requester_email: normalizedEmail,
-    shared_at: now,
-    updated_at: now,
+  // Keep requester info on the project for dashboard display. The project doc
+  // holds ONE requester (the originator) — inviting a second person must NOT
+  // clobber it. Only stamp requester_email/shared_at on the first share, or
+  // when re-sharing the same person. Additional invitees live solely as
+  // project_members rows (created above); the multi-human roster reads from
+  // there, not from project.requester_email.
+  const existingRequester = (projectData.requester_email as string | undefined)?.toLowerCase()
+  const isFirstShare = !existingRequester
+  const isSameRequester = existingRequester === normalizedEmail
+  const projectUpdate: Record<string, unknown> = { updated_at: now }
+  if (isFirstShare) {
+    projectUpdate.requester_email = normalizedEmail
+    projectUpdate.shared_at = now
   }
-  if (first_name) projectUpdate.requester_first_name = first_name.trim()
-  if (last_name) projectUpdate.requester_last_name = last_name.trim()
+  if (isFirstShare || isSameRequester) {
+    if (first_name) projectUpdate.requester_first_name = first_name.trim()
+    if (last_name) projectUpdate.requester_last_name = last_name.trim()
+  }
   await db.collection('projects').doc(project_id).update(projectUpdate)
 
   // Snapshot agent config onto the active session + add welcome message

@@ -105,6 +105,7 @@ export function useShareProject() {
       queryClient.invalidateQueries({ queryKey: queryKeys.resolveProject(variables.project_id) })
       queryClient.invalidateQueries({ queryKey: queryKeys.sessions(variables.project_id) })
       queryClient.invalidateQueries({ queryKey: queryKeys.passcode(variables.project_id) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.members(variables.project_id) })
     },
   })
 }
