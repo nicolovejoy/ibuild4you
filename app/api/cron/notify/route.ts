@@ -2,20 +2,16 @@ import { NextResponse } from 'next/server'
 import { getAdminDb } from '@/lib/api/firebase-server-helpers'
 import { regenerateBriefForProject } from '@/lib/api/briefs'
 import { normalizeRegenStreak, isCircuitBroken, streakAfterFailure } from '@/lib/api/brief-regen-gate'
-import { NOTIFICATION_EMAILS } from '@/lib/constants'
-import { getMakerShortName } from '@/lib/copy'
-import { Resend } from 'resend'
-
-function getResend() {
-  return new Resend(process.env.RESEND_API_KEY)
-}
 
 const BRIEF_IDLE_MS = 10 * 60 * 1000 // 10 min — brief regen fires once a session has been idle this long
 
-// Every 5 min (see vercel.json). Two responsibilities:
-//   1. Send debounced notification digests for projects where notify_after has passed
-//   2. Auto-regenerate the brief for projects whose latest maker message is at
-//      least 10 minutes old and whose brief is stale (older than that message)
+// Every 5 min (see vercel.json). Auto-regenerates the brief for projects whose
+// latest maker message is at least 10 minutes old and whose brief is stale
+// (older than that message).
+//
+// Notification email moved out to the daily /api/cron/notify-digest cron (#65) —
+// /api/chat still sets notify_after/notify_pending_since; this cron no longer
+// reads them.
 export async function GET(request: Request) {
   const authHeader = request.headers.get('Authorization')
   const secret = process.env.CRON_SECRET
@@ -26,59 +22,7 @@ export async function GET(request: Request) {
   const db = getAdminDb()
   const now = new Date().toISOString()
 
-  // ---- 1. Notification digests --------------------------------------------
-
-  const readySnap = await db
-    .collection('projects')
-    .where('notify_after', '<', now)
-    .get()
-
-  let sent = 0
-  const errors: string[] = []
-
-  for (const doc of readySnap.docs) {
-    const data = doc.data()
-    const projectId = doc.id
-    const title = (data.title as string) || 'Untitled project'
-    const slug = (data.slug as string) || projectId
-    const makerName = getMakerShortName(
-      data.requester_first_name as string | undefined,
-      data.requester_email as string | undefined,
-      'the maker'
-    )
-    const pendingSince = data.notify_pending_since as string | undefined
-    const subject = `New messages from ${makerName} in ${title}`
-    const body = [
-      `${makerName} has new messages in "${title}".`,
-      pendingSince ? `First unread message at ${pendingSince}.` : '',
-      '',
-      `Open project: https://ibuild4you.com/projects/${slug}`,
-    ]
-      .filter(Boolean)
-      .join('\n')
-
-    try {
-      await getResend().emails.send({
-        from: 'iBuild4you <noreply@ibuild4you.com>',
-        to: NOTIFICATION_EMAILS,
-        subject,
-        text: body,
-      })
-      sent++
-    } catch (err) {
-      console.error(`[cron/notify] send failed for project ${projectId}:`, err)
-      errors.push(projectId)
-      continue
-    }
-
-    await doc.ref.update({
-      notify_after: null,
-      notify_pending_since: null,
-      notify_last_sent_at: now,
-    })
-  }
-
-  // ---- 2. Idle-based brief regeneration -----------------------------------
+  // ---- Idle-based brief regeneration --------------------------------------
 
   const idleCutoff = new Date(Date.now() - BRIEF_IDLE_MS).toISOString()
   const idleSnap = await db
@@ -170,9 +114,6 @@ export async function GET(request: Request) {
   }
 
   return NextResponse.json({
-    sent,
-    errors,
-    checked: readySnap.size,
     regenerated,
     regen_errors: regenErrors,
     circuit_broken: circuitBroken,

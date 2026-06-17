@@ -5,6 +5,10 @@
       "schedule": "*/5 * * * *"
     },
     {
+      "path": "/api/cron/notify-digest",
+      "schedule": "0 15 * * *"
+    },
+    {
       "path": "/api/cron/maker-reminders",
       "schedule": "0 16 * * *"
     }
