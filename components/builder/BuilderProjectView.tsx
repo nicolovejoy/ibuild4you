@@ -14,7 +14,6 @@ import { StatusMessage } from '@/components/ui/StatusMessage'
 import { LoadingButton } from '@/components/ui/LoadingButton'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { MessageContent } from '@/components/ui/MessageContent'
-import { MockupEditor } from './MockupEditor'
 import { parseNextConvoPayload } from '@/lib/api/import-payload'
 import { nextReminderAt } from '@/lib/api/reminder-cadence'
 import { useEscapeBack } from '@/lib/hooks/useEscapeBack'
@@ -38,6 +37,7 @@ import {
   useProjectMembers,
   useSetBriefRole,
   useSendMakerEmail,
+  useGeneratePrep,
 } from '@/lib/query/hooks'
 import { buildNextConvoPrompt } from '@/lib/agent/next-convo-prompt'
 import { copy, getMakerShortName } from '@/lib/copy'
@@ -1380,9 +1380,6 @@ function EditableSetup({ project }: { project: Project }) {
             <ListEditor label="Builder directives" description="Things the agent should actively drive toward." items={directives} newItem={newDirective} onNewItemChange={setNewDirective} onAdd={() => { if (!newDirective.trim()) return; setDirectives(p => [...p, newDirective.trim()]); setNewDirective('') }} onBulkAdd={(bulk) => setDirectives(p => [...p, ...bulk])} onRemove={(i) => setDirectives(p => p.filter((_, idx) => idx !== i))} placeholder="Get them to pick 1-2 tickers to start with" />
           )}
 
-          {/* Layout mockups */}
-          <MockupEditor mockups={mockups} onUpdate={setMockups} />
-
           {/* Agent identity */}
           <div>
             <label className="text-sm font-medium text-gray-700 block mb-1.5">Agent identity (optional)</label>
@@ -1588,49 +1585,58 @@ function PrepNextSession({ project, projectId, sessionNumber, autoExpand = false
   const [newQuestion, setNewQuestion] = useState('')
   const [directives, setDirectives] = useState<string[]>(project.builder_directives || [])
   const [newDirective, setNewDirective] = useState('')
-  const [mockups, setMockups] = useState<WireframeMockup[]>(project.layout_mockups || [])
   const [identity, setIdentity] = useState(project.identity || '')
   const [nudgeMessageOverride, setNudgeMessageOverride] = useState(project.nudge_message || '')
   const [nudgeNote, setNudgeNote] = useState('')
-  const [created, setCreated] = useState(false)
+  const [result, setResult] = useState<{ sent?: string; copied?: boolean; suppressed?: boolean } | null>(null)
 
   const updateProject = useUpdateProject()
   const generateWelcome = useGenerateWelcome()
   const createSession = useCreateSession()
-  const { copied: nudgeCopied, copyNudge } = useNudgeCopy(projectId)
+  const sendEmail = useSendMakerEmail()
+  const generatePrep = useGeneratePrep()
+  const { copyNudge } = useNudgeCopy(projectId)
 
   const shareLink = getProjectShareLink(project.slug, projectId)
   const makerEmail = project.requester_email || ''
+
+  // AI-prepped focus + nudge (slice 2). Seed from the stored values, refresh from
+  // the eager prep call. Local state shows the freshest result without a refetch.
+  const [prep, setPrep] = useState<{ focus: string; nudge_message: string } | null>(
+    project.prep_focus && project.prep_nudge
+      ? { focus: project.prep_focus, nudge_message: project.prep_nudge }
+      : null
+  )
+  const prepFiredRef = useRef(false)
+  const runPrep = () => {
+    generatePrep
+      .mutateAsync({ project_id: projectId })
+      .then((r) => setPrep({ focus: r.focus, nudge_message: r.nudge_message }))
+      .catch(() => {}) // silent — UI falls back to the template
+  }
 
   useEffect(() => {
     setWelcomeMessage(project.welcome_message || '')
     setSeedQuestions(project.seed_questions || [])
     setSessionMode(project.session_mode || 'discover')
     setDirectives(project.builder_directives || [])
-    setMockups(project.layout_mockups || [])
     setIdentity(project.identity || '')
     setNudgeMessageOverride(project.nudge_message || '')
-  }, [project.welcome_message, project.seed_questions, project.session_mode, project.builder_directives, project.layout_mockups, project.identity, project.nudge_message])
+  }, [project.welcome_message, project.seed_questions, project.session_mode, project.builder_directives, project.identity, project.nudge_message])
 
-  const handleCreate = async () => {
-    await updateProject.mutateAsync({
-      project_id: project.id,
-      welcome_message: welcomeMessage,
-      seed_questions: seedQuestions,
-      session_mode: sessionMode,
-      builder_directives: directives,
-      layout_mockups: mockups,
-      identity: identity || undefined,
-      nudge_message: nudgeMessageOverride || undefined,
-      last_builder_activity_at: new Date().toISOString(),
-    })
-    await createSession.mutateAsync({ project_id: projectId })
-    setCreated(true)
-  }
+  // Pre-warm prep once on mount. The route is idempotent (dedupes on a config
+  // fingerprint) so this only pays for a Sonnet call when the config/brief
+  // actually changed since the last generation — covers JSON-import + stale briefs.
+  useEffect(() => {
+    if (prepFiredRef.current) return
+    prepFiredRef.current = true
+    runPrep()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const override = nudgeMessageOverride.trim()
-  const nudgeMessage = override
-    ? [override, '', shareLink].join('\n')
+  const nudgeBodyText = override || prep?.nudge_message
+  const nudgeMessage = nudgeBodyText
+    ? [nudgeBodyText, '', shareLink].join('\n')
     : copy.nudge.body({
         projectTitle: project.title,
         shareLink,
@@ -1638,26 +1644,58 @@ function PrepNextSession({ project, projectId, sessionNumber, autoExpand = false
         sessionMode,
       })
 
-  if (created) {
+  const saveAndCreate = async () => {
+    await updateProject.mutateAsync({
+      project_id: project.id,
+      welcome_message: welcomeMessage,
+      seed_questions: seedQuestions,
+      session_mode: sessionMode,
+      builder_directives: directives,
+      identity: identity || undefined,
+      nudge_message: nudgeMessageOverride || undefined,
+      last_builder_activity_at: new Date().toISOString(),
+    })
+    // Config may have changed — refresh prep (no-op cost if the fingerprint matches).
+    runPrep()
+    await createSession.mutateAsync({ project_id: projectId })
+  }
+
+  const handleCreateAndSend = async () => {
+    await saveAndCreate()
+    const r = await sendEmail.mutateAsync({ project_id: projectId, kind: 'nudge', note: nudgeNote || undefined })
+    setResult({ sent: r.to, suppressed: r.suppressed })
+  }
+
+  const handleCreateAndCopy = async () => {
+    await saveAndCreate()
+    copyNudge(nudgeMessage)
+    setResult({ copied: true })
+  }
+
+  const makerName = project.requester_first_name || makerEmail || 'the maker'
+  const firstFocusItem = sessionMode === 'discover' ? seedQuestions[0] : directives[0]
+  const mechanicalFocus = `${sessionMode === 'converge' ? 'Converge' : 'Discover'}${firstFocusItem ? ` · ${firstFocusItem}` : ''}`
+  const focusLine = prep?.focus || mechanicalFocus
+  const prepping = generatePrep.isPending && !prep
+  const openerPreview = welcomeMessage.trim().replace(/\s+/g, ' ')
+  const busy = updateProject.isPending || createSession.isPending || sendEmail.isPending
+  const actionError = updateProject.error || createSession.error || sendEmail.error
+
+  if (result) {
     return (
       <Card hover={false}>
         <CardBody>
-          <h2 className="text-sm font-semibold text-brand-slate uppercase tracking-wide flex items-center gap-1.5 mb-3">
-            <Check className="h-4 w-4 text-green-600" />
-            Session {sessionNumber} ready
-          </h2>
-          <div className="space-y-3 p-3 bg-green-50 border border-green-200 rounded-lg">
-            <p className="text-sm font-medium text-green-800">New session created. Send {makerEmail} this message:</p>
-            <textarea readOnly value={nudgeMessage} rows={6} className="w-full px-2.5 py-1.5 bg-white border border-gray-300 rounded-md text-sm text-gray-700 resize-none" />
-            <div className="flex items-center gap-4">
-              <SendToMakerButton projectId={projectId} kind="nudge" makerEmail={makerEmail} note={nudgeNote || undefined} idleLabel={makerEmail ? `Send to ${makerEmail}` : 'Send to maker'} />
-              <button
-                onClick={() => copyNudge(nudgeMessage)}
-                className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand-navy"
-              >
-                {nudgeCopied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
-                {nudgeCopied ? 'Copied!' : 'Copy message'}
-              </button>
+          <div className="flex items-start gap-2">
+            <Check className="h-4 w-4 text-green-600 mt-0.5 shrink-0" />
+            <div className="text-sm">
+              <p className="font-medium text-green-800">Conversation {sessionNumber} created.</p>
+              {result.copied ? (
+                <p className="text-gray-600 mt-0.5">Nudge copied — paste it to {makerName} whenever you like.</p>
+              ) : result.suppressed ? (
+                <p className="text-gray-600 mt-0.5">Dev: would have emailed {result.sent} (suppressed on preview).</p>
+              ) : (
+                <p className="text-gray-600 mt-0.5">Emailed {result.sent} — their replies come back to you.</p>
+              )}
             </div>
           </div>
         </CardBody>
@@ -1668,16 +1706,53 @@ function PrepNextSession({ project, projectId, sessionNumber, autoExpand = false
   return (
     <Card hover={false}>
       <CardBody>
-        <button onClick={() => setExpanded(!expanded)} className="w-full flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-brand-slate uppercase tracking-wide flex items-center gap-1.5">
-            <RotateCw className="h-4 w-4" />
-            Prep conversation {sessionNumber}
-          </h2>
-          {expanded ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
+        <h2 className="text-sm font-semibold text-brand-slate uppercase tracking-wide flex items-center gap-1.5">
+          <RotateCw className="h-4 w-4" />
+          Conversation {sessionNumber} ready to send
+        </h2>
+
+        {/* Compact summary */}
+        <div className="mt-3 space-y-1.5 text-sm">
+          <div className="flex gap-2">
+            <span className="text-gray-400 w-20 shrink-0">Focus</span>
+            {prepping ? (
+              <span className="text-gray-400 italic">Summarizing… ✨ send anytime — you&apos;re CC&apos;d.</span>
+            ) : (
+              <span className="text-gray-700">{focusLine}</span>
+            )}
+          </div>
+          {openerPreview && (
+            <div className="flex gap-2 min-w-0">
+              <span className="text-gray-400 w-20 shrink-0">Opens with</span>
+              <span className="text-gray-500 truncate">{openerPreview}</span>
+            </div>
+          )}
+          <div className="flex gap-2">
+            <span className="text-gray-400 w-20 shrink-0">Reminders</span>
+            <span className="text-gray-500">{project.auto_reminders_enabled ? 'On · stops when they reply' : 'Off'}</span>
+          </div>
+        </div>
+
+        {/* Primary action: create the session AND email the maker in one click */}
+        <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2">
+          <LoadingButton variant="primary" size="sm" loading={busy} loadingText="Working…" onClick={handleCreateAndSend} icon={Send} disabled={!makerEmail}>
+            Create conversation {sessionNumber} &amp; message {makerName}
+          </LoadingButton>
+          <button onClick={handleCreateAndCopy} disabled={busy} className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand-navy disabled:opacity-40">
+            <Copy className="h-3.5 w-3.5" /> Copy nudge instead
+          </button>
+        </div>
+        {!makerEmail && <p className="text-xs text-gray-400 mt-1.5">Add a maker email to this brief to send.</p>}
+        {actionError && <div className="mt-2"><StatusMessage type="error" message={actionError.message || 'Failed'} /></div>}
+
+        {/* Everything else lives behind Edit details */}
+        <button onClick={() => setExpanded(!expanded)} className="mt-4 flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-brand-navy">
+          {expanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+          Edit details
         </button>
 
         {expanded && (
-          <div className="mt-4 space-y-5">
+          <div className="mt-4 space-y-5 border-t border-gray-100 pt-4">
             <SessionModeToggle mode={sessionMode} onChange={setSessionMode} />
 
             {sessionMode === 'discover' ? (
@@ -1686,17 +1761,6 @@ function PrepNextSession({ project, projectId, sessionNumber, autoExpand = false
               <ListEditor label="Builder directives" description="Things the agent should actively drive toward." items={directives} newItem={newDirective} onNewItemChange={setNewDirective} onAdd={() => { if (!newDirective.trim()) return; setDirectives(p => [...p, newDirective.trim()]); setNewDirective('') }} onBulkAdd={(bulk) => setDirectives(p => [...p, ...bulk])} onRemove={(i) => setDirectives(p => p.filter((_, idx) => idx !== i))} placeholder="Get them to pick 1-2 tickers to start with" />
             )}
 
-            {/* Layout mockups */}
-            <MockupEditor mockups={mockups} onUpdate={setMockups} />
-
-            {/* Agent identity */}
-            <div>
-              <label className="text-sm font-medium text-gray-700 block mb-1.5">Agent identity (optional)</label>
-              <textarea value={identity} onChange={(e) => setIdentity(e.target.value)} placeholder="Override the default agent persona. Leave blank for standard intake assistant." rows={2} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy" />
-              <p className="text-xs text-gray-400 mt-1">Changes how the agent introduces itself and frames its role.</p>
-            </div>
-
-            {/* Opening message */}
             <div>
               <div className="flex items-center justify-between mb-1.5">
                 <label className="text-sm font-medium text-gray-700">Opening message</label>
@@ -1707,24 +1771,25 @@ function PrepNextSession({ project, projectId, sessionNumber, autoExpand = false
               <textarea value={welcomeMessage} onChange={(e) => setWelcomeMessage(e.target.value)} placeholder="The message the agent sends when the maker opens this conversation." rows={3} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy" />
             </div>
 
-            {/* Nudge + create */}
-            <div className="pt-3 border-t border-gray-100 space-y-3">
-              <div>
-                <label className="text-sm font-medium text-gray-700 block mb-1.5">Note for {makerEmail} (optional)</label>
-                <textarea value={nudgeNote} onChange={(e) => setNudgeNote(e.target.value)} placeholder="This time we'll narrow down which data sources to use." rows={2} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy" />
-                <p className="text-xs text-gray-400 mt-1">A short hook woven into the boilerplate nudge. Ignored if you fill in the override below.</p>
-              </div>
-              <div>
-                <label className="text-sm font-medium text-gray-700 block mb-1.5">Nudge override (optional)</label>
-                <textarea value={nudgeMessageOverride} onChange={(e) => setNudgeMessageOverride(e.target.value)} placeholder="Leave blank to use the boilerplate nudge. Fill this in to send a specific message verbatim." rows={3} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy" />
-              </div>
-              <LoadingButton variant="primary" size="sm" loading={updateProject.isPending || createSession.isPending} loadingText="Creating..." onClick={handleCreate} icon={RotateCw}>
-                Create conversation {sessionNumber} & copy nudge
-              </LoadingButton>
-              {(updateProject.error || createSession.error) && (
-                <StatusMessage type="error" message={(updateProject.error || createSession.error)?.message || 'Failed'} />
-              )}
+            <div>
+              <label className="text-sm font-medium text-gray-700 block mb-1.5">Note for {makerEmail} (optional)</label>
+              <textarea value={nudgeNote} onChange={(e) => setNudgeNote(e.target.value)} placeholder="This time we'll narrow down which data sources to use." rows={2} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy" />
+              <p className="text-xs text-gray-400 mt-1">A short hook woven into the nudge. Ignored if you fill in the override below.</p>
             </div>
+
+            <div>
+              <label className="text-sm font-medium text-gray-700 block mb-1.5">Nudge override (optional)</label>
+              <textarea value={nudgeMessageOverride} onChange={(e) => setNudgeMessageOverride(e.target.value)} placeholder="Leave blank to use the default nudge. Fill this in to send a specific message verbatim." rows={3} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy" />
+            </div>
+
+            <details className="group">
+              <summary className="cursor-pointer text-xs font-medium text-gray-400 hover:text-gray-600 list-none">Advanced</summary>
+              <div className="mt-3">
+                <label className="text-sm font-medium text-gray-700 block mb-1.5">Agent identity (optional)</label>
+                <textarea value={identity} onChange={(e) => setIdentity(e.target.value)} placeholder="Override the default agent persona. Leave blank for standard intake assistant." rows={2} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy" />
+                <p className="text-xs text-gray-400 mt-1">Changes how the agent introduces itself and frames its role.</p>
+              </div>
+            </details>
           </div>
         )}
       </CardBody>

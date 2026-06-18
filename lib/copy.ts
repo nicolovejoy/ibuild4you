@@ -29,6 +29,24 @@ export const copy = {
     emailLabel: 'Invite message',
   },
   nudge: {
+    // Just the message body, no share link. Used as the template fallback when
+    // AI prep is unavailable; the link is appended separately (mirrors how a
+    // saved nudge_message override is handled).
+    bodyText: ({
+      projectTitle,
+      note,
+      sessionMode,
+    }: {
+      projectTitle: string
+      note?: string
+      sessionMode?: 'discover' | 'converge'
+    }) => {
+      const modeHint =
+        sessionMode === 'converge'
+          ? 'Ready to narrow things down and lock in a few decisions.'
+          : 'Want to dig into a few things from last time.'
+      return `New conversation ready for ${projectTitle}. ${note || modeHint}`
+    },
     body: ({
       projectTitle,
       shareLink,
@@ -39,18 +57,7 @@ export const copy = {
       shareLink: string
       note?: string
       sessionMode?: 'discover' | 'converge'
-    }) => {
-      const modeHint =
-        sessionMode === 'converge'
-          ? 'Ready to narrow things down and lock in a few decisions.'
-          : 'Want to dig into a few things from last time.'
-
-      return [
-        `New conversation ready for ${projectTitle}. ${note || modeHint}`,
-        '',
-        shareLink,
-      ].join('\n')
-    },
+    }) => [copy.nudge.bodyText({ projectTitle, note, sessionMode }), '', shareLink].join('\n'),
     reminder: ({ projectTitle, shareLink }: { projectTitle: string; shareLink: string }) =>
       [
         `Just a reminder — your conversation for ${projectTitle} is ready whenever you have a few minutes.`,

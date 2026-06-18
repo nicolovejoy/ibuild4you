@@ -83,11 +83,14 @@ export async function POST(
     text = copy.invite.body({ projectTitle, shareLink, email: to, passcode })
   } else if (kind === 'nudge') {
     subject = copy.email.subject.nudge(projectTitle)
-    // Mirror the builder UI: a saved nudge_message override is sent verbatim
-    // (with the link appended); otherwise build the boilerplate nudge.
+    // Precedence: a saved nudge_message override wins verbatim; else the AI-prepped
+    // nudge (slice 2); else the static template. The share link is appended the
+    // same way in every case so it can't go stale.
     const override = (project.nudge_message as string | undefined)?.trim()
-    text = override
-      ? [override, '', shareLink].join('\n')
+    const prepped = (project.prep_nudge as string | undefined)?.trim()
+    const bodyText = override || prepped
+    text = bodyText
+      ? [bodyText, '', shareLink].join('\n')
       : copy.nudge.body({
           projectTitle,
           shareLink,
@@ -99,13 +102,25 @@ export async function POST(
     text = copy.nudge.reminder({ projectTitle, shareLink })
   }
 
-  const { emailId } = await sendMakerEmail({
-    to,
-    bcc: auth.email ? [auth.email] : undefined,
-    replyTo: auth.email || undefined,
-    subject,
-    text,
-  })
+  // On preview/dev, don't email real makers while testing. Only actually send to
+  // an allowlist (any @ibuild4you.com address + Nico's own); for everyone else
+  // the session/activity still updates but the real send is suppressed.
+  const isProd = process.env.VERCEL_ENV === 'production'
+  const allowlisted =
+    to.endsWith('@ibuild4you.com') ||
+    ['nlovejoy@me.com', 'nicholas.lovejoy@gmail.com'].includes(to.toLowerCase())
+  const suppressed = !isProd && !allowlisted
+
+  let emailId = 'suppressed'
+  if (!suppressed) {
+    ;({ emailId } = await sendMakerEmail({
+      to,
+      bcc: auth.email ? [auth.email] : undefined,
+      replyTo: auth.email || undefined,
+      subject,
+      text,
+    }))
+  }
 
   // Stamp activity so the dashboard reflects the outbound touch.
   const now = new Date().toISOString()
@@ -124,9 +139,10 @@ export async function POST(
       kind,
       to,
       email_id: emailId,
+      suppressed,
       by: auth.email,
     })
   )
 
-  return NextResponse.json({ ok: true, emailId, to })
+  return NextResponse.json({ ok: true, emailId, to, suppressed })
 }
