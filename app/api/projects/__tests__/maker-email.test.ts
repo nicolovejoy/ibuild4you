@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { NextResponse } from 'next/server'
 import { POST } from '../[id]/email/route'
 
@@ -52,8 +52,12 @@ function makeReq(body: Record<string, unknown>) {
 const params = Promise.resolve({ id: 'p1' })
 
 describe('POST /api/projects/[id]/email', () => {
+  const origVercelEnv = process.env.VERCEL_ENV
   beforeEach(() => {
     vi.clearAllMocks()
+    // Default these tests to prod so the real send path runs; the suppression
+    // test below flips to a non-prod env explicitly.
+    process.env.VERCEL_ENV = 'production'
     mockGetProjectRole.mockResolvedValue('builder')
     projectData = {
       title: 'BySide',
@@ -141,5 +145,30 @@ describe('POST /api/projects/[id]/email', () => {
     const call = sendMakerEmailMock.mock.calls[0][0]
     expect(call.text).toContain('Custom hello, ready when you are.')
     expect(call.text).toContain('https://ibuild4you.com/projects/byside')
+  })
+
+  it('suppresses the real send on preview for a non-allowlisted maker, but still stamps activity', async () => {
+    process.env.VERCEL_ENV = 'preview'
+    const res = await POST(makeReq({ kind: 'nudge' }), { params })
+    expect(res.status).toBe(200)
+    const data = await res.json()
+    expect(data.suppressed).toBe(true)
+    expect(sendMakerEmailMock).not.toHaveBeenCalled()
+    expect(mockProjectUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ last_nudged_at: expect.any(String) })
+    )
+  })
+
+  it('still sends on preview when the maker is allowlisted (@ibuild4you.com)', async () => {
+    process.env.VERCEL_ENV = 'preview'
+    projectData.requester_email = 'test@ibuild4you.com'
+    const res = await POST(makeReq({ kind: 'nudge' }), { params })
+    expect(res.status).toBe(200)
+    expect(sendMakerEmailMock).toHaveBeenCalledOnce()
+  })
+
+  afterEach(() => {
+    if (origVercelEnv === undefined) delete process.env.VERCEL_ENV
+    else process.env.VERCEL_ENV = origVercelEnv
   })
 })

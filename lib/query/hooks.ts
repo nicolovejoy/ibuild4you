@@ -133,7 +133,7 @@ export function useSendMakerEmail() {
         const data = await res.json().catch(() => ({}))
         throw new Error(data.error || 'Failed to send email')
       }
-      return res.json() as Promise<{ ok: true; emailId: string; to: string }>
+      return res.json() as Promise<{ ok: true; emailId: string; to: string; suppressed?: boolean }>
     },
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.projects() })

@@ -99,13 +99,25 @@ export async function POST(
     text = copy.nudge.reminder({ projectTitle, shareLink })
   }
 
-  const { emailId } = await sendMakerEmail({
-    to,
-    bcc: auth.email ? [auth.email] : undefined,
-    replyTo: auth.email || undefined,
-    subject,
-    text,
-  })
+  // On preview/dev, don't email real makers while testing. Only actually send to
+  // an allowlist (any @ibuild4you.com address + Nico's own); for everyone else
+  // the session/activity still updates but the real send is suppressed.
+  const isProd = process.env.VERCEL_ENV === 'production'
+  const allowlisted =
+    to.endsWith('@ibuild4you.com') ||
+    ['nlovejoy@me.com', 'nicholas.lovejoy@gmail.com'].includes(to.toLowerCase())
+  const suppressed = !isProd && !allowlisted
+
+  let emailId = 'suppressed'
+  if (!suppressed) {
+    ;({ emailId } = await sendMakerEmail({
+      to,
+      bcc: auth.email ? [auth.email] : undefined,
+      replyTo: auth.email || undefined,
+      subject,
+      text,
+    }))
+  }
 
   // Stamp activity so the dashboard reflects the outbound touch.
   const now = new Date().toISOString()
@@ -124,9 +136,10 @@ export async function POST(
       kind,
       to,
       email_id: emailId,
+      suppressed,
       by: auth.email,
     })
   )
 
-  return NextResponse.json({ ok: true, emailId, to })
+  return NextResponse.json({ ok: true, emailId, to, suppressed })
 }
