@@ -274,6 +274,41 @@ export function useGenerateWelcome() {
   })
 }
 
+// AI "prep" call for the dispatch card — drafts the maker nudge + a one-line
+// builder focus summary in one shot. Idempotent server-side (returns cached when
+// config is unchanged), so it's safe to fire eagerly on mount / after a save.
+export function useGeneratePrep() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({ project_id, force }: { project_id: string; force?: boolean }) => {
+      const res = await apiFetch(`/api/projects/${project_id}/prep/generate`, {
+        method: 'POST',
+        body: JSON.stringify({ force: force ?? false }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error || 'Failed to prep next session')
+      }
+      return res.json() as Promise<{
+        focus: string
+        nudge_message: string
+        cached?: boolean
+        fallback?: boolean
+      }>
+    },
+    onSuccess: (data, variables) => {
+      // Only refresh the project cache when something actually changed — avoids a
+      // refetch loop when the eager mount-fire hits the cached path.
+      if (!data.cached) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.projects() })
+        queryClient.invalidateQueries({ queryKey: queryKeys.project(variables.project_id) })
+        queryClient.invalidateQueries({ queryKey: queryKeys.resolveProject(variables.project_id) })
+      }
+    },
+  })
+}
+
 export function useDeleteProject() {
   const queryClient = useQueryClient()
 

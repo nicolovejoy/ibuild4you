@@ -37,6 +37,7 @@ import {
   useProjectMembers,
   useSetBriefRole,
   useSendMakerEmail,
+  useGeneratePrep,
 } from '@/lib/query/hooks'
 import { buildNextConvoPrompt } from '@/lib/agent/next-convo-prompt'
 import { copy, getMakerShortName } from '@/lib/copy'
@@ -1593,10 +1594,26 @@ function PrepNextSession({ project, projectId, sessionNumber, autoExpand = false
   const generateWelcome = useGenerateWelcome()
   const createSession = useCreateSession()
   const sendEmail = useSendMakerEmail()
+  const generatePrep = useGeneratePrep()
   const { copyNudge } = useNudgeCopy(projectId)
 
   const shareLink = getProjectShareLink(project.slug, projectId)
   const makerEmail = project.requester_email || ''
+
+  // AI-prepped focus + nudge (slice 2). Seed from the stored values, refresh from
+  // the eager prep call. Local state shows the freshest result without a refetch.
+  const [prep, setPrep] = useState<{ focus: string; nudge_message: string } | null>(
+    project.prep_focus && project.prep_nudge
+      ? { focus: project.prep_focus, nudge_message: project.prep_nudge }
+      : null
+  )
+  const prepFiredRef = useRef(false)
+  const runPrep = () => {
+    generatePrep
+      .mutateAsync({ project_id: projectId })
+      .then((r) => setPrep({ focus: r.focus, nudge_message: r.nudge_message }))
+      .catch(() => {}) // silent — UI falls back to the template
+  }
 
   useEffect(() => {
     setWelcomeMessage(project.welcome_message || '')
@@ -1607,9 +1624,19 @@ function PrepNextSession({ project, projectId, sessionNumber, autoExpand = false
     setNudgeMessageOverride(project.nudge_message || '')
   }, [project.welcome_message, project.seed_questions, project.session_mode, project.builder_directives, project.identity, project.nudge_message])
 
+  // Pre-warm prep once on mount. The route is idempotent (dedupes on a config
+  // fingerprint) so this only pays for a Sonnet call when the config/brief
+  // actually changed since the last generation — covers JSON-import + stale briefs.
+  useEffect(() => {
+    if (prepFiredRef.current) return
+    prepFiredRef.current = true
+    runPrep()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
   const override = nudgeMessageOverride.trim()
-  const nudgeMessage = override
-    ? [override, '', shareLink].join('\n')
+  const nudgeBodyText = override || prep?.nudge_message
+  const nudgeMessage = nudgeBodyText
+    ? [nudgeBodyText, '', shareLink].join('\n')
     : copy.nudge.body({
         projectTitle: project.title,
         shareLink,
@@ -1628,6 +1655,8 @@ function PrepNextSession({ project, projectId, sessionNumber, autoExpand = false
       nudge_message: nudgeMessageOverride || undefined,
       last_builder_activity_at: new Date().toISOString(),
     })
+    // Config may have changed — refresh prep (no-op cost if the fingerprint matches).
+    runPrep()
     await createSession.mutateAsync({ project_id: projectId })
   }
 
@@ -1645,7 +1674,9 @@ function PrepNextSession({ project, projectId, sessionNumber, autoExpand = false
 
   const makerName = project.requester_first_name || makerEmail || 'the maker'
   const firstFocusItem = sessionMode === 'discover' ? seedQuestions[0] : directives[0]
-  const focusLine = `${sessionMode === 'converge' ? 'Converge' : 'Discover'}${firstFocusItem ? ` · ${firstFocusItem}` : ''}`
+  const mechanicalFocus = `${sessionMode === 'converge' ? 'Converge' : 'Discover'}${firstFocusItem ? ` · ${firstFocusItem}` : ''}`
+  const focusLine = prep?.focus || mechanicalFocus
+  const prepping = generatePrep.isPending && !prep
   const openerPreview = welcomeMessage.trim().replace(/\s+/g, ' ')
   const busy = updateProject.isPending || createSession.isPending || sendEmail.isPending
   const actionError = updateProject.error || createSession.error || sendEmail.error
@@ -1684,7 +1715,11 @@ function PrepNextSession({ project, projectId, sessionNumber, autoExpand = false
         <div className="mt-3 space-y-1.5 text-sm">
           <div className="flex gap-2">
             <span className="text-gray-400 w-20 shrink-0">Focus</span>
-            <span className="text-gray-700">{focusLine}</span>
+            {prepping ? (
+              <span className="text-gray-400 italic">Summarizing… ✨ send anytime — you&apos;re CC&apos;d.</span>
+            ) : (
+              <span className="text-gray-700">{focusLine}</span>
+            )}
           </div>
           {openerPreview && (
             <div className="flex gap-2 min-w-0">

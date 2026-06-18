@@ -68,6 +68,12 @@ export interface Project extends BaseEntity {
   welcome_message?: string // admin-reviewed welcome message for the maker
   nudge_message?: string // builder-authored outbound nudge; used verbatim when set
   voice_sample?: string // builder's voice anchor for AI-generated outbound copy
+  // AI-prepped "next session" handoff (slice 2). Written only by /prep/generate,
+  // never the client PATCH. nudge_message override still wins over prep_nudge.
+  prep_nudge?: string // AI-drafted nudge body (no link); default when no override
+  prep_focus?: string // AI one-line builder focus summary for the dispatch card
+  prep_config_hash?: string // fingerprint of the inputs prep_* was generated from
+  prep_generated_at?: string // ISO timestamp of the last successful prep generation
   seed_questions?: string[] // ordered questions the agent should weave in early
   builder_directives?: string[] // things agent should actively push toward
   session_mode?: 'discover' | 'converge' // current operating mode (default: discover)

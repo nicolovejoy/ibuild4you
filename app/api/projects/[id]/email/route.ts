@@ -83,11 +83,14 @@ export async function POST(
     text = copy.invite.body({ projectTitle, shareLink, email: to, passcode })
   } else if (kind === 'nudge') {
     subject = copy.email.subject.nudge(projectTitle)
-    // Mirror the builder UI: a saved nudge_message override is sent verbatim
-    // (with the link appended); otherwise build the boilerplate nudge.
+    // Precedence: a saved nudge_message override wins verbatim; else the AI-prepped
+    // nudge (slice 2); else the static template. The share link is appended the
+    // same way in every case so it can't go stale.
     const override = (project.nudge_message as string | undefined)?.trim()
-    text = override
-      ? [override, '', shareLink].join('\n')
+    const prepped = (project.prep_nudge as string | undefined)?.trim()
+    const bodyText = override || prepped
+    text = bodyText
+      ? [bodyText, '', shareLink].join('\n')
       : copy.nudge.body({
           projectTitle,
           shareLink,
