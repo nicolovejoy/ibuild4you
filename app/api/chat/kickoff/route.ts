@@ -1,5 +1,6 @@
 import { getAuthenticatedUser, getAdminDb, getProjectRole, getUserDisplayName } from '@/lib/api/firebase-server-helpers'
 import { buildSystemPrompt } from '@/lib/agent/system-prompt'
+import { fetchPrototypeFeedback } from '@/lib/api/prototype-feedback'
 import { AGENT_MODEL, AGENT_MAX_TOKENS, AGENT_TEMPERATURE } from '@/lib/agent/constants'
 import { logAnthropicCall } from '@/lib/observability/anthropic'
 import Anthropic from '@anthropic-ai/sdk'
@@ -211,6 +212,13 @@ export async function POST(request: Request) {
     participants = [...seen].map(([email, name]) => ({ name, brief_role: roleByEmail.get(email) ?? null }))
   }
 
+  // #72: ground the kickoff recap in real prototype feedback too.
+  const prototypeFeedback = await fetchPrototypeFeedback(
+    db,
+    projectData.slug as string | undefined,
+    Date.now(),
+  )
+
   const systemPrompt = buildSystemPrompt({
     briefContent,
     projectContext,
@@ -224,6 +232,7 @@ export async function POST(request: Request) {
     makerLastName,
     gapSinceLastMakerMessageMs,
     participants,
+    prototypeFeedback,
   })
 
   // --- Stream + store the agent greeting ---

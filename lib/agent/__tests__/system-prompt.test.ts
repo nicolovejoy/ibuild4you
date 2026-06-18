@@ -159,6 +159,24 @@ describe('buildSystemPrompt', () => {
     expect(regularBlock).not.toContain('Next.js, no Vue')
   })
 
+  it('renders the prototype-feedback block when items are present (#72)', () => {
+    const result = buildSystemPrompt({
+      ...minimalInput,
+      prototypeFeedback: [
+        { type: 'bug', body: 'Checkout button does nothing', path: '/checkout', ageLabel: 'today', resolved: false },
+      ],
+    })
+    expect(result).toContain('## What the maker has reported from the prototype')
+    expect(result).toContain('Checkout button does nothing')
+    expect(result).toContain('(on /checkout)')
+    expect(result).toContain('cannot see the live screen')
+  })
+
+  it('omits the prototype-feedback block when there are no items', () => {
+    const result = buildSystemPrompt({ ...minimalInput, prototypeFeedback: [] })
+    expect(result).not.toContain('## What the maker has reported from the prototype')
+  })
+
   it('omits the locked block when no decision is locked', () => {
     const result = buildSystemPrompt({
       ...minimalInput,

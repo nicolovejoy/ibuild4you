@@ -1,5 +1,6 @@
 import { getAuthenticatedUser, getAdminDb, getProjectRole, getUserDisplayName, hasSystemRole } from '@/lib/api/firebase-server-helpers'
 import { buildSystemPrompt } from '@/lib/agent/system-prompt'
+import { fetchPrototypeFeedback } from '@/lib/api/prototype-feedback'
 import { loadAttachmentBlocks, type AttachmentBlock, type DroppedAttachment } from '@/lib/agent/attachments'
 import { AGENT_MODEL, AGENT_MAX_TOKENS, AGENT_TEMPERATURE } from '@/lib/agent/constants'
 import { logAnthropicCall } from '@/lib/observability/anthropic'
@@ -306,6 +307,14 @@ async function handleChat(request: Request): Promise<Response> {
     participants = [...seen].map(([email, name]) => ({ name, brief_role: roleByEmail.get(email) ?? null }))
   }
 
+  // #72: ground Sam in what the maker actually reported from the running
+  // prototype (Loop feedback, keyed by slug) instead of confabulating.
+  const prototypeFeedback = await fetchPrototypeFeedback(
+    db,
+    projectData.slug as string | undefined,
+    Date.now(),
+  )
+
   const systemPrompt = buildSystemPrompt({
     briefContent,
     projectContext,
@@ -319,6 +328,7 @@ async function handleChat(request: Request): Promise<Response> {
     makerLastName,
     gapSinceLastMakerMessageMs,
     participants,
+    prototypeFeedback,
   })
 
   // Stream response from Claude

@@ -1,5 +1,6 @@
 import { AGENT_BEHAVIOR_RULES, CONVERGE_BEHAVIOR_RULES, DEFAULT_IDENTITY } from './constants'
 import { briefRoleLabel } from '@/lib/roles/display'
+import { renderPrototypeFeedbackBlock, type PrototypeFeedbackItem } from './prototype-feedback'
 import type { BriefContent, BriefRole, WireframeMockup } from '@/lib/types'
 
 // Maker name and gap-since-last-message are read live per request (not
@@ -20,6 +21,9 @@ interface SystemPromptInput {
   // Multi-human brief: who has posted in this session, in speaking order.
   // When 2+, the prompt switches from single-maker framing to mediation.
   participants?: { name: string; brief_role: BriefRole | null }[]
+  // #72: recent Loop feedback the maker submitted from the running prototype,
+  // already summarized by the chat route. Grounds Sam in real captured signal.
+  prototypeFeedback?: PrototypeFeedbackItem[]
 }
 
 const ONE_HOUR_MS = 60 * 60 * 1000
@@ -32,7 +36,7 @@ function humanizeGap(ms: number): string {
   return 'over a week'
 }
 
-export function buildSystemPrompt({ briefContent, projectContext, sessionNumber, seedQuestions, builderDirectives, sessionMode, layoutMockups, identity, makerFirstName, makerLastName, gapSinceLastMakerMessageMs, participants }: SystemPromptInput): string {
+export function buildSystemPrompt({ briefContent, projectContext, sessionNumber, seedQuestions, builderDirectives, sessionMode, layoutMockups, identity, makerFirstName, makerLastName, gapSinceLastMakerMessageMs, participants, prototypeFeedback }: SystemPromptInput): string {
   const parts: string[] = []
 
   parts.push(identity || DEFAULT_IDENTITY)
@@ -175,6 +179,11 @@ Here's what we know so far. Use this to avoid re-asking things they've already t
 
 ${formatBrief(briefContent)}
 `.trim())
+  }
+
+  if (prototypeFeedback && prototypeFeedback.length > 0) {
+    const block = renderPrototypeFeedbackBlock(prototypeFeedback)
+    if (block) parts.push(block)
   }
 
   if (gapSinceLastMakerMessageMs !== undefined && gapSinceLastMakerMessageMs >= ONE_HOUR_MS) {
