@@ -1,11 +1,12 @@
 # UX scrub — Brief & Setup pages
 
-**Status:** proposal / awaiting Nico. Written 2026-06-17 after the dispatch-card work
-(slices 1+2 shipped). Scope: the builder's Brief and Setup surfaces + the share
-modal + navigation. Method Nico asked for: assume every field should be **deleted
-unless it justifies itself**, then propose a simpler UI including navigation.
+**Status:** direction **agreed with Nico 2026-06-18** (decisions at the bottom).
+Written 2026-06-17 after the dispatch-card work (slices 1+2 shipped). Scope: the
+builder's Brief and Setup surfaces + the share modal + navigation. Method:
+assume every field should be **deleted unless it justifies itself**, then a
+simpler UI including navigation.
 
-No code changed. This is the plan to react to.
+No code changed yet. This is the agreed plan; phasing at the bottom.
 
 ---
 
@@ -59,7 +60,7 @@ No code changed. This is the plan to react to.
 Today: **Sessions · Brief · Files · Setup** (4 tabs; "Setup" is really
 "configure agent" + "send next conversation" mashed together).
 
-Proposed: **Brief · Conversations · People** (3 tabs).
+**Agreed: Brief · Conversations · People** (3 tabs).
 
 ```
 ┌──────────────────────────────────────────────────────────┐
@@ -76,13 +77,30 @@ Proposed: **Brief · Conversations · People** (3 tabs).
   gravity. Files fold in here as an attachments strip (drop the separate Files
   tab). A compact "Send next conversation →" shortcut deep-links to Conversations.
 - **Conversations** (was Sessions) — past conversations (read) **with the
-  dispatch card pinned at the top**. The dispatch card is the home of all
-  agent config (behind "Edit details"). This is where "send the next round"
-  lives, invite or nudge.
+  "Next round" card pinned at the top**. That card is the home of all agent
+  config (behind "Edit details"). This is where "send the next round" lives,
+  invite or nudge.
 - **People** (extracted from Setup) — roster, roles, access (link + passcode),
   invite. Replaces the share *modal* with a real panel. One share entry point.
 
 "Setup" disappears as a name — it described a junk drawer, not a job.
+
+### Naming the "dispatch card"
+
+Candidates considered: **Send next conversation** (literal), **Next round**
+(short, evokes the loop), **Handoff** (hand the brief back to the maker),
+**Outbox** (where the nudge sits), **Up next** (forward-looking header).
+**Agreed: "Next round"** as the section name; the button keeps the literal
+"Create conversation N & message {maker}".
+
+### Files → Brief, and the "artifacts" question
+
+Files fold into the Brief page as an attachments strip. Nico flagged that the
+broader concept — uploaded files **plus agent-created artifacts plus linked
+folders/repos** (à la Claude Projects), with per-artifact access + importance —
+is its own deep dive. Filed as **#83**; the near-term scrub just relocates the
+current flat Files list and does **not** block on the artifacts model. "Files"
+may later become "Artifacts".
 
 ---
 
@@ -120,25 +138,36 @@ People, folds into Advanced, or dies.
 
 ## Brief tab — field-by-field verdict
 
-The headline change: **make the brief inline-editable.** Click a section, edit
-it, save. This kills the copy-prep → paste-JSON → import round-trip as the
-primary path.
+**The headline change: edit the brief as one structured document.** Agreed
+direction (Nico): treat the whole brief as a single editable document in a
+**structured-JSON editor** — the brief already *is* `BriefContent` JSON
+(problem, target_users, features[], constraints, additional_context,
+decisions[], open_risks[]), so editing should operate on that document as a
+whole, not seven disconnected click-to-edit widgets.
+
+Concretely, a brief editor with two layers over the same JSON:
+
+- **Structured view (default):** the schema rendered as labeled fields + lists
+  you edit in place — safe for non-technical builders, no syntax to get wrong.
+  Add/remove features, decisions, risks; edit prose fields. One "Save" for the
+  whole document.
+- **Raw JSON view (toggle):** the actual `BriefContent` JSON, editable, with
+  validation. This is the power path **and** the interchange format — it's what
+  makes the copy-paste round-trip unnecessary (see "Automating the workflow").
+
+This replaces the read-only display + the copy-prep → paste-JSON → Import
+round-trip. The brief becomes a thing you *work*, not a thing you regenerate.
 
 | Section / control | Today | Verdict | Why |
 |---|---|---|---|
-| Problem | read-only | **KEEP + edit inline** | Core. |
-| Target users | read-only | **KEEP + edit inline** | Core. |
-| Features (list) | read-only | **KEEP + edit inline** | Core. |
-| Constraints | read-only | **KEEP + edit inline** | Core. |
-| Decisions (topic→decision) | read-only | **KEEP + edit inline** | Core; the highest-value section. |
-| Open risks (list) | read-only | **KEEP + edit inline** | Useful. |
-| Additional context | read-only | **DEMOTE/CUT** | Low-signal catch-all. Hide when empty; consider removing. |
+| Problem / Target users / Features / Constraints / Decisions / Open risks | read-only | **KEEP, edit in the document** | Core. Editable via the structured/raw views above. |
+| Additional context | read-only | **KEEP in document, hide when empty** | Low-signal catch-all; stays in the JSON but isn't a prominent section unless populated. |
 | Version badge (v3) | small | **KEEP** | Cheap, orienting. |
 | "Copy next-convo prep" button | primary | **CUT** | Clipboard-era. Gone. |
-| "Generate via API" + "Regenerate via API" (two buttons, same endpoint) | dual | **MERGE → 1** | One button: **"Update brief from conversation."** |
-| JSON paste textarea | primary | **DEMOTE** | Move behind an "Import" affordance (advanced/admin). |
+| "Generate via API" + "Regenerate via API" (two buttons, same endpoint) | dual | **MERGE → 1** | One button: **"Update brief from conversation"** (in-app Claude call). |
+| JSON paste textarea (import) | primary | **CUT as primary** | Superseded by the raw-JSON edit view; keep a bulk "Import" only as an admin/power affordance. |
 | "Copy markdown" | minor | **KEEP** (small) | Handy for sharing the brief out. |
-| Reviews / annotations | types only, no UI | ignore | Out of scope; revisit if/when the editor lands (per the parked voice-attribution work). |
+| Reviews / annotations | types only, no UI | ignore | Out of scope; revisit if/when section-provenance lands (#43). |
 | Standalone `/brief` page | duplicate BriefView | **KEEP for makers** (read-only share view); builder edits in-tab. Unify the rendering. |
 
 ---
@@ -177,16 +206,44 @@ the invite copy + passcode for anyone already shared.
 
 ---
 
+## Automating the workflow (kill the copy-paste)
+
+The builder's loop today still has a manual seam: copy "next-convo prep" → paste
+into an outside Claude → copy the JSON it returns → paste back → Import. That
+seam exists only because the app *used* to need a human to ferry text to Claude.
+It no longer does — the app already calls Claude directly for brief generation,
+prep (slices 1/2), and the welcome message.
+
+**Principle going forward: every brief mutation happens in-app; the clipboard
+JSON round-trip is deprecated.** Two paths, no copy-paste:
+
+- **Agent path — "Update brief from conversation":** one button calls Claude
+  server-side to re-derive the brief from the conversation so far. (This is the
+  existing `/api/briefs/generate`, surfaced as a single clear action instead of
+  two confusingly-named buttons.)
+- **Manual path — the structured/raw brief editor:** the builder edits the
+  document directly and saves. The raw-JSON view *is* the format Claude reads
+  and writes, so there's nothing to ferry.
+
+This is the same north star as the dispatch card: **a few very visible actions,
+everything else on a sub-menu, organized around the primary loop** — read/shape
+the brief → send the next round → maker chats → brief updates → repeat. As more
+of that loop is "just working with Claude," more of it should be a button, not a
+manual paste. Future automation candidates: auto-"Update brief from
+conversation" when a conversation closes; agent-proposed brief edits the builder
+accepts/rejects inline.
+
 ## Suggested phasing (each shippable on its own)
 
 1. **Kill the duplication.** Delete the "Agent setup" (EditableSetup) card;
    the dispatch card's Edit details becomes the only config surface. Remove the
    nudge-note field. Collapse share entry points to one. *(Biggest win, lowest
    risk — pure deletion + consolidation.)*
-2. **Rename nav → Brief · Conversations · People.** Move the dispatch card to
-   the top of Conversations; extract People from Setup; fold Files into Brief.
-3. **Inline-edit the brief.** Per-section click-to-edit + one "Update from
-   conversation" button; demote JSON paste to an Import affordance.
+2. **Rename nav → Brief · Conversations · People.** Move the "Next round" card
+   to the top of Conversations; extract People from Setup; fold Files into Brief.
+3. **Brief-as-document editor.** Structured view + raw-JSON toggle over
+   `BriefContent`; one "Update brief from conversation" button (in-app Claude);
+   remove the copy-paste round-trip. (Most work — own design pass first.)
 4. **People panel replaces the share modal**; fix the established-maker
    invite-vs-nudge bug; move github_repo out of the send flow.
 5. **Cleanup:** remove dead layout-mockups path; hide empty "additional
@@ -194,20 +251,31 @@ the invite copy + passcode for anyone already shared.
 
 ---
 
-## Open questions for Nico
+## Decisions (2026-06-18)
 
-1. **Tab names.** Comfortable with **Brief · Conversations · People**? Or keep
-   "Sessions" over "Conversations"? (Maker-facing vocab is "brief"; "session"
-   is internal — leaning Conversations.)
-2. **Where does the dispatch card live** — top of **Conversations** (my pick),
-   or pinned on the **Brief** page so you shape-then-send in one place?
-3. **Files** — fold into Brief as an attachments strip (my pick), or keep a
-   4th tab?
-4. **Inline brief editing** — do you want full click-to-edit on every section
-   (slice 3), or is "Update from conversation" + occasional JSON import enough
-   for now? Inline editing is the most work.
-5. **github_repo / voice sample / mockups** — OK to move github_repo to a
-   small "Brief settings" area, leave voice sample JSON-only, and delete the
-   mockups data path? Or keep any of them surfaced?
-6. **Additional context** — cut it, or keep hidden-when-empty?
+1. **Tabs:** Brief · Conversations · People. ✅
+2. **Dispatch card** lives at the top of **Conversations**, named **"Next
+   round"**. ✅
+3. **Files fold into Brief.** The bigger "artifacts" model (agent-created +
+   uploaded + linked, with access/importance) is **#83**, a separate future
+   effort — scrub doesn't block on it. ✅
+4. **Brief editing = one structured document** in a JSON editor (structured
+   view default + raw-JSON toggle), not per-section click-to-edit. The raw view
+   doubles as the Claude interchange format. ✅
+5. **UI philosophy:** a few very visible actions, everything else on a
+   sub-menu, organized around the primary loop. Bias toward **automating the
+   loop and removing the copy-paste JSON** (see "Automating the workflow"). ✅
+6. **Additional context:** keep it in the document, hide as a prominent section
+   when empty. ✅
+
+### Still to pin down before building
+
+- **github_repo / voice sample / mockups placement.** Nico isn't tracking the
+  specifics yet. Working assumption: github_repo → a small "Brief settings"
+  sub-menu (out of the send flow); voice sample stays JSON/advanced-only;
+  mockups data path deleted. Will confirm when we reach that phase.
+- **Brief editor build details** (phase 3): structured-field components vs a
+  generic schema-driven editor; raw-JSON validation UX; how "Update from
+  conversation" merges vs overwrites manual edits. Own design pass when we get
+  there.
 ```
