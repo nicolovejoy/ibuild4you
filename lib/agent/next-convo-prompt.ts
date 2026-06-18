@@ -59,6 +59,7 @@ Rules:
 - If updating an existing brief, preserve information from it unless the conversation contradicts it.
 - A decision = the user committed to a specific choice (not just mentioned an option). Each decision has a short topic label and the decision itself.
 - Preserve prior decisions unless the user explicitly reversed one in the conversation.
+- A decision may carry \`"locked": true\` — a durable constraint (e.g. a locked convention or do-not-use rule). NEVER drop, reword, or unset a locked decision; carry it forward verbatim with \`"locked": true\`. If the conversation contains a statement that contradicts a locked decision, keep the locked decision as-is and record the contradiction in \`open_risks\` (e.g. "conflicts with locked decision: <topic>") — do not silently overwrite it.
 - Open risks = things that are unresolved, unclear, or risky based on the conversation. Extract from what the user actually said — don't invent risks. Examples: "no plan for getting first users", "pricing model undecided", "unclear how data gets into the system".
 
 Please review the project data the builder will give you next and let's discuss:

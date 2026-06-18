@@ -132,13 +132,28 @@ Only use this when it would genuinely help the conversation — don't force it. 
 `.trim())
   }
 
-  if (briefContent?.decisions && briefContent.decisions.length > 0) {
+  const lockedDecisions = briefContent?.decisions?.filter((d) => d.locked) ?? []
+  const openDecisions = briefContent?.decisions?.filter((d) => !d.locked) ?? []
+
+  if (lockedDecisions.length > 0) {
+    parts.push(`
+## Locked decisions — reconcile against these
+
+These are durable constraints for this project (locked conventions, do-not-use rules, settled choices the build depends on). They are NOT open for casual revisiting:
+
+${lockedDecisions.map((d) => `- **${d.topic}:** ${d.decision}`).join('\n')}
+
+Before accepting any new thing the user tells you, check it against these locked decisions. If something they say **contradicts** a locked decision (e.g. they ask for a tool that's on the do-not-use list, or a convention that conflicts with one above), do NOT silently go along with it. Surface the conflict plainly — name the locked decision and ask whether they really mean to reverse it. Only treat it as changed if they explicitly confirm the reversal. Otherwise the locked decision stands.
+`.trim())
+  }
+
+  if (openDecisions.length > 0) {
     parts.push(`
 ## Decisions already made
 
 These have been decided in prior sessions. Don't revisit them unless the user brings them up:
 
-${briefContent.decisions.map((d) => `- **${d.topic}:** ${d.decision}`).join('\n')}
+${openDecisions.map((d) => `- **${d.topic}:** ${d.decision}`).join('\n')}
 `.trim())
   }
 

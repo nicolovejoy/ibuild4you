@@ -852,6 +852,12 @@ function BriefView({ content }: { content: BriefContent }) {
             <ul className="space-y-2">
               {decisions.map((d, i) => (
                 <li key={i} className="text-sm">
+                  {d.locked && (
+                    <Lock
+                      className="inline h-3.5 w-3.5 mr-1 -mt-0.5 text-brand-slate"
+                      aria-label="Locked decision"
+                    />
+                  )}
                   <span className="font-medium text-gray-900">{d.topic}:</span>{' '}
                   <span className="text-gray-700">{d.decision}</span>
                 </li>

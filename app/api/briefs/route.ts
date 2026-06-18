@@ -69,9 +69,16 @@ export async function PUT(request: Request) {
     constraints: typeof content.constraints === 'string' ? content.constraints : '',
     additional_context: typeof content.additional_context === 'string' ? content.additional_context : '',
     decisions: Array.isArray(content.decisions)
-      ? content.decisions.filter(
-          (d: unknown) => d && typeof (d as Record<string, unknown>).topic === 'string' && typeof (d as Record<string, unknown>).decision === 'string'
-        )
+      ? content.decisions
+          .filter(
+            (d: unknown) => d && typeof (d as Record<string, unknown>).topic === 'string' && typeof (d as Record<string, unknown>).decision === 'string'
+          )
+          .map((d: Record<string, unknown>) => ({
+            topic: d.topic as string,
+            decision: d.decision as string,
+            // #71: preserve the durable-constraint flag set by the builder.
+            ...(d.locked === true && { locked: true }),
+          }))
       : [],
     open_risks: Array.isArray(content.open_risks)
       ? content.open_risks.filter((r: unknown) => typeof r === 'string' && (r as string).trim())

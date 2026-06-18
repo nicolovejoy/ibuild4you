@@ -225,6 +225,25 @@ describe('PUT /api/briefs', () => {
     ])
   })
 
+  it('preserves the locked flag on decisions (#71)', async () => {
+    await PUT(makePutRequest({
+      project_id: 'proj1',
+      content: {
+        ...validContent,
+        decisions: [
+          { topic: 'Stack', decision: 'Next.js, no Vue', locked: true },
+          { topic: 'Hosting', decision: 'Vercel' },
+        ],
+      },
+    }))
+
+    const contentArg = mockUpsertBrief.mock.calls[0][2]
+    expect(contentArg.decisions).toEqual([
+      { topic: 'Stack', decision: 'Next.js, no Vue', locked: true },
+      { topic: 'Hosting', decision: 'Vercel' },
+    ])
+  })
+
   it('defaults missing string fields to empty strings', async () => {
     await PUT(makePutRequest({
       project_id: 'proj1',

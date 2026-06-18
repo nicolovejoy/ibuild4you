@@ -136,6 +136,40 @@ describe('buildSystemPrompt', () => {
     expect(result).not.toContain('## Decisions already made')
   })
 
+  it('renders locked decisions in a separate reconciliation block (#71)', () => {
+    const result = buildSystemPrompt({
+      ...minimalInput,
+      briefContent: {
+        ...emptyBrief,
+        decisions: [
+          { topic: 'Stack', decision: 'Next.js, no Vue', locked: true },
+          { topic: 'Payment', decision: 'Stripe only' },
+        ],
+      },
+    })
+    expect(result).toContain('## Locked decisions — reconcile against these')
+    expect(result).toContain('**Stack:** Next.js, no Vue')
+    // The locked block instructs the agent to confirm reversals, not silently append.
+    expect(result).toMatch(/contradicts.*locked decision/i)
+    // The non-locked decision still goes in the regular block.
+    expect(result).toContain('## Decisions already made')
+    expect(result).toContain('**Payment:** Stripe only')
+    // A locked decision must not be duplicated into the regular block.
+    const regularBlock = result.split('## Decisions already made')[1] ?? ''
+    expect(regularBlock).not.toContain('Next.js, no Vue')
+  })
+
+  it('omits the locked block when no decision is locked', () => {
+    const result = buildSystemPrompt({
+      ...minimalInput,
+      briefContent: {
+        ...emptyBrief,
+        decisions: [{ topic: 'Payment', decision: 'Stripe only' }],
+      },
+    })
+    expect(result).not.toContain('## Locked decisions')
+  })
+
   it('includes formatted brief when it has content', () => {
     const result = buildSystemPrompt({
       ...minimalInput,

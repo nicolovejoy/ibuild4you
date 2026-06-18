@@ -111,13 +111,15 @@ Only `title` is required. All other fields are optional.
     "features": ["Online ordering", "Pickup scheduling"],
     "constraints": "Must work on mobile",
     "additional_context": "",
-    "decisions": [{ "topic": "Payment", "decision": "Stripe only" }]
+    "decisions": [{ "topic": "Payment", "decision": "Stripe only", "locked": true }]
   },
   "session_opener": "Alias for welcome_message (either works)"
 }
 ```
 
 Side effects on create: generates slug, creates owner membership, creates maker membership + approves email (if `requester_email`), creates first session (snapshots config), adds welcome message as first agent message, creates initial brief (if `brief` provided).
+
+A decision may carry `"locked": true` — a durable constraint (locked convention / do-not-use rule). Locked decisions survive brief regen verbatim (code-side merge in `regenerateBriefForProject`, never dropped by the model) and the agent must reconcile new intake against them: a maker statement contradicting a locked decision triggers an explicit confirm instead of a silent overwrite (#71). Set via the create payload or the Brief-tab JSON paste (`PUT /api/briefs`).
 
 ### Update (PATCH /api/projects)
 
