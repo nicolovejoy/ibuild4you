@@ -164,8 +164,8 @@ round-trip. The brief becomes a thing you *work*, not a thing you regenerate.
 | Additional context | read-only | **KEEP in document, hide when empty** | Low-signal catch-all; stays in the JSON but isn't a prominent section unless populated. |
 | Version badge (v3) | small | **KEEP** | Cheap, orienting. |
 | "Copy next-convo prep" button | primary | **CUT** | Clipboard-era. Gone. |
-| "Generate via API" + "Regenerate via API" (two buttons, same endpoint) | dual | **MERGE → 1** | One button: **"Update brief from conversation"** (in-app Claude call). |
-| JSON paste textarea (import) | primary | **CUT as primary** | Superseded by the raw-JSON edit view; keep a bulk "Import" only as an admin/power affordance. |
+| "Generate via API" + "Regenerate via API" (two buttons, same endpoint) | dual | **MERGE → 1, label cost** | One button: **"Update brief from conversation (uses API)"** — optional convenience, not the default (see cost model). |
+| JSON paste / import | primary | **KEEP** | The cost-routing path (builder reasons on the Max sub, pastes back). The raw-JSON editor view is its target/source. Stays first-class. |
 | "Copy markdown" | minor | **KEEP** (small) | Handy for sharing the brief out. |
 | Reviews / annotations | types only, no UI | ignore | Out of scope; revisit if/when section-provenance lands (#43). |
 | Standalone `/brief` page | duplicate BriefView | **KEEP for makers** (read-only share view); builder edits in-tab. Unify the rendering. |
@@ -206,32 +206,49 @@ the invite copy + passcode for anyone already shared.
 
 ---
 
-## Automating the workflow (kill the copy-paste)
+## Cost model — why the copy-paste ferry STAYS
 
-The builder's loop today still has a manual seam: copy "next-convo prep" → paste
-into an outside Claude → copy the JSON it returns → paste back → Import. That
-seam exists only because the app *used* to need a human to ferry text to Claude.
-It no longer does — the app already calls Claude directly for brief generation,
-prep (slices 1/2), and the welcome message.
+Earlier drafts of this doc said "deprecate the clipboard JSON round-trip." That
+was wrong. The copy-paste isn't dumb friction — it's deliberate **cost routing**,
+and it stays a first-class supported path.
 
-**Principle going forward: every brief mutation happens in-app; the clipboard
-JSON round-trip is deprecated.** Two paths, no copy-paste:
+**Hard constraint:** a Claude Max subscription can only be spent through
+Anthropic's first-party surfaces (claude.ai, Claude Desktop, Claude Code). The
+iBuild4you *server* cannot use it — server code only has a metered
+`ANTHROPIC_API_KEY`. So there are two cost domains:
 
-- **Agent path — "Update brief from conversation":** one button calls Claude
-  server-side to re-derive the brief from the conversation so far. (This is the
-  existing `/api/briefs/generate`, surfaced as a single clear action instead of
-  two confusingly-named buttons.)
-- **Manual path — the structured/raw brief editor:** the builder edits the
-  document directly and saves. The raw-JSON view *is* the format Claude reads
-  and writes, so there's nothing to ferry.
+1. **Product runtime — metered API, unavoidable.** The maker ↔ agent
+   conversation on the website. Makers don't have the builder's subscription;
+   this is the cost of running the product. Stays on the API.
+2. **Builder authoring — route to the Max subscription.** The builder shaping
+   briefs / prepping the next round. This is the builder's *own* reasoning, so
+   it should run on a first-party Claude surface the $200/mo flat rate already
+   covers — i.e. exactly the copy-paste-into-Claude flow that exists today. The
+   keystrokes are the price of *not* paying metered API for builder reasoning.
 
-This is the same north star as the dispatch card: **a few very visible actions,
-everything else on a sub-menu, organized around the primary loop** — read/shape
-the brief → send the next round → maker chats → brief updates → repeat. As more
-of that loop is "just working with Claude," more of it should be a button, not a
-manual paste. Future automation candidates: auto-"Update brief from
-conversation" when a conversation closes; agent-proposed brief edits the builder
-accepts/rejects inline.
+**Implication for the design:**
+
+- **Copy-paste JSON stays.** Keep "copy next-convo prep" → reason in
+  Claude/Claude Code → paste JSON back. The **raw-JSON view of the brief editor
+  (#4) is the paste target/source** — so the ferry gets nicer ergonomics
+  (validation, structured view alongside) without forcing any metered cost.
+- **In-app "Update brief from conversation" (metered API) is OPTIONAL, not the
+  default.** It's a convenience for when paying a little API is worth the speed;
+  it does *not* replace the copy-paste path. Surface it, but don't make it the
+  only or primary way — that would silently move builder reasoning onto metered
+  billing.
+- Merge the two confusing generate buttons into one clearly-labeled
+  *(costs API)* action; keep the copy-prep + paste path as the cheap default.
+
+**Future optimization (deferred, #84):** an iBuild4you **MCP server / Claude
+Code skill** could automate the ferry *while keeping it on the subscription* — Claude Code (on the Max sub) calls `get_brief` / `update_brief`
+tools that write straight into iBuild4you, killing the manual paste without
+moving cost onto the metered API. Best of both, but it's net-new infrastructure;
+not committed. The copy-paste path is fine to live with indefinitely.
+
+The north star still holds — **a few very visible actions, everything else on a
+sub-menu, organized around the primary loop** — but "fewer manual steps" is not
+worth silently converting free builder reasoning into metered API spend.
 
 ## Suggested phasing (each shippable on its own)
 
@@ -242,8 +259,9 @@ accepts/rejects inline.
 2. **Rename nav → Brief · Conversations · People.** Move the "Next round" card
    to the top of Conversations; extract People from Setup; fold Files into Brief.
 3. **Brief-as-document editor.** Structured view + raw-JSON toggle over
-   `BriefContent`; one "Update brief from conversation" button (in-app Claude);
-   remove the copy-paste round-trip. (Most work — own design pass first.)
+   `BriefContent`. The raw view is the copy-paste target/source (keeps the
+   cost-routing path); add an optional "Update from conversation (uses API)"
+   button alongside, not instead. (Most work — own design pass first.)
 4. **People panel replaces the share modal**; fix the established-maker
    invite-vs-nudge bug; move github_repo out of the send flow.
 5. **Cleanup:** remove dead layout-mockups path; hide empty "additional
@@ -263,8 +281,10 @@ accepts/rejects inline.
    view default + raw-JSON toggle), not per-section click-to-edit. The raw view
    doubles as the Claude interchange format. ✅
 5. **UI philosophy:** a few very visible actions, everything else on a
-   sub-menu, organized around the primary loop. Bias toward **automating the
-   loop and removing the copy-paste JSON** (see "Automating the workflow"). ✅
+   sub-menu, organized around the primary loop. **But the copy-paste JSON ferry
+   STAYS** — it routes builder reasoning onto the Max subscription instead of
+   metered API. Don't automate it away if that means moving cost onto the API
+   (see "Cost model"). ✅
 6. **Additional context:** keep it in the document, hide as a prominent section
    when empty. ✅
 
