@@ -269,6 +269,41 @@ describe('regenerateBriefForProject', () => {
     expect(briefAddCalls).toHaveLength(0)
   })
 
+  it('re-injects a locked decision the model dropped (#71 durability)', async () => {
+    sessionsByProject.p1 = [{ id: 's1', data: () => ({}) }]
+    messagesBySession.s1 = [{ id: 'm1', data: () => ({ role: 'user', content: 'hi' }) }]
+    projectDocs.p1 = { exists: true, data: () => ({ title: 'X' }) }
+    briefsByProject.p1 = [
+      {
+        id: 'brief-1',
+        data: () => ({
+          version: 2,
+          content: {
+            ...validBrief,
+            decisions: [{ topic: 'Stack', decision: 'Next.js, no Vue', locked: true }],
+          },
+        }),
+        ref: { update: mockBriefUpdate },
+      },
+    ]
+    // Model "forgets" the locked decision entirely and returns unrelated ones.
+    mockMessagesCreate.mockResolvedValue(
+      toolUseResponse({ ...validBrief, decisions: [{ topic: 'Payment', decision: 'Stripe' }] }),
+    )
+
+    await regenerateBriefForProject(makeDb(), 'p1')
+
+    expect(mockBriefUpdate).toHaveBeenCalledOnce()
+    const updateArgs = mockBriefUpdate.mock.calls[0] as unknown as [
+      { content: { decisions: unknown[] } },
+    ]
+    const persisted = updateArgs[0]
+    expect(persisted.content.decisions).toEqual([
+      { topic: 'Stack', decision: 'Next.js, no Vue', locked: true },
+      { topic: 'Payment', decision: 'Stripe' },
+    ])
+  })
+
   it('walks multiple sessions and concatenates messages in order', async () => {
     sessionsByProject.p1 = [
       { id: 's1', data: () => ({ created_at: '2026-01-01T00:00:00Z' }) },

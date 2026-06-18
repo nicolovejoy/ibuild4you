@@ -228,6 +228,10 @@ export interface BriefContent {
 export interface BriefDecision {
   topic: string // short label ("Data source", "Ticker selection")
   decision: string // what was decided ("Reddit API for user sentiment")
+  // Locked = a durable constraint (the build's locked convention / do-not-use
+  // list). Survives brief regen verbatim and the agent must reconcile new intake
+  // against it rather than silently overwriting. See lib/api/brief-merge.ts (#71).
+  locked?: boolean
 }
 
 // Wireframe mockup — visual layout the agent can show inline in chat

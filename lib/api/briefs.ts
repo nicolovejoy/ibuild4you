@@ -5,6 +5,7 @@ import {
 } from '@/lib/agent/next-convo-prompt'
 import { BRIEF_MODEL, BRIEF_MAX_TOKENS, BRIEF_TEMPERATURE } from '@/lib/agent/constants'
 import { logAnthropicCall } from '@/lib/observability/anthropic'
+import { reconcileBrief } from '@/lib/api/brief-merge'
 import Anthropic from '@anthropic-ai/sdk'
 
 // Forced tool that the model must call. Using tool use (vs. asking for JSON in
@@ -32,6 +33,11 @@ const UPDATE_BRIEF_TOOL = {
           properties: {
             topic: { type: 'string' },
             decision: { type: 'string' },
+            locked: {
+              type: 'boolean',
+              description:
+                'A locked decision is a durable constraint. Carry it forward verbatim — never drop or reword it.',
+            },
           },
           required: ['topic', 'decision'],
         },
@@ -179,10 +185,16 @@ export async function regenerateBriefForProject(
     additional_context:
       typeof raw.additional_context === 'string' ? raw.additional_context : '',
     decisions: Array.isArray(raw.decisions)
-      ? raw.decisions.filter(
-          (d): d is { topic: string; decision: string } =>
-            !!d && typeof d.topic === 'string' && typeof d.decision === 'string',
-        )
+      ? raw.decisions
+          .filter(
+            (d): d is { topic: string; decision: string; locked?: boolean } =>
+              !!d && typeof d.topic === 'string' && typeof d.decision === 'string',
+          )
+          .map((d) => ({
+            topic: d.topic,
+            decision: d.decision,
+            ...(d.locked === true && { locked: true }),
+          }))
       : [],
     open_risks: Array.isArray(raw.open_risks)
       ? raw.open_risks.filter(
@@ -191,7 +203,11 @@ export async function regenerateBriefForProject(
       : [],
   }
 
-  return upsertBrief(db, projectId, briefContent)
+  // #71: locked decisions are durable — re-inject any the model dropped or
+  // reworded, so a constraint survives regen verbatim across many sessions.
+  const reconciled = reconcileBrief(currentBrief, briefContent)
+
+  return upsertBrief(db, projectId, reconciled)
 }
 
 // Upsert a brief: update existing doc in place (increment version) or create new
