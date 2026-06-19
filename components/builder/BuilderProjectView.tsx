@@ -50,7 +50,7 @@ import { BuilderFilesTab } from './BuilderFilesTab'
 import { getTurnIndicator } from '@/lib/turn-indicator'
 import { TurnBadge } from '@/components/ui/TurnBadge'
 import { BriefSwitcher } from '@/components/brief-switcher'
-import type { Project, Session, BriefContent, WireframeMockup } from '@/lib/types'
+import type { Project, Session, BriefContent } from '@/lib/types'
 
 type TabId = 'sessions' | 'brief' | 'files' | 'setup'
 
@@ -803,7 +803,65 @@ function BriefTab({
       ) : (
         <BriefView content={briefContent!} />
       )}
+
+      {project && <BriefSettings project={project} />}
     </div>
+  )
+}
+
+// Brief-level settings: properties of the brief that aren't its content,
+// conversation config, or people. Today that's the GitHub repo wiring for
+// Loop's "Convert to GitHub issue". A collapsed gear keeps a rarely-touched
+// setting out of the way. The first of the brief→build "connections" (a
+// prototype URL is the likely next member — see #72) — generalize to a typed
+// build_links object once a second field lands.
+function BriefSettings({ project }: { project: Project }) {
+  const [open, setOpen] = useState(false)
+  const [githubRepo, setGithubRepo] = useState(project.github_repo || '')
+  const [saved, setSaved] = useState(false)
+  const updateProject = useUpdateProject()
+
+  useEffect(() => { setGithubRepo(project.github_repo || '') }, [project.github_repo])
+
+  const handleSave = async () => {
+    await updateProject.mutateAsync({
+      project_id: project.id,
+      github_repo: githubRepo.trim() || undefined,
+      last_builder_activity_at: new Date().toISOString(),
+    })
+    setSaved(true)
+    setTimeout(() => setSaved(false), 2000)
+  }
+
+  return (
+    <Card hover={false}>
+      <CardBody>
+        <button onClick={() => setOpen(!open)} className="flex items-center gap-1.5 text-sm font-semibold text-brand-slate uppercase tracking-wide w-full">
+          <Settings className="h-4 w-4" />
+          Brief settings
+          {open ? <ChevronUp className="h-3.5 w-3.5 ml-auto" /> : <ChevronDown className="h-3.5 w-3.5 ml-auto" />}
+        </button>
+        {open && (
+          <div className="mt-4 space-y-2">
+            <label className="text-sm font-medium text-gray-700 block">GitHub repo (optional)</label>
+            <input
+              type="text"
+              value={githubRepo}
+              onChange={(e) => setGithubRepo(e.target.value)}
+              placeholder="owner/name — e.g. nicolovejoy/prntd"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
+            />
+            <p className="text-xs text-gray-400">Where feedback gets filed when you click &quot;Convert to GitHub issue&quot; in the feedback inbox. The server&apos;s GITHUB_TOKEN must have access to this repo.</p>
+            <div className="pt-1">
+              <LoadingButton variant="secondary" size="sm" loading={updateProject.isPending} loadingText="Saving..." onClick={handleSave}>
+                {saved ? 'Saved!' : 'Save'}
+              </LoadingButton>
+              {updateProject.error && <span className="ml-2 text-xs text-red-500">{updateProject.error.message}</span>}
+            </div>
+          </div>
+        )}
+      </CardBody>
+    </Card>
   )
 }
 
@@ -969,9 +1027,10 @@ function NextConversationTab({
       {/* People on this brief — roster + per-person brief_role (3c) */}
       {project.requester_email && <PeoplePanel project={project} onInvite={() => onShare('add')} />}
 
-      {/* Editable setup — shown when active conversation has no maker messages yet */}
+      {/* Agent config — shown when active conversation has no maker messages yet.
+          Once the maker replies, config lives in the dispatch card's Edit details. */}
       {!(activeSession && hasUserMessages) && (
-        <EditableSetup project={project} />
+        <AgentConfigCard project={project} />
       )}
 
       {/* Prep next conversation, re-nudge, or prompt to share */}
@@ -1279,56 +1338,36 @@ function PeoplePanel({ project, onInvite }: { project: Project; onInvite: () => 
   )
 }
 
-function EditableSetup({ project }: { project: Project }) {
-  const [welcomeMessage, setWelcomeMessage] = useState(project.welcome_message || '')
-  const [seedQuestions, setSeedQuestions] = useState<string[]>(project.seed_questions || [])
+// Shared agent-conversation config fields. Controlled/presentational — the only
+// source of this field markup, used by both the pre-conversation config card and
+// the dispatch card's "Edit details" fold (kills the old EditableSetup ⇄
+// PrepNextSession duplication + its second save path). Transient input buffers
+// (newQuestion/newDirective) and the welcome generator live here; persistence is
+// the parent's job. Outbound-copy fields (nudge override) stay in the dispatch
+// card; github_repo lives in Brief settings — neither belongs to agent config.
+function AgentConfigFields({
+  project,
+  welcomeMessage, setWelcomeMessage,
+  sessionMode, setSessionMode,
+  seedQuestions, setSeedQuestions,
+  directives, setDirectives,
+  identity, setIdentity,
+  autoReminders, setAutoReminders,
+}: {
+  project: Project
+  welcomeMessage: string; setWelcomeMessage: (v: string) => void
+  sessionMode: 'discover' | 'converge'; setSessionMode: (v: 'discover' | 'converge') => void
+  seedQuestions: string[]; setSeedQuestions: React.Dispatch<React.SetStateAction<string[]>>
+  directives: string[]; setDirectives: React.Dispatch<React.SetStateAction<string[]>>
+  identity: string; setIdentity: (v: string) => void
+  autoReminders: boolean; setAutoReminders: (v: boolean) => void
+}) {
   const [newQuestion, setNewQuestion] = useState('')
-  const [sessionMode, setSessionMode] = useState<'discover' | 'converge'>(project.session_mode || 'discover')
-  const [directives, setDirectives] = useState<string[]>(project.builder_directives || [])
   const [newDirective, setNewDirective] = useState('')
-  const [mockups, setMockups] = useState<WireframeMockup[]>(project.layout_mockups || [])
-  const [identity, setIdentity] = useState(project.identity || '')
-  const [nudgeMessageOverride, setNudgeMessageOverride] = useState(project.nudge_message || '')
-  const [autoReminders, setAutoReminders] = useState(project.auto_reminders_enabled === true)
-  const [githubRepo, setGithubRepo] = useState(project.github_repo || '')
-  const [saved, setSaved] = useState(false)
-
-  const updateProject = useUpdateProject()
   const generateWelcome = useGenerateWelcome()
 
-  useEffect(() => {
-    setWelcomeMessage(project.welcome_message || '')
-    setSeedQuestions(project.seed_questions || [])
-    setSessionMode(project.session_mode || 'discover')
-    setDirectives(project.builder_directives || [])
-    setMockups(project.layout_mockups || [])
-    setIdentity(project.identity || '')
-    setNudgeMessageOverride(project.nudge_message || '')
-    setAutoReminders(project.auto_reminders_enabled === true)
-    setGithubRepo(project.github_repo || '')
-  }, [project.welcome_message, project.seed_questions, project.session_mode, project.builder_directives, project.layout_mockups, project.identity, project.nudge_message, project.auto_reminders_enabled, project.github_repo])
-
-  const handleSave = async () => {
-    await updateProject.mutateAsync({
-      project_id: project.id,
-      welcome_message: welcomeMessage,
-      seed_questions: seedQuestions,
-      session_mode: sessionMode,
-      builder_directives: directives,
-      layout_mockups: mockups,
-      identity: identity || undefined,
-      nudge_message: nudgeMessageOverride || undefined,
-      auto_reminders_enabled: autoReminders,
-      github_repo: githubRepo.trim() || undefined,
-      last_builder_activity_at: new Date().toISOString(),
-    })
-    setSaved(true)
-    setTimeout(() => setSaved(false), 2000)
-  }
-
-  // Reminder status line (#67): read-only, derived from persisted fields + the
-  // live toggle. Same gating as the cron via nextReminderAt() so it never shows a
-  // phantom send (e.g. after the maker replied, or once the 3-send cap is hit).
+  // Reminder status line (#67): derived from persisted fields + the live toggle.
+  // Same gating as the cron via nextReminderAt() so it never shows a phantom send.
   const reminderNext = nextReminderAt({
     autoRemindersEnabled: autoReminders,
     remindersSentCount: project.reminders_sent_count,
@@ -1358,6 +1397,103 @@ function EditableSetup({ project }: { project: Project }) {
   }
 
   return (
+    <>
+      {/* Mode */}
+      <SessionModeToggle mode={sessionMode} onChange={setSessionMode} />
+
+      {/* Seed questions / directives */}
+      {sessionMode === 'discover' ? (
+        <ListEditor label="Seed questions" description="Questions the agent should weave into the conversation early on." items={seedQuestions} newItem={newQuestion} onNewItemChange={setNewQuestion} onAdd={() => { if (!newQuestion.trim()) return; setSeedQuestions(p => [...p, newQuestion.trim()]); setNewQuestion('') }} onBulkAdd={(bulk) => setSeedQuestions(p => [...p, ...bulk])} onRemove={(i) => setSeedQuestions(p => p.filter((_, idx) => idx !== i))} placeholder="What does a typical day look like for you?" />
+      ) : (
+        <ListEditor label="Builder directives" description="Things the agent should actively drive toward." items={directives} newItem={newDirective} onNewItemChange={setNewDirective} onAdd={() => { if (!newDirective.trim()) return; setDirectives(p => [...p, newDirective.trim()]); setNewDirective('') }} onBulkAdd={(bulk) => setDirectives(p => [...p, ...bulk])} onRemove={(i) => setDirectives(p => p.filter((_, idx) => idx !== i))} placeholder="Get them to pick 1-2 tickers to start with" />
+      )}
+
+      {/* Opening message */}
+      <div>
+        <div className="flex items-center justify-between mb-1.5">
+          <label className="text-sm font-medium text-gray-700">Opening message</label>
+          <LoadingButton variant="ghost" size="sm" loading={generateWelcome.isPending} loadingText="Generating..." onClick={async () => { const r = await generateWelcome.mutateAsync(project.id); setWelcomeMessage(r.welcome_message) }} icon={Sparkles}>
+            {welcomeMessage ? 'Regenerate' : 'Generate'}
+          </LoadingButton>
+        </div>
+        <textarea value={welcomeMessage} onChange={(e) => setWelcomeMessage(e.target.value)} placeholder="The message the agent sends when the maker opens this conversation." rows={3} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy" />
+      </div>
+
+      {/* Auto-reminders */}
+      <label className="flex items-start gap-2 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={autoReminders}
+          onChange={(e) => setAutoReminders(e.target.checked)}
+          className="mt-0.5 h-4 w-4 rounded border-gray-300 text-brand-navy focus:ring-brand-navy"
+        />
+        <div>
+          <div className="text-sm font-medium text-gray-700">Auto-remind the maker if they don&apos;t respond</div>
+          <p className="text-xs text-gray-400">Sends up to 3 reminder emails on a 2 / 5 / 10 day cadence after a new conversation is ready. Stops the moment the maker replies.</p>
+        </div>
+      </label>
+      {autoReminders && (
+        <div className="ml-6 -mt-2 rounded-md bg-gray-50 border border-gray-100 px-3 py-2 text-xs text-gray-600 space-y-0.5">
+          <div>
+            {(project.reminders_sent_count ?? 0)} of 3 reminders sent this round
+            {project.last_reminder_sent_at ? ` · last ${fmtDate(project.last_reminder_sent_at)}` : ''}
+          </div>
+          <div className="text-gray-500">{reminderNextLine}</div>
+        </div>
+      )}
+
+      {/* Agent identity — rarely touched */}
+      <details className="group">
+        <summary className="cursor-pointer text-xs font-medium text-gray-400 hover:text-gray-600 list-none">Advanced</summary>
+        <div className="mt-3">
+          <label className="text-sm font-medium text-gray-700 block mb-1.5">Agent identity (optional)</label>
+          <textarea value={identity} onChange={(e) => setIdentity(e.target.value)} placeholder="Override the default agent persona. Leave blank for standard intake assistant." rows={2} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy" />
+          <p className="text-xs text-gray-400 mt-1">Changes how the agent introduces itself and frames its role.</p>
+        </div>
+      </details>
+    </>
+  )
+}
+
+// Pre-conversation config card (replaces the old EditableSetup). Owns persisted
+// state + an explicit Save; renders the shared AgentConfigFields. Shown only
+// before the active conversation has maker messages (first setup / waiting).
+function AgentConfigCard({ project }: { project: Project }) {
+  const [welcomeMessage, setWelcomeMessage] = useState(project.welcome_message || '')
+  const [seedQuestions, setSeedQuestions] = useState<string[]>(project.seed_questions || [])
+  const [sessionMode, setSessionMode] = useState<'discover' | 'converge'>(project.session_mode || 'discover')
+  const [directives, setDirectives] = useState<string[]>(project.builder_directives || [])
+  const [identity, setIdentity] = useState(project.identity || '')
+  const [autoReminders, setAutoReminders] = useState(project.auto_reminders_enabled === true)
+  const [saved, setSaved] = useState(false)
+
+  const updateProject = useUpdateProject()
+
+  useEffect(() => {
+    setWelcomeMessage(project.welcome_message || '')
+    setSeedQuestions(project.seed_questions || [])
+    setSessionMode(project.session_mode || 'discover')
+    setDirectives(project.builder_directives || [])
+    setIdentity(project.identity || '')
+    setAutoReminders(project.auto_reminders_enabled === true)
+  }, [project.welcome_message, project.seed_questions, project.session_mode, project.builder_directives, project.identity, project.auto_reminders_enabled])
+
+  const handleSave = async () => {
+    await updateProject.mutateAsync({
+      project_id: project.id,
+      welcome_message: welcomeMessage,
+      seed_questions: seedQuestions,
+      session_mode: sessionMode,
+      builder_directives: directives,
+      identity: identity || undefined,
+      auto_reminders_enabled: autoReminders,
+      last_builder_activity_at: new Date().toISOString(),
+    })
+    setSaved(true)
+    setTimeout(() => setSaved(false), 2000)
+  }
+
+  return (
     <Card hover={false}>
       <CardBody>
         <h2 className="text-sm font-semibold text-brand-slate uppercase tracking-wide flex items-center gap-1.5 mb-4">
@@ -1365,79 +1501,15 @@ function EditableSetup({ project }: { project: Project }) {
           Agent setup
         </h2>
         <div className="space-y-5">
-          {/* Opening message */}
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="text-sm font-medium text-gray-700">Opening message</label>
-              <LoadingButton variant="ghost" size="sm" loading={generateWelcome.isPending} loadingText="Generating..." onClick={async () => { const r = await generateWelcome.mutateAsync(project.id); setWelcomeMessage(r.welcome_message) }} icon={Sparkles}>
-                {welcomeMessage ? 'Regenerate' : 'Generate'}
-              </LoadingButton>
-            </div>
-            <textarea value={welcomeMessage} onChange={(e) => setWelcomeMessage(e.target.value)} placeholder="The message the agent sends when the maker opens this conversation." rows={4} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy" />
-          </div>
-
-          {/* Mode */}
-          <SessionModeToggle mode={sessionMode} onChange={setSessionMode} />
-
-          {/* Seed questions / directives */}
-          {sessionMode === 'discover' ? (
-            <ListEditor label="Seed questions" description="Questions the agent should weave into the conversation early on." items={seedQuestions} newItem={newQuestion} onNewItemChange={setNewQuestion} onAdd={() => { if (!newQuestion.trim()) return; setSeedQuestions(p => [...p, newQuestion.trim()]); setNewQuestion('') }} onBulkAdd={(bulk) => setSeedQuestions(p => [...p, ...bulk])} onRemove={(i) => setSeedQuestions(p => p.filter((_, idx) => idx !== i))} placeholder="What does a typical day look like for you?" />
-          ) : (
-            <ListEditor label="Builder directives" description="Things the agent should actively drive toward." items={directives} newItem={newDirective} onNewItemChange={setNewDirective} onAdd={() => { if (!newDirective.trim()) return; setDirectives(p => [...p, newDirective.trim()]); setNewDirective('') }} onBulkAdd={(bulk) => setDirectives(p => [...p, ...bulk])} onRemove={(i) => setDirectives(p => p.filter((_, idx) => idx !== i))} placeholder="Get them to pick 1-2 tickers to start with" />
-          )}
-
-          {/* Agent identity */}
-          <div>
-            <label className="text-sm font-medium text-gray-700 block mb-1.5">Agent identity (optional)</label>
-            <textarea value={identity} onChange={(e) => setIdentity(e.target.value)} placeholder="Override the default agent persona. Leave blank for standard intake assistant." rows={2} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy" />
-            <p className="text-xs text-gray-400 mt-1">Changes how the agent introduces itself and frames its role.</p>
-          </div>
-
-          {/* Nudge override */}
-          <div>
-            <label className="text-sm font-medium text-gray-700 block mb-1.5">Nudge override (optional)</label>
-            <textarea value={nudgeMessageOverride} onChange={(e) => setNudgeMessageOverride(e.target.value)} placeholder="Leave blank to use the default boilerplate nudge. Fill this in to send a specific message verbatim." rows={3} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy" />
-            <p className="text-xs text-gray-400 mt-1">When set, the next nudge uses this text verbatim instead of the default template.</p>
-          </div>
-
-          {/* Auto-reminders */}
-          <label className="flex items-start gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={autoReminders}
-              onChange={(e) => setAutoReminders(e.target.checked)}
-              className="mt-0.5 h-4 w-4 rounded border-gray-300 text-brand-navy focus:ring-brand-navy"
-            />
-            <div>
-              <div className="text-sm font-medium text-gray-700">Auto-remind the maker if they don&apos;t respond</div>
-              <p className="text-xs text-gray-400">Sends up to 3 reminder emails on a 2 / 5 / 10 day cadence after a new conversation is ready. Stops the moment the maker replies.</p>
-            </div>
-          </label>
-
-          {/* Reminder status (#67) — only meaningful when reminders are on */}
-          {autoReminders && (
-            <div className="ml-6 -mt-2 rounded-md bg-gray-50 border border-gray-100 px-3 py-2 text-xs text-gray-600 space-y-0.5">
-              <div>
-                {(project.reminders_sent_count ?? 0)} of 3 reminders sent this round
-                {project.last_reminder_sent_at ? ` · last ${fmtDate(project.last_reminder_sent_at)}` : ''}
-              </div>
-              <div className="text-gray-500">{reminderNextLine}</div>
-            </div>
-          )}
-
-          {/* GitHub repo — destination for "Convert to GitHub issue" in the feedback inbox */}
-          <div>
-            <label className="text-sm font-medium text-gray-700 block mb-1.5">GitHub repo (optional)</label>
-            <input
-              type="text"
-              value={githubRepo}
-              onChange={(e) => setGithubRepo(e.target.value)}
-              placeholder="owner/name — e.g. nicolovejoy/prntd"
-              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
-            />
-            <p className="text-xs text-gray-400 mt-1">Where feedback gets sent when you click &quot;Convert to GitHub issue&quot;. The server&apos;s GITHUB_TOKEN must have access to this repo.</p>
-          </div>
-
+          <AgentConfigFields
+            project={project}
+            welcomeMessage={welcomeMessage} setWelcomeMessage={setWelcomeMessage}
+            sessionMode={sessionMode} setSessionMode={setSessionMode}
+            seedQuestions={seedQuestions} setSeedQuestions={setSeedQuestions}
+            directives={directives} setDirectives={setDirectives}
+            identity={identity} setIdentity={setIdentity}
+            autoReminders={autoReminders} setAutoReminders={setAutoReminders}
+          />
           <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
             <LoadingButton variant="secondary" size="sm" loading={updateProject.isPending} loadingText="Saving..." onClick={handleSave}>
               {saved ? 'Saved!' : 'Save setup'}
@@ -1588,16 +1660,13 @@ function PrepNextSession({ project, projectId, sessionNumber, autoExpand = false
   const [sessionMode, setSessionMode] = useState<'discover' | 'converge'>(project.session_mode || 'discover')
   const [welcomeMessage, setWelcomeMessage] = useState(project.welcome_message || '')
   const [seedQuestions, setSeedQuestions] = useState<string[]>(project.seed_questions || [])
-  const [newQuestion, setNewQuestion] = useState('')
   const [directives, setDirectives] = useState<string[]>(project.builder_directives || [])
-  const [newDirective, setNewDirective] = useState('')
   const [identity, setIdentity] = useState(project.identity || '')
+  const [autoReminders, setAutoReminders] = useState(project.auto_reminders_enabled === true)
   const [nudgeMessageOverride, setNudgeMessageOverride] = useState(project.nudge_message || '')
-  const [nudgeNote, setNudgeNote] = useState('')
   const [result, setResult] = useState<{ sent?: string; copied?: boolean; suppressed?: boolean } | null>(null)
 
   const updateProject = useUpdateProject()
-  const generateWelcome = useGenerateWelcome()
   const createSession = useCreateSession()
   const sendEmail = useSendMakerEmail()
   const generatePrep = useGeneratePrep()
@@ -1627,8 +1696,9 @@ function PrepNextSession({ project, projectId, sessionNumber, autoExpand = false
     setSessionMode(project.session_mode || 'discover')
     setDirectives(project.builder_directives || [])
     setIdentity(project.identity || '')
+    setAutoReminders(project.auto_reminders_enabled === true)
     setNudgeMessageOverride(project.nudge_message || '')
-  }, [project.welcome_message, project.seed_questions, project.session_mode, project.builder_directives, project.identity, project.nudge_message])
+  }, [project.welcome_message, project.seed_questions, project.session_mode, project.builder_directives, project.identity, project.auto_reminders_enabled, project.nudge_message])
 
   // Pre-warm prep once on mount. The route is idempotent (dedupes on a config
   // fingerprint) so this only pays for a Sonnet call when the config/brief
@@ -1646,7 +1716,6 @@ function PrepNextSession({ project, projectId, sessionNumber, autoExpand = false
     : copy.nudge.body({
         projectTitle: project.title,
         shareLink,
-        note: nudgeNote || undefined,
         sessionMode,
       })
 
@@ -1658,6 +1727,7 @@ function PrepNextSession({ project, projectId, sessionNumber, autoExpand = false
       session_mode: sessionMode,
       builder_directives: directives,
       identity: identity || undefined,
+      auto_reminders_enabled: autoReminders,
       nudge_message: nudgeMessageOverride || undefined,
       last_builder_activity_at: new Date().toISOString(),
     })
@@ -1668,7 +1738,7 @@ function PrepNextSession({ project, projectId, sessionNumber, autoExpand = false
 
   const handleCreateAndSend = async () => {
     await saveAndCreate()
-    const r = await sendEmail.mutateAsync({ project_id: projectId, kind: 'nudge', note: nudgeNote || undefined })
+    const r = await sendEmail.mutateAsync({ project_id: projectId, kind: 'nudge' })
     setResult({ sent: r.to, suppressed: r.suppressed })
   }
 
@@ -1759,43 +1829,21 @@ function PrepNextSession({ project, projectId, sessionNumber, autoExpand = false
 
         {expanded && (
           <div className="mt-4 space-y-5 border-t border-gray-100 pt-4">
-            <SessionModeToggle mode={sessionMode} onChange={setSessionMode} />
+            <AgentConfigFields
+              project={project}
+              welcomeMessage={welcomeMessage} setWelcomeMessage={setWelcomeMessage}
+              sessionMode={sessionMode} setSessionMode={setSessionMode}
+              seedQuestions={seedQuestions} setSeedQuestions={setSeedQuestions}
+              directives={directives} setDirectives={setDirectives}
+              identity={identity} setIdentity={setIdentity}
+              autoReminders={autoReminders} setAutoReminders={setAutoReminders}
+            />
 
-            {sessionMode === 'discover' ? (
-              <ListEditor label="Seed questions" description="Questions the agent should weave into the conversation early on." items={seedQuestions} newItem={newQuestion} onNewItemChange={setNewQuestion} onAdd={() => { if (!newQuestion.trim()) return; setSeedQuestions(p => [...p, newQuestion.trim()]); setNewQuestion('') }} onBulkAdd={(bulk) => setSeedQuestions(p => [...p, ...bulk])} onRemove={(i) => setSeedQuestions(p => p.filter((_, idx) => idx !== i))} placeholder="What does a typical day look like for you?" />
-            ) : (
-              <ListEditor label="Builder directives" description="Things the agent should actively drive toward." items={directives} newItem={newDirective} onNewItemChange={setNewDirective} onAdd={() => { if (!newDirective.trim()) return; setDirectives(p => [...p, newDirective.trim()]); setNewDirective('') }} onBulkAdd={(bulk) => setDirectives(p => [...p, ...bulk])} onRemove={(i) => setDirectives(p => p.filter((_, idx) => idx !== i))} placeholder="Get them to pick 1-2 tickers to start with" />
-            )}
-
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="text-sm font-medium text-gray-700">Opening message</label>
-                <LoadingButton variant="ghost" size="sm" loading={generateWelcome.isPending} loadingText="Generating..." onClick={async () => { const r = await generateWelcome.mutateAsync(project.id); setWelcomeMessage(r.welcome_message) }} icon={Sparkles}>
-                  {welcomeMessage ? 'Regenerate' : 'Generate'}
-                </LoadingButton>
-              </div>
-              <textarea value={welcomeMessage} onChange={(e) => setWelcomeMessage(e.target.value)} placeholder="The message the agent sends when the maker opens this conversation." rows={3} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy" />
-            </div>
-
-            <div>
-              <label className="text-sm font-medium text-gray-700 block mb-1.5">Note for {makerEmail} (optional)</label>
-              <textarea value={nudgeNote} onChange={(e) => setNudgeNote(e.target.value)} placeholder="This time we'll narrow down which data sources to use." rows={2} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy" />
-              <p className="text-xs text-gray-400 mt-1">A short hook woven into the nudge. Ignored if you fill in the override below.</p>
-            </div>
-
+            {/* Outbound-copy override — specific to the send, so it stays here */}
             <div>
               <label className="text-sm font-medium text-gray-700 block mb-1.5">Nudge override (optional)</label>
-              <textarea value={nudgeMessageOverride} onChange={(e) => setNudgeMessageOverride(e.target.value)} placeholder="Leave blank to use the default nudge. Fill this in to send a specific message verbatim." rows={3} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy" />
+              <textarea value={nudgeMessageOverride} onChange={(e) => setNudgeMessageOverride(e.target.value)} placeholder="Leave blank to use the AI-written nudge. Fill this in to send a specific message verbatim." rows={3} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy" />
             </div>
-
-            <details className="group">
-              <summary className="cursor-pointer text-xs font-medium text-gray-400 hover:text-gray-600 list-none">Advanced</summary>
-              <div className="mt-3">
-                <label className="text-sm font-medium text-gray-700 block mb-1.5">Agent identity (optional)</label>
-                <textarea value={identity} onChange={(e) => setIdentity(e.target.value)} placeholder="Override the default agent persona. Leave blank for standard intake assistant." rows={2} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy" />
-                <p className="text-xs text-gray-400 mt-1">Changes how the agent introduces itself and frames its role.</p>
-              </div>
-            </details>
           </div>
         )}
       </CardBody>
