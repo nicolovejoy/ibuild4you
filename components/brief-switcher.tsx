@@ -78,10 +78,10 @@ export function BriefSwitcher({
                   className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 flex items-center gap-2"
                 >
                   <BriefBadge id={p.id} size={15} />
-                  <span className="truncate flex-1 text-brand-charcoal">{p.title}</span>
                   {p.viewer_role && (
-                    <RoleGlyph role={viewerBriefRole(p.viewer_role, p.viewer_brief_role)} size={14} />
+                    <RoleGlyph role={viewerBriefRole(p.viewer_role, p.viewer_brief_role)} size={13} />
                   )}
+                  <span className="truncate flex-1 text-brand-charcoal">{p.title}</span>
                   {isCurrent && <Check className="h-4 w-4 text-brand-navy shrink-0" />}
                 </button>
               )
