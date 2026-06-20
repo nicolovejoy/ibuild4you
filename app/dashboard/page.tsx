@@ -18,9 +18,10 @@ import type { Project } from '@/lib/types'
 import { getTurnIndicator } from '@/lib/turn-indicator'
 import { TurnBadge } from '@/components/ui/TurnBadge'
 import { BriefBadge } from '@/components/ui/BriefBadge'
+import { RoleGlyph } from '@/components/ui/RoleGlyph'
 import { briefIdentity } from '@/lib/brief-identity'
 import { copy, formatDisplayName, getMakerShortName } from '@/lib/copy'
-import { briefRoleLabel, briefRoleShort, viewerBriefRole } from '@/lib/roles/display'
+import { viewerBriefRole } from '@/lib/roles/display'
 import { groupBriefs, shouldFlatten, type SectionKey } from '@/lib/dashboard/group-briefs'
 import { getProjectShareLink } from '@/lib/url'
 import { parseNewProjectPayload } from '@/lib/api/import-payload'
@@ -427,24 +428,17 @@ function ProjectList({ isAdmin }: { isAdmin: boolean }) {
             >
               <div className="flex flex-wrap items-center gap-2 mb-1">
                 <BriefBadge id={project.id} showCode size={18} />
-                {project.viewer_role && (() => {
-                  // Read the stored brief_role (#44 Phase 0 threaded it through),
-                  // falling back to the access-tier default — fixes Contributor
-                  // mislabeled as Originator.
-                  const briefRole = viewerBriefRole(project.viewer_role, project.viewer_brief_role)
-                  return (
-                    <span
-                      className={`text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded shrink-0 ${
-                        briefRole === 'originator'
-                          ? 'bg-amber-500 text-white'
-                          : 'bg-brand-navy text-white'
-                      }`}
-                      title={briefRoleShort(briefRole)}
-                    >
-                      {briefRoleLabel(briefRole)}
-                    </span>
-                  )
-                })()}
+                {project.viewer_role && (
+                  // Per-brief role as a studio-family glyph (the mode channel) —
+                  // reads the stored brief_role (#44 Phase 0 threaded it through),
+                  // falling back to the access-tier default. Replaces the old text
+                  // badge: a glyph carries the at-a-glance signal without the
+                  // "Reviewer everywhere" clutter for the operator-of-everything.
+                  <RoleGlyph
+                    role={viewerBriefRole(project.viewer_role, project.viewer_brief_role)}
+                    size={16}
+                  />
+                )}
                 <h3 className="font-medium text-gray-900">{project.title}</h3>
                 {turn && (
                   <TurnBadge turn={turn} className={`text-xs px-2 py-0.5 rounded-full font-medium ${turn.className}`} />

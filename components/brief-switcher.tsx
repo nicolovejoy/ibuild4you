@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation'
 import { ChevronDown, Check } from 'lucide-react'
 import { useProjects } from '@/lib/query/hooks'
 import { BriefBadge } from '@/components/ui/BriefBadge'
+import { RoleGlyph } from '@/components/ui/RoleGlyph'
+import { viewerBriefRole } from '@/lib/roles/display'
 
 // Lets a maker jump between their briefs from inside one, using the per-brief
 // identity chips — so someone juggling several conversations doesn't have to
@@ -77,6 +79,9 @@ export function BriefSwitcher({
                 >
                   <BriefBadge id={p.id} size={15} />
                   <span className="truncate flex-1 text-brand-charcoal">{p.title}</span>
+                  {p.viewer_role && (
+                    <RoleGlyph role={viewerBriefRole(p.viewer_role, p.viewer_brief_role)} size={14} />
+                  )}
                   {isCurrent && <Check className="h-4 w-4 text-brand-navy shrink-0" />}
                 </button>
               )
