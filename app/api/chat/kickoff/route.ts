@@ -3,6 +3,7 @@ import { buildSystemPrompt } from '@/lib/agent/system-prompt'
 import { fetchPrototypeFeedback } from '@/lib/api/prototype-feedback'
 import { AGENT_MODEL, AGENT_MAX_TOKENS, AGENT_TEMPERATURE } from '@/lib/agent/constants'
 import { logAnthropicCall } from '@/lib/observability/anthropic'
+import { accumulateSessionUsage } from '@/lib/observability/session-cost'
 import Anthropic from '@anthropic-ai/sdk'
 import type { BriefContent, BriefRole, WireframeMockup } from '@/lib/types'
 
@@ -271,11 +272,14 @@ export async function POST(request: Request) {
         if (finalMessage.usage) {
           const sessionRef = db.collection('sessions').doc(session_id)
           const currentSession = (await sessionRef.get()).data() || {}
-          const prevInput = (currentSession.token_usage_input as number) || 0
-          const prevOutput = (currentSession.token_usage_output as number) || 0
+          const usage = {
+            input_tokens: finalMessage.usage.input_tokens,
+            output_tokens: finalMessage.usage.output_tokens,
+            cache_read_input_tokens: finalMessage.usage.cache_read_input_tokens ?? 0,
+            cache_creation_input_tokens: finalMessage.usage.cache_creation_input_tokens ?? 0,
+          }
           await sessionRef.update({
-            token_usage_input: prevInput + finalMessage.usage.input_tokens,
-            token_usage_output: prevOutput + finalMessage.usage.output_tokens,
+            ...accumulateSessionUsage(currentSession, usage, AGENT_MODEL),
             model: AGENT_MODEL,
             updated_at: responseTime,
           })
@@ -284,12 +288,7 @@ export async function POST(request: Request) {
             project_id: projectId,
             route: 'chat/kickoff',
             model: AGENT_MODEL,
-            usage: {
-              input_tokens: finalMessage.usage.input_tokens,
-              output_tokens: finalMessage.usage.output_tokens,
-              cache_read_input_tokens: finalMessage.usage.cache_read_input_tokens ?? 0,
-              cache_creation_input_tokens: finalMessage.usage.cache_creation_input_tokens ?? 0,
-            },
+            usage,
             duration_ms: Date.now() - streamStart,
             session_id,
           })

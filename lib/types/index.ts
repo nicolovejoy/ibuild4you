@@ -123,6 +123,10 @@ export interface Session extends BaseEntity {
   model?: string
   token_usage_input?: number
   token_usage_output?: number
+  // Accumulated list-price cost estimate (USD). Computed from full usage incl.
+  // cache tokens, so it stays accurate even though the token totals above are
+  // the uncached remainder. See lib/observability/session-cost.ts.
+  token_cost_usd?: number
 }
 
 // Messages collection — individual messages within a session

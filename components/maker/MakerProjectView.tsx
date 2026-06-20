@@ -31,6 +31,7 @@ import { useStreamingChat } from '@/lib/hooks/useStreamingChat'
 import { useRealtimeMessages } from '@/lib/hooks/useRealtimeMessages'
 import { useEscapeBack } from '@/lib/hooks/useEscapeBack'
 import { copy } from '@/lib/copy'
+import { formatCostUsd } from '@/lib/observability/session-cost'
 import { shouldKickoff } from '@/lib/agent/kickoff'
 import { UserMenu } from '@/components/user-menu'
 import { briefRoleLabel, briefRoleShort, viewerBriefRole } from '@/lib/roles/display'
@@ -668,6 +669,7 @@ function SessionAccordion({
           {session.token_usage_input != null && (
             <span className="text-[10px]">
               {((session.token_usage_input + (session.token_usage_output || 0)) / 1000).toFixed(1)}k tokens
+              {session.token_cost_usd != null && ` · ~${formatCostUsd(session.token_cost_usd)}`}
             </span>
           )}
           {expanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
