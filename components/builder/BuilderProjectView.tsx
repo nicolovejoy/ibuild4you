@@ -41,6 +41,7 @@ import {
 } from '@/lib/query/hooks'
 import { buildNextConvoPrompt } from '@/lib/agent/next-convo-prompt'
 import { copy, getMakerShortName } from '@/lib/copy'
+import { formatCostUsd } from '@/lib/observability/session-cost'
 import { briefRoleLabel, briefRoleShort, viewerBriefRole } from '@/lib/roles/display'
 import { apiFetch } from '@/lib/firebase/api-fetch'
 import { useStreamingChat } from '@/lib/hooks/useStreamingChat'
@@ -372,7 +373,11 @@ function SessionsTab({
               <div className="text-xs text-gray-400 mt-0.5 ml-4">
                 {new Date(session.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                 {session.token_usage_input != null && (
-                  <> &middot; {((session.token_usage_input + (session.token_usage_output || 0)) / 1000).toFixed(1)}k tokens</>
+                  <>
+                    {' '}
+                    &middot; {((session.token_usage_input + (session.token_usage_output || 0)) / 1000).toFixed(1)}k tokens
+                    {session.token_cost_usd != null && <> &middot; ~{formatCostUsd(session.token_cost_usd)}</>}
+                  </>
                 )}
               </div>
             </button>
