@@ -252,10 +252,13 @@ worth silently converting free builder reasoning into metered API spend.
 
 ## Suggested phasing (each shippable on its own)
 
-1. **Kill the duplication.** Delete the "Agent setup" (EditableSetup) card;
-   the dispatch card's Edit details becomes the only config surface. Remove the
-   nudge-note field. Collapse share entry points to one. *(Biggest win, lowest
-   risk — pure deletion + consolidation.)*
+1. **Kill the duplication. ✅ SHIPPED (PR #92, 2026-06-22).** `EditableSetup` →
+   a collapsible `AgentConfigCard` (the single config home, rendered in every
+   dispatch state); identity + github_repo moved into its Advanced fold (github
+   parked here until Phase 4). `PrepNextSession` is now pure dispatch — reads
+   saved config from `project`, no edit fold, nudge-note removed. Cut the
+   "Project ready" + post-import banners; dropped the dead layout-mockups path.
+   Net −98 lines. Preview-verified.
 2. **Rename nav → Brief · Conversations · People.** Move the "Next round" card
    to the top of Conversations; extract People from Setup; fold Files into Brief.
 3. **Brief-as-document editor.** Structured view + raw-JSON toggle over
