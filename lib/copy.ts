@@ -278,6 +278,15 @@ export const copy = {
       term: 'Session',
       short: 'One conversation between you and Sam. You can come back across many.',
     },
+    conversations: {
+      term: 'Conversations',
+      short:
+        'Past conversations, plus the "Next round" card that sends the next one and shapes what Sam opens with.',
+    },
+    people: {
+      term: 'People',
+      short: 'Who’s on this brief — their roles, access links, and passcodes. Invite from here.',
+    },
     setup: {
       term: 'Setup',
       short: 'Context, seed questions, and directives that shape what Sam opens with next.',
