@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { mergeLockedDecisions, reconcileBrief } from '../brief-merge'
+import { mergeLockedDecisions, reconcileBrief, lockedFirst } from '../brief-merge'
 import type { BriefContent, BriefDecision } from '@/lib/types'
 
 // #71 brief↔build reconciliation — locked decisions are durable through regen.
@@ -96,5 +96,25 @@ describe('reconcileBrief', () => {
   it('is a no-op on decisions when prev is null', () => {
     const next: BriefContent = { ...base, decisions: [d('Auth', 'Google')] }
     expect(reconcileBrief(null, next).decisions).toEqual([d('Auth', 'Google')])
+  })
+})
+
+describe('lockedFirst', () => {
+  it('moves locked decisions ahead of unlocked ones', () => {
+    const list = [d('Auth', 'Google'), d('Stack', 'Next.js', true), d('Payments', 'Stripe')]
+    expect(lockedFirst(list)).toEqual([
+      d('Stack', 'Next.js', true),
+      d('Auth', 'Google'),
+      d('Payments', 'Stripe'),
+    ])
+  })
+
+  it('is stable within the locked and unlocked groups', () => {
+    const list = [d('A', '1', true), d('B', '2'), d('C', '3', true), d('D', '4')]
+    expect(lockedFirst(list).map((x) => x.topic)).toEqual(['A', 'C', 'B', 'D'])
+  })
+
+  it('handles undefined', () => {
+    expect(lockedFirst(undefined)).toEqual([])
   })
 })

@@ -47,6 +47,17 @@ export function mergeLockedDecisions(
   return [...lockedPrev.map((d) => ({ ...d, locked: true })), ...fromNext]
 }
 
+// Order decisions with locked ones first so durable constraints read as
+// constraints, not just another bullet (#71 — "surface locked decisions
+// prominently"). Stable within each group. Pure; used by the brief view and the
+// markdown export (the build↔brief copy-paste ferry).
+export function lockedFirst(
+  decisions: BriefDecision[] | undefined,
+): BriefDecision[] {
+  const list = decisions ?? []
+  return [...list.filter((d) => d.locked), ...list.filter((d) => !d.locked)]
+}
+
 // Apply locked-decision durability to a regenerated brief. Pure — returns a new
 // BriefContent; callers persist the result.
 export function reconcileBrief(

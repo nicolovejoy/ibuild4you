@@ -19,6 +19,7 @@ import { nextReminderAt } from '@/lib/api/reminder-cadence'
 import { useEscapeBack } from '@/lib/hooks/useEscapeBack'
 import { useNudgeCopy } from '@/lib/hooks/useNudgeCopy'
 import { getProjectShareLink } from '@/lib/url'
+import { lockedFirst } from '@/lib/api/brief-merge'
 import { Modal } from '@/components/ui/Modal'
 import {
   useProject,
@@ -719,7 +720,16 @@ function BriefTab({
     if (briefContent.constraints) sections.push(`## Constraints`, briefContent.constraints, '')
     if (briefContent.additional_context) sections.push(`## Additional context`, briefContent.additional_context, '')
     if (briefContent.decisions?.length) {
-      sections.push(`## Decisions`, ...briefContent.decisions.map((d) => `- **${d.topic}:** ${d.decision}`), '')
+      // Locked-first, and mark locked ones — the markdown export is the
+      // build↔brief ferry, so the lock must survive the round-trip to an outside
+      // agent (#71), not just show in-app.
+      sections.push(
+        `## Decisions`,
+        ...lockedFirst(briefContent.decisions).map(
+          (d) => `- ${d.locked ? '🔒 ' : ''}**${d.topic}:** ${d.decision}`,
+        ),
+        '',
+      )
     }
     return sections.join('\n')
   }
@@ -822,7 +832,8 @@ function BriefView({ content }: { content: BriefContent }) {
     { label: 'Additional context', value: content.additional_context },
   ]
 
-  const decisions = content.decisions || []
+  // Locked-first so durable constraints lead the Decisions card (#71).
+  const decisions = lockedFirst(content.decisions)
   const openRisks = content.open_risks || []
 
   return (
@@ -859,10 +870,13 @@ function BriefView({ content }: { content: BriefContent }) {
               {decisions.map((d, i) => (
                 <li key={i} className="text-sm">
                   {d.locked && (
-                    <Lock
-                      className="inline h-3.5 w-3.5 mr-1 -mt-0.5 text-brand-slate"
-                      aria-label="Locked decision"
-                    />
+                    <span
+                      className="inline-flex items-center gap-0.5 mr-1.5 px-1 py-0.5 rounded bg-amber-100 text-amber-800 text-[10px] font-semibold uppercase tracking-wide align-middle"
+                      title="Durable constraint — the agent reconciles against it instead of silently overwriting"
+                    >
+                      <Lock className="h-2.5 w-2.5" aria-hidden />
+                      Locked
+                    </span>
                   )}
                   <span className="font-medium text-gray-900">{d.topic}:</span>{' '}
                   <span className="text-gray-700">{d.decision}</span>
