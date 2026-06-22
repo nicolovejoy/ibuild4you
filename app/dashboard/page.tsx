@@ -139,7 +139,7 @@ function NewProjectButton() {
         ...(context.trim() && { context: context.trim() }),
       })
       resetAndClose()
-      router.push(`/projects/${result.slug || result.id}?tab=setup`)
+      router.push(`/projects/${result.slug || result.id}?tab=conversations`)
     } catch {
       // error is available via createProject.error
     }
@@ -156,7 +156,7 @@ function NewProjectButton() {
     try {
       const result = await createProject.mutateAsync(parsed.value)
       resetAndClose()
-      router.push(`/projects/${result.slug || result.id}?tab=setup`)
+      router.push(`/projects/${result.slug || result.id}?tab=conversations`)
     } catch {
       // error is available via createProject.error
     }

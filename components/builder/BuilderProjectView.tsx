@@ -53,9 +53,20 @@ import { BuilderFilesTab } from './BuilderFilesTab'
 import { getTurnIndicator } from '@/lib/turn-indicator'
 import { TurnBadge } from '@/components/ui/TurnBadge'
 import { BriefSwitcher } from '@/components/brief-switcher'
-import type { Project, Session, BriefContent } from '@/lib/types'
+import type { Project, Session, BriefContent, ProjectFile } from '@/lib/types'
 
-type TabId = 'sessions' | 'brief' | 'files' | 'setup'
+// #19 UX-scrub Phase 2: the builder nav is Brief · Conversations · People.
+// "Sessions" + "Setup" + "Files" collapsed — config/dispatch + past chats live
+// under Conversations, the roster under People, attachments fold into Brief.
+type TabId = 'brief' | 'conversations' | 'people'
+
+// Map legacy ?tab= values (sessions/setup/files) so old links/bookmarks land on
+// the right new tab instead of falling through to the default.
+const LEGACY_TAB: Record<string, TabId> = {
+  sessions: 'conversations',
+  setup: 'conversations',
+  files: 'brief',
+}
 
 export function BuilderProjectView({ projectId, userEmail }: { projectId: string; userEmail: string }) {
   const router = useRouter()
@@ -80,16 +91,18 @@ export function BuilderProjectView({ projectId, userEmail }: { projectId: string
   const [editingTitle, setEditingTitle] = useState(false)
   const [titleDraft, setTitleDraft] = useState('')
   // After a next-convo JSON import, hand the builder straight to the next step
-  // (Setup tab, prep section expanded) instead of leaving them on the Brief tab
-  // with no cue (#25). Consumed one-shot by NextConversationTab on mount.
+  // (Conversations → Next round, config expanded) instead of leaving them on the
+  // Brief tab with no cue (#25). Consumed one-shot by ConversationsTab on mount.
   const [justImported, setJustImported] = useState(false)
-  const tabParam = searchParams.get('tab') as TabId | null
-  const defaultTab: TabId = (!project || !project.requester_email) ? 'setup' : 'sessions'
-  const activeTab: TabId = tabParam && ['sessions', 'brief', 'files', 'setup'].includes(tabParam) ? tabParam : defaultTab
+  const rawTab = searchParams.get('tab') || ''
+  const tabParam: TabId | null = (['brief', 'conversations', 'people'].includes(rawTab)
+    ? (rawTab as TabId)
+    : LEGACY_TAB[rawTab]) || null
+  const activeTab: TabId = tabParam ?? 'conversations'
 
   const setTab = (tab: TabId) => {
     const params = new URLSearchParams(searchParams.toString())
-    if (tab === 'sessions') {
+    if (tab === 'conversations') {
       params.delete('tab')
     } else {
       params.set('tab', tab)
@@ -104,10 +117,9 @@ export function BuilderProjectView({ projectId, userEmail }: { projectId: string
 
   // Tab definitions used by both the desktop sidebar and mobile bottom tab bar.
   const tabs: { id: TabId; label: string; shortLabel: string; Icon: typeof MessageSquare; tooltip: string }[] = [
-    { id: 'sessions', label: 'Sessions', shortLabel: 'Sessions', Icon: MessageSquare, tooltip: copy.glossary.session.short },
     { id: 'brief', label: 'Brief', shortLabel: 'Brief', Icon: FileText, tooltip: copy.glossary.brief.short },
-    { id: 'files', label: `Files${projectFiles?.length ? ` (${projectFiles.length})` : ''}`, shortLabel: 'Files', Icon: Upload, tooltip: copy.glossary.files.short },
-    { id: 'setup', label: 'Setup', shortLabel: 'Setup', Icon: Settings, tooltip: copy.glossary.setup.short },
+    { id: 'conversations', label: 'Conversations', shortLabel: 'Convos', Icon: MessageSquare, tooltip: copy.glossary.conversations.short },
+    { id: 'people', label: 'People', shortLabel: 'People', Icon: Users, tooltip: copy.glossary.people.short },
   ]
 
   return (
@@ -235,42 +247,37 @@ export function BuilderProjectView({ projectId, userEmail }: { projectId: string
         </header>
 
         <main className="max-w-4xl mx-auto px-4 py-6">
-          {activeTab === 'sessions' && (
-            <SessionsTab
-              projectId={projectId}
-              slug={project?.slug}
-              userEmail={userEmail}
-              sessions={sessions || []}
-              sessionsLoaded={!!sessions}
-            />
-          )}
           {activeTab === 'brief' && (
             <BriefTab
               projectId={projectId}
               brief={brief}
               project={project}
-              onImported={() => { setJustImported(true); setTab('setup') }}
+              files={projectFiles || []}
+              onImported={() => { setJustImported(true); setTab('conversations') }}
             />
           )}
-          {activeTab === 'files' && (
-            <BuilderFilesTab projectId={projectId} files={projectFiles || []} />
-          )}
-          {activeTab === 'setup' && project && (
-            <NextConversationTab
+          {activeTab === 'conversations' && (
+            <ConversationsTab
               project={project}
               projectId={projectId}
+              slug={project?.slug}
+              userEmail={userEmail}
               sessions={sessions || []}
+              sessionsLoaded={!!sessions}
               activeSession={activeSession || null}
               onShare={openShare}
               justImported={justImported}
               onImportedConsumed={() => setJustImported(false)}
             />
           )}
+          {activeTab === 'people' && (
+            <PeopleTab project={project} onShare={openShare} />
+          )}
         </main>
       </div>
 
       {/* Mobile bottom tab bar */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-slate-900 text-slate-100 border-t border-slate-800 grid grid-cols-4 z-20">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-slate-900 text-slate-100 border-t border-slate-800 grid grid-cols-3 z-20">
         {tabs.map(({ id, shortLabel, Icon }) => (
           <button
             key={id}
@@ -343,8 +350,8 @@ function SessionsTab({
     return (
       <EmptyState
         icon={MessageSquare}
-        title="No sessions yet"
-        description="Create a session in the Setup tab to get started."
+        title="No conversations yet"
+        description="Use the Next round card above to send the first one."
       />
     )
   }
@@ -597,11 +604,13 @@ function BriefTab({
   projectId,
   brief,
   project,
+  files = [],
   onImported,
 }: {
   projectId: string
   brief: { version: number; content: BriefContent } | null | undefined
   project: Project | undefined
+  files?: ProjectFile[]
   onImported?: () => void
 }) {
   const [payloadCopied, setPayloadCopied] = useState(false)
@@ -819,6 +828,16 @@ function BriefTab({
       ) : (
         <BriefView content={briefContent!} />
       )}
+
+      {/* Attachments — Files folded into the Brief (#19 Phase 2). Anything
+          uploaded to the brief that Sam can reference. */}
+      <div className="pt-2">
+        <h3 className="text-sm font-semibold text-brand-slate uppercase tracking-wide mb-2 flex items-center gap-1.5">
+          <Upload className="h-4 w-4" />
+          Attachments{files.length ? ` (${files.length})` : ''}
+        </h3>
+        <BuilderFilesTab projectId={projectId} files={files} />
+      </div>
     </div>
   )
 }
@@ -905,9 +924,97 @@ function BriefView({ content }: { content: BriefContent }) {
   )
 }
 
-// --- Next Conversation Tab ---
+// --- Conversations Tab (#19 Phase 2) ---
+// The "Next round" card (config + dispatch) pinned at the top, with past
+// conversations below. Replaces the old Sessions + Setup tabs.
 
-function NextConversationTab({
+function ConversationsTab({
+  project,
+  projectId,
+  slug,
+  userEmail,
+  sessions,
+  sessionsLoaded,
+  activeSession,
+  onShare,
+  justImported = false,
+  onImportedConsumed,
+}: {
+  project: Project | undefined
+  projectId: string
+  slug?: string
+  userEmail: string
+  sessions: Session[]
+  sessionsLoaded: boolean
+  activeSession: Session | null
+  onShare: (mode?: 'maker' | 'add') => void
+  justImported?: boolean
+  onImportedConsumed?: () => void
+}) {
+  if (!project || !sessionsLoaded) {
+    return <Skeleton className="h-64 w-full rounded-lg" />
+  }
+
+  return (
+    <div className="space-y-8">
+      <NextRound
+        project={project}
+        projectId={projectId}
+        sessions={sessions}
+        activeSession={activeSession}
+        onShare={onShare}
+        justImported={justImported}
+        onImportedConsumed={onImportedConsumed}
+      />
+
+      {sessions.length > 0 && (
+        <div>
+          <h2 className="text-sm font-semibold text-brand-slate uppercase tracking-wide mb-3">
+            Previous conversations
+          </h2>
+          <SessionsTab
+            projectId={projectId}
+            slug={slug}
+            userEmail={userEmail}
+            sessions={sessions}
+            sessionsLoaded={sessionsLoaded}
+          />
+        </div>
+      )}
+    </div>
+  )
+}
+
+// --- People Tab (#19 Phase 2) ---
+// Roster + per-person access, extracted from the old Setup tab.
+
+function PeopleTab({ project, onShare }: { project: Project | undefined; onShare: (mode?: 'maker' | 'add') => void }) {
+  if (!project) return <Skeleton className="h-48 w-full rounded-lg" />
+
+  if (!project.requester_email) {
+    return (
+      <Card hover={false}>
+        <CardBody>
+          <h2 className="text-sm font-semibold text-brand-slate uppercase tracking-wide flex items-center gap-1.5 mb-3">
+            <Users className="h-4 w-4" /> People on this brief
+          </h2>
+          <p className="text-sm text-gray-600 mb-4">
+            No one yet. Invite the person this brief is for — you&apos;ll get a link and passcode to send them.
+          </p>
+          <LoadingButton variant="primary" icon={Share2} onClick={() => onShare('maker')}>
+            Invite someone
+          </LoadingButton>
+        </CardBody>
+      </Card>
+    )
+  }
+
+  return <PeoplePanel project={project} onInvite={() => onShare('add')} />
+}
+
+// --- Next round (config + dispatch) ---
+
+function NextRound({
   project,
   projectId,
   sessions,
@@ -928,8 +1035,8 @@ function NextConversationTab({
   const hasUserMessages = activeMessages?.some((m) => m.role === 'user') ?? false
 
   // Capture the import signal at mount so it survives the parent resetting the
-  // one-shot flag, then clear it. Drives the confirmation banner + auto-expanded
-  // prep section so a JSON import lands the builder on the next step (#25).
+  // one-shot flag, then clear it. Drives the auto-expanded config so a JSON
+  // import lands the builder on the thing to review (#25).
   const [arrivedFromImport] = useState(justImported)
   useEffect(() => {
     if (justImported) onImportedConsumed?.()
@@ -938,9 +1045,7 @@ function NextConversationTab({
 
   return (
     <div className="space-y-6">
-      {/* People on this brief — roster + per-person brief_role (3c). The single
-          access/invite home; the share modal is reached from here or the header. */}
-      {project.requester_email && <PeoplePanel project={project} onInvite={() => onShare('add')} />}
+      <h2 className="text-sm font-semibold text-brand-slate uppercase tracking-wide">Next round</h2>
 
       {/* The one agent-config home (#19 Phase 1) — shown in every state. Opens
           expanded right after a JSON import so the builder lands on it (#25). */}
