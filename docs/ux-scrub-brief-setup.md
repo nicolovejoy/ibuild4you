@@ -259,16 +259,29 @@ worth silently converting free builder reasoning into metered API spend.
    saved config from `project`, no edit fold, nudge-note removed. Cut the
    "Project ready" + post-import banners; dropped the dead layout-mockups path.
    Net −98 lines. Preview-verified.
-2. **Rename nav → Brief · Conversations · People.** Move the "Next round" card
-   to the top of Conversations; extract People from Setup; fold Files into Brief.
+2. **Rename nav → Brief · Conversations · People. ✅ SHIPPED (PR #93, 2026-06-22).**
+   `TabId` → `brief | conversations | people`; legacy `?tab=` values remap.
+   `ConversationsTab` pins a "Next round" block (AgentConfigCard + dispatch) atop
+   the past-conversations list; `PeopleTab` extracts the roster (PeoplePanel +
+   per-member access via the existing MemberInviteReveal). Files fold into Brief
+   as an Attachments strip (`BuilderFilesTab` reused). Dashboard create/import
+   lands on `?tab=conversations`. Preview-verified (9/9 nav checks).
 3. **Brief-as-document editor.** Structured view + raw-JSON toggle over
    `BriefContent`. The raw view is the copy-paste target/source (keeps the
    cost-routing path); add an optional "Update from conversation (uses API)"
-   button alongside, not instead. (Most work — own design pass first.)
+   button alongside, not instead. (Most work — **design pass done, see below;
+   ready to build.**)
 4. **People panel replaces the share modal**; fix the established-maker
-   invite-vs-nudge bug; move github_repo out of the send flow.
-5. **Cleanup:** remove dead layout-mockups path; hide empty "additional
-   context."
+   invite-vs-nudge bug (**✅ bug fixed, PR #94, 2026-06-22** — already-shared
+   maker sees an access-only "Maker access" view, not first-time invite copy);
+   move github_repo out of the send flow (**already parked in AgentConfigCard
+   Advanced since Phase 1**; final "Brief settings" home still TBD). The roster +
+   per-member access already moved to the People tab in Phase 2, so what's left
+   here is mostly the share-modal's *first-invite* form vs the People panel.
+5. **Cleanup:** ~~remove dead layout-mockups path~~ (**not safe solo** — mockups
+   are still wired through the maker view, WireframePreview, and the system
+   prompt; not a dead path. Needs its own scoped removal.); ~~hide empty
+   "additional context"~~ (**already done** — `BriefView` skips falsy sections).
 
 ---
 
@@ -297,8 +310,58 @@ worth silently converting free builder reasoning into metered API spend.
   specifics yet. Working assumption: github_repo → a small "Brief settings"
   sub-menu (out of the send flow); voice sample stays JSON/advanced-only;
   mockups data path deleted. Will confirm when we reach that phase.
-- **Brief editor build details** (phase 3): structured-field components vs a
-  generic schema-driven editor; raw-JSON validation UX; how "Update from
-  conversation" merges vs overwrites manual edits. Own design pass when we get
-  there.
+- **github_repo / voice sample / mockups placement** (Phase 4 tail). Working
+  assumption unchanged: github_repo → a small "Brief settings" sub-menu (it's
+  parked in AgentConfigCard → Advanced today); voice sample stays JSON/advanced
+  only; mockups get their own scoped removal (NOT folded into this scrub — they
+  are still live in the maker view).
+
+---
+
+## Phase 3 design pass (done 2026-06-22 — needs Nico's ✅ to build)
+
+The three open questions, resolved. Recommendation in **bold**; all reversible.
+
+**Q1 — Structured-field components, NOT a generic schema-driven editor.**
+`BriefContent` is small and stable (problem, target_users, features[],
+constraints, additional_context, decisions[], open_risks[]). Hand-built fields
+give non-technical builders the best UX and let us render the locked-decision
+affordance (#71) inline — a generic JSON-schema-form lib is overkill and clunky
+for a fixed 7-field shape. Reuse the existing `ListEditor` for features /
+open_risks; a small `DecisionsEditor` row (topic · decision · 🔒 locked toggle)
+for decisions[]; plain textareas for prose fields.
+
+**Q2 — Two views over ONE document, one Save; validate raw on Save.**
+- Structured view (default): labeled fields + list editors, edited in place,
+  a single "Save" for the whole `BriefContent`.
+- Raw JSON view (toggle): a textarea pre-filled with
+  `JSON.stringify(brief, null, 2)` — this is the ferry target/source (replaces
+  today's blank paste box). On Save: parse + shape-validate; on error keep the
+  text and show an inline message. Toggling structured→raw serializes current
+  edits; raw→structured parses (blocks the toggle with an inline error if the
+  JSON is invalid). Add a tiny `lib/api/brief-json.ts` validator (or reuse the
+  brief-only branch of `parseNextConvoPayload`).
+
+**Q3 — "Update from conversation (uses API)" OVERWRITES, behind a confirm.**
+It's a regen, not a merge. Locked decisions already survive server-side
+(`regenerateBriefForProject`). Manual edits since the last regen would be lost,
+so the button confirms: *"This replaces the current brief with a fresh AI pass.
+Locked decisions are kept. Continue?"* Merge the two existing generate buttons
+into this one clearly-labeled *(uses API)* action; it stays optional, never the
+default (cost model). Keep "Copy next-convo prep" + "Copy markdown".
+
+**Build plan (≈1 PR):**
+- New `components/builder/BriefEditor.tsx` (structured/raw toggle, Save via
+  `useUpdateBrief`); `DecisionsEditor` sub-component; `lib/api/brief-json.ts`
+  validator (TDD this — pure function).
+- Swap the builder Brief tab's read-only `BriefView` for `BriefEditor`. Keep
+  `BriefView` for the maker / `/brief` read-only share page (unify rendering
+  later, not now).
+- The raw-JSON view absorbs today's paste-and-Import box; "Import" becomes
+  "Save" from the raw view.
+
+**Open for Nico:** (1) OK to overwrite-with-confirm for the API update, or do you
+want a real field-level merge? (2) Should locked-decision editing live in the
+structured view, or stay JSON-only to keep it deliberate? Default assumption:
+editable in structured view with the 🔒 toggle.
 ```

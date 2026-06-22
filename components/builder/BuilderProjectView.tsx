@@ -1127,18 +1127,24 @@ function ShareModal({ project, onClose, mode = 'maker' }: { project: Project; on
     void result
   }
 
-  // Show the confirmation (link/passcode/invite) after a successful share in
-  // this modal, or — only in maker mode — when the brief was already shared.
+  // Show the confirmation (link/passcode) after a successful share in this modal,
+  // or — only in maker mode — when the brief was already shared.
   // Add mode always shows the form until the new person is actually invited.
   const showConfirmation = shareProject.isSuccess || (!isAdd && alreadyShared)
+  // The first-time invite message (boilerplate + "Send invitation") belongs ONLY
+  // to a fresh invite. For someone already on the brief who's opening this just to
+  // grab their link/passcode, re-serving the "I'm putting together a brief…" copy
+  // is the wrong tone (#19 Phase 4) — recurring contact is the Next round nudge,
+  // not the invite. So gate the invite block on a fresh share this session.
+  const justInvited = shareProject.isSuccess
   // The person the confirmation refers to: the just-invited person on success,
   // otherwise the stored originator.
-  const sharedEmail = shareProject.isSuccess ? email : project.requester_email || email
+  const sharedEmail = justInvited ? email : project.requester_email || email
 
   const inviteEmailBody = copy.invite.body({ projectTitle: project.title, shareLink, email: sharedEmail, passcode })
 
   return (
-    <Modal isOpen onClose={onClose} title={isAdd ? 'Invite someone to this brief' : 'Share with maker'}>
+    <Modal isOpen onClose={onClose} title={isAdd ? 'Invite someone to this brief' : justInvited ? 'Share with maker' : alreadyShared ? 'Maker access' : 'Share with maker'}>
       {showConfirmation ? (
         <div className="space-y-3">
           <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
@@ -1217,17 +1223,27 @@ function ShareModal({ project, onClose, mode = 'maker' }: { project: Project; on
               <p className="text-xs text-gray-500 mt-1">Share this passcode with the maker so they can sign in</p>
             </div>
           )}
-          <div>
-            <p className="text-xs text-gray-600 mb-1 flex items-center gap-1"><Mail className="h-3.5 w-3.5" /> Invite message</p>
-            <textarea readOnly value={inviteEmailBody} rows={8} className="w-full px-2.5 py-1.5 bg-gray-50 border border-gray-300 rounded-md text-sm text-gray-700 resize-none" />
-            <div className="mt-1 flex items-center gap-4">
-              <SendToMakerButton projectId={project.id} kind="invite" makerEmail={sharedEmail} idleLabel={`Send to ${sharedEmail}`} />
-              <button onClick={async () => { await navigator.clipboard.writeText(inviteEmailBody); setEmailCopied(true); setTimeout(() => setEmailCopied(false), 2000) }} className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand-navy">
-                {emailCopied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
-                {emailCopied ? 'Copied!' : 'Copy message'}
-              </button>
+          {/* First-time invite copy + send — only for a fresh invite (#19 Phase 4).
+              An established maker opening this for their link/passcode sees access
+              only; to contact them again, use the Next round nudge. */}
+          {justInvited ? (
+            <div>
+              <p className="text-xs text-gray-600 mb-1 flex items-center gap-1"><Mail className="h-3.5 w-3.5" /> Invite message</p>
+              <textarea readOnly value={inviteEmailBody} rows={8} className="w-full px-2.5 py-1.5 bg-gray-50 border border-gray-300 rounded-md text-sm text-gray-700 resize-none" />
+              <div className="mt-1 flex items-center gap-4">
+                <SendToMakerButton projectId={project.id} kind="invite" makerEmail={sharedEmail} idleLabel={`Send to ${sharedEmail}`} />
+                <button onClick={async () => { await navigator.clipboard.writeText(inviteEmailBody); setEmailCopied(true); setTimeout(() => setEmailCopied(false), 2000) }} className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand-navy">
+                  {emailCopied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+                  {emailCopied ? 'Copied!' : 'Copy message'}
+                </button>
+              </div>
             </div>
-          </div>
+          ) : (
+            <p className="text-xs text-gray-500">
+              Already on the brief. To reach {project.requester_first_name || 'them'} again, send the next round from{' '}
+              <span className="font-medium text-gray-600">Conversations → Next round</span>.
+            </p>
+          )}
           <div className="flex justify-end">
             <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800">Done</button>
           </div>
