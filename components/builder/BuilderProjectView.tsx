@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import {
   ArrowLeft, MessageSquare, Send, FileText, Sparkles, Plus, X,
   Share2, ChevronDown, ChevronUp, Copy, Check, Mail, RotateCw,
-  Lock, Trash2, Settings, Upload, ClipboardCopy, Users,
+  Lock, Trash2, Settings, Upload, ClipboardCopy, Users, KeyRound,
 } from 'lucide-react'
 import { BuildTimestamp } from '@/components/build-timestamp'
 import { Card, CardBody } from '@/components/ui/Card'
@@ -36,6 +36,7 @@ import {
   useProjectFiles,
   useProjectMembers,
   useSetBriefRole,
+  useRevealMemberPasscode,
   useSendMakerEmail,
   useGeneratePrep,
 } from '@/lib/query/hooks'
@@ -1245,35 +1246,40 @@ function PeoplePanel({ project, onInvite }: { project: Project; onInvite: () => 
           {members?.map((m) => {
             const isConsole = m.role === 'owner' || m.role === 'builder'
             return (
-              <li key={m.id} className="flex items-center justify-between gap-3 py-2">
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-brand-charcoal truncate">{m.display_name}</p>
-                  <p className="text-xs text-gray-500 truncate">{m.email}</p>
+              <li key={m.id} className="py-2">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-brand-charcoal truncate">{m.display_name}</p>
+                    <p className="text-xs text-gray-500 truncate">{m.email}</p>
+                  </div>
+                  {isConsole ? (
+                    <span className="text-xs text-gray-400 shrink-0" title={briefRoleShort('reviewer')}>
+                      {briefRoleLabel('reviewer')}
+                    </span>
+                  ) : (
+                    <select
+                      value={m.brief_role ?? 'originator'}
+                      disabled={setBriefRole.isPending && pendingEmail === m.email}
+                      onChange={async (e) => {
+                        const value = e.target.value
+                        setPendingEmail(m.email)
+                        try {
+                          await setBriefRole.mutateAsync({ email: m.email, brief_role: value })
+                        } finally {
+                          setPendingEmail(null)
+                        }
+                      }}
+                      className="shrink-0 px-2 py-1 border border-gray-300 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-brand-navy"
+                    >
+                      <option value="originator">{briefRoleLabel('originator')}</option>
+                      <option value="contributor">{briefRoleLabel('contributor')}</option>
+                      <option value="reviewer">{briefRoleLabel('reviewer')}</option>
+                    </select>
+                  )}
                 </div>
-                {isConsole ? (
-                  <span className="text-xs text-gray-400 shrink-0" title={briefRoleShort('reviewer')}>
-                    {briefRoleLabel('reviewer')}
-                  </span>
-                ) : (
-                  <select
-                    value={m.brief_role ?? 'originator'}
-                    disabled={setBriefRole.isPending && pendingEmail === m.email}
-                    onChange={async (e) => {
-                      const value = e.target.value
-                      setPendingEmail(m.email)
-                      try {
-                        await setBriefRole.mutateAsync({ email: m.email, brief_role: value })
-                      } finally {
-                        setPendingEmail(null)
-                      }
-                    }}
-                    className="shrink-0 px-2 py-1 border border-gray-300 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-brand-navy"
-                  >
-                    <option value="originator">{briefRoleLabel('originator')}</option>
-                    <option value="contributor">{briefRoleLabel('contributor')}</option>
-                    <option value="reviewer">{briefRoleLabel('reviewer')}</option>
-                  </select>
-                )}
+                {/* Console operators sign in via OAuth — no passcode to reveal.
+                    Chat participants need re-copyable creds (#81). */}
+                {!isConsole && <MemberInviteReveal project={project} memberId={m.id} />}
               </li>
             )
           })}
@@ -1281,6 +1287,71 @@ function PeoplePanel({ project, onInvite }: { project: Project; onInvite: () => 
         {setBriefRole.error && <StatusMessage type="error" message={(setBriefRole.error as Error).message} />}
       </CardBody>
     </Card>
+  )
+}
+
+// Per-member credential re-reveal (#81). The invite link is the same for everyone
+// on the brief; the passcode is what's unique per person — and after the first
+// invite it was unrecoverable, so the operator risked handing a 2nd person the
+// originator's creds. Fetched on demand (a click), never carried in the list.
+function MemberInviteReveal({ project, memberId }: { project: Project; memberId: string }) {
+  const reveal = useRevealMemberPasscode(project.id)
+  const [open, setOpen] = useState(false)
+  const [copied, setCopied] = useState<'link' | 'passcode' | null>(null)
+
+  const link = getProjectShareLink(project.slug, project.id)
+  const passcode = reveal.data?.passcode
+
+  const handleCopy = async (which: 'link' | 'passcode', value: string) => {
+    await navigator.clipboard.writeText(value)
+    setCopied(which)
+    setTimeout(() => setCopied(null), 2000)
+  }
+
+  const toggle = () => {
+    const next = !open
+    setOpen(next)
+    if (next && !reveal.data && !reveal.isPending) reveal.mutate(memberId)
+  }
+
+  return (
+    <div className="mt-1.5">
+      <button
+        onClick={toggle}
+        className="text-xs text-brand-navy hover:underline flex items-center gap-1"
+      >
+        <KeyRound className="h-3 w-3" />
+        {open ? 'Hide sign-in details' : 'Show sign-in details'}
+      </button>
+
+      {open && (
+        <div className="mt-2 space-y-2 rounded-md bg-gray-50 border border-gray-200 p-2.5">
+          <div>
+            <p className="text-[11px] text-gray-500 mb-0.5">Link</p>
+            <div className="flex items-center gap-1.5">
+              <code className="flex-1 min-w-0 truncate px-2 py-1 bg-white border border-gray-300 rounded text-xs text-gray-700">{link}</code>
+              <button onClick={() => handleCopy('link', link)} className="p-1 text-gray-500 hover:text-brand-navy hover:bg-gray-100 rounded shrink-0" title="Copy link">
+                {copied === 'link' ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+              </button>
+            </div>
+          </div>
+          <div>
+            <p className="text-[11px] text-gray-500 mb-0.5 flex items-center gap-1"><Lock className="h-3 w-3" /> Passcode</p>
+            {reveal.isPending && <Skeleton className="h-7 w-28" />}
+            {reveal.error && <StatusMessage type="error" message={(reveal.error as Error).message} />}
+            {passcode && (
+              <div className="flex items-center gap-1.5">
+                <code className="px-2 py-1 bg-white border border-gray-300 rounded text-sm tracking-widest font-mono text-brand-charcoal">{passcode}</code>
+                <button onClick={() => handleCopy('passcode', passcode)} className="p-1 text-gray-500 hover:text-brand-navy hover:bg-gray-100 rounded" title="Copy passcode">
+                  {copied === 'passcode' ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+                </button>
+              </div>
+            )}
+          </div>
+          <p className="text-[11px] text-gray-400">Send this person their own link + passcode so they sign in as themselves.</p>
+        </div>
+      )}
+    </div>
   )
 }
 

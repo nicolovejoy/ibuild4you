@@ -217,6 +217,22 @@ export function useSetBriefRole(projectId: string | undefined) {
   })
 }
 
+// Reveal a single member's sign-in passcode on demand (#81), so the operator can
+// re-send a previously-invited person THEIR OWN creds. A mutation (not a query)
+// because the secret is fetched only on an explicit click, never cached.
+export function useRevealMemberPasscode(projectId: string | undefined) {
+  return useMutation({
+    mutationFn: async (memberId: string) => {
+      const res = await apiFetch(`/api/projects/${projectId}/members/${memberId}/passcode`)
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error || 'Failed to reveal passcode')
+      }
+      return res.json() as Promise<{ passcode: string; email: string }>
+    },
+  })
+}
+
 export function useUpdateProject() {
   const queryClient = useQueryClient()
 
