@@ -50,6 +50,8 @@ import { useStreamingChat } from '@/lib/hooks/useStreamingChat'
 import { useRealtimeMessages } from '@/lib/hooks/useRealtimeMessages'
 import { useQueryClient } from '@tanstack/react-query'
 import { BuilderFilesTab } from './BuilderFilesTab'
+import { BriefEditor } from './BriefEditor'
+import { serializeBriefContent } from '@/lib/api/brief-json'
 import { getTurnIndicator } from '@/lib/turn-indicator'
 import { TurnBadge } from '@/components/ui/TurnBadge'
 import { BriefSwitcher } from '@/components/brief-switcher'
@@ -615,8 +617,10 @@ function BriefTab({
 }) {
   const [payloadCopied, setPayloadCopied] = useState(false)
   const [briefCopied, setBriefCopied] = useState(false)
+  const [jsonCopied, setJsonCopied] = useState(false)
   const [pasteJson, setPasteJson] = useState('')
   const [pasteError, setPasteError] = useState<string | null>(null)
+  const [showGenConfirm, setShowGenConfirm] = useState(false)
   const queryClient = useQueryClient()
   const [generating, setGenerating] = useState(false)
   const [loadingPayload, setLoadingPayload] = useState(false)
@@ -634,6 +638,7 @@ function BriefTab({
         body: JSON.stringify({ project_id: projectId }),
       })
       queryClient.invalidateQueries({ queryKey: ['brief', projectId] })
+      setShowGenConfirm(false)
     } catch (err) {
       console.error('Brief generation failed:', err)
     } finally {
@@ -765,69 +770,91 @@ function BriefTab({
         )}
       </div>
 
-      {/* Generate / Import controls */}
-      <Card hover={false}>
-        <CardBody>
-          <div className="space-y-3">
-            <div className="flex items-center gap-2">
-              <LoadingButton
-                variant="primary"
-                size="sm"
-                loading={loadingPayload}
-                loadingText="Loading..."
-                onClick={handleCopyPayload}
-                icon={ClipboardCopy}
-              >
-                {payloadCopied ? 'Copied!' : 'Copy next-convo prep'}
-              </LoadingButton>
-              <LoadingButton
-                variant="ghost"
-                size="sm"
-                loading={generating}
-                loadingText="Generating..."
-                onClick={handleGenerate}
-                icon={Sparkles}
-              >
-                {hasBrief ? 'Regenerate via API' : 'Generate via API'}
-              </LoadingButton>
-            </div>
-            <p className="text-xs text-gray-500">
-              Copy the next-convo prep, paste into Claude to discuss strategy, then ask for output and paste the JSON below.
-            </p>
-            <div className="space-y-2">
-              <textarea
-                value={pasteJson}
-                onChange={(e) => { setPasteJson(e.target.value); setPasteError(null) }}
-                placeholder='Paste the "next-convo" JSON here (full payload with brief + agent config, or brief-only)...'
-                rows={10}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm font-mono focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
-              />
-              {pasteError && <StatusMessage type="error" message={pasteError} />}
-              <LoadingButton
-                variant="primary"
-                size="sm"
-                loading={updateBrief.isPending}
-                loadingText="Importing..."
-                disabled={!pasteJson.trim()}
-                onClick={handleImportJson}
-                icon={Upload}
-              >
-                Import JSON
-              </LoadingButton>
-            </div>
-          </div>
-        </CardBody>
-      </Card>
+      {/* Ferry controls. The copy-paste round-trip routes builder reasoning onto
+          the Max sub (cost model); the in-app "Update from conversation" is the
+          optional metered-API convenience, never the default. */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <LoadingButton
+          variant="ghost"
+          size="sm"
+          loading={loadingPayload}
+          loadingText="Loading..."
+          onClick={handleCopyPayload}
+          icon={ClipboardCopy}
+        >
+          {payloadCopied ? 'Copied!' : 'Copy next-convo prep'}
+        </LoadingButton>
+        <button
+          onClick={() => setShowGenConfirm(true)}
+          className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand-navy"
+        >
+          <Sparkles className="h-3.5 w-3.5" />
+          Update from conversation (uses API)
+        </button>
+      </div>
 
-      {!hasBrief ? (
-        <EmptyState
-          icon={FileText}
-          title="No brief yet"
-          description="Copy the prompt for Claude and paste the response above, or use Generate via API."
-        />
-      ) : (
-        <BriefView content={briefContent!} />
-      )}
+      <BriefEditor projectId={projectId} content={briefContent} version={brief?.version} />
+
+      {/* Import full payload — demoted escape hatch (#19). Accepts the whole
+          next-convo payload (brief + agent config), the ferry's bulk paste
+          target; the BriefEditor's raw view covers brief-only edits. */}
+      <details className="group">
+        <summary className="cursor-pointer text-xs font-medium text-gray-400 hover:text-gray-600 list-none flex items-center gap-1.5">
+          <Upload className="h-3.5 w-3.5" /> Import full payload (brief + agent config)
+        </summary>
+        <div className="mt-2 space-y-2">
+          <textarea
+            value={pasteJson}
+            onChange={(e) => { setPasteJson(e.target.value); setPasteError(null) }}
+            placeholder='Paste the "next-convo" JSON (full payload with brief + agent config, or brief-only)...'
+            rows={8}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm font-mono focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
+          />
+          {pasteError && <StatusMessage type="error" message={pasteError} />}
+          <LoadingButton
+            variant="secondary"
+            size="sm"
+            loading={updateBrief.isPending}
+            loadingText="Importing..."
+            disabled={!pasteJson.trim()}
+            onClick={handleImportJson}
+            icon={Upload}
+          >
+            Import JSON
+          </LoadingButton>
+        </div>
+      </details>
+
+      {/* Confirm the metered-API regen — it overwrites the brief (locked
+          decisions survive). Offer a copy-first so no manual edit is lost. */}
+      <Modal isOpen={showGenConfirm} onClose={() => { if (!generating) setShowGenConfirm(false) }} title="Update brief from conversation?" size="sm">
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600">
+            This runs a fresh AI pass over the conversation and <span className="font-medium text-gray-900">replaces the current brief</span> (uses metered API). Locked decisions are kept. Any unsaved manual edits to other fields will be overwritten.
+          </p>
+          {hasBrief && (
+            <button
+              onClick={async () => {
+                await navigator.clipboard.writeText(serializeBriefContent(briefContent!))
+                setJsonCopied(true)
+                setTimeout(() => setJsonCopied(false), 2000)
+              }}
+              className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand-navy"
+            >
+              {jsonCopied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+              {jsonCopied ? 'Copied current brief' : 'Copy current brief first (JSON)'}
+            </button>
+          )}
+          <div className="flex justify-end gap-2">
+            <button type="button" onClick={() => setShowGenConfirm(false)} disabled={generating} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 disabled:opacity-50">
+              Cancel
+            </button>
+            <LoadingButton variant="primary" loading={generating} loadingText="Updating…" icon={Sparkles} onClick={handleGenerate}>
+              Update brief
+            </LoadingButton>
+          </div>
+        </div>
+      </Modal>
 
       {/* Attachments — Files folded into the Brief (#19 Phase 2). Anything
           uploaded to the brief that Sam can reference. */}
@@ -838,88 +865,6 @@ function BriefTab({
         </h3>
         <BuilderFilesTab projectId={projectId} files={files} />
       </div>
-    </div>
-  )
-}
-
-function BriefView({ content }: { content: BriefContent }) {
-  const sections = [
-    { label: 'Problem', value: content.problem },
-    { label: 'Target users', value: content.target_users },
-    { label: 'Features', value: content.features?.length > 0 ? content.features : null },
-    { label: 'Constraints', value: content.constraints },
-    { label: 'Additional context', value: content.additional_context },
-  ]
-
-  // Locked-first so durable constraints lead the Decisions card (#71).
-  const decisions = lockedFirst(content.decisions)
-  const openRisks = content.open_risks || []
-
-  return (
-    <div className="space-y-4">
-      {sections.map((section) => {
-        if (!section.value || (Array.isArray(section.value) && section.value.length === 0)) return null
-        return (
-          <Card key={section.label} hover={false}>
-            <CardBody>
-              <h3 className="text-sm font-semibold text-brand-slate uppercase tracking-wide mb-2">
-                {section.label}
-              </h3>
-              {Array.isArray(section.value) ? (
-                <ul className="list-disc list-inside space-y-1">
-                  {section.value.map((item, i) => (
-                    <li key={i} className="text-gray-800 text-sm">{item}</li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="text-gray-800 text-sm leading-relaxed">{section.value}</p>
-              )}
-            </CardBody>
-          </Card>
-        )
-      })}
-
-      {decisions.length > 0 && (
-        <Card hover={false}>
-          <CardBody>
-            <h3 className="text-sm font-semibold text-brand-slate uppercase tracking-wide mb-2">
-              Decisions
-            </h3>
-            <ul className="space-y-2">
-              {decisions.map((d, i) => (
-                <li key={i} className="text-sm">
-                  {d.locked && (
-                    <span
-                      className="inline-flex items-center gap-0.5 mr-1.5 px-1 py-0.5 rounded bg-amber-100 text-amber-800 text-[10px] font-semibold uppercase tracking-wide align-middle"
-                      title="Durable constraint — the agent reconciles against it instead of silently overwriting"
-                    >
-                      <Lock className="h-2.5 w-2.5" aria-hidden />
-                      Locked
-                    </span>
-                  )}
-                  <span className="font-medium text-gray-900">{d.topic}:</span>{' '}
-                  <span className="text-gray-700">{d.decision}</span>
-                </li>
-              ))}
-            </ul>
-          </CardBody>
-        </Card>
-      )}
-
-      {openRisks.length > 0 && (
-        <Card hover={false}>
-          <CardBody>
-            <h3 className="text-sm font-semibold text-brand-slate uppercase tracking-wide mb-2">
-              Open risks
-            </h3>
-            <ul className="list-disc list-inside space-y-1">
-              {openRisks.map((risk, i) => (
-                <li key={i} className="text-gray-800 text-sm">{risk}</li>
-              ))}
-            </ul>
-          </CardBody>
-        </Card>
-      )}
     </div>
   )
 }
