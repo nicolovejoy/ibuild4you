@@ -5,6 +5,7 @@ import { Plus, X, Lock, Code2, LayoutList, Check, Copy, Pencil } from 'lucide-re
 import { Card, CardBody } from '@/components/ui/Card'
 import { LoadingButton } from '@/components/ui/LoadingButton'
 import { StatusMessage } from '@/components/ui/StatusMessage'
+import { Skeleton } from '@/components/ui/Skeleton'
 import { useUpdateBrief } from '@/lib/query/hooks'
 import { parseBriefJson, serializeBriefContent, emptyBrief } from '@/lib/api/brief-json'
 import { lockedFirst } from '@/lib/api/brief-merge'
@@ -27,12 +28,16 @@ export function BriefEditor({
   projectId,
   content,
   version,
+  loading = false,
 }: {
   projectId: string
   content: BriefContent | undefined
   // Bumps when the brief is replaced from outside (save, regen, import) so the
   // editor re-seeds its working copy instead of clobbering the fresh data.
   version: number | undefined
+  // The brief query is still in flight — show a skeleton, not "no brief yet"
+  // (which would mislead while a populated brief loads).
+  loading?: boolean
 }) {
   const base = content && Object.keys(content).length > 0 ? content : emptyBrief()
   const updateBrief = useUpdateBrief()
@@ -134,6 +139,11 @@ export function BriefEditor({
           </div>
           {hasAnyContent(base) ? (
             <BriefReadView content={base} />
+          ) : loading ? (
+            <div className="space-y-2 py-2">
+              <Skeleton className="h-4 w-2/3 rounded" />
+              <Skeleton className="h-4 w-1/2 rounded" />
+            </div>
           ) : (
             <div className="text-center py-8">
               <p className="text-sm text-gray-500 mb-3">No brief details yet.</p>
