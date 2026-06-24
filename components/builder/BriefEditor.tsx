@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Plus, X, Lock, Code2, LayoutList, Check, Copy } from 'lucide-react'
+import { Plus, X, Lock, Code2, LayoutList, Check, Copy, Pencil } from 'lucide-react'
 import { Card, CardBody } from '@/components/ui/Card'
 import { LoadingButton } from '@/components/ui/LoadingButton'
 import { StatusMessage } from '@/components/ui/StatusMessage'
@@ -10,13 +10,18 @@ import { parseBriefJson, serializeBriefContent, emptyBrief } from '@/lib/api/bri
 import { lockedFirst } from '@/lib/api/brief-merge'
 import type { BriefContent, BriefDecision } from '@/lib/types'
 
-// Brief-as-document editor (#19 Phase 3). One BriefContent document, two views
-// over the same data: a structured form (default, safe for non-technical
-// builders) and a raw-JSON view (the cost-routing ferry's paste target/source).
-// One Save for the whole document. Replaces the old read-only BriefView in the
-// builder Brief tab.
+// Brief-as-document editor (#19 Phase 3). Read-first: the brief renders as a
+// calm document by default; "Edit brief" enters an explicit edit mode with two
+// views over one BriefContent — a structured form and a raw-JSON view (the
+// cost-routing ferry's paste target/source) — and Save/Cancel return to the
+// read view. One Save for the whole document.
 
-type View = 'structured' | 'raw'
+type EditView = 'structured' | 'raw'
+
+const hasAnyContent = (b: BriefContent): boolean =>
+  !!(b.problem || b.target_users || b.constraints || b.additional_context ||
+    (b.features && b.features.length) || (b.decisions && b.decisions.length) ||
+    (b.open_risks && b.open_risks.length))
 
 export function BriefEditor({
   projectId,
@@ -32,31 +37,50 @@ export function BriefEditor({
   const base = content && Object.keys(content).length > 0 ? content : emptyBrief()
   const updateBrief = useUpdateBrief()
 
-  const [view, setView] = useState<View>('structured')
+  // Read-first: the brief renders as a calm document by default; editing is an
+  // explicit mode you enter and leave (Nico's feedback — the always-on form was
+  // the clunk). 'view' = read; 'edit' = the structured/raw editor.
+  const [mode, setMode] = useState<'view' | 'edit'>('view')
+  const [editView, setEditView] = useState<EditView>('structured')
   const [draft, setDraft] = useState<BriefContent>(base)
   const [rawText, setRawText] = useState<string>(() => serializeBriefContent(base))
   const [error, setError] = useState<string | null>(null)
-  const [saved, setSaved] = useState(false)
   const [copied, setCopied] = useState(false)
 
   // Re-seed both working copies whenever the underlying brief changes (version
-  // bump). Keeps manual edits while you're working, adopts external updates.
+  // bump) and drop back to read mode — an external update (regen/import) lands
+  // you on the fresh document, not a stale edit form.
   useEffect(() => {
     setDraft(base)
     setRawText(serializeBriefContent(base))
     setError(null)
+    setMode('view')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [version])
 
-  const switchTo = (next: View) => {
-    if (next === view) return
+  const enterEdit = () => {
+    setDraft(base)
+    setRawText(serializeBriefContent(base))
+    setError(null)
+    setEditView('structured')
+    setMode('edit')
+  }
+
+  const cancelEdit = () => {
+    // Discard the working copy and return to the read view.
+    setDraft(base)
+    setRawText(serializeBriefContent(base))
+    setError(null)
+    setMode('view')
+  }
+
+  const switchTo = (next: EditView) => {
+    if (next === editView) return
     if (next === 'raw') {
-      // Serialize current structured edits into the raw view.
       setRawText(serializeBriefContent(draft))
       setError(null)
-      setView('raw')
+      setEditView('raw')
     } else {
-      // Parse raw edits back into the structured form; block on invalid JSON.
       const r = parseBriefJson(rawText)
       if (!r.ok) {
         setError(r.error)
@@ -64,13 +88,13 @@ export function BriefEditor({
       }
       setDraft(r.value)
       setError(null)
-      setView('structured')
+      setEditView('structured')
     }
   }
 
   const handleSave = async () => {
     let toSave: BriefContent
-    if (view === 'raw') {
+    if (editView === 'raw') {
       const r = parseBriefJson(rawText)
       if (!r.ok) {
         setError(r.error)
@@ -83,33 +107,61 @@ export function BriefEditor({
     }
     setError(null)
     await updateBrief.mutateAsync({ project_id: projectId, content: toSave })
-    setSaved(true)
-    setTimeout(() => setSaved(false), 2000)
+    setMode('view') // saved — back to the read view
   }
 
   const copyRaw = async () => {
     await navigator.clipboard.writeText(
-      view === 'raw' ? rawText : serializeBriefContent(draft),
+      editView === 'raw' ? rawText : serializeBriefContent(draft),
     )
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }
 
+  // --- Read view (default) ---
+  if (mode === 'view') {
+    return (
+      <Card hover={false}>
+        <CardBody>
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs font-semibold text-brand-slate uppercase tracking-wide">Brief</span>
+            <button
+              onClick={enterEdit}
+              className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand-navy"
+            >
+              <Pencil className="h-3.5 w-3.5" /> Edit brief
+            </button>
+          </div>
+          {hasAnyContent(base) ? (
+            <BriefReadView content={base} />
+          ) : (
+            <div className="text-center py-8">
+              <p className="text-sm text-gray-500 mb-3">No brief details yet.</p>
+              <LoadingButton variant="secondary" size="sm" icon={Pencil} onClick={enterEdit}>
+                Add brief details
+              </LoadingButton>
+            </div>
+          )}
+        </CardBody>
+      </Card>
+    )
+  }
+
+  // --- Edit mode ---
   return (
     <Card hover={false}>
       <CardBody>
         <div className="flex items-center justify-between mb-4">
-          {/* View toggle */}
           <div className="inline-flex rounded-md border border-gray-200 p-0.5 text-xs">
             <button
               onClick={() => switchTo('structured')}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded ${view === 'structured' ? 'bg-brand-navy text-white' : 'text-gray-600 hover:bg-gray-100'}`}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded ${editView === 'structured' ? 'bg-brand-navy text-white' : 'text-gray-600 hover:bg-gray-100'}`}
             >
               <LayoutList className="h-3.5 w-3.5" /> Structured
             </button>
             <button
               onClick={() => switchTo('raw')}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded ${view === 'raw' ? 'bg-brand-navy text-white' : 'text-gray-600 hover:bg-gray-100'}`}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded ${editView === 'raw' ? 'bg-brand-navy text-white' : 'text-gray-600 hover:bg-gray-100'}`}
             >
               <Code2 className="h-3.5 w-3.5" /> Raw JSON
             </button>
@@ -124,7 +176,7 @@ export function BriefEditor({
           </button>
         </div>
 
-        {view === 'structured' ? (
+        {editView === 'structured' ? (
           <StructuredEditor draft={draft} onChange={setDraft} />
         ) : (
           <textarea
@@ -149,12 +201,86 @@ export function BriefEditor({
             loadingText="Saving…"
             onClick={handleSave}
           >
-            {saved ? 'Saved!' : 'Save brief'}
+            Save brief
           </LoadingButton>
+          <button
+            onClick={cancelEdit}
+            disabled={updateBrief.isPending}
+            className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-800 disabled:opacity-40"
+          >
+            <X className="h-3.5 w-3.5" /> Cancel
+          </button>
           {updateBrief.error && <span className="text-xs text-red-500">{updateBrief.error.message}</span>}
         </div>
       </CardBody>
     </Card>
+  )
+}
+
+// --- Read view: the brief as a calm document (empty sections hidden) ---
+
+function BriefReadView({ content }: { content: BriefContent }) {
+  const prose = [
+    { label: 'Problem', value: content.problem },
+    { label: 'Target users', value: content.target_users },
+    { label: 'Constraints', value: content.constraints },
+    { label: 'Additional context', value: content.additional_context },
+  ].filter((s) => s.value)
+  const features = content.features || []
+  const decisions = lockedFirst(content.decisions)
+  const openRisks = content.open_risks || []
+
+  return (
+    <div className="space-y-4 mt-2">
+      {prose.map((s) => (
+        <Section key={s.label} label={s.label}>
+          <p className="text-gray-800 text-sm leading-relaxed whitespace-pre-wrap">{s.value}</p>
+        </Section>
+      ))}
+      {features.length > 0 && (
+        <Section label="Features">
+          <ul className="list-disc list-inside space-y-1">
+            {features.map((f, i) => <li key={i} className="text-gray-800 text-sm">{f}</li>)}
+          </ul>
+        </Section>
+      )}
+      {decisions.length > 0 && (
+        <Section label="Decisions">
+          <ul className="space-y-2">
+            {decisions.map((d, i) => (
+              <li key={i} className="text-sm">
+                {d.locked && (
+                  <span
+                    className="inline-flex items-center gap-0.5 mr-1.5 px-1 py-0.5 rounded bg-amber-100 text-amber-800 text-[10px] font-semibold uppercase tracking-wide align-middle"
+                    title="Durable constraint — the agent reconciles against it instead of silently overwriting"
+                  >
+                    <Lock className="h-2.5 w-2.5" aria-hidden /> Locked
+                  </span>
+                )}
+                <span className="font-medium text-gray-900">{d.topic}:</span>{' '}
+                <span className="text-gray-700">{d.decision}</span>
+              </li>
+            ))}
+          </ul>
+        </Section>
+      )}
+      {openRisks.length > 0 && (
+        <Section label="Open risks">
+          <ul className="list-disc list-inside space-y-1">
+            {openRisks.map((r, i) => <li key={i} className="text-gray-800 text-sm">{r}</li>)}
+          </ul>
+        </Section>
+      )}
+    </div>
+  )
+}
+
+function Section({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <h3 className="text-xs font-semibold text-brand-slate uppercase tracking-wide mb-1.5">{label}</h3>
+      {children}
+    </div>
   )
 }
 
