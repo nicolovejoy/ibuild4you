@@ -128,8 +128,7 @@ export function BriefEditor({
     return (
       <Card hover={false}>
         <CardBody>
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-xs font-semibold text-brand-slate uppercase tracking-wide">Brief</span>
+          <div className="flex justify-end mb-1">
             <button
               onClick={enterEdit}
               className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand-navy"
