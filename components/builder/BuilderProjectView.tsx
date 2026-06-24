@@ -75,7 +75,7 @@ export function BuilderProjectView({ projectId, userEmail }: { projectId: string
   const searchParams = useSearchParams()
   const { data: project, isLoading: projectLoading } = useProject(projectId)
   const { data: sessions } = useSessions(projectId)
-  const { data: brief } = useBrief(projectId)
+  const { data: brief, isLoading: briefLoading } = useBrief(projectId)
   const { data: projectFiles } = useProjectFiles(projectId)
 
   useEscapeBack('/dashboard')
@@ -253,6 +253,7 @@ export function BuilderProjectView({ projectId, userEmail }: { projectId: string
             <BriefTab
               projectId={projectId}
               brief={brief}
+              briefLoading={briefLoading}
               project={project}
               files={projectFiles || []}
               onImported={() => { setJustImported(true); setTab('conversations') }}
@@ -605,12 +606,14 @@ function ConfigUsed({ session }: { session: Session }) {
 function BriefTab({
   projectId,
   brief,
+  briefLoading = false,
   project,
   files = [],
   onImported,
 }: {
   projectId: string
   brief: { version: number; content: BriefContent } | null | undefined
+  briefLoading?: boolean
   project: Project | undefined
   files?: ProjectFile[]
   onImported?: () => void
@@ -793,7 +796,7 @@ function BriefTab({
         </button>
       </div>
 
-      <BriefEditor projectId={projectId} content={briefContent} version={brief?.version} />
+      <BriefEditor projectId={projectId} content={briefContent} version={brief?.version} loading={briefLoading} />
 
       {/* Import full payload — demoted escape hatch (#19). Accepts the whole
           next-convo payload (brief + agent config), the ferry's bulk paste
