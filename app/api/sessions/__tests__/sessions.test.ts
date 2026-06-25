@@ -44,8 +44,10 @@ let mockProjectExists = true
 let mockActiveSessionDocs: { ref: { id: string } }[] = []
 
 // --- Mock "does any session already exist" query (#70 first-session check) ---
-// empty === true means this is the project's first session.
+// empty === true means this is the project's first session. size feeds the
+// denormalized session_count (#21): the new session's number = size + 1.
 let mockExistingSessionsEmpty = true
+let mockExistingSessionsCount = 0
 
 // --- Mock sessions list (for GET) ---
 let mockSessionDocs: { id: string; data: () => Record<string, unknown> }[] = []
@@ -54,13 +56,11 @@ let mockSessionDocs: { id: string; data: () => Record<string, unknown> }[] = []
 const mockGet = vi.fn()
 const mockOrderBy = vi.fn(() => ({ get: mockGet }))
 const mockWhere2 = vi.fn(() => ({ get: vi.fn(async () => ({ docs: mockActiveSessionDocs })) }))
-const mockLimit = vi.fn(() => ({
-  get: vi.fn(async () => ({ empty: mockExistingSessionsEmpty })),
-}))
 const mockWhere = vi.fn(() => ({
   where: mockWhere2,
   orderBy: mockOrderBy,
-  limit: mockLimit,
+  // Existence + count query (#70 first-session, #21 session_count).
+  get: vi.fn(async () => ({ empty: mockExistingSessionsEmpty, size: mockExistingSessionsCount })),
 }))
 
 const mockDoc = vi.fn((id?: string) => ({
@@ -158,6 +158,7 @@ describe('POST /api/sessions', () => {
     }
     mockActiveSessionDocs = []
     mockExistingSessionsEmpty = true // default: this is the project's first session
+    mockExistingSessionsCount = 0
   })
 
   // --- Validation ---
@@ -285,6 +286,17 @@ describe('POST /api/sessions', () => {
     const projectUpdate = batchUpdates.find((u) => 'latest_session_created_at' in u.data)
     expect(projectUpdate).toBeDefined()
     expect(typeof projectUpdate!.data.latest_session_created_at).toBe('string')
+  })
+
+  it('denormalizes session_count onto the project (#21: existing count + 1)', async () => {
+    mockExistingSessionsEmpty = false
+    mockExistingSessionsCount = 2 // two prior conversations → this one is #3
+
+    await POST(makePostRequest({ project_id: 'proj1' }))
+
+    const projectUpdate = batchUpdates.find((u) => 'session_count' in u.data)
+    expect(projectUpdate).toBeDefined()
+    expect(projectUpdate!.data.session_count).toBe(3)
   })
 
   it('commits all operations in a single batch', async () => {

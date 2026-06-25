@@ -994,15 +994,25 @@ function NextRound({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // When the maker owes a turn, the "Waiting on …" card is the single most
+  // important thing here — pin it to the top, above the (collapsed) Agent setup
+  // card (#21). Other states keep Agent setup first.
+  const waitingOnMaker = !!project.requester_email && !!activeSession && !hasUserMessages
+
   return (
     <div className="space-y-6">
       <h2 className="text-sm font-semibold text-brand-slate uppercase tracking-wide">Next round</h2>
+
+      {waitingOnMaker && (
+        <RenudgeCard project={project} projectId={projectId} sessionNumber={sessions.length} />
+      )}
 
       {/* The one agent-config home (#19 Phase 1) — shown in every state. Opens
           expanded right after a JSON import so the builder lands on it (#25). */}
       <AgentConfigCard project={project} defaultExpanded={arrivedFromImport} />
 
-      {/* Dispatch: invite (no maker yet), re-nudge (waiting), or prep next round */}
+      {/* Dispatch: invite (no maker yet) or prep next round. The waiting/re-nudge
+          state is rendered above, ahead of Agent setup. */}
       {!project.requester_email ? (
         <Card hover={false}>
           <CardBody>
@@ -1018,9 +1028,7 @@ function NextRound({
             </LoadingButton>
           </CardBody>
         </Card>
-      ) : activeSession && !hasUserMessages ? (
-        <RenudgeCard project={project} projectId={projectId} />
-      ) : (
+      ) : waitingOnMaker ? null : (
         <PrepNextSession
           project={project}
           projectId={projectId}
@@ -1453,6 +1461,7 @@ function AgentConfigCard({ project, defaultExpanded = false }: { project: Projec
   const [newDirective, setNewDirective] = useState('')
   const [identity, setIdentity] = useState(project.identity || '')
   const [nudgeMessageOverride, setNudgeMessageOverride] = useState(project.nudge_message || '')
+  const [voiceSample, setVoiceSample] = useState(project.voice_sample || '')
   const [autoReminders, setAutoReminders] = useState(project.auto_reminders_enabled === true)
   const [githubRepo, setGithubRepo] = useState(project.github_repo || '')
   const [saved, setSaved] = useState(false)
@@ -1473,9 +1482,10 @@ function AgentConfigCard({ project, defaultExpanded = false }: { project: Projec
     setDirectives(project.builder_directives || [])
     setIdentity(project.identity || '')
     setNudgeMessageOverride(project.nudge_message || '')
+    setVoiceSample(project.voice_sample || '')
     setAutoReminders(project.auto_reminders_enabled === true)
     setGithubRepo(project.github_repo || '')
-  }, [project.welcome_message, project.seed_questions, project.session_mode, project.builder_directives, project.identity, project.nudge_message, project.auto_reminders_enabled, project.github_repo])
+  }, [project.welcome_message, project.seed_questions, project.session_mode, project.builder_directives, project.identity, project.nudge_message, project.voice_sample, project.auto_reminders_enabled, project.github_repo])
 
   const handleSave = async () => {
     await updateProject.mutateAsync({
@@ -1486,6 +1496,7 @@ function AgentConfigCard({ project, defaultExpanded = false }: { project: Projec
       builder_directives: directives,
       identity: identity || undefined,
       nudge_message: nudgeMessageOverride || undefined,
+      voice_sample: voiceSample || undefined,
       auto_reminders_enabled: autoReminders,
       github_repo: githubRepo.trim() || undefined,
       last_builder_activity_at: new Date().toISOString(),
@@ -1621,6 +1632,11 @@ function AgentConfigCard({ project, defaultExpanded = false }: { project: Projec
                   className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
                 />
                 <p className="text-xs text-gray-400 mt-1">Where feedback gets sent when you click &quot;Convert to GitHub issue&quot;. The server&apos;s GITHUB_TOKEN must have access to this repo.</p>
+              </div>
+              <div>
+                <label className="text-sm font-medium text-gray-700 block mb-1.5">Voice sample (optional)</label>
+                <textarea value={voiceSample} onChange={(e) => setVoiceSample(e.target.value)} placeholder="One paragraph showing how you'd text this person by hand." rows={3} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy" />
+                <p className="text-xs text-gray-400 mt-1">Anchors the AI-drafted nudge to your voice. Ignored when a nudge override is set.</p>
               </div>
               {isAdmin && (
                 <div className="pt-4 border-t border-red-100">
@@ -1800,11 +1816,15 @@ function SendToMakerButton({
   )
 }
 
-function RenudgeCard({ project, projectId }: { project: Project; projectId: string }) {
+function RenudgeCard({ project, projectId, sessionNumber }: { project: Project; projectId: string; sessionNumber?: number }) {
   const { copied, copyNudge } = useNudgeCopy(projectId)
 
   const shareLink = getProjectShareLink(project.slug, projectId)
-  const reminderMessage = copy.nudge.reminder({ projectTitle: project.title, shareLink })
+  const reminderMessage = copy.nudge.reminder({
+    firstName: project.requester_first_name || null,
+    sessionNumber: sessionNumber ?? null,
+    shareLink,
+  })
   const makerName = getMakerShortName(project.requester_first_name, project.requester_email)
 
   return (

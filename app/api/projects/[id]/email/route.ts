@@ -99,7 +99,11 @@ export async function POST(
         })
   } else {
     subject = copy.email.subject.reminder(projectTitle)
-    text = copy.nudge.reminder({ projectTitle, shareLink })
+    text = copy.nudge.reminder({
+      firstName: (project.requester_first_name as string | undefined) || null,
+      sessionNumber: (project.session_count as number | undefined) ?? null,
+      shareLink,
+    })
   }
 
   // On preview/dev, don't email real makers while testing. Only actually send to
