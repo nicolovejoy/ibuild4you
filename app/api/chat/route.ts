@@ -54,18 +54,26 @@ function buildAttachmentNote(dropped: DroppedAttachment[]): string {
 // catch and return a JSON envelope. Errors during streaming are handled
 // separately inside the ReadableStream (chat_stream_error).
 export async function POST(request: Request) {
+  // handleChat fills this in as it resolves the request, so a top-level throw is
+  // traceable to the session/brief (the stream path already logs rich context).
+  const ctx: { session_id?: string; project_id?: string } = {}
   try {
-    return await handleChat(request)
+    return await handleChat(request, ctx)
   } catch (err) {
     console.error('chat_request_error', {
       message: err instanceof Error ? err.message : String(err),
       stack: err instanceof Error ? err.stack : undefined,
+      session_id: ctx.session_id,
+      project_id: ctx.project_id,
     })
     return jsonError('Something went wrong. Please try again.', 500)
   }
 }
 
-async function handleChat(request: Request): Promise<Response> {
+async function handleChat(
+  request: Request,
+  ctx: { session_id?: string; project_id?: string } = {}
+): Promise<Response> {
   const auth = await getAuthenticatedUser(request)
   if (auth.error) return auth.error
 
@@ -76,6 +84,7 @@ async function handleChat(request: Request): Promise<Response> {
     return jsonError('Invalid JSON body', 400)
   }
   const { session_id, content, file_ids } = body
+  ctx.session_id = session_id
 
   if (!session_id || (!content?.trim() && (!file_ids || file_ids.length === 0))) {
     return jsonError('session_id and content (or file_ids) are required', 400)
@@ -90,6 +99,7 @@ async function handleChat(request: Request): Promise<Response> {
   }
 
   const projectId = sessionDoc.data()?.project_id
+  ctx.project_id = projectId
   const projectDoc = await db.collection('projects').doc(projectId).get()
   const projectData = projectDoc.data() || {}
 

@@ -232,9 +232,12 @@ describe('POST /api/chat', () => {
     // Body must be valid JSON the client can parse off res.json().
     const data = await res.json()
     expect(data.error).toBeTruthy()
-    // And the failure is logged with a diagnosable tag.
+    // And the failure is logged with a diagnosable tag + request context so a
+    // top-level throw is traceable to the session/brief (item 11 tail).
     expect(errSpy).toHaveBeenCalledWith('chat_request_error', expect.objectContaining({
       message: 'firestore unavailable',
+      session_id: 's1',
+      project_id: 'proj-1',
     }))
     errSpy.mockRestore()
   })
