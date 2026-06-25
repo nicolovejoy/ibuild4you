@@ -5,9 +5,9 @@ import { useApproval } from '@/lib/hooks/useApproval'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { Plus, FolderOpen, Share2, Copy, Check, Mail, Trash2, Settings, ChevronRight, ChevronDown, Archive, ArchiveRestore } from 'lucide-react'
+import { Plus, FolderOpen, Share2, Copy, Check, Mail, Settings, ChevronRight, ChevronDown, Archive, ArchiveRestore } from 'lucide-react'
 import { SiteHeader } from '@/components/site-header'
-import { useProjects, useCreateProject, useShareProject, useDeleteProject, useCurrentUser, useArchiveProject } from '@/lib/query/hooks'
+import { useProjects, useCreateProject, useShareProject, useCurrentUser, useArchiveProject } from '@/lib/query/hooks'
 import { LoadingButton } from '@/components/ui/LoadingButton'
 import { Card, CardBody } from '@/components/ui/Card'
 import { EmptyState } from '@/components/ui/EmptyState'
@@ -391,7 +391,6 @@ function ProjectList({ isAdmin }: { isAdmin: boolean }) {
   const router = useRouter()
   const archiveProject = useArchiveProject()
   const [sharingProject, setSharingProject] = useState<Project | null>(null)
-  const [deletingProject, setDeletingProject] = useState<Project | null>(null)
 
   if (isLoading) {
     return (
@@ -500,28 +499,16 @@ function ProjectList({ isAdmin }: { isAdmin: boolean }) {
                 {project.viewer_archived ? <ArchiveRestore className="h-4 w-4" /> : <Archive className="h-4 w-4" />}
               </button>
               {isAdmin && (
-                <>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      setSharingProject(project)
-                    }}
-                    className="p-1.5 text-gray-400 hover:text-brand-navy hover:bg-gray-100 rounded"
-                    title="Share with someone"
-                  >
-                    <Share2 className="h-4 w-4" />
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      setDeletingProject(project)
-                    }}
-                    className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded"
-                    title="Delete brief"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setSharingProject(project)
+                  }}
+                  className="p-1.5 text-gray-400 hover:text-brand-navy hover:bg-gray-100 rounded"
+                  title="Share with someone"
+                >
+                  <Share2 className="h-4 w-4" />
+                </button>
               )}
             </div>
           </div>
@@ -576,13 +563,6 @@ function ProjectList({ isAdmin }: { isAdmin: boolean }) {
         <ShareModal
           project={sharingProject}
           onClose={() => setSharingProject(null)}
-        />
-      )}
-
-      {deletingProject && (
-        <DeleteProjectModal
-          project={deletingProject}
-          onClose={() => setDeletingProject(null)}
         />
       )}
     </>
@@ -752,67 +732,6 @@ function ShareModal({ project, onClose }: { project: Project; onClose: () => voi
           </div>
         </form>
       )}
-    </Modal>
-  )
-}
-
-function DeleteProjectModal({ project, onClose }: { project: Project; onClose: () => void }) {
-  const [confirmation, setConfirmation] = useState('')
-  const deleteProject = useDeleteProject()
-
-  const canDelete = confirmation.toLowerCase() === 'delete'
-
-  return (
-    <Modal isOpen onClose={onClose} title={`Delete "${project.title}"?`}>
-      <div className="space-y-4">
-        <p className="text-sm text-gray-700">
-          {copy.deleteProject.warning}
-        </p>
-        <div>
-          <label htmlFor="delete-confirm" className="block text-sm font-medium text-gray-700 mb-1">
-            Type <span className="font-mono font-bold">delete</span> to confirm
-          </label>
-          <input
-            id="delete-confirm"
-            type="text"
-            value={confirmation}
-            onChange={(e) => setConfirmation(e.target.value)}
-            placeholder="delete"
-            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
-            autoFocus
-          />
-        </div>
-
-        {deleteProject.error && (
-          <StatusMessage type="error" message={deleteProject.error.message} />
-        )}
-
-        <div className="flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800"
-          >
-            Cancel
-          </button>
-          <LoadingButton
-            variant="danger"
-            loading={deleteProject.isPending}
-            loadingText="Deleting..."
-            disabled={!canDelete}
-            onClick={async () => {
-              try {
-                await deleteProject.mutateAsync(project.id)
-                onClose()
-              } catch {
-                // error shown via deleteProject.error
-              }
-            }}
-          >
-            Delete
-          </LoadingButton>
-        </div>
-      </div>
     </Modal>
   )
 }

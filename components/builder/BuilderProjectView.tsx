@@ -41,6 +41,8 @@ import {
   useRevealMemberPasscode,
   useSendMakerEmail,
   useGeneratePrep,
+  useDeleteProject,
+  useCurrentUser,
 } from '@/lib/query/hooks'
 import { buildNextConvoPrompt } from '@/lib/agent/next-convo-prompt'
 import { copy, getMakerShortName } from '@/lib/copy'
@@ -1454,9 +1456,15 @@ function AgentConfigCard({ project, defaultExpanded = false }: { project: Projec
   const [autoReminders, setAutoReminders] = useState(project.auto_reminders_enabled === true)
   const [githubRepo, setGithubRepo] = useState(project.github_repo || '')
   const [saved, setSaved] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
   const updateProject = useUpdateProject()
   const generateWelcome = useGenerateWelcome()
+  const { data: currentUser } = useCurrentUser()
+  // Destructive delete is the owner's escape hatch, relocated here from the
+  // dashboard card so it can't be hit by accident next to Archive (#16). Same
+  // gate as the old card control (system admin); the route enforces owner too.
+  const isAdmin = currentUser?.system_roles?.includes('admin') ?? false
 
   useEffect(() => {
     setWelcomeMessage(project.welcome_message || '')
@@ -1614,6 +1622,18 @@ function AgentConfigCard({ project, defaultExpanded = false }: { project: Projec
                 />
                 <p className="text-xs text-gray-400 mt-1">Where feedback gets sent when you click &quot;Convert to GitHub issue&quot;. The server&apos;s GITHUB_TOKEN must have access to this repo.</p>
               </div>
+              {isAdmin && (
+                <div className="pt-4 border-t border-red-100">
+                  <label className="text-sm font-medium text-red-700 block mb-1.5">Danger zone</label>
+                  <p className="text-xs text-gray-400 mb-2">{copy.deleteProject.warning} To just hide it from your dashboard, use Archive instead.</p>
+                  <button
+                    onClick={() => setDeleting(true)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-red-600 border border-red-200 rounded-md hover:bg-red-50"
+                  >
+                    <Trash2 className="h-4 w-4" /> Delete brief
+                  </button>
+                </div>
+              )}
             </div>
           </details>
 
@@ -1626,7 +1646,62 @@ function AgentConfigCard({ project, defaultExpanded = false }: { project: Projec
         </div>
         )}
       </CardBody>
+      {deleting && <DeleteBriefModal project={project} onClose={() => setDeleting(false)} />}
     </Card>
+  )
+}
+
+// Owner-only destructive delete, relocated from the dashboard card into the
+// brief's Advanced section (#16). Type-"delete"-to-confirm; on success the brief
+// is gone, so we leave the brief view for the dashboard.
+function DeleteBriefModal({ project, onClose }: { project: Project; onClose: () => void }) {
+  const router = useRouter()
+  const [confirmation, setConfirmation] = useState('')
+  const deleteProject = useDeleteProject()
+  const canDelete = confirmation.toLowerCase() === 'delete'
+
+  return (
+    <Modal isOpen onClose={onClose} title={`Delete "${project.title}"?`}>
+      <div className="space-y-4">
+        <p className="text-sm text-gray-700">{copy.deleteProject.warning}</p>
+        <div>
+          <label htmlFor="brief-delete-confirm" className="block text-sm font-medium text-gray-700 mb-1">
+            Type <span className="font-mono font-bold">delete</span> to confirm
+          </label>
+          <input
+            id="brief-delete-confirm"
+            type="text"
+            value={confirmation}
+            onChange={(e) => setConfirmation(e.target.value)}
+            placeholder="delete"
+            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+            autoFocus
+          />
+        </div>
+        {deleteProject.error && <StatusMessage type="error" message={deleteProject.error.message} />}
+        <div className="flex justify-end gap-2">
+          <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800">
+            Cancel
+          </button>
+          <LoadingButton
+            variant="danger"
+            loading={deleteProject.isPending}
+            loadingText="Deleting..."
+            disabled={!canDelete}
+            onClick={async () => {
+              try {
+                await deleteProject.mutateAsync(project.id)
+                router.push('/dashboard')
+              } catch {
+                // error shown via deleteProject.error
+              }
+            }}
+          >
+            Delete
+          </LoadingButton>
+        </div>
+      </div>
+    </Modal>
   )
 }
 
