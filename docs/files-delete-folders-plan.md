@@ -31,12 +31,13 @@ that #16 left on the backlog. File lifecycle is one domain — do it in phases.
 - **Not in Phase 0:** scrubbing dangling `file_ids` off old messages — a missing
   id degrades gracefully (download 404s, UI shows nothing). Note it, skip it.
 
-## Phase 1 — S3-orphan cleanup on brief delete (from #16)
+## Phase 1 — S3-orphan cleanup on brief delete (from #16) ✅ SHIPPED
 
-- The brief DELETE route currently leaves S3 objects + `files` Firestore docs
-  orphaned. Factor a shared `deleteFileObject(storagePath)` + `deleteProjectFiles`
-  helper (lift from `cleanup-test-data.mjs`) and call it from the delete route.
-  TDD. Also delete `files` Firestore docs for the project.
+- `DELETE /api/projects` now sweeps the project's `files`: drops each S3 object
+  via the shared `deleteS3Object` (idempotent + tolerant — a failed/missing
+  object can't strand the doc), then batch-deletes the `files` Firestore docs
+  alongside sessions/messages/briefs/members. Pending files (no `storage_path`)
+  skip the S3 call. Closes the #16 S3-orphan leftover. TDD (3 added tests).
 
 ## Phase 2 — folders (#23b, larger, separate PR)
 

@@ -61,6 +61,12 @@ const mockCollection = vi.fn((name: string) => {
 // Mock role check
 const mockGetProjectRole = vi.fn()
 
+// Mock S3 object delete (project-delete sweep, #16 cleanup)
+const mockDeleteS3Object = vi.fn(async (_key: string) => {})
+vi.mock('@/lib/s3/client', () => ({
+  deleteS3Object: (key: string) => mockDeleteS3Object(key),
+}))
+
 vi.mock('@/lib/api/firebase-server-helpers', () => ({
   getAuthenticatedUser: vi.fn(async () => ({
     uid: 'user-123',
@@ -219,6 +225,8 @@ describe('DELETE /api/projects', () => {
     deletedRefs.length = 0
     mockBatchDelete.mockClear()
     mockBatchCommit.mockClear()
+    mockDeleteS3Object.mockClear()
+    mockDeleteS3Object.mockResolvedValue(undefined)
     // Default: owner role, project exists
     mockGetProjectRole.mockResolvedValue('owner')
     mockDocGet.mockResolvedValue({ exists: true, data: () => ({ title: 'Test' }) })
@@ -251,6 +259,7 @@ describe('DELETE /api/projects', () => {
     const messageRef = { collection: 'messages', id: 'msg-1' }
     const briefRef = { collection: 'briefs', id: 'brief-1' }
     const memberRef = { collection: 'project_members', id: 'member-1' }
+    const fileRef = { collection: 'files', id: 'file-1' }
 
     // Mock subcollection queries based on collection name
     mockWhereGet.mockImplementation(async () => {
@@ -260,7 +269,7 @@ describe('DELETE /api/projects', () => {
       const field = lastWhereCall?.[0] as string
 
       if (field === 'project_id') {
-        // Could be sessions, briefs, or members — determine by lastCollectionName
+        // Could be sessions, briefs, members, or files — determine by lastCollectionName
         if (lastCollectionName === 'sessions') {
           return {
             docs: [{ id: 'sess-1', ref: sessionRef }],
@@ -271,6 +280,11 @@ describe('DELETE /api/projects', () => {
         }
         if (lastCollectionName === 'project_members') {
           return { docs: [{ id: 'member-1', ref: memberRef }] }
+        }
+        if (lastCollectionName === 'files') {
+          return {
+            docs: [{ id: 'file-1', ref: fileRef, data: () => ({ storage_path: 'projects/proj-1/file-1.pdf' }) }],
+          }
         }
       }
       if (field === 'session_id') {
@@ -287,8 +301,56 @@ describe('DELETE /api/projects', () => {
     expect(data.deleted).toBe(true)
     expect(data.project_id).toBe('proj-1')
 
-    // Should have batch-deleted: message + session + brief + member + project = 5 refs
-    expect(mockBatchDelete.mock.calls.length).toBe(5)
+    // Should have batch-deleted: message + session + brief + member + file + project = 6 refs
+    expect(mockBatchDelete.mock.calls.length).toBe(6)
+    expect(mockBatchCommit).toHaveBeenCalled()
+    // And dropped the file's S3 object
+    expect(mockDeleteS3Object).toHaveBeenCalledWith('projects/proj-1/file-1.pdf')
+  })
+
+  it('deletes S3 objects for ready files but skips pending ones', async () => {
+    mockWhereGet.mockImplementation(async () => {
+      if (lastCollectionName === 'files') {
+        return {
+          docs: [
+            { id: 'f-ready', ref: { collection: 'files', id: 'f-ready' }, data: () => ({ storage_path: 'projects/p/ready.png' }) },
+            { id: 'f-pending', ref: { collection: 'files', id: 'f-pending' }, data: () => ({ storage_path: undefined }) },
+          ],
+        }
+      }
+      return { docs: [] }
+    })
+
+    const res = await DELETE(makeDeleteRequest('proj-1'))
+    expect(res.status).toBe(200)
+
+    // Only the ready file has an S3 object to drop
+    expect(mockDeleteS3Object).toHaveBeenCalledTimes(1)
+    expect(mockDeleteS3Object).toHaveBeenCalledWith('projects/p/ready.png')
+    // Both file docs + the project doc get batch-deleted (3 refs)
+    expect(mockBatchDelete.mock.calls.length).toBe(3)
+  })
+
+  it('still deletes the file doc when its S3 delete fails', async () => {
+    mockDeleteS3Object.mockRejectedValue(new Error('S3 down'))
+    mockWhereGet.mockImplementation(async () => {
+      if (lastCollectionName === 'files') {
+        return {
+          docs: [
+            { id: 'f-1', ref: { collection: 'files', id: 'f-1' }, data: () => ({ storage_path: 'projects/p/x.pdf' }) },
+          ],
+        }
+      }
+      return { docs: [] }
+    })
+
+    const res = await DELETE(makeDeleteRequest('proj-1'))
+    expect(res.status).toBe(200)
+
+    const data = await res.json()
+    expect(data.deleted).toBe(true)
+    // file doc + project doc still batch-deleted despite the S3 failure
+    expect(mockBatchDelete.mock.calls.length).toBe(2)
     expect(mockBatchCommit).toHaveBeenCalled()
   })
 
