@@ -33,6 +33,7 @@ import {
   useShareProject,
   useProjectPasscode,
   useResetPasscode,
+  useChangeRequesterEmail,
   useCreateSession,
   useProjectFiles,
   useProjectMembers,
@@ -1046,11 +1047,14 @@ function ShareModal({ project, onClose, mode = 'maker' }: { project: Project; on
   const [editingName, setEditingName] = useState(false)
   const [editFirstName, setEditFirstName] = useState(project.requester_first_name || '')
   const [editLastName, setEditLastName] = useState(project.requester_last_name || '')
+  const [editingEmail, setEditingEmail] = useState(false)
+  const [editEmail, setEditEmail] = useState(project.requester_email || '')
   const shareProject = useShareProject()
   const updateProject = useUpdateProject()
   const alreadyShared = !!project.requester_email
   const { data: fetchedPasscode } = useProjectPasscode(alreadyShared ? project.id : undefined)
   const resetPasscode = useResetPasscode()
+  const changeEmail = useChangeRequesterEmail()
 
   // In add mode the originator's stored passcode (fetchedPasscode) is irrelevant —
   // only the freshly invited person's passcode (from the POST response) applies.
@@ -1097,18 +1101,60 @@ function ShareModal({ project, onClose, mode = 'maker' }: { project: Project; on
         <div className="space-y-3">
           <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
             <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-green-800">Shared with {sharedEmail}</p>
-                {!isAdd && !editingName && (editFirstName || editLastName) && (
+              <div className="min-w-0 flex-1">
+                {!isAdd && editingEmail ? (
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="email"
+                      value={editEmail}
+                      onChange={(e) => setEditEmail(e.target.value)}
+                      placeholder="maker@email.com"
+                      className="flex-1 px-2 py-1 border border-green-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-brand-navy"
+                      autoFocus
+                    />
+                    <LoadingButton
+                      variant="ghost"
+                      size="sm"
+                      loading={changeEmail.isPending}
+                      onClick={async () => {
+                        const next = editEmail.trim()
+                        if (!next) return
+                        await changeEmail.mutateAsync({ project_id: project.id, new_email: next })
+                        setEditingEmail(false)
+                      }}
+                    >
+                      Save
+                    </LoadingButton>
+                    <button onClick={() => setEditingEmail(false)} className="text-xs text-gray-500 hover:text-gray-700">
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <p className="text-sm font-medium text-green-800 truncate">Shared with {sharedEmail}</p>
+                )}
+                {!isAdd && !editingName && !editingEmail && (editFirstName || editLastName) && (
                   <p className="text-xs text-green-700 mt-0.5">{[editFirstName, editLastName].filter(Boolean).join(' ')}</p>
                 )}
               </div>
-              {!isAdd && !editingName && (
-                <button onClick={() => setEditingName(true)} className="text-xs text-green-700 hover:text-green-900 underline">
-                  Edit name
-                </button>
+              {!isAdd && !editingName && !editingEmail && (
+                <div className="flex shrink-0 gap-3 pl-2">
+                  {/* Correcting a typo'd email reissues the passcode (the old
+                      invite stops working), so only offer it for an established
+                      maker — not a fresh invite the builder just typed. */}
+                  {!justInvited && (
+                    <button onClick={() => { setEditEmail(project.requester_email || ''); setEditingEmail(true) }} className="text-xs text-green-700 hover:text-green-900 underline">
+                      Edit email
+                    </button>
+                  )}
+                  <button onClick={() => setEditingName(true)} className="text-xs text-green-700 hover:text-green-900 underline">
+                    Edit name
+                  </button>
+                </div>
               )}
             </div>
+            {!isAdd && editingEmail && (
+              <p className="text-xs text-green-700 mt-1">Changing the email reissues the passcode — re-send the invite to the new address below.</p>
+            )}
             {!isAdd && editingName && (
               <div className="mt-2 flex items-center gap-2">
                 <input
@@ -1246,6 +1292,7 @@ function ShareModal({ project, onClose, mode = 'maker' }: { project: Project; on
         </form>
       )}
       {resetPasscode.error && <StatusMessage type="error" message={resetPasscode.error.message} />}
+      {changeEmail.error && <StatusMessage type="error" message={changeEmail.error.message} />}
     </Modal>
   )
 }

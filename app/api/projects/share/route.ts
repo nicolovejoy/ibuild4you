@@ -215,7 +215,7 @@ export async function PATCH(request: Request) {
   if (auth.error) return auth.error
 
   const body = await request.json()
-  const { project_id } = body
+  const { project_id, new_email } = body
 
   if (!project_id) {
     return NextResponse.json({ error: 'project_id is required' }, { status: 400 })
@@ -226,6 +226,16 @@ export async function PATCH(request: Request) {
   const callerRole = await getProjectRole(db, project_id, auth.uid, auth.email, auth.systemRoles, auth)
   const roleCheck = requireRole(callerRole, 'builder')
   if (roleCheck) return roleCheck
+
+  // Email re-key path (#12): correct the originator's email across the three
+  // coupled records — project.requester_email (display), the project_members
+  // row (maker auth), and approved_emails (sign-in gate) — and reissue a
+  // passcode so any invite that went to the wrong (typo'd) address stops
+  // working. The old approved_emails entry is left in place: it may be in use
+  // on other briefs, and removing it would risk locking someone else out.
+  if (typeof new_email === 'string' && new_email.trim()) {
+    return rekeyRequesterEmail(db, project_id, new_email, auth.email)
+  }
 
   // Find the maker member for this project
   const memberSnap = await db
@@ -246,4 +256,54 @@ export async function PATCH(request: Request) {
   })
 
   return NextResponse.json({ passcode: newPasscode })
+}
+
+async function rekeyRequesterEmail(
+  db: FirebaseFirestore.Firestore,
+  project_id: string,
+  rawEmail: string,
+  actorEmail: string
+) {
+  const normalizedEmail = rawEmail.trim().toLowerCase()
+  const projectRef = db.collection('projects').doc(project_id)
+  const projectDoc = await projectRef.get()
+  if (!projectDoc.exists) {
+    return NextResponse.json({ error: 'Project not found' }, { status: 404 })
+  }
+  const oldEmail = (projectDoc.data()?.requester_email as string | undefined)?.toLowerCase()
+  const now = new Date().toISOString()
+
+  // Approve the new email for sign-in (old one left in place — see PATCH note).
+  await db.collection('approved_emails').doc(normalizedEmail).set({
+    email: normalizedEmail,
+    approved_by: actorEmail,
+    created_at: now,
+  })
+
+  // Re-key the originator's membership row + reissue a passcode. Match by their
+  // current email first; fall back to the maker role for legacy rows.
+  const passcode = generatePasscode()
+  let memberSnap = oldEmail
+    ? await db
+        .collection('project_members')
+        .where('project_id', '==', project_id)
+        .where('email', '==', oldEmail)
+        .limit(1)
+        .get()
+    : ({ empty: true } as FirebaseFirestore.QuerySnapshot)
+  if (memberSnap.empty) {
+    memberSnap = await db
+      .collection('project_members')
+      .where('project_id', '==', project_id)
+      .where('role', '==', 'maker')
+      .limit(1)
+      .get()
+  }
+  if (!memberSnap.empty) {
+    await memberSnap.docs[0].ref.update({ email: normalizedEmail, passcode, updated_at: now })
+  }
+
+  await projectRef.update({ requester_email: normalizedEmail, updated_at: now })
+
+  return NextResponse.json({ email: normalizedEmail, passcode })
 }
