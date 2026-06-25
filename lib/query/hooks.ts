@@ -642,6 +642,22 @@ export function useUploadFiles() {
   })
 }
 
+export function useDeleteFile() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ fileId }: { fileId: string; projectId: string }): Promise<void> => {
+      const res = await apiFetch(`/api/files/${fileId}`, { method: 'DELETE' })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data?.error || `Delete failed (${res.status})`)
+      }
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.files(variables.projectId) })
+    },
+  })
+}
+
 export function useFileUrl(fileId: string | undefined) {
   return useQuery<string>({
     queryKey: queryKeys.fileUrl(fileId),
