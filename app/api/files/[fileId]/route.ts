@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
-import { getAuthenticatedUser, getAdminDb, getProjectRole } from '@/lib/api/firebase-server-helpers'
+import { getAuthenticatedUser, getAdminDb, getProjectRole, requireRole } from '@/lib/api/firebase-server-helpers'
 import { GetObjectCommand } from '@aws-sdk/client-s3'
-import { s3, S3_BUCKET } from '@/lib/s3/client'
+import { s3, S3_BUCKET, deleteS3Object } from '@/lib/s3/client'
 
 export async function GET(
   request: Request,
@@ -54,4 +54,43 @@ export async function GET(
     console.error('S3 download failed:', err)
     return NextResponse.json({ error: 'File download failed' }, { status: 502 })
   }
+}
+
+// DELETE /api/files/[fileId] — remove a file (S3 object + Firestore doc).
+// Builder+ only (#23a). Dangling file_ids on old messages are left as-is — they
+// degrade gracefully (download 404s, UI shows nothing).
+export async function DELETE(
+  request: Request,
+  { params }: { params: Promise<{ fileId: string }> }
+) {
+  const auth = await getAuthenticatedUser(request)
+  if (auth.error) return auth.error
+
+  const { fileId } = await params
+
+  const db = getAdminDb()
+  const fileRef = db.collection('files').doc(fileId)
+  const fileDoc = await fileRef.get()
+
+  if (!fileDoc.exists) {
+    return NextResponse.json({ error: 'File not found' }, { status: 404 })
+  }
+
+  const fileData = fileDoc.data()!
+  const role = await getProjectRole(db, fileData.project_id, auth.uid, auth.email, auth.systemRoles, auth)
+  const roleCheck = requireRole(role, 'builder')
+  if (roleCheck) return roleCheck
+
+  // Delete the S3 object first (idempotent, tolerate failure so a missing/
+  // already-gone object can't strand the Firestore doc). Then drop the doc.
+  if (fileData.storage_path) {
+    try {
+      await deleteS3Object(fileData.storage_path)
+    } catch (err) {
+      console.error('S3 delete failed (continuing to delete the doc):', err)
+    }
+  }
+  await fileRef.delete()
+
+  return NextResponse.json({ id: fileId, deleted: true })
 }

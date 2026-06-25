@@ -1,13 +1,13 @@
 'use client'
 
 import { useState } from 'react'
-import { FileIcon, Image, Download } from 'lucide-react'
-import { useFileUrl } from '@/lib/query/hooks'
+import { FileIcon, Image, Download, Trash2 } from 'lucide-react'
+import { useFileUrl, useDeleteFile } from '@/lib/query/hooks'
 import { apiFetch } from '@/lib/firebase/api-fetch'
 import { Modal } from './Modal'
 import type { ProjectFile } from '@/lib/types'
 
-export function FilesGrid({ files }: { files: ProjectFile[] }) {
+export function FilesGrid({ files, canDelete = false }: { files: ProjectFile[]; canDelete?: boolean }) {
   const [selectedFile, setSelectedFile] = useState<ProjectFile | null>(null)
 
   if (files.length === 0) {
@@ -28,7 +28,7 @@ export function FilesGrid({ files }: { files: ProjectFile[] }) {
       </div>
 
       {selectedFile && (
-        <FilePreviewModal file={selectedFile} onClose={() => setSelectedFile(null)} />
+        <FilePreviewModal file={selectedFile} canDelete={canDelete} onClose={() => setSelectedFile(null)} />
       )}
     </>
   )
@@ -65,9 +65,20 @@ function FileCard({ file, onClick }: { file: ProjectFile; onClick: () => void })
   )
 }
 
-function FilePreviewModal({ file, onClose }: { file: ProjectFile; onClose: () => void }) {
+function FilePreviewModal({ file, canDelete = false, onClose }: { file: ProjectFile; canDelete?: boolean; onClose: () => void }) {
   const isImage = file.content_type.startsWith('image/')
   const { data: url } = useFileUrl(file.id)
+  const deleteFile = useDeleteFile()
+  const [confirming, setConfirming] = useState(false)
+
+  const handleDelete = async () => {
+    try {
+      await deleteFile.mutateAsync({ fileId: file.id, projectId: file.project_id })
+      onClose()
+    } catch {
+      // Error surfaced inline below; keep the modal open for retry.
+    }
+  }
 
   const handleDownload = async () => {
     const res = await apiFetch(`/api/files/${file.id}`)
@@ -113,14 +124,52 @@ function FilePreviewModal({ file, onClose }: { file: ProjectFile; onClose: () =>
               {file.uploaded_by_name || file.uploaded_by_email.split('@')[0]} &middot; {date} &middot; {formatFileSize(file.size_bytes)}
             </p>
           </div>
-          <button
-            onClick={handleDownload}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 hover:text-brand-navy hover:bg-gray-100 rounded-lg transition-colors"
-          >
-            <Download className="h-4 w-4" />
-            Download
-          </button>
+          <div className="flex items-center gap-2">
+            {canDelete && (
+              <button
+                onClick={() => setConfirming(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+              >
+                <Trash2 className="h-4 w-4" />
+                Delete
+              </button>
+            )}
+            <button
+              onClick={handleDownload}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 hover:text-brand-navy hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              <Download className="h-4 w-4" />
+              Download
+            </button>
+          </div>
         </div>
+
+        {confirming && (
+          <div className="rounded-lg border border-red-200 bg-red-50 p-3 space-y-3">
+            <p className="text-sm text-red-800">
+              Delete &ldquo;{file.filename}&rdquo;? This removes the file and any agent references. This can&apos;t be undone.
+            </p>
+            {deleteFile.error && (
+              <p className="text-xs text-red-600">{deleteFile.error.message}</p>
+            )}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleDelete}
+                disabled={deleteFile.isPending}
+                className="px-3 py-1.5 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors"
+              >
+                {deleteFile.isPending ? 'Deleting…' : 'Delete'}
+              </button>
+              <button
+                onClick={() => setConfirming(false)}
+                disabled={deleteFile.isPending}
+                className="px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </Modal>
   )

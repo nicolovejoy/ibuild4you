@@ -96,7 +96,9 @@ export function BuilderFilesTab({
 
       {error && <StatusMessage type="error" message={error} onDismiss={() => setError(null)} />}
 
-      <FilesGrid files={files} />
+      {/* Builder console context — deletion is gated to builder+ on the server
+          too (the maker view renders FilesGrid without canDelete). */}
+      <FilesGrid files={files} canDelete />
     </div>
   )
 }
