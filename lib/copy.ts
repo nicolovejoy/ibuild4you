@@ -58,12 +58,24 @@ export const copy = {
       note?: string
       sessionMode?: 'discover' | 'converge'
     }) => [copy.nudge.bodyText({ projectTitle, note, sessionMode }), '', shareLink].join('\n'),
-    reminder: ({ projectTitle, shareLink }: { projectTitle: string; shareLink: string }) =>
-      [
-        `Just a reminder — your conversation for ${projectTitle} is ready whenever you have a few minutes.`,
-        '',
-        shareLink,
-      ].join('\n'),
+    // Short, personal reminder (#21). Names the maker if known and carries the
+    // conversation number as a concrete progress signal. "next" signals
+    // continuity from prior sessions. The link sits on its own line so a long
+    // URL renders cleanly. firstName/sessionNumber are optional — both degrade
+    // gracefully (no name → "Your…"; no number → no "(#n)").
+    reminder: ({
+      firstName,
+      sessionNumber,
+      shareLink,
+    }: {
+      firstName?: string | null
+      sessionNumber?: number | null
+      shareLink: string
+    }) => {
+      const lead = firstName ? `${firstName}, your` : 'Your'
+      const num = sessionNumber ? ` (#${sessionNumber})` : ''
+      return [`${lead} next conversation${num} awaits:`, '', shareLink].join('\n')
+    },
   },
 
   // Subjects for builder-initiated outbound email (sent via Resend from the

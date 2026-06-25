@@ -1,5 +1,6 @@
 import { Resend } from 'resend'
 import { NOTIFICATION_EMAILS } from '@/lib/constants'
+import { copy } from '@/lib/copy'
 
 // Sends the auto-reminder email for a project. Used by the daily cron at
 // /api/cron/maker-reminders. To: maker, BCC: builder (NOTIFICATION_EMAILS),
@@ -16,6 +17,9 @@ export interface SendReminderInput {
   projectId: string
   shareLink: string
   reminderNumber: 1 | 2 | 3
+  // Conversation number for this brief (the waiting session's ordinal). Optional
+  // — older projects without a persisted session_count just omit "(#n)".
+  sessionNumber?: number | null
 }
 
 export interface SendReminderResult {
@@ -31,13 +35,14 @@ function buildSubject(projectTitle: string): string {
 }
 
 function buildBody(input: SendReminderInput): string {
-  const greeting = input.makerFirstName ? `Hi ${input.makerFirstName},` : 'Hi,'
+  // Body is the shared in-app reminder copy (#21) — names the maker + carries
+  // the conversation number — plus a minimal sign-off for the email surface.
   return [
-    greeting,
-    '',
-    `Just a reminder — your conversation for ${input.projectTitle} is ready whenever you have a few minutes.`,
-    '',
-    input.shareLink,
+    copy.nudge.reminder({
+      firstName: input.makerFirstName,
+      sessionNumber: input.sessionNumber,
+      shareLink: input.shareLink,
+    }),
     '',
     '—',
     `iBuild4you`,

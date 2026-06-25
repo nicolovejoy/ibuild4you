@@ -121,6 +121,7 @@ export async function GET(request: Request) {
         projectId,
         shareLink: `https://ibuild4you.com/projects/${slug}`,
         reminderNumber: decision.reminderNumber,
+        sessionNumber: (project.session_count as number | undefined) ?? null,
       })
 
       // Only a REAL send advances the cadence. In dry-run we log the

@@ -66,9 +66,12 @@ export async function POST(request: Request) {
   const existingSessions = await db
     .collection('sessions')
     .where('project_id', '==', project_id)
-    .limit(1)
     .get()
   const isFirstSession = existingSessions.empty
+  // The new session's ordinal = existing count + 1. Denormalized onto the
+  // project below so the maker-reminders cron + outbound copy can show
+  // "conversation (#n)" without an extra query (#21).
+  const sessionNumber = existingSessions.size + 1
 
   // Mark any existing active sessions as completed
   const activeSessions = await db
@@ -105,6 +108,7 @@ export async function POST(request: Request) {
   // read-time; the cron reads the persisted field.)
   batch.update(projectDoc.ref, {
     latest_session_created_at: now,
+    session_count: sessionNumber,
     updated_at: now,
   })
 

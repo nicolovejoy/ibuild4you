@@ -34,7 +34,7 @@ describe('sendReminderEmail', () => {
     reminderNumber: 1 as const,
   }
 
-  it('sends via Resend with To/BCC/Reply-To and includes maker greeting', async () => {
+  it('sends via Resend with To/BCC/Reply-To and addresses the maker by name', async () => {
     sendMock.mockResolvedValue({ data: { id: 'em_abc' }, error: null })
     const result = await sendReminderEmail(baseInput)
 
@@ -45,8 +45,15 @@ describe('sendReminderEmail', () => {
     expect(call.bcc).toEqual(['nicholas.lovejoy@gmail.com'])
     expect(call.replyTo).toBe('noreply@ibuild4you.com')
     expect(call.subject).toContain("Sam's Cafe")
-    expect(call.text).toMatch(/Hi Sam/)
+    expect(call.text).toMatch(/^Sam, your next conversation/)
     expect(call.text).toContain(baseInput.shareLink)
+  })
+
+  it('includes the conversation number when provided', async () => {
+    sendMock.mockResolvedValue({ data: { id: 'em_num' }, error: null })
+    await sendReminderEmail({ ...baseInput, sessionNumber: 3 })
+    const call = sendMock.mock.calls[0][0]
+    expect(call.text).toMatch(/^Sam, your next conversation \(#3\) awaits:/)
   })
 
   it('skips Resend and returns dry-run when REMINDER_DRY_RUN=true', async () => {
@@ -69,10 +76,10 @@ describe('sendReminderEmail', () => {
     await expect(sendReminderEmail(baseInput)).rejects.toThrow(/rate_limit_exceeded.*too many requests/)
   })
 
-  it('uses a generic greeting when makerFirstName is missing', async () => {
+  it('drops the name when makerFirstName is missing', async () => {
     sendMock.mockResolvedValue({ data: { id: 'em_xyz' }, error: null })
     await sendReminderEmail({ ...baseInput, makerFirstName: null })
     const call = sendMock.mock.calls[0][0]
-    expect(call.text).toMatch(/^Hi,/m)
+    expect(call.text).toMatch(/^Your next conversation/)
   })
 })
