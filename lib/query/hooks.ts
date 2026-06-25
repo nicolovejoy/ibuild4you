@@ -176,6 +176,34 @@ export function useResetPasscode() {
   })
 }
 
+// Correct the originator's email (#12). Re-keys the membership row +
+// approved_emails on the server and reissues a passcode, so any invite sent to
+// the wrong address stops working. Invalidates the project + passcode caches.
+export function useChangeRequesterEmail() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({ project_id, new_email }: { project_id: string; new_email: string }) => {
+      const res = await apiFetch('/api/projects/share', {
+        method: 'PATCH',
+        body: JSON.stringify({ project_id, new_email }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error || 'Failed to update email')
+      }
+      return res.json() as Promise<{ email: string; passcode: string }>
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.projects() })
+      queryClient.invalidateQueries({ queryKey: queryKeys.project(variables.project_id) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.resolveProject(variables.project_id) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.passcode(variables.project_id) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.members(variables.project_id) })
+    },
+  })
+}
+
 // --- Project members / roles (3c) ---
 
 export function useProjectMembers(projectId: string | undefined, enabled = true) {
