@@ -13,6 +13,7 @@ import { sortProjectsByActivity } from '@/lib/api/sort-projects-by-activity'
 import { generateSlug } from '@/lib/utils'
 import { resolveBriefRole, defaultBriefRole } from '@/lib/roles/brief-role'
 import { copy } from '@/lib/copy'
+import { deleteS3Object } from '@/lib/s3/client'
 import type { BriefRole } from '@/lib/types'
 
 // Ensure slug is unique by appending -2, -3, etc. if needed
@@ -270,6 +271,25 @@ export async function DELETE(request: Request) {
     .where('project_id', '==', projectId)
     .get()
   membersSnap.docs.forEach((doc) => docsToDelete.push(doc.ref))
+
+  // Files: drop the S3 object for each, then the Firestore doc (closes the #16
+  // S3-orphan leftover). S3 delete is idempotent + tolerant — a missing/failed
+  // object can't strand the doc deletion. Pending files have no S3 object yet.
+  const filesSnap = await db
+    .collection('files')
+    .where('project_id', '==', projectId)
+    .get()
+  for (const fileDoc of filesSnap.docs) {
+    const storagePath = fileDoc.data().storage_path
+    if (storagePath) {
+      try {
+        await deleteS3Object(storagePath)
+      } catch (err) {
+        console.error('S3 delete failed (continuing to delete the doc):', err)
+      }
+    }
+    docsToDelete.push(fileDoc.ref)
+  }
 
   // The project itself
   docsToDelete.push(db.collection('projects').doc(projectId))
