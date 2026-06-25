@@ -15,7 +15,15 @@ const APPLY = process.argv.includes('--apply')
 const SCENARIO = 'waiting-reminder'
 const SLUG = 'test-waiting-reminder'
 
-const { db, adminAuth, firebaseProjectId } = initFixtureDb({ requireWrite: APPLY })
+const CLEAN = process.argv.includes('--clean')
+
+const { db, adminAuth, firebaseProjectId } = initFixtureDb({ requireWrite: APPLY || CLEAN })
+
+if (CLEAN) {
+  const wiped = await cleanAll(db, { scenario: SCENARIO })
+  console.log(`Cleaned scenario "${SCENARIO}":`, wiped)
+  process.exit(0)
+}
 
 if (!APPLY) {
   console.log(`Dry run (no writes). Firebase project: ${firebaseProjectId}`)
