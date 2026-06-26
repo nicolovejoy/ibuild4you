@@ -42,6 +42,19 @@ prod). Pass = agent quotes all 3 PDFs, no error bubble, cache r > 0 on turn 2.
 
 ## Phase 2 — #39 prep-prompt ferry (mechanical: agent · posture: Nico)
 
+> **Status (2026-06-26):** mechanical half SHIPPED to main (PR #102, `08a41b0`) —
+> `lib/agent/__tests__/prep-prompts-snapshot.test.ts`, 5 snapshots + paste-back
+> round-trip, 814 green. **Plan premise corrected:** the prep prompts are NOT
+> config-driven. `session_mode`/`seed_questions`/`builder_directives`/`identity`
+> appear only as output-schema field *descriptions* (instructions to the
+> receiving Claude), never injected from project config. What flows into the
+> prompt: new-project = nothing (static); next-convo = currentBrief (incl.
+> decisions), conversationHistory, projectTitle, sessionCount. The "8 cases"
+> below collapse to those input permutations (snapshotted) — cases 3–7 (mode,
+> seeds, directives, identity) aren't embeddable, so they're not assertable here;
+> the schema field-list stays lockstep-tested in the two unit suites.
+> **Remaining: the 3 posture spot-checks (Nico, Max-sub) → then close #39.**
+
 The split = two builders: `lib/agent/new-project-prompt.ts` (new brief) and
 `lib/agent/next-convo-prompt.ts` (existing project). #39's eight cases permute
 config; verification splits in two.
