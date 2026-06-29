@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import {
   ArrowLeft, MessageSquare, Send, FileText, Sparkles, Plus, X,
   Share2, ChevronDown, ChevronUp, Copy, Check, Mail, RotateCw,
-  Lock, Trash2, Settings, Upload, ClipboardCopy, Users, KeyRound,
+  Lock, Trash2, Settings, Upload, ClipboardCopy, Users, KeyRound, UserPlus,
 } from 'lucide-react'
 import { BuildTimestamp } from '@/components/build-timestamp'
 import { Card, CardBody } from '@/components/ui/Card'
@@ -1033,6 +1033,7 @@ function NextRound({
           project={project}
           projectId={projectId}
           sessionNumber={sessions.length + 1}
+          onShare={onShare}
         />
       )}
     </div>
@@ -1857,12 +1858,17 @@ function RenudgeCard({ project, projectId, sessionNumber }: { project: Project; 
 // maker in one click. Pure dispatch now (#19 UX-scrub Phase 1) — agent config
 // moved to the single AgentConfigCard above, so this reads the *saved* config
 // from `project` and no longer carries a duplicate edit fold or a nudge-note.
-function PrepNextSession({ project, projectId, sessionNumber }: {
+function PrepNextSession({ project, projectId, sessionNumber, onShare }: {
   project: Project
   projectId: string
   sessionNumber: number
+  onShare: (mode?: 'maker' | 'add') => void
 }) {
   const [result, setResult] = useState<{ sent?: string; copied?: boolean; suppressed?: boolean } | null>(null)
+  // Starting a new conversation closes the current one — guard it behind a
+  // confirm so it can't be triggered by accident when the builder really just
+  // wanted to invite someone to the conversation already in progress.
+  const [confirm, setConfirm] = useState<null | 'send' | 'copy'>(null)
 
   const updateProject = useUpdateProject()
   const createSession = useCreateSession()
@@ -1989,18 +1995,58 @@ function PrepNextSession({ project, projectId, sessionNumber }: {
           </div>
         </div>
 
-        {/* Primary action: create the session AND email the maker in one click */}
-        <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2">
-          <LoadingButton variant="primary" size="sm" loading={busy} loadingText="Working…" onClick={handleCreateAndSend} icon={Send} disabled={!makerEmail}>
-            Create conversation {sessionNumber} &amp; message {makerName}
+        {/* Invite someone to the CURRENT conversation — no new session. This is
+            the common action; bringing a 2nd/3rd person in doesn't start a new
+            round. Decoupled from session creation to kill the old footgun. */}
+        <div className="mt-4">
+          <LoadingButton variant="primary" size="sm" icon={UserPlus} onClick={() => onShare('add')}>
+            Invite someone to this conversation
           </LoadingButton>
-          <button onClick={handleCreateAndCopy} disabled={busy} className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand-navy disabled:opacity-40">
-            <Copy className="h-3.5 w-3.5" /> Copy nudge instead
-          </button>
+          <p className="text-xs text-gray-400 mt-1.5">They join the conversation that&apos;s already going — no new conversation is started.</p>
         </div>
-        {!makerEmail && <p className="text-xs text-gray-400 mt-1.5">Add a maker email to this brief to send.</p>}
+
+        {/* Start the NEXT conversation — deliberate + confirmed, because it
+            closes the current one. */}
+        <div className="mt-4 pt-3 border-t border-gray-100">
+          <p className="text-xs text-gray-500 mb-2">Done with this round?</p>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+            <button onClick={() => setConfirm('send')} disabled={busy || !makerEmail} className="flex items-center gap-1.5 text-sm font-medium text-brand-navy hover:underline disabled:opacity-40 disabled:no-underline">
+              <RotateCw className="h-3.5 w-3.5" /> Start conversation {sessionNumber} &amp; message {makerName}
+            </button>
+            <button onClick={() => setConfirm('copy')} disabled={busy} className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand-navy disabled:opacity-40">
+              <Copy className="h-3.5 w-3.5" /> Copy nudge instead
+            </button>
+          </div>
+          {!makerEmail && <p className="text-xs text-gray-400 mt-1.5">Add a maker email to this brief to send.</p>}
+        </div>
+
         {actionError && <div className="mt-2"><StatusMessage type="error" message={actionError.message || 'Failed'} /></div>}
         <p className="mt-3 text-xs text-gray-400">Edit how the agent behaves in Agent setup above.</p>
+
+        <Modal isOpen={confirm !== null} onClose={() => { if (!busy) setConfirm(null) }} title={`Start conversation ${sessionNumber}?`} size="sm">
+          <div className="space-y-4">
+            <p className="text-sm text-gray-600">
+              This <span className="font-medium text-gray-900">closes the current conversation</span> and starts a fresh one (#{sessionNumber}). Everyone on the brief moves to the new conversation.
+            </p>
+            <p className="text-sm text-gray-600">
+              Just want to bring someone into the conversation that&apos;s already going? Cancel and use <span className="font-medium text-gray-900">Invite someone to this conversation</span> instead.
+            </p>
+            {actionError && <StatusMessage type="error" message={actionError.message || 'Failed'} />}
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={() => setConfirm(null)} disabled={busy} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 disabled:opacity-50">
+                Cancel
+              </button>
+              <LoadingButton variant="primary" loading={busy} loadingText="Working…" icon={confirm === 'copy' ? Copy : Send}
+                onClick={async () => {
+                  if (confirm === 'copy') await handleCreateAndCopy()
+                  else await handleCreateAndSend()
+                  setConfirm(null)
+                }}>
+                Start conversation {sessionNumber}
+              </LoadingButton>
+            </div>
+          </div>
+        </Modal>
       </CardBody>
     </Card>
   )
