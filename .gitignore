@@ -53,4 +53,5 @@ next-env.d.ts
 .claude/
 .ibuild4you-bypass
 .test-admin-passcode
+.test-admin-passcode-prod
 .test-cast-passcodes.json
