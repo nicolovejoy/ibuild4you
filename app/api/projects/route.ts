@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server'
-import crypto from 'crypto'
 import {
   getAuthenticatedUser,
   getAdminDb,
@@ -14,7 +13,8 @@ import { generateSlug } from '@/lib/utils'
 import { resolveBriefRole, defaultBriefRole } from '@/lib/roles/brief-role'
 import { copy } from '@/lib/copy'
 import { deleteS3Object } from '@/lib/s3/client'
-import type { BriefRole } from '@/lib/types'
+import { generatePasscode } from '@/lib/passcode'
+import type { BriefRole, MemberRole } from '@/lib/types'
 
 // Ensure slug is unique by appending -2, -3, etc. if needed
 async function ensureUniqueSlug(db: FirebaseFirestore.Firestore, slug: string, excludeProjectId?: string): Promise<string> {
@@ -362,6 +362,79 @@ export async function POST(request: Request) {
     projectData.layout_mockups = body.layout_mockups
   }
 
+  // Build the participant roster. A brief can be seeded with any number of
+  // people (makers, contributors, reviewers) in one create payload. The legacy
+  // single-requester fields are folded in as the first participant for
+  // back-compat. Each resolved participant becomes a project_members row +
+  // approved_emails entry + passcode below.
+  const VALID_MEMBER_ROLES: MemberRole[] = ['owner', 'builder', 'apprentice', 'maker']
+  const rawParticipants: Array<Record<string, unknown>> = []
+  if (typeof projectData.requester_email === 'string') {
+    rawParticipants.push({
+      email: projectData.requester_email,
+      first_name: projectData.requester_first_name,
+      last_name: projectData.requester_last_name,
+      role: 'maker',
+      brief_role: body.brief_role,
+    })
+  }
+  if (Array.isArray(body.participants)) {
+    for (const p of body.participants) {
+      if (p && typeof p === 'object') rawParticipants.push(p as Record<string, unknown>)
+    }
+  }
+
+  // Normalize + dedup by lowercased email; drop entries without an email and
+  // the creator's own email (they're already the owner).
+  const creatorEmail = auth.email?.toLowerCase()
+  const participants: Array<{
+    email: string
+    first_name?: string
+    last_name?: string
+    role: MemberRole
+    brief_role: BriefRole | null
+  }> = []
+  const seenEmails = new Set<string>()
+  for (const p of rawParticipants) {
+    const email = typeof p.email === 'string' ? p.email.trim() : ''
+    if (!email) continue
+    const lower = email.toLowerCase()
+    if (lower === creatorEmail || seenEmails.has(lower)) continue
+    seenEmails.add(lower)
+    const role: MemberRole =
+      typeof p.role === 'string' && (VALID_MEMBER_ROLES as string[]).includes(p.role)
+        ? (p.role as MemberRole)
+        : 'maker'
+    participants.push({
+      email,
+      first_name: typeof p.first_name === 'string' && p.first_name.trim() ? p.first_name.trim() : undefined,
+      last_name: typeof p.last_name === 'string' && p.last_name.trim() ? p.last_name.trim() : undefined,
+      role,
+      brief_role: resolveBriefRole(p.brief_role, role),
+    })
+  }
+
+  if (participants.length > 20) {
+    return NextResponse.json(
+      { error: 'Too many participants (max 20 per brief)' },
+      { status: 400 }
+    )
+  }
+
+  // The project doc displays ONE requester on the dashboard. Pick the first
+  // maker (originator) participant, else the first participant overall.
+  const primary = participants.find((p) => p.role === 'maker') ?? participants[0]
+  if (primary) {
+    projectData.requester_email = primary.email
+    if (primary.first_name) projectData.requester_first_name = primary.first_name
+    else delete projectData.requester_first_name
+    if (primary.last_name) projectData.requester_last_name = primary.last_name
+    else delete projectData.requester_last_name
+  } else {
+    // No resolvable participants — don't leave a stray requester_email behind.
+    delete projectData.requester_email
+  }
+
   const docRef = await db.collection('projects').add(projectData)
 
   // Create owner membership for the creator
@@ -376,16 +449,21 @@ export async function POST(request: Request) {
     updated_at: now,
   })
 
-  // If requester_email provided, create maker membership + approve email
-  const requesterEmail = projectData.requester_email as string | undefined
-  if (requesterEmail) {
-    const passcode = crypto.randomBytes(4).toString('base64url').slice(0, 6).toUpperCase()
+  // Create a membership + email approval + passcode for each participant.
+  const createdMembers: Array<{
+    email: string
+    role: MemberRole
+    brief_role: BriefRole | null
+    passcode: string
+  }> = []
+  for (const p of participants) {
+    const passcode = generatePasscode()
     await db.collection('project_members').add({
       project_id: docRef.id,
-      user_id: '',
-      email: requesterEmail,
-      role: 'maker',
-      brief_role: resolveBriefRole(body.brief_role, 'maker'),
+      user_id: '', // set on claim
+      email: p.email,
+      role: p.role,
+      brief_role: p.brief_role,
       passcode,
       added_by: auth.email,
       created_at: now,
@@ -393,13 +471,17 @@ export async function POST(request: Request) {
     })
 
     // Approve email so they can sign in (doc ID must be the email)
-    await db.collection('approved_emails').doc(requesterEmail.toLowerCase()).set({
-      email: requesterEmail.toLowerCase(),
+    await db.collection('approved_emails').doc(p.email.toLowerCase()).set({
+      email: p.email.toLowerCase(),
       approved_by: auth.email,
       created_at: now,
     })
 
-    // Mark project as shared (write back to Firestore since doc was already created)
+    createdMembers.push({ email: p.email, role: p.role, brief_role: p.brief_role, passcode })
+  }
+
+  // Mark project as shared once at least one participant exists.
+  if (participants.length > 0) {
     await docRef.update({ shared_at: now })
     projectData.shared_at = now
   }
@@ -460,5 +542,8 @@ export async function POST(request: Request) {
     })
   }
 
-  return NextResponse.json({ ...projectData, id: docRef.id, session_id: sessionRef.id }, { status: 201 })
+  return NextResponse.json(
+    { ...projectData, id: docRef.id, session_id: sessionRef.id, members: createdMembers },
+    { status: 201 }
+  )
 }

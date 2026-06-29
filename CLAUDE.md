@@ -83,6 +83,10 @@ Only `title` is required. All other fields are optional.
   "requester_email": "sam@example.com",
   "requester_first_name": "Sam",
   "requester_last_name": "Lee",
+  "participants": [
+    { "email": "sam@example.com", "first_name": "Sam", "last_name": "Lee", "role": "maker" },
+    { "email": "dana@example.com", "first_name": "Dana", "role": "apprentice", "brief_role": "contributor" }
+  ],
   "context": "Background info the agent uses to skip basic discovery questions.",
   "welcome_message": "Hey Sam — tell me about your cafe idea!",
   "nudge_message": "Optional. When set, used verbatim as the outbound nudge text for the next session and skips AI generation. Leave blank to let the AI draft.",
@@ -117,7 +121,9 @@ Only `title` is required. All other fields are optional.
 }
 ```
 
-Side effects on create: generates slug, creates owner membership, creates maker membership + approves email (if `requester_email`), creates first session (snapshots config), adds welcome message as first agent message, creates initial brief (if `brief` provided).
+Side effects on create: generates slug, creates owner membership, creates a membership + approves email + mints a passcode **for each participant** (see below), creates first session (snapshots config), adds welcome message as first agent message, creates initial brief (if `brief` provided).
+
+**Participants.** `participants[]` seeds any number of people on a brief in one payload — each `{ email (required), first_name?, last_name?, role?, brief_role? }`. `role` is a `MemberRole` (`maker` | `apprentice` | `builder` | `owner`; default `maker`); `brief_role` defaults from role (maker→originator, apprentice→contributor, builder→reviewer). The legacy `requester_email`/`requester_first_name`/`requester_last_name` (+ `brief_role`) still work and are folded in as the first participant. Rules: dedup by lowercased email; the creator's own email is skipped (already the owner); the project doc's displayed requester is the first `maker` participant (else the first overall); **soft cap 20** (more → 400). No hard limit elsewhere — the chat roster name-tags arbitrarily many distinct senders. The response includes a `members: [{ email, role, brief_role, passcode }]` array so the importer can surface each invite's creds.
 
 A decision may carry `"locked": true` — a durable constraint (locked convention / do-not-use rule). Locked decisions survive brief regen verbatim (code-side merge in `regenerateBriefForProject`, never dropped by the model) and the agent must reconcile new intake against them: a maker statement contradicting a locked decision triggers an explicit confirm instead of a silent overwrite (#71). Set via the create payload or the Brief-tab JSON paste (`PUT /api/briefs`).
 

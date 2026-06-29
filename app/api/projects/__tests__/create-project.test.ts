@@ -222,6 +222,119 @@ describe('POST /api/projects', () => {
     expect(approvals[0].data.email).toBe('sam@example.com')
   })
 
+  // --- Multiple participants ---
+
+  it('creates a membership + approval + passcode for each participant', async () => {
+    await POST(makeRequest({
+      title: 'Team Brief',
+      participants: [
+        { email: 'a@example.com', first_name: 'A', role: 'maker' },
+        { email: 'b@example.com', first_name: 'B', role: 'apprentice' },
+        { email: 'c@example.com', role: 'builder' },
+      ],
+    }))
+
+    const members = addedDocs['project_members']
+    // owner + 3 participants
+    expect(members).toHaveLength(4)
+    const byEmail = (e: string) => members.find((m) => m.email === e)!
+    expect(byEmail('a@example.com')).toMatchObject({ role: 'maker', brief_role: 'originator' })
+    expect(byEmail('b@example.com')).toMatchObject({ role: 'apprentice', brief_role: 'contributor' })
+    expect(byEmail('c@example.com')).toMatchObject({ role: 'builder', brief_role: 'reviewer' })
+    for (const e of ['a@example.com', 'b@example.com', 'c@example.com']) {
+      expect(typeof byEmail(e).passcode).toBe('string')
+    }
+
+    // Each participant email is approved (lowercased doc id)
+    const approvals = setDocs['approved_emails'].map((a) => a.docId)
+    expect(approvals).toEqual(
+      expect.arrayContaining(['a@example.com', 'b@example.com', 'c@example.com'])
+    )
+  })
+
+  it('returns the participant invite creds in the response', async () => {
+    const res = await POST(makeRequest({
+      title: 'Team Brief',
+      participants: [{ email: 'a@example.com', role: 'maker' }],
+    }))
+    const data = await res.json()
+    expect(data.members).toEqual([
+      expect.objectContaining({ email: 'a@example.com', role: 'maker', brief_role: 'originator', passcode: expect.any(String) }),
+    ])
+  })
+
+  it('stamps the first maker participant as the project requester', async () => {
+    const res = await POST(makeRequest({
+      title: 'Team Brief',
+      participants: [
+        { email: 'reviewer@example.com', role: 'builder' },
+        { email: 'maker@example.com', first_name: 'Mae', last_name: 'Ker', role: 'maker' },
+      ],
+    }))
+    const data = await res.json()
+    expect(data.requester_email).toBe('maker@example.com')
+    expect(data.requester_first_name).toBe('Mae')
+    expect(data.requester_last_name).toBe('Ker')
+    expect(data.shared_at).toBeDefined()
+  })
+
+  it('merges legacy requester_email with participants and dedups', async () => {
+    await POST(makeRequest({
+      title: 'Team Brief',
+      requester_email: 'sam@example.com',
+      requester_first_name: 'Sam',
+      participants: [
+        { email: 'Sam@example.com', role: 'maker' }, // dup of requester (case-insensitive)
+        { email: 'other@example.com', role: 'apprentice' },
+      ],
+    }))
+    const members = addedDocs['project_members'].filter((m) => m.role !== 'owner')
+    const emails = members.map((m) => m.email).sort()
+    expect(emails).toEqual(['other@example.com', 'sam@example.com'])
+  })
+
+  it('skips a participant whose email is the creator (already the owner)', async () => {
+    await POST(makeRequest({
+      title: 'Team Brief',
+      participants: [{ email: 'nico@ibuild4you.com', role: 'maker' }],
+    }))
+    const members = addedDocs['project_members']
+    expect(members).toHaveLength(1)
+    expect(members[0].role).toBe('owner')
+  })
+
+  it('defaults an unspecified participant role to maker', async () => {
+    await POST(makeRequest({
+      title: 'Team Brief',
+      participants: [{ email: 'a@example.com' }],
+    }))
+    const member = addedDocs['project_members'].find((m) => m.email === 'a@example.com')!
+    expect(member.role).toBe('maker')
+    expect(member.brief_role).toBe('originator')
+  })
+
+  it('ignores participants with no email and an invalid role', async () => {
+    await POST(makeRequest({
+      title: 'Team Brief',
+      participants: [
+        { first_name: 'No Email' },
+        { email: '   ' },
+        { email: 'ok@example.com', role: 'wizard' }, // invalid role → default maker
+      ],
+    }))
+    const members = addedDocs['project_members'].filter((m) => m.role !== 'owner')
+    expect(members).toHaveLength(1)
+    expect(members[0]).toMatchObject({ email: 'ok@example.com', role: 'maker' })
+  })
+
+  it('rejects more than 20 distinct participants', async () => {
+    const participants = Array.from({ length: 21 }, (_, i) => ({ email: `p${i}@example.com` }))
+    const res = await POST(makeRequest({ title: 'Crowd', participants }))
+    expect(res.status).toBe(400)
+    const data = await res.json()
+    expect(data.error).toMatch(/participant/i)
+  })
+
   // --- Full setup payload ---
 
   it('saves all optional setup fields on the project', async () => {
