@@ -9,11 +9,15 @@ import { readFileSync } from 'node:fs'
 import { chromium } from 'playwright'
 
 const ROOT = new URL('..', import.meta.url).pathname
-const BASE = 'https://preview.ibuild4you.com'
+// Defaults to preview; set E2E_BASE=https://ibuild4you.com for a prod smoke test.
+const BASE = process.env.E2E_BASE || 'https://preview.ibuild4you.com'
 const EMAIL = 'test@ibuild4you.com'
-
-const token = readFileSync(`${ROOT}.ibuild4you-bypass`, 'utf8').trim()
-const passcode = readFileSync(`${ROOT}.test-admin-passcode`, 'utf8').trim()
+// Prod has no Vercel deployment-protection gate, so the bypass token is
+// preview-only. Read it if present; harmless extra query params otherwise.
+let token = ''
+try { token = readFileSync(`${ROOT}.ibuild4you-bypass`, 'utf8').trim() } catch {}
+const passcodeFile = process.env.E2E_PASSCODE_FILE || '.test-admin-passcode'
+const passcode = readFileSync(`${ROOT}${passcodeFile}`, 'utf8').trim()
 
 // Unique-ish title without Date.now (keeps reruns from colliding via slug suffix).
 const stamp = Math.floor(performance.now()).toString(36)
