@@ -5,10 +5,14 @@ import Link from 'next/link'
 import {
   signInWithPopup,
   signInWithCustomToken,
+  signInWithEmailAndPassword,
+  sendPasswordResetEmail,
   GoogleAuthProvider,
   onAuthStateChanged,
 } from 'firebase/auth'
 import { auth } from '@/lib/firebase/client'
+import { authErrorMessage } from '@/lib/auth/password'
+import { copy } from '@/lib/copy'
 import { useRouter } from 'next/navigation'
 import { StatusMessage } from '@/components/ui/StatusMessage'
 import { LoadingButton } from '@/components/ui/LoadingButton'
@@ -26,8 +30,11 @@ function isInAppBrowser(): boolean {
 export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [passcode, setPasscode] = useState('')
+  const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [info, setInfo] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [passwordLoading, setPasswordLoading] = useState(false)
   const [googleLoading, setGoogleLoading] = useState(false)
   const [redirectTo, setRedirectTo] = useState('/dashboard')
   const [linkCopied, setLinkCopied] = useState(false)
@@ -92,6 +99,42 @@ export default function LoginPage() {
     }
   }
 
+  const handlePasswordSignIn = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError(null)
+    setInfo(null)
+    setPasswordLoading(true)
+    try {
+      await signInWithEmailAndPassword(auth, email.trim(), password)
+      router.replace(redirectTo)
+    } catch (err) {
+      setError(authErrorMessage(err))
+    } finally {
+      setPasswordLoading(false)
+    }
+  }
+
+  const handleForgotPassword = async () => {
+    setError(null)
+    setInfo(null)
+    if (!email.trim()) {
+      setError('Enter your email above first, then tap “Forgot password?”')
+      return
+    }
+    try {
+      await sendPasswordResetEmail(auth, email.trim())
+    } catch (err) {
+      // Don't leak whether the email exists — show the same confirmation on
+      // user-not-found as on success. Only surface genuine errors (rate limit, network).
+      const code = err && typeof err === 'object' && 'code' in err ? String((err as { code: unknown }).code) : ''
+      if (code && code !== 'auth/user-not-found' && code !== 'auth/invalid-email') {
+        setError(authErrorMessage(err))
+        return
+      }
+    }
+    setInfo(copy.auth.resetEmailSent(email.trim()))
+  }
+
   const handleCopyLink = async () => {
     await navigator.clipboard.writeText(window.location.href)
     setLinkCopied(true)
@@ -145,6 +188,58 @@ export default function LoginPage() {
     </form>
   )
 
+  const passwordForm = (
+    <form onSubmit={handlePasswordSignIn} className="space-y-4">
+      <div>
+        <label htmlFor="pw-email" className="block text-sm font-medium text-gray-700 mb-1">
+          Email
+        </label>
+        <input
+          id="pw-email"
+          type="email"
+          required
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
+          placeholder="you@example.com"
+        />
+      </div>
+      <div>
+        <div className="flex items-center justify-between mb-1">
+          <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+            {copy.auth.passwordLabel}
+          </label>
+          <button
+            type="button"
+            onClick={handleForgotPassword}
+            className="text-sm text-brand-navy underline hover:text-brand-charcoal"
+          >
+            {copy.auth.forgotPassword}
+          </button>
+        </div>
+        <input
+          id="password"
+          type="password"
+          required
+          autoComplete="current-password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
+          placeholder="Your password"
+        />
+      </div>
+      <LoadingButton
+        type="submit"
+        loading={passwordLoading}
+        loadingText="Signing in..."
+        fullWidth
+        variant="primary"
+      >
+        {copy.auth.signInPassword}
+      </LoadingButton>
+    </form>
+  )
+
   const divider = (
     <div className="relative">
       <div className="absolute inset-0 flex items-center">
@@ -154,6 +249,17 @@ export default function LoginPage() {
         <span className="px-2 bg-brand-cream text-gray-500">
           {isMakerFlow ? 'or' : 'or sign in with a passcode'}
         </span>
+      </div>
+    </div>
+  )
+
+  const passwordDivider = (
+    <div className="relative">
+      <div className="absolute inset-0 flex items-center">
+        <div className="w-full border-t border-gray-300" />
+      </div>
+      <div className="relative flex justify-center text-sm">
+        <span className="px-2 bg-brand-cream text-gray-500">{copy.auth.passwordDivider}</span>
       </div>
     </div>
   )
@@ -196,6 +302,7 @@ export default function LoginPage() {
         )}
 
         {error && <StatusMessage type="error" message={error} />}
+        {info && <StatusMessage type="success" message={info} />}
 
         {isMakerFlow ? (
           <>
@@ -206,6 +313,8 @@ export default function LoginPage() {
         ) : (
           <>
             {googleButton}
+            {passwordDivider}
+            {passwordForm}
             {divider}
             {passcodeForm}
           </>
