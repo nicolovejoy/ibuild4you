@@ -1,4 +1,5 @@
 import type { BriefRole } from '@/lib/types'
+import { isArchivedSession } from '@/lib/sessions/active'
 
 // Enrich project docs with last activity, session count, and brief metadata.
 //
@@ -24,7 +25,9 @@ export async function enrichProjects(
         .select('status', 'created_at')
         .get()
 
-      const sessionIds = sessionsSnap.docs.map((d) => d.id)
+      // Exclude admin-archived conversations (#105) from counts + activity.
+      const liveSessionDocs = sessionsSnap.docs.filter((d) => !isArchivedSession(d.data()))
+      const sessionIds = liveSessionDocs.map((d) => d.id)
       const firstChunk = sessionIds.slice(0, 30) // 'in' supports up to 30
 
       let lastMessageAt: string | null = null
@@ -103,7 +106,7 @@ export async function enrichProjects(
       // Derived from the sessions snapshot.
       let latestSessionCreatedAt: string | null = null
       let hasActiveSession = false
-      for (const doc of sessionsSnap.docs) {
+      for (const doc of liveSessionDocs) {
         const data = doc.data()
         const createdAt = data.created_at as string
         if (!latestSessionCreatedAt || createdAt > latestSessionCreatedAt) {
@@ -114,7 +117,7 @@ export async function enrichProjects(
 
       return {
         ...project,
-        session_count: sessionsSnap.size,
+        session_count: liveSessionDocs.length,
         last_message_at: lastMessageAt,
         last_message_by: lastMessageBy,
         last_maker_message_at: lastMakerMessageAt,

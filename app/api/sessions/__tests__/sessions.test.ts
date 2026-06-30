@@ -43,11 +43,20 @@ let mockProjectExists = true
 // --- Mock active sessions query ---
 let mockActiveSessionDocs: { ref: { id: string } }[] = []
 
-// --- Mock "does any session already exist" query (#70 first-session check) ---
-// empty === true means this is the project's first session. size feeds the
-// denormalized session_count (#21): the new session's number = size + 1.
-let mockExistingSessionsEmpty = true
+// --- Mock "all sessions for this project" query (#70 first-session check,
+// #21 session_count, #105 archived-exclusion). The route reads .docs and
+// filters out archived; first-session + count derive from the live ones.
+// Set mockExistingSessionsCount for N active prior sessions, or
+// mockExistingSessionDocs to control per-session status (e.g. archived).
 let mockExistingSessionsCount = 0
+let mockExistingSessionDocs: { data: () => Record<string, unknown> }[] | null = null
+
+function existingSessionsSnap() {
+  const docs =
+    mockExistingSessionDocs ??
+    Array.from({ length: mockExistingSessionsCount }, () => ({ data: () => ({ status: 'active' }) }))
+  return { empty: docs.length === 0, size: docs.length, docs }
+}
 
 // --- Mock sessions list (for GET) ---
 let mockSessionDocs: { id: string; data: () => Record<string, unknown> }[] = []
@@ -59,8 +68,8 @@ const mockWhere2 = vi.fn(() => ({ get: vi.fn(async () => ({ docs: mockActiveSess
 const mockWhere = vi.fn(() => ({
   where: mockWhere2,
   orderBy: mockOrderBy,
-  // Existence + count query (#70 first-session, #21 session_count).
-  get: vi.fn(async () => ({ empty: mockExistingSessionsEmpty, size: mockExistingSessionsCount })),
+  // Existence + count query (#70 first-session, #21 session_count, #105 archived).
+  get: vi.fn(async () => existingSessionsSnap()),
 }))
 
 const mockDoc = vi.fn((id?: string) => ({
@@ -157,8 +166,8 @@ describe('POST /api/sessions', () => {
       welcome_message: 'Hello maker!',
     }
     mockActiveSessionDocs = []
-    mockExistingSessionsEmpty = true // default: this is the project's first session
-    mockExistingSessionsCount = 0
+    mockExistingSessionsCount = 0 // default: this is the project's first session
+    mockExistingSessionDocs = null
   })
 
   // --- Validation ---
@@ -246,7 +255,7 @@ describe('POST /api/sessions', () => {
   // return sessions. On session 2+, no agent message is inserted; Sam greets
   // contextually instead.
   it('does NOT insert the canned welcome on a return session (one already exists)', async () => {
-    mockExistingSessionsEmpty = false // a session already exists → this is a return
+    mockExistingSessionsCount = 1 // a live session already exists → this is a return
 
     await POST(makePostRequest({ project_id: 'proj1' }))
 
@@ -257,12 +266,25 @@ describe('POST /api/sessions', () => {
   })
 
   it('inserts the welcome only on the first session (none exist yet)', async () => {
-    mockExistingSessionsEmpty = true
+    mockExistingSessionsCount = 0
 
     await POST(makePostRequest({ project_id: 'proj1' }))
 
     expect(batchSets).toHaveLength(2)
     expect(batchSets.find((s) => s.data.role === 'agent')).toBeDefined()
+  })
+
+  // #105: archived conversations don't count. After an admin reset-to-fresh,
+  // the only prior sessions are archived → treat as a genuine first session.
+  it('treats a project with only archived sessions as a fresh first session', async () => {
+    mockExistingSessionDocs = [{ data: () => ({ status: 'archived' }) }]
+
+    await POST(makePostRequest({ project_id: 'proj1' }))
+
+    // Welcome inserted (first session) and session_count is 1, not 2.
+    expect(batchSets.find((s) => s.data.role === 'agent')).toBeDefined()
+    const projectUpdate = batchUpdates.find((u) => 'session_count' in u.data)
+    expect(projectUpdate!.data.session_count).toBe(1)
   })
 
   // --- Completing old sessions ---
@@ -289,7 +311,6 @@ describe('POST /api/sessions', () => {
   })
 
   it('denormalizes session_count onto the project (#21: existing count + 1)', async () => {
-    mockExistingSessionsEmpty = false
     mockExistingSessionsCount = 2 // two prior conversations → this one is #3
 
     await POST(makePostRequest({ project_id: 'proj1' }))
