@@ -3,17 +3,20 @@
 import { auth } from '@/lib/firebase/client'
 import { signOut } from 'firebase/auth'
 import { useRouter } from 'next/navigation'
-import { User, LogOut, Shield, Info, Pencil, Check, X } from 'lucide-react'
+import { User, LogOut, Shield, Info, Pencil, Check, X, KeyRound } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import type { User as FirebaseUser } from 'firebase/auth'
 import { useQueryClient } from '@tanstack/react-query'
 import { useCurrentUser, useUpdateCurrentUser } from '@/lib/query/hooks'
+import { SetPasswordModal } from '@/components/SetPasswordModal'
+import { copy } from '@/lib/copy'
 
 export function UserMenu() {
   const [user, setUser] = useState<FirebaseUser | null>(null)
   const [showDropdown, setShowDropdown] = useState(false)
   const [editingLabel, setEditingLabel] = useState(false)
   const [labelDraft, setLabelDraft] = useState('')
+  const [showSetPassword, setShowSetPassword] = useState(false)
   const router = useRouter()
   const queryClient = useQueryClient()
   const { data: currentUser } = useCurrentUser()
@@ -133,6 +136,16 @@ export function UserMenu() {
               <Info className="h-4 w-4" />
               About
             </button>
+            <button
+              onClick={() => {
+                setShowDropdown(false)
+                setShowSetPassword(true)
+              }}
+              className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+            >
+              <KeyRound className="h-4 w-4" />
+              {copy.auth.setPassword}
+            </button>
             {isAdmin && (
               <button
                 onClick={() => {
@@ -155,6 +168,12 @@ export function UserMenu() {
           </div>
         </>
       )}
+
+      <SetPasswordModal
+        isOpen={showSetPassword}
+        onClose={() => setShowSetPassword(false)}
+        user={user}
+      />
     </div>
   )
 }

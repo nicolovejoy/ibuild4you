@@ -195,7 +195,18 @@ export const copy = {
     signInPrompt: 'Sign in to continue',
     signInGoogle: 'Sign in with Google',
     signInPasscode: 'Sign in with passcode',
+    signInPassword: 'Sign in with password',
     pascodeDivider: 'or sign in with a passcode',
+    passwordDivider: 'or sign in with a password',
+    passwordLabel: 'Password',
+    forgotPassword: 'Forgot password?',
+    resetEmailSent: (email: string) =>
+      `If an account exists for ${email}, a password reset link is on its way. Check your inbox.`,
+    // Set-password flow in the account menu (links email/password to the signed-in account)
+    setPassword: 'Set a password',
+    setPasswordHelp:
+      'Add an email + password login so you can sign in without choosing a Google account. We recommend a password manager–generated password.',
+    setPasswordSuccess: 'Password set. You can now sign in with your email and password.',
     notApprovedTitle: 'Hang tight!',
     notApprovedMessage: (email: string) =>
       `Thanks for signing up. Your account (${email}) isn't approved yet. We'll let you know when you're in.`,

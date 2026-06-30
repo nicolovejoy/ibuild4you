@@ -1,0 +1,48 @@
+name: Post-deploy auth e2e
+
+on:
+  # After CI passes on main (and Vercel has deployed prod), exercise the real
+  # email/password sign-in path against prod. Unit tests run in CI; this catches
+  # what they can't — the live Firebase provider being disabled/misconfigured.
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+jobs:
+  e2e:
+    name: Email/password sign-in (prod)
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Install Playwright + Chromium
+        run: |
+          npm i --no-save playwright
+          npx playwright install --with-deps chromium
+
+      - name: Wait for Vercel deploy
+        run: sleep 75
+
+      - name: Email/password sign-in e2e
+        run: node scripts/e2e-104-full-signin.mjs
+        env:
+          E2E_BASE: https://ibuild4you.com
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_PROD }}
+
+      - name: Upload screenshot on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-auth-screenshot
+          path: .playwright-mcp/e2e-104-signin.png
+          if-no-files-found: ignore
