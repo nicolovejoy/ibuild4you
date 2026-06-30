@@ -110,7 +110,8 @@ export interface Project extends BaseEntity {
 // Sessions collection — each conversation between requester and agent
 export interface Session extends BaseEntity {
   project_id: string
-  status: 'active' | 'completed'
+  status: 'active' | 'completed' | 'archived' // 'archived' = reversibly hidden (admin Brief-doctor, #105)
+  archived_at?: string | null
   summary?: string
   // Agent config snapshot — captured when session is created
   session_mode?: 'discover' | 'converge'
