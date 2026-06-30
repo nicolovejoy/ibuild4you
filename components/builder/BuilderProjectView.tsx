@@ -117,8 +117,17 @@ export function BuilderProjectView({ projectId, userEmail }: { projectId: string
     router.replace(`/projects/${project?.slug || projectId}${qs ? `?${qs}` : ''}`, { scroll: false })
   }
 
-  // Turn indicator — builder view always sees builder perspective
-  const turn = getTurnIndicator(project, 'builder')
+  // Turn indicator — builder view always sees builder perspective.
+  // The badge keys off session_count, but the raw project doc can carry a
+  // stale/undefined value (seed scripts + pre-denormalization briefs), which
+  // wrongly reads as "Needs setup" even when conversations exist. Feed it the
+  // sessions we've already loaded (same source as the "N sessions" header) so
+  // the brief-page badge agrees with the dashboard, which recomputes
+  // session_count in enrich-projects. (#103)
+  const turn = getTurnIndicator(
+    project && sessions ? { ...project, session_count: sessions.length } : project,
+    'builder'
+  )
 
   // Tab definitions used by both the desktop sidebar and mobile bottom tab bar.
   const tabs: { id: TabId; label: string; shortLabel: string; Icon: typeof MessageSquare; tooltip: string }[] = [
