@@ -4,39 +4,41 @@ import {
   getAdminDb,
   getProjectRole,
   requireRole,
+  type AuthSuccess,
 } from '@/lib/api/firebase-server-helpers'
-import { planAccessTierChange, type MemberRow } from '@/lib/members/lifecycle'
+import {
+  planAccessTierChange,
+  planRemoveMember,
+  planRestoreMember,
+  type MemberRow,
+  type LifecyclePlan,
+} from '@/lib/members/lifecycle'
 import type { MemberRole } from '@/lib/types'
 
-// PATCH /api/projects/[id]/members/[memberId] — builder+ changes a member's
-// access tier (#106 P1). Body: { role: MemberRole }. The last active owner
-// can't be demoted (planAccessTierChange guards it). brief_role stays on
-// PATCH /api/projects/role; this route is the access-tier axis.
-export async function PATCH(
-  request: Request,
-  { params }: { params: Promise<{ id: string; memberId: string }> }
-) {
+// Member-scoped access-tier + lifecycle ops (#106). All builder+.
+//   PATCH  { role }            → change access tier
+//   PATCH  { removed: false }  → restore a moved-out member
+//   DELETE                     → move a member out (non-destructive)
+
+type Roster =
+  | { ok: false; response: NextResponse }
+  | { ok: true; db: FirebaseFirestore.Firestore; members: MemberRow[]; auth: AuthSuccess }
+
+// Auth + load the whole roster (the last-owner guards need the full active set).
+// Returns an early NextResponse on failure, or the db/members/auth to act on.
+async function loadRoster(request: Request, projectId: string, memberId: string): Promise<Roster> {
   const auth = await getAuthenticatedUser(request)
-  if (auth.error) return auth.error
+  if (auth.error) return { ok: false, response: auth.error }
 
-  const { id: projectId, memberId } = await params
   if (!projectId || !memberId) {
-    return NextResponse.json({ error: 'project id and member id are required' }, { status: 400 })
-  }
-
-  let body: Record<string, unknown>
-  try {
-    body = await request.json()
-  } catch {
-    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
+    return { ok: false, response: NextResponse.json({ error: 'project id and member id are required' }, { status: 400 }) }
   }
 
   const db = getAdminDb()
   const callerRole = await getProjectRole(db, projectId, auth.uid, auth.email, auth.systemRoles, auth)
   const roleCheck = requireRole(callerRole, 'builder')
-  if (roleCheck) return roleCheck
+  if (roleCheck) return { ok: false, response: roleCheck }
 
-  // Load the whole roster — the last-owner guard needs the full active set.
   const snap = await db.collection('project_members').where('project_id', '==', projectId).get()
   const members: MemberRow[] = snap.docs.map((d) => ({
     id: d.id,
@@ -45,9 +47,61 @@ export async function PATCH(
     removed_at: (d.data().removed_at as string | null | undefined) ?? null,
   }))
 
-  const plan = planAccessTierChange({ members, memberId, newRole: body.role, now: new Date().toISOString() })
-  if ('error' in plan) return NextResponse.json({ error: plan.error }, { status: 400 })
+  return { ok: true, db, members, auth }
+}
 
+// Apply a planner result to the target doc, or surface its error as a 400.
+async function apply(
+  db: FirebaseFirestore.Firestore,
+  memberId: string,
+  plan: LifecyclePlan
+) {
+  if ('error' in plan) return NextResponse.json({ error: plan.error }, { status: 400 })
   await db.collection('project_members').doc(memberId).update(plan.patch)
-  return NextResponse.json({ ok: true, role: plan.patch.role })
+  return NextResponse.json({ ok: true, ...plan.patch })
+}
+
+export async function PATCH(
+  request: Request,
+  { params }: { params: Promise<{ id: string; memberId: string }> }
+): Promise<NextResponse> {
+  const { id: projectId, memberId } = await params
+
+  let body: Record<string, unknown>
+  try {
+    body = await request.json()
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
+  }
+
+  const loaded = await loadRoster(request, projectId, memberId)
+  if (!loaded.ok) return loaded.response
+  const { db, members } = loaded
+  const now = new Date().toISOString()
+
+  if (body.removed === false) {
+    return apply(db, memberId, planRestoreMember({ members, memberId, now }))
+  }
+  if ('role' in body) {
+    return apply(db, memberId, planAccessTierChange({ members, memberId, newRole: body.role, now }))
+  }
+  return NextResponse.json({ error: 'Provide { role } to change tier or { removed: false } to restore.' }, { status: 400 })
+}
+
+// DELETE — move a member out of the brief (non-destructive: sets removed_at).
+export async function DELETE(
+  request: Request,
+  { params }: { params: Promise<{ id: string; memberId: string }> }
+): Promise<NextResponse> {
+  const { id: projectId, memberId } = await params
+
+  const loaded = await loadRoster(request, projectId, memberId)
+  if (!loaded.ok) return loaded.response
+  const { db, members, auth } = loaded
+
+  return apply(
+    db,
+    memberId,
+    planRemoveMember({ members, memberId, actorEmail: auth.email, now: new Date().toISOString() })
+  )
 }

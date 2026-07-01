@@ -4,7 +4,7 @@ import { POST } from '../passcode/route'
 // Mock Firebase Admin SDK
 const mockGet = vi.fn()
 const mockLimit = vi.fn(() => ({ get: mockGet }))
-const mockWhere = vi.fn(() => ({ where: mockWhere, limit: mockLimit }))
+const mockWhere = vi.fn(() => ({ where: mockWhere, limit: mockLimit, get: mockGet }))
 const mockCollection = vi.fn(() => ({ where: mockWhere }))
 const mockGetUserByEmail = vi.fn()
 const mockCreateUser = vi.fn()
@@ -54,7 +54,7 @@ describe('POST /api/auth/passcode', () => {
   })
 
   it('returns 401 when no matching member is found', async () => {
-    mockGet.mockResolvedValue({ empty: true })
+    mockGet.mockResolvedValue({ docs: [] })
 
     const res = await POST(makeRequest({ email: 'test@example.com', passcode: 'WRONG1' }))
     expect(res.status).toBe(401)
@@ -63,7 +63,7 @@ describe('POST /api/auth/passcode', () => {
   })
 
   it('normalizes email to lowercase and passcode to uppercase', async () => {
-    mockGet.mockResolvedValue({ empty: true })
+    mockGet.mockResolvedValue({ docs: [] })
 
     await POST(makeRequest({ email: 'Test@Example.COM', passcode: 'abc123' }))
 
@@ -108,8 +108,18 @@ describe('POST /api/auth/passcode', () => {
     expect(mockCreateCustomToken).toHaveBeenCalledWith('new-uid')
   })
 
+  it('returns 401 when the only matching member has been removed (#106)', async () => {
+    mockGet.mockResolvedValue({
+      docs: [{ data: () => ({ email: 'gone@example.com', passcode: 'ABC123', removed_at: '2026-06-01T00:00:00.000Z' }) }],
+    })
+
+    const res = await POST(makeRequest({ email: 'gone@example.com', passcode: 'ABC123' }))
+    expect(res.status).toBe(401)
+    expect(mockGetUserByEmail).not.toHaveBeenCalled()
+  })
+
   it('trims whitespace from email and passcode', async () => {
-    mockGet.mockResolvedValue({ empty: true })
+    mockGet.mockResolvedValue({ docs: [] })
 
     await POST(makeRequest({ email: '  test@example.com  ', passcode: '  ABC123  ' }))
 

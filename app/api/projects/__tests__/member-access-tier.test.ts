@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { NextResponse } from 'next/server'
-import { PATCH } from '../[id]/members/[memberId]/route'
+import { PATCH, DELETE } from '../[id]/members/[memberId]/route'
 
 // Firestore mock: collection('project_members') supports both
 //   .where('project_id','==',id).get()  → roster
@@ -83,5 +83,35 @@ describe('PATCH /api/projects/[id]/members/[memberId]', () => {
     const res = await PATCH(req, ownerCtx)
     expect(res.status).toBe(400)
     expect(mockUpdate).not.toHaveBeenCalled()
+  })
+
+  it('DELETE moves a member out (stamps removed_at/removed_by)', async () => {
+    const req = new Request('http://localhost/api/projects/proj1/members/m2', { method: 'DELETE' })
+    const res = await DELETE(req, ctx)
+    expect(res.status).toBe(200)
+    expect(mockDoc).toHaveBeenCalledWith('m2')
+    expect(mockUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ removed_at: expect.any(String), removed_by: 'builder@example.com' })
+    )
+  })
+
+  it('DELETE refuses to remove the last owner (400, no write)', async () => {
+    const ownerCtx = { params: Promise.resolve({ id: 'proj1', memberId: 'm1' }) }
+    const req = new Request('http://localhost/api/projects/proj1/members/m1', { method: 'DELETE' })
+    const res = await DELETE(req, ownerCtx)
+    expect(res.status).toBe(400)
+    expect(mockUpdate).not.toHaveBeenCalled()
+  })
+
+  it('PATCH { removed: false } restores a removed member', async () => {
+    mockGet.mockResolvedValue({
+      docs: [
+        { id: 'm1', data: () => ({ email: 'owner@x.com', role: 'owner' }) },
+        { id: 'm2', data: () => ({ email: 'mara@x.com', role: 'maker', removed_at: '2026-06-01T00:00:00.000Z' }) },
+      ],
+    })
+    const res = await PATCH(makeReq({ removed: false }), ctx)
+    expect(res.status).toBe(200)
+    expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({ removed_at: null, removed_by: null }))
   })
 })

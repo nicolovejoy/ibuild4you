@@ -58,3 +58,46 @@ export function planAccessTierChange({
 
   return { patch: { role: newRole, updated_at: now } }
 }
+
+/**
+ * Move a member out of the brief (non-destructive): stamp removed_at/removed_by.
+ * Refuses an unknown target, an already-removed member, and removing the last
+ * active owner. The row is never deleted; planRestoreMember reverses it.
+ */
+export function planRemoveMember({
+  members,
+  memberId,
+  actorEmail,
+  now,
+}: {
+  members: MemberRow[]
+  memberId: string
+  actorEmail: string
+  now: string
+}): LifecyclePlan {
+  const target = members.find((m) => m.id === memberId)
+  if (!target) return { error: `Member ${memberId} not found on this brief.` }
+  if (!isActiveMember(target)) return { error: 'This member has already been removed.' }
+  if (target.role === 'owner' && activeOwners(members).length <= 1) {
+    return { error: "Can't remove the last owner — promote another owner first." }
+  }
+
+  return { patch: { removed_at: now, removed_by: actorEmail, updated_at: now } }
+}
+
+/** Reverse a move-out: clear removed_at/removed_by. Errors if not currently removed. */
+export function planRestoreMember({
+  members,
+  memberId,
+  now,
+}: {
+  members: MemberRow[]
+  memberId: string
+  now: string
+}): LifecyclePlan {
+  const target = members.find((m) => m.id === memberId)
+  if (!target) return { error: `Member ${memberId} not found on this brief.` }
+  if (isActiveMember(target)) return { error: 'This member is already active.' }
+
+  return { patch: { removed_at: null, removed_by: null, updated_at: now } }
+}

@@ -206,12 +206,20 @@ export function useChangeRequesterEmail() {
 
 // --- Project members / roles (3c) ---
 
-export function useProjectMembers(projectId: string | undefined, enabled = true) {
+export function useProjectMembers(
+  projectId: string | undefined,
+  enabled = true,
+  includeRemoved = false
+) {
   return useQuery<ProjectMemberSummary[]>({
-    queryKey: queryKeys.members(projectId),
+    // includeRemoved is part of the key so the two views cache separately;
+    // mutations invalidate by the ['members', projectId] prefix, which matches both.
+    queryKey: [...queryKeys.members(projectId), includeRemoved],
     enabled: !!projectId && enabled,
     queryFn: async () => {
-      const res = await apiFetch(`/api/projects/${projectId}/members`)
+      const res = await apiFetch(
+        `/api/projects/${projectId}/members${includeRemoved ? '?include_removed=1' : ''}`
+      )
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
         throw new Error(data.error || 'Failed to load members')
@@ -262,6 +270,52 @@ export function useSetMemberRole(projectId: string | undefined) {
         throw new Error(data.error || 'Failed to update access tier')
       }
       return res.json() as Promise<{ ok: boolean; role: string }>
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.members(projectId) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.project(projectId) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.resolveProject(projectId) })
+    },
+  })
+}
+
+// Move a member out of a brief (#106 P2) — non-destructive (sets removed_at).
+// The last owner can't be removed; the API guards it and surfaces the reason.
+export function useRemoveMember(projectId: string | undefined) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (memberId: string) => {
+      const res = await apiFetch(`/api/projects/${projectId}/members/${memberId}`, { method: 'DELETE' })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error || 'Failed to remove member')
+      }
+      return res.json() as Promise<{ ok: boolean }>
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.members(projectId) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.project(projectId) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.resolveProject(projectId) })
+    },
+  })
+}
+
+// Restore a moved-out member (#106 P2) — clears removed_at.
+export function useRestoreMember(projectId: string | undefined) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (memberId: string) => {
+      const res = await apiFetch(`/api/projects/${projectId}/members/${memberId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ removed: false }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error || 'Failed to restore member')
+      }
+      return res.json() as Promise<{ ok: boolean }>
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.members(projectId) })
