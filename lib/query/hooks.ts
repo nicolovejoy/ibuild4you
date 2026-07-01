@@ -245,6 +245,32 @@ export function useSetBriefRole(projectId: string | undefined) {
   })
 }
 
+// Change a member's access tier (#106 P1). Distinct axis from brief_role: this
+// is the permission level (owner/builder/apprentice/maker). The last active
+// owner can't be demoted — the API guards it and surfaces the reason.
+export function useSetMemberRole(projectId: string | undefined) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({ memberId, role }: { memberId: string; role: string }) => {
+      const res = await apiFetch(`/api/projects/${projectId}/members/${memberId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ role }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error || 'Failed to update access tier')
+      }
+      return res.json() as Promise<{ ok: boolean; role: string }>
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.members(projectId) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.project(projectId) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.resolveProject(projectId) })
+    },
+  })
+}
+
 // Reveal a single member's sign-in passcode on demand (#81), so the operator can
 // re-send a previously-invited person THEIR OWN creds. A mutation (not a query)
 // because the secret is fetched only on an explicit click, never cached.

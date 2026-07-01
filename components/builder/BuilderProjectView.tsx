@@ -38,6 +38,7 @@ import {
   useProjectFiles,
   useProjectMembers,
   useSetBriefRole,
+  useSetMemberRole,
   useRevealMemberPasscode,
   useSendMakerEmail,
   useGeneratePrep,
@@ -48,6 +49,7 @@ import { buildNextConvoPrompt } from '@/lib/agent/next-convo-prompt'
 import { copy, getMakerShortName } from '@/lib/copy'
 import { formatCostUsd } from '@/lib/observability/session-cost'
 import { briefRoleLabel, briefRoleShort, viewerBriefRole } from '@/lib/roles/display'
+import { MEMBER_ROLES, memberRoleLabel } from '@/lib/roles/member-role'
 import { apiFetch } from '@/lib/firebase/api-fetch'
 import { useStreamingChat } from '@/lib/hooks/useStreamingChat'
 import { useRealtimeMessages } from '@/lib/hooks/useRealtimeMessages'
@@ -1323,7 +1325,9 @@ function ShareModal({ project, onClose, mode = 'maker' }: { project: Project; on
 function PeoplePanel({ project, onInvite }: { project: Project; onInvite: () => void }) {
   const { data: members, isLoading, error } = useProjectMembers(project.id)
   const setBriefRole = useSetBriefRole(project.id)
+  const setMemberRole = useSetMemberRole(project.id)
   const [pendingEmail, setPendingEmail] = useState<string | null>(null)
+  const [pendingTierId, setPendingTierId] = useState<string | null>(null)
 
   return (
     <Card hover={false}>
@@ -1353,30 +1357,54 @@ function PeoplePanel({ project, onInvite }: { project: Project; onInvite: () => 
                     <p className="text-sm font-medium text-brand-charcoal truncate">{m.display_name}</p>
                     <p className="text-xs text-gray-500 truncate">{m.email}</p>
                   </div>
-                  {isConsole ? (
-                    <span className="text-xs text-gray-400 shrink-0" title={briefRoleShort('reviewer')}>
-                      {briefRoleLabel('reviewer')}
-                    </span>
-                  ) : (
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {/* Access tier (permission level) — editable for every member. */}
                     <select
-                      value={m.brief_role ?? 'originator'}
-                      disabled={setBriefRole.isPending && pendingEmail === m.email}
+                      aria-label="Access tier"
+                      value={m.role ?? 'maker'}
+                      disabled={setMemberRole.isPending && pendingTierId === m.id}
                       onChange={async (e) => {
                         const value = e.target.value
-                        setPendingEmail(m.email)
+                        setPendingTierId(m.id)
                         try {
-                          await setBriefRole.mutateAsync({ email: m.email, brief_role: value })
+                          await setMemberRole.mutateAsync({ memberId: m.id, role: value })
                         } finally {
-                          setPendingEmail(null)
+                          setPendingTierId(null)
                         }
                       }}
-                      className="shrink-0 px-2 py-1 border border-gray-300 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-brand-navy"
+                      className="px-2 py-1 border border-gray-300 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-brand-navy"
                     >
-                      <option value="originator">{briefRoleLabel('originator')}</option>
-                      <option value="contributor">{briefRoleLabel('contributor')}</option>
-                      <option value="reviewer">{briefRoleLabel('reviewer')}</option>
+                      {MEMBER_ROLES.map((r) => (
+                        <option key={r} value={r}>{memberRoleLabel(r)}</option>
+                      ))}
                     </select>
-                  )}
+                    {/* Brief role (what they do) — console operators review by default. */}
+                    {isConsole ? (
+                      <span className="text-xs text-gray-400 px-1" title={briefRoleShort('reviewer')}>
+                        {briefRoleLabel('reviewer')}
+                      </span>
+                    ) : (
+                      <select
+                        aria-label="Brief role"
+                        value={m.brief_role ?? 'originator'}
+                        disabled={setBriefRole.isPending && pendingEmail === m.email}
+                        onChange={async (e) => {
+                          const value = e.target.value
+                          setPendingEmail(m.email)
+                          try {
+                            await setBriefRole.mutateAsync({ email: m.email, brief_role: value })
+                          } finally {
+                            setPendingEmail(null)
+                          }
+                        }}
+                        className="px-2 py-1 border border-gray-300 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-brand-navy"
+                      >
+                        <option value="originator">{briefRoleLabel('originator')}</option>
+                        <option value="contributor">{briefRoleLabel('contributor')}</option>
+                        <option value="reviewer">{briefRoleLabel('reviewer')}</option>
+                      </select>
+                    )}
+                  </div>
                 </div>
                 {/* Console operators sign in via OAuth — no passcode to reveal.
                     Chat participants need re-copyable creds (#81). */}
@@ -1386,6 +1414,7 @@ function PeoplePanel({ project, onInvite }: { project: Project; onInvite: () => 
           })}
         </ul>
         {setBriefRole.error && <StatusMessage type="error" message={(setBriefRole.error as Error).message} />}
+        {setMemberRole.error && <StatusMessage type="error" message={(setMemberRole.error as Error).message} />}
       </CardBody>
     </Card>
   )
