@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getAuthenticatedUser, getAdminDb, getProjectRole, requireRole } from '@/lib/api/firebase-server-helpers'
 import { copy } from '@/lib/copy'
+import { excludeArchived, isArchivedSession } from '@/lib/sessions/active'
 
 // GET /api/sessions?project_id=xxx — list sessions for a project
 export async function GET(request: Request) {
@@ -27,7 +28,10 @@ export async function GET(request: Request) {
     .orderBy('created_at', 'desc')
     .get()
 
-  const sessions = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
+  // Hide admin-archived conversations (#105) so they don't render as empty entries.
+  const sessions = excludeArchived(
+    snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }) as { id: string; status?: string })
+  )
   return NextResponse.json(sessions)
 }
 
@@ -67,11 +71,14 @@ export async function POST(request: Request) {
     .collection('sessions')
     .where('project_id', '==', project_id)
     .get()
-  const isFirstSession = existingSessions.empty
-  // The new session's ordinal = existing count + 1. Denormalized onto the
+  // Archived conversations don't count: after an admin reset-to-fresh (#105) the
+  // next session is a genuine first session (gets the welcome) and #1.
+  const liveCount = existingSessions.docs.filter((d) => !isArchivedSession(d.data())).length
+  const isFirstSession = liveCount === 0
+  // The new session's ordinal = live count + 1. Denormalized onto the
   // project below so the maker-reminders cron + outbound copy can show
   // "conversation (#n)" without an extra query (#21).
-  const sessionNumber = existingSessions.size + 1
+  const sessionNumber = liveCount + 1
 
   // Mark any existing active sessions as completed
   const activeSessions = await db

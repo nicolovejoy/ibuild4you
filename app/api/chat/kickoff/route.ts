@@ -5,6 +5,7 @@ import { AGENT_MODEL, AGENT_MAX_TOKENS, AGENT_TEMPERATURE } from '@/lib/agent/co
 import { logAnthropicCall } from '@/lib/observability/anthropic'
 import { accumulateSessionUsage } from '@/lib/observability/session-cost'
 import Anthropic from '@anthropic-ai/sdk'
+import { isArchivedSession } from '@/lib/sessions/active'
 import type { BriefContent, BriefRole, WireframeMockup } from '@/lib/types'
 
 // Agent kickoff (#31). When a maker opens a stale session, the frontend calls
@@ -168,7 +169,11 @@ export async function POST(request: Request) {
     .where('project_id', '==', projectId)
     .orderBy('created_at', 'asc')
     .get()
-  const sessionNumber = sessionsSnap.docs.map((d) => d.id).indexOf(session_id) + 1
+  const sessionNumber =
+    sessionsSnap.docs
+      .filter((d) => !isArchivedSession(d.data()))
+      .map((d) => d.id)
+      .indexOf(session_id) + 1
 
   let briefContent: BriefContent | null = null
   const briefSnap = await db

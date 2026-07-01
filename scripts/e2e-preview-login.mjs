@@ -41,8 +41,10 @@ await page.goto(
 await page.waitForURL(/\/(auth\/login|dashboard)/, { timeout: 12000 }).catch(() => {})
 await page.waitForTimeout(1500)
 if (page.url().includes('/auth/login')) {
-  await page.getByPlaceholder('you@example.com').fill(EMAIL)
-  await page.getByPlaceholder('ABC123').fill(passcode)
+  // #104 added a second you@example.com field (password form); target the
+  // passcode form's inputs by id to avoid a strict-mode ambiguity.
+  await page.locator('#email').fill(EMAIL)
+  await page.locator('#passcode').fill(passcode)
   console.log('filled email len:', EMAIL.length, 'passcode len:', passcode.length)
   // Capture the passcode auth response to learn WHY a login fails.
   const respP = page

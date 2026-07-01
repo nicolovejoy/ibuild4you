@@ -167,6 +167,31 @@ describe('enrichProjects read budget', () => {
     expect(db._getCount()).toBeLessThanOrEqual(40)
   })
 
+  // #105: admin-archived sessions don't count toward session_count, latest, or
+  // has_active_session.
+  it('excludes archived sessions from counts and activity', async () => {
+    const fixture = {
+      projects: [{ id: 'p', title: 'P', requester_email: 'm@example.com', created_at: '2026-05-01T00:00:00Z' }],
+      sessions: [
+        { id: 'p-s0', project_id: 'p', status: 'completed', created_at: '2026-05-02T00:00:00Z' },
+        { id: 'p-s1', project_id: 'p', status: 'archived', created_at: '2026-05-09T00:00:00Z' },
+      ],
+      messages: [
+        { id: 'm-live', session_id: 'p-s0', role: 'agent', sender_email: null, created_at: '2026-05-03T00:00:00Z' },
+        // A message under the archived session must NOT drive last-activity.
+        { id: 'm-arch', session_id: 'p-s1', role: 'agent', sender_email: null, created_at: '2026-05-10T00:00:00Z' },
+      ],
+      briefs: [],
+    }
+    const db = makeFakeDb(fixture)
+    const [p] = await enrichProjects(db, fixture.projects.map((x) => ({ ...x })))
+
+    expect(p.session_count).toBe(1)
+    expect(p.latest_session_created_at).toBe('2026-05-02T00:00:00Z') // not the archived one's
+    expect(p.last_message_at).toBe('2026-05-03T00:00:00Z') // not m-arch
+    expect(p.has_active_session).toBe(false)
+  })
+
   it('populates the expected enrichment fields', async () => {
     const fixture = makeFixture()
     const db = makeFakeDb(fixture)

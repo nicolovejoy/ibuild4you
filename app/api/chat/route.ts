@@ -6,6 +6,7 @@ import { AGENT_MODEL, AGENT_MAX_TOKENS, AGENT_TEMPERATURE } from '@/lib/agent/co
 import { logAnthropicCall } from '@/lib/observability/anthropic'
 import { accumulateSessionUsage } from '@/lib/observability/session-cost'
 import Anthropic from '@anthropic-ai/sdk'
+import { isArchivedSession } from '@/lib/sessions/active'
 import type { BriefContent, BriefRole } from '@/lib/types'
 
 // Debounce window for maker-activity notifications. The cron at /api/cron/notify
@@ -260,13 +261,14 @@ async function handleChat(
     break
   }
 
-  // Count sessions for this project to determine session number
+  // Count sessions for this project to determine session number (excluding
+  // admin-archived conversations, #105, so the ordinal stays consistent).
   const sessionsSnap = await db
     .collection('sessions')
     .where('project_id', '==', projectId)
     .orderBy('created_at', 'asc')
     .get()
-  const sessionIds = sessionsSnap.docs.map((d) => d.id)
+  const sessionIds = sessionsSnap.docs.filter((d) => !isArchivedSession(d.data())).map((d) => d.id)
   const sessionNumber = sessionIds.indexOf(session_id) + 1
 
   // Load current brief if exists
