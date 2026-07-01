@@ -1464,7 +1464,10 @@ function PeoplePanel({ project, onInvite }: { project: Project; onInvite: () => 
                 <li key={m.id} className="py-2 flex items-center justify-between gap-3">
                   <div className="min-w-0">
                     <p className="text-sm text-gray-500 truncate line-through">{m.display_name}</p>
-                    <p className="text-xs text-gray-400 truncate">{m.email}</p>
+                    <p className="text-xs text-gray-400 truncate">
+                      {m.email}
+                      {m.removed_at && ` · removed ${new Date(m.removed_at).toLocaleDateString()}`}
+                    </p>
                   </div>
                   <button
                     onClick={() => restoreMember.mutate(m.id)}
