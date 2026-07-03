@@ -30,26 +30,33 @@ export async function GET(
   const roleCheck = requireRole(callerRole, 'builder')
   if (roleCheck) return roleCheck
 
+  // Removed members (#106) are hidden by default; ?include_removed=1 returns them
+  // too, so the People panel can offer a restore action.
+  const includeRemoved = new URL(request.url).searchParams.get('include_removed') === '1'
+
   const snap = await db
     .collection('project_members')
     .where('project_id', '==', projectId)
     .get()
 
-  const members: ProjectMemberSummary[] = await Promise.all(
-    snap.docs.map(async (doc) => {
-      const d = doc.data()
-      const email = (d.email as string) || ''
-      return {
-        id: doc.id,
-        email,
-        display_name: await getUserDisplayName(db, (d.user_id as string) || '', email),
-        role: (d.role as MemberRole | undefined) ?? null,
-        brief_role: (d.brief_role as BriefRole | null | undefined) ?? null,
-        added_by: (d.added_by as string | undefined) ?? null,
-        created_at: (d.created_at as string | undefined) ?? null,
-      }
-    })
-  )
+  const members: ProjectMemberSummary[] = (
+    await Promise.all(
+      snap.docs.map(async (doc) => {
+        const d = doc.data()
+        const email = (d.email as string) || ''
+        return {
+          id: doc.id,
+          email,
+          display_name: await getUserDisplayName(db, (d.user_id as string) || '', email),
+          role: (d.role as MemberRole | undefined) ?? null,
+          brief_role: (d.brief_role as BriefRole | null | undefined) ?? null,
+          added_by: (d.added_by as string | undefined) ?? null,
+          created_at: (d.created_at as string | undefined) ?? null,
+          removed_at: (d.removed_at as string | null | undefined) ?? null,
+        }
+      })
+    )
+  ).filter((m) => includeRemoved || !m.removed_at)
 
   members.sort(
     (a, b) =>

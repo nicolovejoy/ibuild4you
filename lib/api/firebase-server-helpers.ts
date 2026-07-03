@@ -3,6 +3,7 @@ import { getAdminAuth, getAdminDb } from '@/lib/firebase/admin'
 import { ADMIN_EMAILS, isAdminEmail } from '@/lib/constants'
 import type { BriefRole, MemberRole, SystemRole } from '@/lib/types'
 import { getCachedUser, setCachedUser } from './auth-cache'
+import { isActiveMember } from '@/lib/members/lifecycle'
 
 export { ADMIN_EMAILS }
 
@@ -84,16 +85,18 @@ export async function getProjectRole(
     return ctx.roleCache.get(projectId) ?? null
   }
 
-  // Check explicit membership
+  // Check explicit membership. A removed member (removed_at set, #106) has no
+  // access, so pick the active row rather than limit(1) — a stale removed row
+  // must not grant a role.
   const memberSnap = await db
     .collection('project_members')
     .where('project_id', '==', projectId)
     .where('user_id', '==', userId)
-    .limit(1)
     .get()
 
-  if (!memberSnap.empty) {
-    const role = memberSnap.docs[0].data().role as MemberRole
+  const activeByUid = memberSnap.docs.find((d) => isActiveMember(d.data()))
+  if (activeByUid) {
+    const role = activeByUid.data().role as MemberRole
     ctx?.roleCache.set(projectId, role)
     return role
   }
@@ -103,11 +106,11 @@ export async function getProjectRole(
     .collection('project_members')
     .where('project_id', '==', projectId)
     .where('email', '==', email)
-    .limit(1)
     .get()
 
-  if (!emailSnap.empty) {
-    const role = emailSnap.docs[0].data().role as MemberRole
+  const activeByEmail = emailSnap.docs.find((d) => isActiveMember(d.data()))
+  if (activeByEmail) {
+    const role = activeByEmail.data().role as MemberRole
     ctx?.roleCache.set(projectId, role)
     return role
   }

@@ -35,6 +35,7 @@ export interface ProjectMemberSummary {
   brief_role: BriefRole | null
   added_by: string | null
   created_at: string | null
+  removed_at: string | null // when this member was moved out of the brief (#106); null = active
 }
 
 // System-level roles — platform-wide capabilities (not project-scoped)
