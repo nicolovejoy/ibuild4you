@@ -121,6 +121,13 @@ describe('PATCH /api/admin/feedback/[id]', () => {
     expect(mockUpdate).not.toHaveBeenCalled()
   })
 
+  it('accepts spam and never emails the submitter about it', async () => {
+    const res = await PATCH(makeReq({ status: 'spam' }), { params })
+    expect(res.status).toBe(200)
+    expect(mockUpdate.mock.calls[0][0].status).toBe('spam')
+    expect(mockResendSend).not.toHaveBeenCalled()
+  })
+
   it('updates internal_notes and github_issue_url without sending email', async () => {
     const res = await PATCH(
       makeReq({ internal_notes: 'Talked to Sam', github_issue_url: 'https://github.com/x/y/issues/1' }),

@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { getAuthenticatedUser, getAdminDb, hasSystemRole } from '@/lib/api/firebase-server-helpers'
 import type { FeedbackStatus, FeedbackType } from '@/lib/types'
 
-const ALLOWED_STATUSES: FeedbackStatus[] = ['new', 'acknowledged', 'in_progress', 'done', 'wontfix']
+const ALLOWED_STATUSES: FeedbackStatus[] = ['new', 'acknowledged', 'in_progress', 'done', 'wontfix', 'spam']
 const ALLOWED_TYPES: FeedbackType[] = ['bug', 'idea', 'other']
 
 // GET /api/admin/feedback — list feedback submissions, newest first.
@@ -40,6 +40,11 @@ export async function GET(request: Request) {
   let rows: Array<Record<string, unknown>> = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
   if (type) {
     rows = rows.filter((r) => r.type === type)
+  }
+  // Spam is hidden from the default view but reachable via ?status=spam.
+  // In-memory like the type filter — no != composite index needed.
+  if (!status) {
+    rows = rows.filter((r) => r.status !== 'spam')
   }
 
   return NextResponse.json(rows)
