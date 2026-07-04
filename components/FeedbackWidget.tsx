@@ -7,6 +7,7 @@ import {
   MAX_FEEDBACK_BODY_CHARS,
   type FeedbackContext,
 } from '@/lib/feedback/payload'
+import { buildPageCapture } from '@/lib/feedback/capture'
 import type { FeedbackType } from '@/lib/types'
 
 const TYPES: ReadonlyArray<{ value: FeedbackType; label: string }> = [
@@ -41,6 +42,11 @@ export function FeedbackWidget({
   const [website, setWebsite] = useState('') // honeypot — must stay empty
   const [status, setStatus] = useState<Status>('idle')
   const [error, setError] = useState<string | null>(null)
+  // #72: structural page snapshot rides along by default — it's previewable
+  // below, contains no typed values by construction, and the maker is already
+  // mid-explicit-action (reporting about this very page).
+  const [includeCapture, setIncludeCapture] = useState(true)
+  const [capturePreview, setCapturePreview] = useState<string | null>(null)
   const renderedAtRef = useRef<number>(0)
 
   // Capture render time once. Server rejects submissions younger than ~2s
@@ -72,8 +78,12 @@ export function FeedbackWidget({
         typeof window !== 'undefined' ? `${window.innerWidth}x${window.innerHeight}` : '',
       renderedAt: renderedAtRef.current || Date.now(),
     }
+    const capture =
+      includeCapture && typeof document !== 'undefined'
+        ? buildPageCapture(document, window.location)
+        : null
     const payload = {
-      ...buildFeedbackPayload({ projectId, type, body, submitterEmail }, ctx),
+      ...buildFeedbackPayload({ projectId, type, body, submitterEmail }, ctx, capture),
       // Honeypot — comes from state so a bot filling the field gets caught.
       website,
     }
@@ -120,6 +130,8 @@ export function FeedbackWidget({
       onSubmit={handleSubmit}
       className={`max-w-sm space-y-3 rounded-lg border border-gray-200 bg-white p-4 shadow-sm ${className}`}
       aria-label="Send feedback"
+      // The widget excludes itself from its own page capture.
+      data-loop-redact=""
     >
       <div className="flex gap-1">
         {TYPES.map((t) => (
@@ -183,6 +195,38 @@ export function FeedbackWidget({
           opacity: 0,
         }}
       />
+
+      {/*
+        #72: consent moment for the structural snapshot. The preview shows the
+        exact text that would be sent — the consent artifact IS the payload.
+      */}
+      <div className="space-y-1">
+        <label className="flex items-center gap-2 text-xs text-brand-charcoal">
+          <input
+            type="checkbox"
+            checked={includeCapture}
+            onChange={(e) => setIncludeCapture(e.target.checked)}
+          />
+          Include a snapshot of this page&apos;s structure
+        </label>
+        {includeCapture && (
+          <details
+            onToggle={(e) => {
+              if ((e.target as HTMLDetailsElement).open && typeof document !== 'undefined') {
+                const cap = buildPageCapture(document, window.location)
+                setCapturePreview(`${cap.route} — ${cap.title}\n${cap.outline}`)
+              }
+            }}
+          >
+            <summary className="cursor-pointer text-xs text-brand-navy hover:underline">
+              What&apos;s included?
+            </summary>
+            <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap rounded border border-gray-100 bg-gray-50 p-2 text-[10px] leading-tight text-gray-600">
+              {capturePreview ?? ''}
+            </pre>
+          </details>
+        )}
+      </div>
 
       {error && (
         <p className="text-xs text-red-500" role="alert">

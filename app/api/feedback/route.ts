@@ -19,6 +19,36 @@ const ONE_HOUR_MS = 60 * 60 * 1000
 const MIN_RENDER_AGE_MS = 2_000
 const MAX_RENDER_AGE_MS = 24 * 60 * 60 * 1000
 
+// #72: server-side caps for the optional structural capture. Mirror the
+// widget-side constants in lib/feedback/capture.ts — the server is the
+// enforcer, the widget just avoids sending bytes that would be sliced anyway.
+const CAPTURE_ROUTE_MAX = 300
+const CAPTURE_TITLE_MAX = 200
+const CAPTURE_OUTLINE_MAX = 4000
+
+interface ValidCapture {
+  route: string
+  title: string
+  outline: string
+}
+
+// Shape-check the optional capture field. Anything malformed is dropped
+// silently — the capture is a bonus, never a reason to fail the submission.
+function parseCapture(raw: unknown): ValidCapture | null {
+  if (typeof raw !== 'object' || raw === null) return null
+  const c = raw as Record<string, unknown>
+  if (c.v !== 1) return null
+  if (typeof c.route !== 'string' || typeof c.title !== 'string' || typeof c.outline !== 'string') {
+    return null
+  }
+  if (!c.route.trim() && !c.outline.trim()) return null
+  return {
+    route: c.route.slice(0, CAPTURE_ROUTE_MAX),
+    title: c.title.slice(0, CAPTURE_TITLE_MAX),
+    outline: c.outline.slice(0, CAPTURE_OUTLINE_MAX),
+  }
+}
+
 function corsHeaders(): Record<string, string> {
   // Public endpoint — widget can post from any client site we host. Anti-abuse
   // lives in the honeypot + rate limit + slug check, not in the origin allowlist.
@@ -130,6 +160,11 @@ export async function POST(request: Request) {
   const project = projectSnap.docs[0]
   const projectTitle = (project.data().title as string) || projectId
 
+  // #72: optional structural page capture. Stored in its own agent-facing
+  // collection (prototype_context), NOT on the feedback row — feedback drives
+  // the admin inbox, captures feed the agent's system prompt and expire.
+  const capture = parseCapture(body.capture)
+
   const now = new Date().toISOString()
   const docRef = await db.collection('feedback').add({
     project_id: projectId,
@@ -145,7 +180,31 @@ export async function POST(request: Request) {
     github_issue_url: null,
     created_at: now,
     updated_at: now,
+    ...(capture ? { has_capture: true } : {}),
   })
+
+  if (capture) {
+    try {
+      await db.collection('prototype_context').add({
+        project_id: projectId,
+        feedback_id: docRef.id,
+        source: 'loop-widget',
+        capture_version: 1,
+        route: capture.route,
+        title: capture.title,
+        outline: capture.outline,
+        viewport,
+        user_agent: userAgent,
+        submitter_uid: submitterUid,
+        status: 'active',
+        created_at: now,
+        updated_at: now,
+      })
+    } catch (err) {
+      // The feedback row is already in — losing the capture is acceptable.
+      console.error('[feedback] prototype_context write failed:', err)
+    }
+  }
 
   // Notify admins — non-blocking; submission succeeds even if email fails.
   try {

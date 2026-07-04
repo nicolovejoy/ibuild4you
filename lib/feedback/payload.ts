@@ -1,4 +1,5 @@
 import type { FeedbackType } from '@/lib/types'
+import type { PageCapture } from './capture'
 
 // Mirror server-side cap (app/api/feedback/route.ts). Kept as a constant the
 // widget and tests can both import so a future bump only happens in two places.
@@ -34,6 +35,9 @@ export interface FeedbackPayload {
   viewport: string
   website: '' // honeypot — must stay empty; bots fill it
   _ts: number // render time; server checks min/max age
+  // #72: optional structural page capture (lib/feedback/capture.ts). Additive —
+  // servers that predate it ignore it; omitting it is always valid.
+  capture?: PageCapture
 }
 
 export type ValidationResult =
@@ -68,7 +72,8 @@ export function validateFeedbackInput(input: FeedbackInput): ValidationResult {
 
 export function buildFeedbackPayload(
   input: FeedbackInput,
-  ctx: FeedbackContext
+  ctx: FeedbackContext,
+  capture?: PageCapture | null
 ): FeedbackPayload {
   const submitterEmail = input.submitterEmail?.trim().toLowerCase()
   return {
@@ -81,5 +86,6 @@ export function buildFeedbackPayload(
     viewport: ctx.viewport,
     website: '',
     _ts: ctx.renderedAt,
+    ...(capture ? { capture } : {}),
   }
 }
