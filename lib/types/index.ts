@@ -192,7 +192,7 @@ export interface InterestSubmission extends BaseEntity {
 // projectId is the slug of a `projects` doc — widget submissions are rejected
 // when the slug doesn't match an existing project.
 export type FeedbackType = 'bug' | 'idea' | 'other'
-export type FeedbackStatus = 'new' | 'acknowledged' | 'in_progress' | 'done' | 'wontfix'
+export type FeedbackStatus = 'new' | 'acknowledged' | 'in_progress' | 'done' | 'wontfix' | 'spam'
 
 export interface Feedback extends BaseEntity {
   project_id: string // matches projects.slug

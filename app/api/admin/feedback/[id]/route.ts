@@ -4,7 +4,7 @@ import { getAuthenticatedUser, getAdminDb, hasSystemRole } from '@/lib/api/fireb
 import { feedbackReplyAddress } from '@/lib/feedback/inbound'
 import type { FeedbackStatus } from '@/lib/types'
 
-const ALLOWED_STATUSES: FeedbackStatus[] = ['new', 'acknowledged', 'in_progress', 'done', 'wontfix']
+const ALLOWED_STATUSES: FeedbackStatus[] = ['new', 'acknowledged', 'in_progress', 'done', 'wontfix', 'spam']
 
 // Statuses that trigger an outbound email to the submitter (if they left one).
 // "acknowledged" tells them we heard them; "done" closes the loop.

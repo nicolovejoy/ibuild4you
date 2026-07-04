@@ -11,7 +11,7 @@ import { useEscapeBack } from '@/lib/hooks/useEscapeBack'
 import { SectionHeader } from '@/components/section-header'
 import type { Feedback, FeedbackReply, FeedbackStatus, FeedbackType } from '@/lib/types'
 
-const STATUSES: FeedbackStatus[] = ['new', 'acknowledged', 'in_progress', 'done', 'wontfix']
+const STATUSES: FeedbackStatus[] = ['new', 'acknowledged', 'in_progress', 'done', 'wontfix', 'spam']
 const TYPES: FeedbackType[] = ['bug', 'idea', 'other']
 
 const STATUS_STYLES: Record<FeedbackStatus, string> = {
@@ -20,6 +20,7 @@ const STATUS_STYLES: Record<FeedbackStatus, string> = {
   in_progress: 'bg-purple-100 text-purple-700',
   done: 'bg-green-100 text-green-700',
   wontfix: 'bg-gray-200 text-gray-600',
+  spam: 'bg-red-100 text-red-700',
 }
 
 export default function FeedbackAdminPage() {

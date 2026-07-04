@@ -118,4 +118,26 @@ describe('GET /api/admin/feedback', () => {
     expect(whereCalls).toContainEqual({ field: 'project_id', op: '==', value: 'sample-cafe' })
     expect(whereCalls).toContainEqual({ field: 'status', op: '==', value: 'new' })
   })
+
+  // Spam triage — no hard deletes (house rule), so spam is a status. The
+  // default (no status filter) view hides it; it's still reachable explicitly.
+  it('hides spam rows from the default view (in memory)', async () => {
+    mockGet.mockResolvedValueOnce({
+      docs: [
+        { id: 'f1', data: () => ({ type: 'bug', status: 'new' }) },
+        { id: 'f2', data: () => ({ type: 'idea', status: 'spam' }) },
+        { id: 'f3', data: () => ({ type: 'bug', status: 'done' }) },
+      ],
+    })
+    const res = await GET(makeReq())
+    const rows = await res.json()
+    expect(rows.map((r: { id: string }) => r.id)).toEqual(['f1', 'f3'])
+  })
+
+  it('returns spam rows when explicitly filtered', async () => {
+    mockGet.mockResolvedValueOnce({ docs: [] })
+    const res = await GET(makeReq('?status=spam'))
+    expect(res.status).toBe(200)
+    expect(whereCalls).toContainEqual({ field: 'status', op: '==', value: 'spam' })
+  })
 })
