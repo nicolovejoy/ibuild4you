@@ -98,6 +98,14 @@
         { "fieldPath": "project_id", "order": "ASCENDING" },
         { "fieldPath": "created_at", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "prototype_context",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "project_id", "order": "ASCENDING" },
+        { "fieldPath": "created_at", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

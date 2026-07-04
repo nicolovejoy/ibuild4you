@@ -113,4 +113,17 @@ describe('buildFeedbackPayload', () => {
     )
     expect(payload._ts).toBe(42)
   })
+
+  // #72 slice B1 — optional structural capture rides along additively.
+  it('includes a capture when provided', () => {
+    const capture = { v: 1 as const, route: '/menu', title: 'Menu', outline: 'h1: Menu' }
+    const payload = buildFeedbackPayload({ projectId: 'p', type: 'bug', body: 'x' }, ctx, capture)
+    expect(payload.capture).toEqual(capture)
+  })
+
+  it('omits the capture field entirely when not provided', () => {
+    const payload = buildFeedbackPayload({ projectId: 'p', type: 'bug', body: 'x' }, ctx)
+    expect('capture' in payload).toBe(false)
+    expect(buildFeedbackPayload({ projectId: 'p', type: 'bug', body: 'x' }, ctx, null).capture).toBeUndefined()
+  })
 })

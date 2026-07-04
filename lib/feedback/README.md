@@ -40,9 +40,32 @@ honeypot, render-time check, and rate limit, not in an origin allowlist.
   "userAgent": "Mozilla/5.0 ...",      // string, optional, sliced to 500 chars
   "viewport": "1440x900",              // string, optional, sliced to 50 chars
   "website": "",                       // honeypot — MUST stay empty
-  "_ts": 1736812345000                 // number, required, render-time epoch ms
+  "_ts": 1736812345000,                // number, required, render-time epoch ms
+  "capture": {                         // OPTIONAL — #72 structural page snapshot
+    "v": 1,                            //   must be exactly 1
+    "route": "/checkout",              //   path only (no host/query), sliced to 300
+    "title": "Checkout — Byside",      //   sliced to 200
+    "outline": "h1: Checkout\n..."     //   sliced to 4000
+  }
 }
 ```
+
+### The `capture` field (#72)
+
+Built by `lib/feedback/capture.ts` (`buildPageCapture`) — the third file that
+travels with the widget when Loop is copied into a host app. It is a
+**structure-only** outline of the page the submitter was on: headings (h1–h3),
+nav landmarks + link labels, button labels, form **field labels** (never
+values; password/hidden inputs skipped entirely), and row/item counts for
+tables and long lists. Query strings, typed values, and non-heading body text
+are never captured. Host apps can exclude any subtree by adding a
+`data-loop-redact` attribute.
+
+Server handling: a shape-valid capture is written to the separate
+`prototype_context` collection (agent-facing, expiring) and the feedback row
+gets `has_capture: true`; a malformed capture is silently dropped and never
+fails the submission. Omitting the field entirely is always valid — servers
+that predate it ignore it.
 
 ## Anti-abuse rules (server-enforced)
 

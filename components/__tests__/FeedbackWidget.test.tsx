@@ -82,6 +82,47 @@ describe('<FeedbackWidget>', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(/too many submissions/i)
   })
 
+  // #72 slice B1 — the structural snapshot rides along by default, is
+  // previewable, and is droppable via the checkbox.
+  it('includes a page capture by default, excluding the widget itself', async () => {
+    const fetchMock = mockFetch({ ok: true, status: 201, json: { id: 'fb_1' } })
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+
+    const h1 = document.createElement('h1')
+    h1.textContent = 'Host Page Heading'
+    document.body.appendChild(h1)
+    try {
+      render(<FeedbackWidget projectId="sample-cafe" />)
+      vi.advanceTimersByTime(3000)
+      await user.type(screen.getByPlaceholderText(/what's up/i), 'the header looks off')
+      await user.click(screen.getByRole('button', { name: /send feedback/i }))
+
+      await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+      const body = JSON.parse(fetchMock.mock.calls[0][1].body as string)
+      expect(body.capture.v).toBe(1)
+      expect(body.capture.outline).toContain('h1: Host Page Heading')
+      // The widget's own controls must not leak into the capture.
+      expect(body.capture.outline).not.toContain('Send feedback')
+    } finally {
+      h1.remove()
+    }
+  })
+
+  it('omits the capture when the checkbox is unticked', async () => {
+    const fetchMock = mockFetch({ ok: true, status: 201, json: { id: 'fb_1' } })
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+
+    render(<FeedbackWidget projectId="sample-cafe" />)
+    vi.advanceTimersByTime(3000)
+    await user.click(screen.getByRole('checkbox', { name: /snapshot/i }))
+    await user.type(screen.getByPlaceholderText(/what's up/i), 'no snapshot please')
+    await user.click(screen.getByRole('button', { name: /send feedback/i }))
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string)
+    expect(body.capture).toBeUndefined()
+  })
+
   it('keeps the honeypot field hidden from assistive tech and tab order', () => {
     const { container } = render(<FeedbackWidget projectId="sample-cafe" />)
     const honeypot = container.querySelector('input[name="website"]')

@@ -14,6 +14,9 @@ import { _resetRateLimit } from '@/lib/api/rate-limit'
 const mockAdd = vi.fn<(doc: Record<string, unknown>) => Promise<{ id: string }>>(
   async () => ({ id: 'feedback-1' })
 )
+const mockContextAdd = vi.fn<(doc: Record<string, unknown>) => Promise<{ id: string }>>(
+  async () => ({ id: 'context-1' })
+)
 const mockProjectsGet = vi.fn(async () => ({
   empty: false,
   docs: [{ id: 'project-1', data: () => ({ title: 'Sample Cafe', slug: 'sample-cafe' }) }],
@@ -30,6 +33,9 @@ vi.mock('@/lib/firebase/admin', () => ({
         return {
           where: () => ({ limit: () => ({ get: mockProjectsGet }) }),
         }
+      }
+      if (name === 'prototype_context') {
+        return { add: mockContextAdd }
       }
       // feedback
       return { add: mockAdd }
@@ -181,6 +187,74 @@ describe('POST /api/feedback — validation', () => {
     const res = await POST(makeRequest(validPayload()))
     expect(res.status).toBe(201)
     expect(mockAdd).toHaveBeenCalledOnce()
+  })
+})
+
+// #72 slice B1 — optional structural capture rides along with a submission and
+// lands in the separate prototype_context collection (agent-facing), never on
+// the feedback row itself beyond a has_capture flag.
+describe('POST /api/feedback — capture', () => {
+  const capture = {
+    v: 1,
+    route: '/checkout',
+    title: 'Checkout — Byside',
+    outline: 'h1: Checkout\nbuttons: Place order',
+  }
+
+  it('writes a prototype_context row and flags the feedback row', async () => {
+    const res = await POST(makeRequest(validPayload({ capture })))
+    expect(res.status).toBe(201)
+
+    const feedbackRow = mockAdd.mock.calls[0][0]
+    expect(feedbackRow.has_capture).toBe(true)
+    expect(feedbackRow.capture).toBeUndefined() // capture never lands on the inbox row
+
+    expect(mockContextAdd).toHaveBeenCalledOnce()
+    const row = mockContextAdd.mock.calls[0][0]
+    expect(row.project_id).toBe('sample-cafe')
+    expect(row.feedback_id).toBe('feedback-1')
+    expect(row.source).toBe('loop-widget')
+    expect(row.capture_version).toBe(1)
+    expect(row.route).toBe('/checkout')
+    expect(row.title).toBe('Checkout — Byside')
+    expect(row.outline).toContain('Place order')
+    expect(row.viewport).toBe('375x812')
+    expect(row.status).toBe('active')
+    expect(row.submitter_uid).toBeNull()
+  })
+
+  it('no capture → no prototype_context write, no flag', async () => {
+    const res = await POST(makeRequest(validPayload()))
+    expect(res.status).toBe(201)
+    expect(mockContextAdd).not.toHaveBeenCalled()
+    expect(mockAdd.mock.calls[0][0].has_capture).toBeUndefined()
+  })
+
+  it('ignores a malformed capture without failing the submission', async () => {
+    const res = await POST(makeRequest(validPayload({ capture: { v: 99, nonsense: true } })))
+    expect(res.status).toBe(201)
+    expect(mockAdd).toHaveBeenCalledOnce()
+    expect(mockContextAdd).not.toHaveBeenCalled()
+  })
+
+  it('slices oversized capture fields server-side', async () => {
+    const res = await POST(
+      makeRequest(
+        validPayload({
+          capture: { ...capture, outline: 'x'.repeat(9000), route: '/' + 'r'.repeat(500) },
+        })
+      )
+    )
+    expect(res.status).toBe(201)
+    const row = mockContextAdd.mock.calls[0][0]
+    expect((row.outline as string).length).toBeLessThanOrEqual(4000)
+    expect((row.route as string).length).toBeLessThanOrEqual(300)
+  })
+
+  it('context write failure does not fail the submission', async () => {
+    mockContextAdd.mockRejectedValueOnce(new Error('firestore down'))
+    const res = await POST(makeRequest(validPayload({ capture })))
+    expect(res.status).toBe(201)
   })
 })
 

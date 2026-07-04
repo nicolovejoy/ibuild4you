@@ -1,6 +1,7 @@
 import { getAuthenticatedUser, getAdminDb, getProjectRole, getUserDisplayName } from '@/lib/api/firebase-server-helpers'
 import { buildSystemPrompt } from '@/lib/agent/system-prompt'
 import { fetchPrototypeFeedback } from '@/lib/api/prototype-feedback'
+import { fetchPrototypeContext } from '@/lib/api/prototype-context'
 import { AGENT_MODEL, AGENT_MAX_TOKENS, AGENT_TEMPERATURE } from '@/lib/agent/constants'
 import { logAnthropicCall } from '@/lib/observability/anthropic'
 import { accumulateSessionUsage } from '@/lib/observability/session-cost'
@@ -218,12 +219,12 @@ export async function POST(request: Request) {
     participants = [...seen].map(([email, name]) => ({ name, brief_role: roleByEmail.get(email) ?? null }))
   }
 
-  // #72: ground the kickoff recap in real prototype feedback too.
-  const prototypeFeedback = await fetchPrototypeFeedback(
-    db,
-    projectData.slug as string | undefined,
-    Date.now(),
-  )
+  // #72: ground the kickoff recap in real prototype feedback + structural
+  // page captures too.
+  const [prototypeFeedback, prototypeContext] = await Promise.all([
+    fetchPrototypeFeedback(db, projectData.slug as string | undefined, Date.now()),
+    fetchPrototypeContext(db, projectData.slug as string | undefined, Date.now()),
+  ])
 
   const systemPrompt = buildSystemPrompt({
     briefContent,
@@ -239,6 +240,7 @@ export async function POST(request: Request) {
     gapSinceLastMakerMessageMs,
     participants,
     prototypeFeedback,
+    prototypeContext,
   })
 
   // --- Stream + store the agent greeting ---
