@@ -3,6 +3,7 @@ import { Montserrat, Open_Sans } from 'next/font/google'
 import './globals.css'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { Providers } from './providers'
+import { Analytics } from '@vercel/analytics/next'
 
 const montserrat = Montserrat({
   variable: '--font-montserrat',
@@ -53,6 +54,7 @@ export default function RootLayout({
         <ErrorBoundary>
           <Providers>{children}</Providers>
         </ErrorBoundary>
+        <Analytics />
       </body>
     </html>
   )
