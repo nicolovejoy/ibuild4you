@@ -4,6 +4,7 @@ import './globals.css'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { Providers } from './providers'
 import { Analytics } from '@vercel/analytics/next'
+import Script from 'next/script'
 
 const montserrat = Montserrat({
   variable: '--font-montserrat',
@@ -55,6 +56,7 @@ export default function RootLayout({
           <Providers>{children}</Providers>
         </ErrorBoundary>
         <Analytics />
+        <Script src="https://prompt-labs.org/beacon.js" strategy="afterInteractive" />
       </body>
     </html>
   )
