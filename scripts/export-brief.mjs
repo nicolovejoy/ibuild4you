@@ -1,14 +1,25 @@
 #!/usr/bin/env node
-// Export a project's living brief + full conversation transcripts to markdown,
-// for consumption by agents outside this app (e.g. Claude Cowork reading the
-// byside brief). Output goes to the gitignored exports/ directory — transcripts
-// contain PII and must never be committed.
+// Export project briefs + full conversation transcripts to markdown, for
+// consumption by agents outside this app (e.g. Claude Cowork reading the
+// byside briefs). Output goes to the gitignored exports/ directory —
+// transcripts contain PII and must never be committed.
 //
 // Always run through the read-only wrapper:
-//   node scripts/with-prod-env-ro.mjs node scripts/export-brief.mjs <slug>
-//   node scripts/with-prod-env-ro.mjs node scripts/export-brief.mjs byside --out exports
+//   node scripts/with-prod-env-ro.mjs node scripts/export-brief.mjs <slug> [<slug> ...]
+//   node scripts/with-prod-env-ro.mjs node scripts/export-brief.mjs --repo nicolovejoy/byside --out ~/src/byside/ibuild-export
+//   node scripts/with-prod-env-ro.mjs node scripts/export-brief.mjs --grep byside
 //
-// Writes:
+// --repo exports every project whose github_repo maps to that repository —
+// the canonical brief→repo mapping (set per brief in the builder Setup tab).
+// Stored values are normalized, so "byside", "nicolovejoy/byside" and
+// "https://github.com/nicolovejoy/byside" all match --repo nicolovejoy/byside.
+// Use --repo (not --grep) when exporting into a host repo, so a repo only
+// ever receives its own briefs — no cross-contamination.
+//
+// --grep exports every project whose slug or title contains the substring
+// (case-insensitive) — same matching as list-projects.mjs. Ad-hoc use only.
+//
+// Writes, per project:
 //   exports/<slug>/brief.md        — project meta + latest brief + reviewer annotations
 //   exports/<slug>/session-NN.md   — one transcript per conversation (oldest first)
 //
@@ -20,17 +31,35 @@ import { getFirestore } from 'firebase-admin/firestore'
 import { mkdirSync, writeFileSync, rmSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 
-const args = process.argv.slice(2).filter((a) => !a.startsWith('--'))
-const outIdx = process.argv.indexOf('--out')
-const OUT_ROOT = outIdx >= 0 ? process.argv[outIdx + 1] : 'exports'
-const TARGET = args[0]
+const argv = process.argv.slice(2)
+const flagValue = (name) => {
+  const i = argv.indexOf(name)
+  return i >= 0 ? argv[i + 1] : null
+}
+const OUT_ROOT = flagValue('--out') || 'exports'
+const GREP = flagValue('--grep')?.toLowerCase() || null
+const REPO = flagValue('--repo') || null
+// Positional slugs/ids: everything that isn't a flag or a flag's value
+const flagValues = new Set(
+  [flagValue('--out'), flagValue('--grep'), flagValue('--repo')].filter(Boolean)
+)
+const targets = argv.filter((a) => !a.startsWith('--') && !flagValues.has(a))
 
-if (!TARGET) {
+if (!targets.length && !GREP && !REPO) {
   console.error(
-    'Usage: node scripts/with-prod-env-ro.mjs node scripts/export-brief.mjs <slug-or-project-id> [--out exports]'
+    'Usage: node scripts/with-prod-env-ro.mjs node scripts/export-brief.mjs <slug-or-id> [<slug-or-id> ...] [--repo owner/name] [--grep substring] [--out exports]'
   )
   process.exit(1)
 }
+
+// Normalize a github_repo value to "owner/name" (lowercased). Stored values
+// vary: "owner/name", bare "name", or a full https URL.
+const normalizeRepo = (v) =>
+  (v || '')
+    .toLowerCase()
+    .replace(/^https?:\/\/github\.com\//, '')
+    .replace(/\.git$/, '')
+    .replace(/\/+$/, '')
 
 const sa = process.env.FIREBASE_SERVICE_ACCOUNT
 if (!sa) {
@@ -40,124 +69,155 @@ if (!sa) {
 initializeApp({ credential: cert(JSON.parse(sa)) })
 const db = getFirestore()
 
-// --- resolve project by slug first, then by doc id ---
-let projectDoc = null
-const bySlug = await db.collection('projects').where('slug', '==', TARGET).limit(1).get()
-if (!bySlug.empty) {
-  projectDoc = bySlug.docs[0]
-} else {
-  const byId = await db.collection('projects').doc(TARGET).get()
-  if (byId.exists) projectDoc = byId
-}
-if (!projectDoc) {
+// --- resolve targets to project docs (dedup by doc id) ---
+const projects = new Map() // id -> data
+
+for (const target of targets) {
+  const bySlug = await db.collection('projects').where('slug', '==', target).limit(1).get()
+  if (!bySlug.empty) {
+    projects.set(bySlug.docs[0].id, bySlug.docs[0].data())
+    continue
+  }
+  const byId = await db.collection('projects').doc(target).get()
+  if (byId.exists) {
+    projects.set(byId.id, byId.data())
+    continue
+  }
   console.error(
-    `No project found with slug or id "${TARGET}". Try: node scripts/with-prod-env-ro.mjs node scripts/list-projects.mjs --grep ${TARGET}`
+    `No project found with slug or id "${target}". Try: node scripts/with-prod-env-ro.mjs node scripts/list-projects.mjs --grep ${target}`
   )
   process.exit(1)
 }
-const project = { id: projectDoc.id, ...projectDoc.data() }
-const slug = project.slug || project.id
 
-// --- fetch everything (single-field queries, sort in memory) ---
-const [briefSnap, sessionSnap, reviewSnap, fileSnap] = await Promise.all([
-  db.collection('briefs').where('project_id', '==', project.id).get(),
-  db.collection('sessions').where('project_id', '==', project.id).get(),
-  db.collection('reviews').where('project_id', '==', project.id).get(),
-  db.collection('files').where('project_id', '==', project.id).get(),
-])
-
-const briefs = briefSnap.docs.map((d) => ({ id: d.id, ...d.data() }))
-briefs.sort((a, b) => (b.version || 0) - (a.version || 0))
-const brief = briefs[0] || null
-
-// Skip archived sessions — same as the app's own listing (lib/sessions/active.ts)
-const sessions = sessionSnap.docs
-  .map((d) => ({ id: d.id, ...d.data() }))
-  .filter((s) => s.status !== 'archived')
-sessions.sort((a, b) => (a.created_at || '').localeCompare(b.created_at || ''))
-
-const reviews = reviewSnap.docs.map((d) => ({ id: d.id, ...d.data() }))
-const fileNames = new Map(fileSnap.docs.map((d) => [d.id, d.data().filename || d.id]))
-
-// --- write output ---
-const outDir = join(OUT_ROOT, slug)
-if (existsSync(outDir)) rmSync(outDir, { recursive: true }) // stale files from removed sessions
-mkdirSync(outDir, { recursive: true })
+if (GREP || REPO) {
+  const wantRepo = normalizeRepo(REPO)
+  const wantName = wantRepo.split('/').pop() // bare stored values ("byside") match by name
+  const snap = await db.collection('projects').get()
+  for (const d of snap.docs) {
+    const { slug = '', title = '', github_repo } = d.data()
+    if (GREP && (slug.toLowerCase().includes(GREP) || title.toLowerCase().includes(GREP))) {
+      projects.set(d.id, d.data())
+    }
+    if (REPO && github_repo) {
+      const stored = normalizeRepo(github_repo)
+      if (stored === wantRepo || stored === wantName) projects.set(d.id, d.data())
+    }
+  }
+  if (!projects.size) {
+    console.error(`No projects match ${REPO ? `--repo "${REPO}"` : `--grep "${GREP}"`}.`)
+    process.exit(1)
+  }
+}
 
 const day = (iso) => (iso || '').slice(0, 10)
 
-// brief.md
-const b = []
-b.push(`# Brief: ${project.title}`)
-b.push('')
-b.push(
-  `Exported from ibuild4you.com prod. Project slug: \`${slug}\`. Status: ${project.status || 'active'}.`
-)
-b.push(
-  `Conversations: ${sessions.length}. Brief version: ${brief ? brief.version : 'none yet'} (updated ${brief ? day(brief.updated_at) : '—'}).`
-)
-if (project.context) b.push(`\n## Builder-provided context\n\n${project.context}`)
-if (brief) {
-  const c = brief.content || {}
-  b.push(`\n## Problem\n\n${c.problem || '—'}`)
-  b.push(`\n## Target users\n\n${c.target_users || '—'}`)
-  b.push(`\n## Features\n`)
-  for (const f of c.features || []) b.push(`- ${f}`)
-  if (!(c.features || []).length) b.push('—')
-  b.push(`\n## Constraints\n\n${c.constraints || '—'}`)
-  if (c.additional_context) b.push(`\n## Additional context\n\n${c.additional_context}`)
-  if ((c.decisions || []).length) {
-    b.push(`\n## Decisions\n`)
-    for (const d of c.decisions)
-      b.push(`- **${d.topic}**: ${d.decision}${d.locked ? ' _(locked)_' : ''}`)
-  }
-  if ((c.open_risks || []).length) {
-    b.push(`\n## Open risks\n`)
-    for (const r of c.open_risks) b.push(`- ${r}`)
-  }
-}
-if (reviews.some((r) => (r.annotations || []).length)) {
-  b.push(`\n## Reviewer annotations\n`)
-  for (const r of reviews) {
-    for (const a of r.annotations || []) {
-      b.push(`- [${a.section}] ${a.comment} _(${day(a.created_at)})_`)
-    }
-  }
-}
-writeFileSync(join(outDir, 'brief.md'), b.join('\n') + '\n')
-console.log(`wrote ${join(outDir, 'brief.md')}`)
+async function exportProject(id, data) {
+  const project = { id, ...data }
+  const slug = project.slug || project.id
 
-// session-NN.md — one per conversation, oldest first
-let n = 0
-for (const session of sessions) {
-  n++
-  const msgSnap = await db.collection('messages').where('session_id', '==', session.id).get()
-  const messages = msgSnap.docs.map((d) => ({ id: d.id, ...d.data() }))
-  messages.sort((a, b) => (a.created_at || '').localeCompare(b.created_at || ''))
+  // Fetch everything (single-field queries, sort in memory)
+  const [briefSnap, sessionSnap, reviewSnap, fileSnap] = await Promise.all([
+    db.collection('briefs').where('project_id', '==', project.id).get(),
+    db.collection('sessions').where('project_id', '==', project.id).get(),
+    db.collection('reviews').where('project_id', '==', project.id).get(),
+    db.collection('files').where('project_id', '==', project.id).get(),
+  ])
 
-  const m = []
-  m.push(`# ${project.title} — conversation ${n} of ${sessions.length}`)
-  m.push('')
-  m.push(
-    `Started ${day(session.created_at)}. Status: ${session.status}. Messages: ${messages.length}.`
+  const briefs = briefSnap.docs.map((d) => ({ id: d.id, ...d.data() }))
+  briefs.sort((a, b) => (b.version || 0) - (a.version || 0))
+  const brief = briefs[0] || null
+
+  // Skip archived sessions — same as the app's own listing (lib/sessions/active.ts)
+  const sessions = sessionSnap.docs
+    .map((d) => ({ id: d.id, ...d.data() }))
+    .filter((s) => s.status !== 'archived')
+  sessions.sort((a, b) => (a.created_at || '').localeCompare(b.created_at || ''))
+
+  const reviews = reviewSnap.docs.map((d) => ({ id: d.id, ...d.data() }))
+  const fileNames = new Map(fileSnap.docs.map((d) => [d.id, d.data().filename || d.id]))
+
+  const outDir = join(OUT_ROOT, slug)
+  if (existsSync(outDir)) rmSync(outDir, { recursive: true }) // stale files from removed sessions
+  mkdirSync(outDir, { recursive: true })
+
+  // brief.md
+  const b = []
+  b.push(`# Brief: ${project.title}`)
+  b.push('')
+  b.push(
+    `Exported from ibuild4you.com prod. Project slug: \`${slug}\`. Status: ${project.status || 'active'}.`
   )
-  if (session.summary) m.push(`\nSummary: ${session.summary}`)
-  m.push('')
-  for (const msg of messages) {
-    const who =
-      msg.role === 'agent' ? 'Agent (Sam)' : msg.sender_display_name || msg.sender_email || 'Maker'
-    m.push(`## ${who} — ${day(msg.created_at)}`)
-    m.push('')
-    m.push(msg.content || '')
-    if ((msg.file_ids || []).length) {
-      m.push('')
-      m.push(`_Attached: ${msg.file_ids.map((id) => fileNames.get(id) || id).join(', ')}_`)
+  b.push(
+    `Conversations: ${sessions.length}. Brief version: ${brief ? brief.version : 'none yet'} (updated ${brief ? day(brief.updated_at) : '—'}).`
+  )
+  if (project.context) b.push(`\n## Builder-provided context\n\n${project.context}`)
+  if (brief) {
+    const c = brief.content || {}
+    b.push(`\n## Problem\n\n${c.problem || '—'}`)
+    b.push(`\n## Target users\n\n${c.target_users || '—'}`)
+    b.push(`\n## Features\n`)
+    for (const f of c.features || []) b.push(`- ${f}`)
+    if (!(c.features || []).length) b.push('—')
+    b.push(`\n## Constraints\n\n${c.constraints || '—'}`)
+    if (c.additional_context) b.push(`\n## Additional context\n\n${c.additional_context}`)
+    if ((c.decisions || []).length) {
+      b.push(`\n## Decisions\n`)
+      for (const d of c.decisions)
+        b.push(`- **${d.topic}**: ${d.decision}${d.locked ? ' _(locked)_' : ''}`)
     }
-    m.push('')
+    if ((c.open_risks || []).length) {
+      b.push(`\n## Open risks\n`)
+      for (const r of c.open_risks) b.push(`- ${r}`)
+    }
   }
-  const name = `session-${String(n).padStart(2, '0')}.md`
-  writeFileSync(join(outDir, name), m.join('\n'))
-  console.log(`wrote ${join(outDir, name)} (${messages.length} messages)`)
+  if (reviews.some((r) => (r.annotations || []).length)) {
+    b.push(`\n## Reviewer annotations\n`)
+    for (const r of reviews) {
+      for (const a of r.annotations || []) {
+        b.push(`- [${a.section}] ${a.comment} _(${day(a.created_at)})_`)
+      }
+    }
+  }
+  writeFileSync(join(outDir, 'brief.md'), b.join('\n') + '\n')
+  console.log(`wrote ${join(outDir, 'brief.md')}`)
+
+  // session-NN.md — one per conversation, oldest first
+  let n = 0
+  for (const session of sessions) {
+    n++
+    const msgSnap = await db.collection('messages').where('session_id', '==', session.id).get()
+    const messages = msgSnap.docs.map((d) => ({ id: d.id, ...d.data() }))
+    messages.sort((a, b) => (a.created_at || '').localeCompare(b.created_at || ''))
+
+    const m = []
+    m.push(`# ${project.title} — conversation ${n} of ${sessions.length}`)
+    m.push('')
+    m.push(
+      `Started ${day(session.created_at)}. Status: ${session.status}. Messages: ${messages.length}.`
+    )
+    if (session.summary) m.push(`\nSummary: ${session.summary}`)
+    m.push('')
+    for (const msg of messages) {
+      const who =
+        msg.role === 'agent'
+          ? 'Agent (Sam)'
+          : msg.sender_display_name || msg.sender_email || 'Maker'
+      m.push(`## ${who} — ${day(msg.created_at)}`)
+      m.push('')
+      m.push(msg.content || '')
+      if ((msg.file_ids || []).length) {
+        m.push('')
+        m.push(`_Attached: ${msg.file_ids.map((fid) => fileNames.get(fid) || fid).join(', ')}_`)
+      }
+      m.push('')
+    }
+    const name = `session-${String(n).padStart(2, '0')}.md`
+    writeFileSync(join(outDir, name), m.join('\n'))
+    console.log(`wrote ${join(outDir, name)} (${messages.length} messages)`)
+  }
 }
 
-console.log(`\nDone. Export at ${outDir}/`)
+for (const [id, data] of projects) {
+  await exportProject(id, data)
+}
+console.log(`\nDone. ${projects.size} project(s) exported to ${OUT_ROOT}/`)
