@@ -55,3 +55,6 @@ next-env.d.ts
 .test-admin-passcode
 .test-admin-passcode-prod
 .test-cast-passcodes.json
+
+# Local brief/transcript exports (PII — never commit)
+exports/
