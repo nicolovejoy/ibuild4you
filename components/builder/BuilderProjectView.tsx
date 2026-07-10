@@ -103,6 +103,10 @@ export function BuilderProjectView({ projectId, userEmail }: { projectId: string
   // (Conversations → Next round, config expanded) instead of leaving them on the
   // Brief tab with no cue (#25). Consumed one-shot by ConversationsTab on mount.
   const [justImported, setJustImported] = useState(false)
+  // Reverse direction (#115): the Next-round card links straight to the Brief
+  // tab's payload-import fold, which is otherwise hard to find. One-shot,
+  // consumed by BriefTab after it expands + scrolls to the fold.
+  const [openImport, setOpenImport] = useState(false)
   const rawTab = searchParams.get('tab') || ''
   const tabParam: TabId | null = (['brief', 'conversations', 'people'].includes(rawTab)
     ? (rawTab as TabId)
@@ -273,6 +277,8 @@ export function BuilderProjectView({ projectId, userEmail }: { projectId: string
               project={project}
               files={projectFiles || []}
               onImported={() => { setJustImported(true); setTab('conversations') }}
+              autoOpenImport={openImport}
+              onAutoOpenConsumed={() => setOpenImport(false)}
             />
           )}
           {activeTab === 'conversations' && (
@@ -287,6 +293,7 @@ export function BuilderProjectView({ projectId, userEmail }: { projectId: string
               onShare={openShare}
               justImported={justImported}
               onImportedConsumed={() => setJustImported(false)}
+              onOpenImport={() => { setOpenImport(true); setTab('brief') }}
             />
           )}
           {activeTab === 'people' && (
@@ -626,6 +633,8 @@ function BriefTab({
   project,
   files = [],
   onImported,
+  autoOpenImport = false,
+  onAutoOpenConsumed,
 }: {
   projectId: string
   brief: { version: number; content: BriefContent } | null | undefined
@@ -633,6 +642,8 @@ function BriefTab({
   project: Project | undefined
   files?: ProjectFile[]
   onImported?: () => void
+  autoOpenImport?: boolean
+  onAutoOpenConsumed?: () => void
 }) {
   const [payloadCopied, setPayloadCopied] = useState(false)
   const [briefCopied, setBriefCopied] = useState(false)
@@ -648,6 +659,18 @@ function BriefTab({
 
   const briefContent = brief?.content as BriefContent | undefined
   const hasBrief = briefContent && hasBriefContent(briefContent)
+
+  // Arriving via the Next-round card's "load a payload" link (#115): expand
+  // the import fold and scroll to it, then consume the one-shot flag.
+  const importFoldRef = useRef<HTMLDetailsElement>(null)
+  useEffect(() => {
+    if (autoOpenImport && importFoldRef.current) {
+      importFoldRef.current.open = true
+      importFoldRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      onAutoOpenConsumed?.()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoOpenImport])
 
   const handleGenerate = async () => {
     setGenerating(true)
@@ -817,7 +840,7 @@ function BriefTab({
       {/* Import full payload — demoted escape hatch (#19). Accepts the whole
           next-convo payload (brief + agent config), the ferry's bulk paste
           target; the BriefEditor's raw view covers brief-only edits. */}
-      <details className="group">
+      <details ref={importFoldRef} className="group">
         <summary className="cursor-pointer text-xs font-medium text-gray-400 hover:text-gray-600 list-none flex items-center gap-1.5">
           <Upload className="h-3.5 w-3.5" /> Import full payload (brief + agent config)
         </summary>
@@ -903,6 +926,7 @@ function ConversationsTab({
   onShare,
   justImported = false,
   onImportedConsumed,
+  onOpenImport,
 }: {
   project: Project | undefined
   projectId: string
@@ -914,6 +938,7 @@ function ConversationsTab({
   onShare: (mode?: 'maker' | 'add') => void
   justImported?: boolean
   onImportedConsumed?: () => void
+  onOpenImport?: () => void
 }) {
   if (!project || !sessionsLoaded) {
     return <Skeleton className="h-64 w-full rounded-lg" />
@@ -929,6 +954,7 @@ function ConversationsTab({
         onShare={onShare}
         justImported={justImported}
         onImportedConsumed={onImportedConsumed}
+        onOpenImport={onOpenImport}
       />
 
       {sessions.length > 0 && (
@@ -986,6 +1012,7 @@ function NextRound({
   onShare,
   justImported = false,
   onImportedConsumed,
+  onOpenImport,
 }: {
   project: Project
   projectId: string
@@ -994,6 +1021,7 @@ function NextRound({
   onShare: (mode?: 'maker' | 'add') => void
   justImported?: boolean
   onImportedConsumed?: () => void
+  onOpenImport?: () => void
 }) {
   const { data: activeMessages } = useMessages(activeSession?.id)
   const hasUserMessages = activeMessages?.some((m) => m.role === 'user') ?? false
@@ -1047,6 +1075,7 @@ function NextRound({
           projectId={projectId}
           sessionNumber={sessions.length + 1}
           onShare={onShare}
+          onOpenImport={onOpenImport}
         />
       )}
     </div>
@@ -1909,8 +1938,10 @@ function SendToMakerButton({
               icon={Send}
               onClick={async () => {
                 try {
-                  const r = await sendEmail.mutateAsync({ project_id: projectId, kind, note })
-                  setSentTo(r.to)
+                  // Pin the send to this one person — SendToMakerButton is
+                  // always a targeted "send to X" action, never a fan-out.
+                  const r = await sendEmail.mutateAsync({ project_id: projectId, kind, note, to: makerEmail })
+                  setSentTo(r.to.join(' + '))
                   setOpen(false)
                 } catch {
                   // Error surfaced in the modal via sendEmail.isError; keep it open.
@@ -1967,13 +1998,14 @@ function RenudgeCard({ project, projectId, sessionNumber }: { project: Project; 
 // maker in one click. Pure dispatch now (#19 UX-scrub Phase 1) — agent config
 // moved to the single AgentConfigCard above, so this reads the *saved* config
 // from `project` and no longer carries a duplicate edit fold or a nudge-note.
-function PrepNextSession({ project, projectId, sessionNumber, onShare }: {
+function PrepNextSession({ project, projectId, sessionNumber, onShare, onOpenImport }: {
   project: Project
   projectId: string
   sessionNumber: number
   onShare: (mode?: 'maker' | 'add') => void
+  onOpenImport?: () => void
 }) {
-  const [result, setResult] = useState<{ sent?: string; copied?: boolean; suppressed?: boolean } | null>(null)
+  const [result, setResult] = useState<{ sent?: string[]; copied?: boolean; suppressed?: boolean } | null>(null)
   // Starting a new conversation closes the current one — guard it behind a
   // confirm so it can't be triggered by accident when the builder really just
   // wanted to invite someone to the conversation already in progress.
@@ -1984,6 +2016,9 @@ function PrepNextSession({ project, projectId, sessionNumber, onShare }: {
   const sendEmail = useSendMakerEmail()
   const generatePrep = useGeneratePrep()
   const { copyNudge } = useNudgeCopy(projectId)
+  // The send fans out to every active maker on the brief (#115); load the
+  // roster so the button says who it's actually going to.
+  const { data: members } = useProjectMembers(project.id)
 
   const shareLink = getProjectShareLink(project.slug, projectId)
   const makerEmail = project.requester_email || ''
@@ -2043,7 +2078,14 @@ function PrepNextSession({ project, projectId, sessionNumber, onShare }: {
     setResult({ copied: true })
   }
 
-  const makerName = project.requester_first_name || makerEmail || 'the maker'
+  // Everyone the send goes to. Falls back to the legacy requester fields while
+  // the roster loads (or on old briefs with no maker member rows).
+  const makerMembers = (members || []).filter((m) => m.role === 'maker')
+  const makerName =
+    makerMembers.length > 0
+      ? makerMembers.map((m) => (m.display_name || m.email).split(' ')[0]).join(' + ')
+      : project.requester_first_name || makerEmail || 'the maker'
+  const canSend = makerMembers.length > 0 || !!makerEmail
   const firstFocusItem = sessionMode === 'discover' ? project.seed_questions?.[0] : project.builder_directives?.[0]
   const mechanicalFocus = `${sessionMode === 'converge' ? 'Converge' : 'Discover'}${firstFocusItem ? ` · ${firstFocusItem}` : ''}`
   const focusLine = prep?.focus || mechanicalFocus
@@ -2063,9 +2105,9 @@ function PrepNextSession({ project, projectId, sessionNumber, onShare }: {
               {result.copied ? (
                 <p className="text-gray-600 mt-0.5">Nudge copied — paste it to {makerName} whenever you like.</p>
               ) : result.suppressed ? (
-                <p className="text-gray-600 mt-0.5">Dev: would have emailed {result.sent} (suppressed on preview).</p>
+                <p className="text-gray-600 mt-0.5">Dev: would have emailed {result.sent?.join(' + ')} (suppressed on preview).</p>
               ) : (
-                <p className="text-gray-600 mt-0.5">Emailed {result.sent} — their replies come back to you.</p>
+                <p className="text-gray-600 mt-0.5">Emailed {result.sent?.join(' + ')} — their replies come back to you.</p>
               )}
             </div>
           </div>
@@ -2119,14 +2161,19 @@ function PrepNextSession({ project, projectId, sessionNumber, onShare }: {
         <div className="mt-4 pt-3 border-t border-gray-100">
           <p className="text-xs text-gray-500 mb-2">Done with this round?</p>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-            <button onClick={() => setConfirm('send')} disabled={busy || !makerEmail} className="flex items-center gap-1.5 text-sm font-medium text-brand-navy hover:underline disabled:opacity-40 disabled:no-underline">
-              <RotateCw className="h-3.5 w-3.5" /> Start conversation {sessionNumber} &amp; message {makerName}
+            <button onClick={() => setConfirm('send')} disabled={busy || !canSend} className="flex items-center gap-1.5 text-sm font-medium text-brand-navy hover:underline disabled:opacity-40 disabled:no-underline">
+              <RotateCw className="h-3.5 w-3.5" /> Start conversation {sessionNumber} &amp; email {makerName}
             </button>
             <button onClick={() => setConfirm('copy')} disabled={busy} className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand-navy disabled:opacity-40">
               <Copy className="h-3.5 w-3.5" /> Copy nudge instead
             </button>
+            {onOpenImport && (
+              <button onClick={onOpenImport} className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand-navy">
+                <Upload className="h-3.5 w-3.5" /> Load a next-convo payload first
+              </button>
+            )}
           </div>
-          {!makerEmail && <p className="text-xs text-gray-400 mt-1.5">Add a maker email to this brief to send.</p>}
+          {!canSend && <p className="text-xs text-gray-400 mt-1.5">Add a maker email to this brief to send.</p>}
         </div>
 
         {actionError && <div className="mt-2"><StatusMessage type="error" message={actionError.message || 'Failed'} /></div>}

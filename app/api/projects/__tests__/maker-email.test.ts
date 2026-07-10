@@ -10,7 +10,7 @@ let memberSnap: { empty: boolean; docs: Array<{ data: () => Record<string, unkno
 const mockMemberUpdate = vi.fn()
 const mockMemberGet = vi.fn()
 const mockLimit = vi.fn(() => ({ get: mockMemberGet }))
-const mockWhere = vi.fn(() => ({ where: mockWhere, limit: mockLimit }))
+const mockWhere = vi.fn(() => ({ where: mockWhere, limit: mockLimit, get: mockMemberGet }))
 const mockProjectGet = vi.fn()
 const mockDoc = vi.fn(() => ({ get: mockProjectGet }))
 const mockCollection = vi.fn((name: string) =>
@@ -72,7 +72,12 @@ describe('POST /api/projects/[id]/email', () => {
     }))
     memberSnap = {
       empty: false,
-      docs: [{ data: () => ({ passcode: 'ABC123' }), ref: { update: mockMemberUpdate } }],
+      docs: [
+        {
+          data: () => ({ email: 'maker@example.com', passcode: 'ABC123' }),
+          ref: { update: mockMemberUpdate },
+        },
+      ],
     }
     mockMemberGet.mockImplementation(async () => memberSnap)
     sendMakerEmailMock.mockResolvedValue({ emailId: 'em_test' })
@@ -129,13 +134,120 @@ describe('POST /api/projects/[id]/email', () => {
   it('mints a passcode for the invite when the member has none', async () => {
     memberSnap = {
       empty: false,
-      docs: [{ data: () => ({}), ref: { update: mockMemberUpdate } }],
+      docs: [
+        { data: () => ({ email: 'maker@example.com' }), ref: { update: mockMemberUpdate } },
+      ],
     }
     const res = await POST(makeReq({ kind: 'invite' }), { params })
     expect(res.status).toBe(200)
     expect(mockMemberUpdate).toHaveBeenCalledWith(
       expect.objectContaining({ passcode: expect.any(String) })
     )
+  })
+
+  // --- multi-maker fan-out (#115) ---
+
+  function twoMakers() {
+    memberSnap = {
+      empty: false,
+      docs: [
+        {
+          data: () => ({ email: 'matt@example.com', passcode: 'MATT01' }),
+          ref: { update: vi.fn() },
+        },
+        {
+          data: () => ({ email: 'scott@example.com', passcode: 'SCOTT1' }),
+          ref: { update: vi.fn() },
+        },
+      ],
+    }
+  }
+
+  it('nudge fans out to every active maker, one email each', async () => {
+    twoMakers()
+    const res = await POST(makeReq({ kind: 'nudge' }), { params })
+    expect(res.status).toBe(200)
+    expect(sendMakerEmailMock).toHaveBeenCalledTimes(2)
+    const tos = sendMakerEmailMock.mock.calls.map((c) => c[0].to)
+    expect(tos).toEqual(['matt@example.com', 'scott@example.com'])
+    for (const c of sendMakerEmailMock.mock.calls) {
+      expect(c[0].bcc).toEqual(['builder@example.com'])
+      expect(c[0].replyTo).toBe('builder@example.com')
+    }
+    const data = await res.json()
+    expect(data.to).toEqual(['matt@example.com', 'scott@example.com'])
+    expect(data.suppressed).toBe(false)
+  })
+
+  it('excludes removed makers from the fan-out', async () => {
+    twoMakers()
+    memberSnap.docs.push({
+      data: () => ({ email: 'gone@example.com', removed_at: '2026-01-01T00:00:00Z' }),
+      ref: { update: vi.fn() },
+    })
+    const res = await POST(makeReq({ kind: 'nudge' }), { params })
+    expect(res.status).toBe(200)
+    const tos = sendMakerEmailMock.mock.calls.map((c) => c[0].to)
+    expect(tos).toEqual(['matt@example.com', 'scott@example.com'])
+  })
+
+  it('invite sends each maker their own passcode', async () => {
+    twoMakers()
+    const res = await POST(makeReq({ kind: 'invite' }), { params })
+    expect(res.status).toBe(200)
+    expect(sendMakerEmailMock).toHaveBeenCalledTimes(2)
+    const [mattCall, scottCall] = sendMakerEmailMock.mock.calls.map((c) => c[0])
+    expect(mattCall.to).toBe('matt@example.com')
+    expect(mattCall.text).toContain('MATT01')
+    expect(mattCall.text).not.toContain('SCOTT1')
+    expect(scottCall.to).toBe('scott@example.com')
+    expect(scottCall.text).toContain('SCOTT1')
+    expect(scottCall.text).not.toContain('MATT01')
+  })
+
+  it('restricts the send to one recipient when `to` is given', async () => {
+    twoMakers()
+    const res = await POST(makeReq({ kind: 'invite', to: 'Scott@example.com' }), { params })
+    expect(res.status).toBe(200)
+    expect(sendMakerEmailMock).toHaveBeenCalledOnce()
+    expect(sendMakerEmailMock.mock.calls[0][0].to).toBe('scott@example.com')
+    expect(sendMakerEmailMock.mock.calls[0][0].text).toContain('SCOTT1')
+  })
+
+  it('returns 400 when `to` is not an active maker on the brief', async () => {
+    twoMakers()
+    const res = await POST(makeReq({ kind: 'nudge', to: 'nobody@example.com' }), { params })
+    expect(res.status).toBe(400)
+    expect(sendMakerEmailMock).not.toHaveBeenCalled()
+  })
+
+  it('falls back to requester_email when the brief has no maker member rows', async () => {
+    memberSnap = { empty: true, docs: [] }
+    const res = await POST(makeReq({ kind: 'nudge' }), { params })
+    expect(res.status).toBe(200)
+    expect(sendMakerEmailMock).toHaveBeenCalledOnce()
+    expect(sendMakerEmailMock.mock.calls[0][0].to).toBe('maker@example.com')
+  })
+
+  it('suppresses per recipient on preview (allowlisted maker still sends)', async () => {
+    process.env.VERCEL_ENV = 'preview'
+    memberSnap = {
+      empty: false,
+      docs: [
+        { data: () => ({ email: 'test@ibuild4you.com' }), ref: { update: vi.fn() } },
+        { data: () => ({ email: 'stranger@example.com' }), ref: { update: vi.fn() } },
+      ],
+    }
+    const res = await POST(makeReq({ kind: 'nudge' }), { params })
+    expect(res.status).toBe(200)
+    expect(sendMakerEmailMock).toHaveBeenCalledOnce()
+    expect(sendMakerEmailMock.mock.calls[0][0].to).toBe('test@ibuild4you.com')
+    const data = await res.json()
+    expect(data.suppressed).toBe(false)
+    expect(data.results).toEqual([
+      expect.objectContaining({ to: 'test@ibuild4you.com', suppressed: false }),
+      expect.objectContaining({ to: 'stranger@example.com', suppressed: true }),
+    ])
   })
 
   it('sends the nudge_message override verbatim when set', async () => {
@@ -162,6 +274,12 @@ describe('POST /api/projects/[id]/email', () => {
   it('still sends on preview when the maker is allowlisted (@ibuild4you.com)', async () => {
     process.env.VERCEL_ENV = 'preview'
     projectData.requester_email = 'test@ibuild4you.com'
+    memberSnap = {
+      empty: false,
+      docs: [
+        { data: () => ({ email: 'test@ibuild4you.com' }), ref: { update: mockMemberUpdate } },
+      ],
+    }
     const res = await POST(makeReq({ kind: 'nudge' }), { params })
     expect(res.status).toBe(200)
     expect(sendMakerEmailMock).toHaveBeenCalledOnce()
