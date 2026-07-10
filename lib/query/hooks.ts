@@ -120,20 +120,29 @@ export function useSendMakerEmail() {
       project_id,
       kind,
       note,
+      to,
     }: {
       project_id: string
       kind: 'invite' | 'nudge' | 'reminder'
       note?: string
+      // Restrict the send to one recipient (ShareModal's per-person invite);
+      // omitted, invite/nudge fan out to every active maker (#115).
+      to?: string
     }) => {
       const res = await apiFetch(`/api/projects/${project_id}/email`, {
         method: 'POST',
-        body: JSON.stringify({ kind, note }),
+        body: JSON.stringify({ kind, note, to }),
       })
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
         throw new Error(data.error || 'Failed to send email')
       }
-      return res.json() as Promise<{ ok: true; emailId: string; to: string; suppressed?: boolean }>
+      return res.json() as Promise<{
+        ok: true
+        results: Array<{ to: string; emailId: string; suppressed: boolean }>
+        to: string[]
+        suppressed: boolean
+      }>
     },
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.projects() })
