@@ -49,13 +49,13 @@ export default function ProjectPage() {
     )
   }
 
-  const userEmail = user.email || ''
   // builder+ (or admin) gets the builder view, everyone else gets maker view
   const isBuilder = role === 'owner' || role === 'builder' || role === 'admin'
 
   if (isBuilder) {
-    return <BuilderProjectView projectId={projectId} userEmail={userEmail} />
+    // Builder view is read-only (#120) — no sender identity needed.
+    return <BuilderProjectView projectId={projectId} />
   }
 
-  return <MakerProjectView projectId={projectId} userEmail={userEmail} />
+  return <MakerProjectView projectId={projectId} userEmail={user.email || ''} />
 }
