@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Plus, X, Lock, Code2, LayoutList, Check, Copy, Pencil } from 'lucide-react'
 import { Card, CardBody } from '@/components/ui/Card'
 import { LoadingButton } from '@/components/ui/LoadingButton'
@@ -52,6 +52,18 @@ export function BriefEditor({
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
 
+  // Collapsed-by-default read view (Nico 2026-07-11): a mature brief is a wall
+  // of text; show the first few lines with a fade + "Show full brief". Only
+  // offer the toggle when the content actually overflows the clamp.
+  const [expanded, setExpanded] = useState(false)
+  const [overflowing, setOverflowing] = useState(false)
+  const readRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (expanded) return // keep the last measurement so "Show less" stays offered
+    const el = readRef.current
+    if (el) setOverflowing(el.scrollHeight > el.clientHeight + 4)
+  }, [expanded, version, mode, content])
+
   // Re-seed both working copies whenever the underlying brief changes (version
   // bump) and drop back to read mode — an external update (regen/import) lands
   // you on the fresh document, not a stale edit form.
@@ -60,6 +72,7 @@ export function BriefEditor({
     setRawText(serializeBriefContent(base))
     setError(null)
     setMode('view')
+    setExpanded(false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [version])
 
@@ -137,7 +150,22 @@ export function BriefEditor({
             </button>
           </div>
           {hasAnyContent(base) ? (
-            <BriefReadView content={base} />
+            <>
+              <div ref={readRef} className={expanded ? undefined : 'relative max-h-28 overflow-hidden'}>
+                <BriefReadView content={base} />
+                {!expanded && overflowing && (
+                  <div className="absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-white to-transparent pointer-events-none" />
+                )}
+              </div>
+              {(overflowing || expanded) && (
+                <button
+                  onClick={() => setExpanded((v) => !v)}
+                  className="mt-2 text-xs font-medium text-brand-navy hover:underline"
+                >
+                  {expanded ? 'Show less' : 'Show full brief'}
+                </button>
+              )}
+            </>
           ) : loading ? (
             <div className="space-y-2 py-2">
               <Skeleton className="h-4 w-2/3 rounded" />

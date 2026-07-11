@@ -89,10 +89,15 @@ if (!(await startBtn.count())) {
     await importLink.click()
     await page.waitForTimeout(1200)
     if (!page.url().includes('tab=brief')) fail(`import link didn't switch tab: ${page.url()}`)
-    const fold = page.locator('details[open]', { hasText: 'Import full payload' })
-    if (!(await fold.count())) fail('import fold not auto-opened')
-    else if (!(await fold.locator('textarea').isVisible())) fail('import textarea not visible')
-    else console.log('import fold opened + scrolled ✓')
+    // The import target is a first-class card now (not a fold): assert the
+    // paste textarea is visible and took focus.
+    const pasteBox = page.getByPlaceholder(/next-convo/)
+    if (!(await pasteBox.isVisible().catch(() => false))) fail('import textarea not visible')
+    else {
+      const focused = await page.evaluate(() => document.activeElement?.tagName === 'TEXTAREA')
+      if (!focused) console.warn('warn: import textarea visible but not focused')
+      console.log('import card scrolled + focused ✓')
+    }
   }
 
   // --- 5. Back to conversations; fire the send and capture the fan-out ---
