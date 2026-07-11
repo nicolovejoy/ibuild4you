@@ -304,7 +304,7 @@ export const copy = {
     conversations: {
       term: 'Conversations',
       short:
-        'Past conversations, plus the "Next round" card that sends the next one and shapes what Sam opens with.',
+        'Read the conversation as it happened, and send the next round when the current one is done.',
     },
     people: {
       term: 'People',

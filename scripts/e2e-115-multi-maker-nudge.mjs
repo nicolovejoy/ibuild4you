@@ -63,12 +63,12 @@ const synth = await page.request.post(`${BASE}/api/admin/sessions`, {
 })
 if (synth.status() !== 200) fail(`add_synthetic_message → ${synth.status()}`)
 
-// --- 3. Open the brief; card should offer "email <mae> + <sid>" ---
+// --- 3. Open the brief; the header dispatch should offer "email <mae> + <sid>" ---
 await page.goto(`${BASE}/projects/${brief.slug}`, { waitUntil: 'domcontentloaded' })
 await page.waitForTimeout(3000)
 const startBtn = page.getByRole('button', { name: /Start conversation 2 & email/ })
 if (!(await startBtn.count())) {
-  fail('Start-conversation button not found (card may still be in waiting state)')
+  fail('Start-conversation button not found (dispatch may still be in nudge state)')
   await page.screenshot({ path: '.playwright-mcp/e2e-115-no-button.png', fullPage: true })
 } else {
   const label = (await startBtn.innerText()).replace(/\s+/g, ' ')
@@ -79,9 +79,12 @@ if (!(await startBtn.count())) {
     fail(`button doesn't name both makers: "${label}"`)
   }
 
-  // --- 4. Part 2: the payload-import link jumps to Brief tab + opens the fold ---
-  const importLink = page.getByRole('button', { name: 'Load a next-convo payload first' })
-  if (!(await importLink.count())) fail('import link missing from Done-with-this-round block')
+  // --- 4. Part 2: the payload-import link (inside the dispatch modal since
+  // #120) jumps to the Brief tab + opens the fold ---
+  await startBtn.click()
+  await page.waitForTimeout(500)
+  const importLink = page.getByRole('dialog').getByRole('button', { name: 'Load a next-convo payload first' })
+  if (!(await importLink.count())) fail('import link missing from dispatch modal')
   else {
     await importLink.click()
     await page.waitForTimeout(1200)

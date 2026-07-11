@@ -7,7 +7,7 @@ import { useUpdateProject } from '@/lib/query/hooks'
  * `last_nudged_at` + `last_builder_activity_at` on the project.
  *
  * Extracted from the two identical copy-and-track blocks in BuilderProjectView
- * (RenudgeCard + PrepNextSession).
+ * (NudgeDispatch + StartDispatch).
  */
 export function useNudgeCopy(projectId: string) {
   const [copied, setCopied] = useState(false)

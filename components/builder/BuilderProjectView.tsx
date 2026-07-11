@@ -48,13 +48,18 @@ import {
   useCurrentUser,
 } from '@/lib/query/hooks'
 import { buildNextConvoPrompt } from '@/lib/agent/next-convo-prompt'
-import { copy, getMakerShortName } from '@/lib/copy'
+import { copy } from '@/lib/copy'
 import { formatCostUsd } from '@/lib/observability/session-cost'
 import { briefRoleLabel, briefRoleShort, viewerBriefRole } from '@/lib/roles/display'
 import { MEMBER_ROLES, memberRoleLabel } from '@/lib/roles/member-role'
 import { apiFetch } from '@/lib/firebase/api-fetch'
-import { useStreamingChat } from '@/lib/hooks/useStreamingChat'
 import { useRealtimeMessages } from '@/lib/hooks/useRealtimeMessages'
+import {
+  makerRoster,
+  getDispatchState,
+  conversationLabel,
+  remindersStripLine,
+} from '@/lib/builder/conversations-view'
 import { useQueryClient } from '@tanstack/react-query'
 import { BuilderFilesTab } from './BuilderFilesTab'
 import { BriefEditor } from './BriefEditor'
@@ -64,20 +69,19 @@ import { TurnBadge } from '@/components/ui/TurnBadge'
 import { BriefSwitcher } from '@/components/brief-switcher'
 import type { Project, Session, BriefContent, ProjectFile } from '@/lib/types'
 
-// #19 UX-scrub Phase 2: the builder nav is Brief · Conversations · People.
-// "Sessions" + "Setup" + "Files" collapsed — config/dispatch + past chats live
-// under Conversations, the roster under People, attachments fold into Brief.
-type TabId = 'brief' | 'conversations' | 'people'
+// Builder nav is Brief · Conversations · People · Agent setup. #120 made
+// Conversations reader-first (the transcript is the page), which pushed agent
+// config back out to its own Setup tab.
+type TabId = 'brief' | 'conversations' | 'people' | 'setup'
 
-// Map legacy ?tab= values (sessions/setup/files) so old links/bookmarks land on
+// Map legacy ?tab= values (sessions/files) so old links/bookmarks land on
 // the right new tab instead of falling through to the default.
 const LEGACY_TAB: Record<string, TabId> = {
   sessions: 'conversations',
-  setup: 'conversations',
   files: 'brief',
 }
 
-export function BuilderProjectView({ projectId, userEmail }: { projectId: string; userEmail: string }) {
+export function BuilderProjectView({ projectId }: { projectId: string }) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { data: project, isLoading: projectLoading } = useProject(projectId)
@@ -99,16 +103,12 @@ export function BuilderProjectView({ projectId, userEmail }: { projectId: string
   }
   const [editingTitle, setEditingTitle] = useState(false)
   const [titleDraft, setTitleDraft] = useState('')
-  // After a next-convo JSON import, hand the builder straight to the next step
-  // (Conversations → Next round, config expanded) instead of leaving them on the
-  // Brief tab with no cue (#25). Consumed one-shot by ConversationsTab on mount.
-  const [justImported, setJustImported] = useState(false)
-  // Reverse direction (#115): the Next-round card links straight to the Brief
+  // Reverse direction (#115): the dispatch modal links straight to the Brief
   // tab's payload-import fold, which is otherwise hard to find. One-shot,
   // consumed by BriefTab after it expands + scrolls to the fold.
   const [openImport, setOpenImport] = useState(false)
   const rawTab = searchParams.get('tab') || ''
-  const tabParam: TabId | null = (['brief', 'conversations', 'people'].includes(rawTab)
+  const tabParam: TabId | null = (['brief', 'conversations', 'people', 'setup'].includes(rawTab)
     ? (rawTab as TabId)
     : LEGACY_TAB[rawTab]) || null
   const activeTab: TabId = tabParam ?? 'conversations'
@@ -142,6 +142,7 @@ export function BuilderProjectView({ projectId, userEmail }: { projectId: string
     { id: 'brief', label: 'Brief', shortLabel: 'Brief', Icon: FileText, tooltip: copy.glossary.brief.short },
     { id: 'conversations', label: 'Conversations', shortLabel: 'Convos', Icon: MessageSquare, tooltip: copy.glossary.conversations.short },
     { id: 'people', label: 'People', shortLabel: 'People', Icon: Users, tooltip: copy.glossary.people.short },
+    { id: 'setup', label: 'Agent setup', shortLabel: 'Setup', Icon: Settings, tooltip: copy.glossary.setup.short },
   ]
 
   return (
@@ -276,7 +277,7 @@ export function BuilderProjectView({ projectId, userEmail }: { projectId: string
               briefLoading={briefLoading}
               project={project}
               files={projectFiles || []}
-              onImported={() => { setJustImported(true); setTab('conversations') }}
+              onImported={() => setTab('conversations')}
               autoOpenImport={openImport}
               onAutoOpenConsumed={() => setOpenImport(false)}
             />
@@ -286,24 +287,25 @@ export function BuilderProjectView({ projectId, userEmail }: { projectId: string
               project={project}
               projectId={projectId}
               slug={project?.slug}
-              userEmail={userEmail}
               sessions={sessions || []}
               sessionsLoaded={!!sessions}
               activeSession={activeSession || null}
+              turn={turn}
               onShare={openShare}
-              justImported={justImported}
-              onImportedConsumed={() => setJustImported(false)}
               onOpenImport={() => { setOpenImport(true); setTab('brief') }}
             />
           )}
           {activeTab === 'people' && (
             <PeopleTab project={project} onShare={openShare} />
           )}
+          {activeTab === 'setup' && (
+            project ? <AgentConfigCard project={project} defaultExpanded /> : <Skeleton className="h-64 w-full rounded-lg" />
+          )}
         </main>
       </div>
 
       {/* Mobile bottom tab bar */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-slate-900 text-slate-100 border-t border-slate-800 grid grid-cols-3 z-20">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-slate-900 text-slate-100 border-t border-slate-800 grid grid-cols-4 z-20">
         {tabs.map(({ id, shortLabel, Icon }) => (
           <button
             key={id}
@@ -326,220 +328,43 @@ export function BuilderProjectView({ projectId, userEmail }: { projectId: string
   )
 }
 
-// --- Sessions Tab ---
+// --- Transcript (#120 reader-first) ---
 
-function SessionsTab({
-  projectId,
-  slug,
-  userEmail,
-  sessions,
-  sessionsLoaded,
-}: {
-  projectId: string
-  slug?: string
-  userEmail: string
-  sessions: Session[]
-  sessionsLoaded: boolean
-}) {
-  const searchParams = useSearchParams()
-  const router = useRouter()
-  const activeSession = sessions.find((s) => s.status === 'active')
-  const sessionParam = searchParams.get('session')
-  const [selectedId, setSelectedId] = useState<string | null>(null)
-
-  // Determine selected session
-  useEffect(() => {
-    if (sessionParam && sessions.some((s) => s.id === sessionParam)) {
-      setSelectedId(sessionParam)
-    } else if (activeSession) {
-      setSelectedId(activeSession.id)
-    } else if (sessions.length > 0) {
-      setSelectedId(sessions[sessions.length - 1].id)
-    }
-  }, [sessionParam, sessions, activeSession])
-
-  const handleSelectSession = (sessionId: string) => {
-    setSelectedId(sessionId)
-    const params = new URLSearchParams(searchParams.toString())
-    params.set('session', sessionId)
-    params.delete('tab')
-    router.replace(`/projects/${slug || projectId}?${params.toString()}`, { scroll: false })
-  }
-
-  const selectedSession = sessions.find((s) => s.id === selectedId)
-
-  if (!sessionsLoaded) {
-    return <Skeleton className="h-64 w-full rounded-lg" />
-  }
-
-  if (sessions.length === 0) {
-    return (
-      <EmptyState
-        icon={MessageSquare}
-        title="No conversations yet"
-        description="Use the Next round card above to send the first one."
-      />
-    )
-  }
-
-  return (
-    <div className="flex gap-6">
-      {/* Session sidebar */}
-      <div className="w-56 shrink-0 space-y-1">
-        {sessions.map((session, i) => {
-          const isActive = session.status === 'active'
-          const isSelected = session.id === selectedId
-          const mode = session.session_mode || 'discover'
-          return (
-            <button
-              key={session.id}
-              onClick={() => handleSelectSession(session.id)}
-              className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
-                isSelected
-                  ? 'bg-white shadow-sm border border-gray-200'
-                  : 'hover:bg-white/50'
-              }`}
-            >
-              <div className="flex items-center gap-2">
-                <span className={`w-2 h-2 rounded-full shrink-0 ${isActive ? 'bg-green-500' : 'bg-gray-300'}`} />
-                <span className="font-medium text-gray-900">Session {sessions.length - i}</span>
-                <span className="text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">{mode}</span>
-              </div>
-              <div className="text-xs text-gray-400 mt-0.5 ml-4">
-                {new Date(session.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                {session.token_usage_input != null && (
-                  <>
-                    {' '}
-                    &middot; {((session.token_usage_input + (session.token_usage_output || 0)) / 1000).toFixed(1)}k tokens
-                    {session.token_cost_usd != null && <> &middot; ~{formatCostUsd(session.token_cost_usd)}</>}
-                  </>
-                )}
-              </div>
-            </button>
-          )
-        })}
-      </div>
-
-      {/* Selected session content */}
-      <div className="flex-1 min-w-0">
-        {selectedSession ? (
-          <SessionChat
-            key={selectedSession.id}
-            session={selectedSession}
-            projectId={projectId}
-            userEmail={userEmail}
-            isActive={selectedSession.status === 'active'}
-          />
-        ) : (
-          <p className="text-sm text-gray-400">Select a conversation</p>
-        )}
-      </div>
-    </div>
-  )
-}
-
-function SessionChat({
-  session,
-  projectId,
-  userEmail,
-  isActive,
-}: {
-  session: Session
-  projectId: string
-  userEmail: string
-  isActive: boolean
-}) {
+// Read-only transcript: chronological oldest → newest exactly as the API
+// returns messages, auto-scrolled to the latest. No composer — the builder
+// view is for catching up; the maker chat is the only writing surface.
+function TranscriptPane({ session }: { session: Session }) {
   const sessionId = session.id
-  const { messages, setMessages, streaming, error, setError, streamMessage } = useStreamingChat({ projectId })
-
   const { data: savedMessages, isLoading } = useMessages(sessionId)
   useRealtimeMessages(sessionId)
   const deleteMessage = useDeleteMessage()
+  const paneRef = useRef<HTMLDivElement>(null)
 
-  const [input, setInput] = useState('')
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
-
+  // Land the reader on the latest message whenever the transcript grows.
   useEffect(() => {
-    if (savedMessages && !streaming) {
-      setMessages(savedMessages.map((m) => ({
-        id: m.id, role: m.role, content: m.content,
-        created_at: m.created_at, sender_email: m.sender_email, sender_display_name: m.sender_display_name,
-      })))
-    }
-  }, [savedMessages, streaming, setMessages])
+    const el = paneRef.current
+    if (el) el.scrollTop = el.scrollHeight
+  }, [savedMessages?.length])
 
-  const handleSend = async () => {
-    if (!input.trim() || streaming) return
-
-    const userMessage = input.trim()
-    setInput('')
-    setError(null)
-
-    const nowIso = new Date().toISOString()
-    setMessages((prev) => [...prev, { role: 'user', content: userMessage, created_at: nowIso, sender_email: userEmail }])
-
-    await streamMessage(sessionId, userMessage)
-    textareaRef.current?.focus()
-  }
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      handleSend()
-    }
-  }
-
-  const displayMessages = [...messages].reverse()
+  const messages = savedMessages || []
 
   return (
     <div className="space-y-3">
-      {/* Chat input — only for active sessions */}
-      {isActive && (
-        <div className="flex gap-2">
-          <textarea
-            ref={textareaRef}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Type a message..."
-            rows={1}
-            disabled={streaming || isLoading}
-            className="flex-1 resize-none px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy disabled:bg-gray-50 disabled:text-gray-400"
-          />
-          <button
-            onClick={handleSend}
-            disabled={!input.trim() || streaming || isLoading}
-            className="p-2.5 bg-brand-navy text-white rounded-lg hover:bg-brand-navy-light disabled:bg-brand-slate disabled:cursor-not-allowed transition-colors"
-          >
-            <Send className="h-5 w-5" />
-          </button>
-        </div>
-      )}
-
-      {!isActive && (
-        <div className="text-xs text-gray-400 bg-gray-50 rounded-lg px-3 py-2 flex items-center gap-1.5">
-          <Lock className="h-3.5 w-3.5" />
-          Completed conversation — read only
-        </div>
-      )}
-
-      {error && <StatusMessage type="error" message={error} onDismiss={() => setError(null)} />}
-
       {isLoading ? (
         <div className="space-y-3">
           <Skeleton className="h-16 w-3/4 rounded-lg" />
           <Skeleton className="h-16 w-2/3 rounded-lg ml-auto" />
         </div>
-      ) : displayMessages.length === 0 ? (
+      ) : messages.length === 0 ? (
         <div className="text-center text-brand-slate py-8">
           <MessageSquare className="h-10 w-10 mx-auto mb-3 text-gray-300" />
           <p className="text-sm">No messages yet.</p>
         </div>
       ) : (
-        <div className="space-y-3">
-          {displayMessages.map((msg, i) => (
+        <div ref={paneRef} className="max-h-[65vh] overflow-y-auto space-y-3 pr-1">
+          {messages.map((msg) => (
             <div
-              key={msg.id || i}
+              key={msg.id}
               className={`group flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
             >
               <div className={`relative max-w-[80%] rounded-lg px-4 py-2.5 ${
@@ -548,19 +373,17 @@ function SessionChat({
                   : 'bg-white border border-gray-200 text-gray-800'
               }`}>
                 <p className={`text-[10px] mb-1 ${msg.role === 'user' ? 'text-blue-200' : 'text-gray-400'}`}>
-                  {msg.role === 'user' ? (msg.sender_display_name || msg.sender_email?.split('@')[0] || 'You') : copy.chat.agentLabel}
-                  {msg.created_at ? ` \u00b7 ${formatTimestamp(msg.created_at)}` : ''}
+                  {msg.role === 'user' ? (msg.sender_display_name || msg.sender_email?.split('@')[0] || 'Maker') : copy.chat.agentLabel}
+                  {msg.created_at ? ` · ${formatTimestamp(msg.created_at)}` : ''}
                 </p>
                 <MessageContent content={msg.content} />
-                {msg.id && (
-                  <button
-                    onClick={() => deleteMessage.mutate({ messageId: msg.id!, sessionId })}
-                    className="absolute -top-2 -right-2 p-1 bg-white border border-gray-200 rounded-full text-gray-400 hover:text-red-600 hover:border-red-200 opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
-                    title="Delete message"
-                  >
-                    <Trash2 className="h-3 w-3" />
-                  </button>
-                )}
+                <button
+                  onClick={() => deleteMessage.mutate({ messageId: msg.id, sessionId })}
+                  className="absolute -top-2 -right-2 p-1 bg-white border border-gray-200 rounded-full text-gray-400 hover:text-red-600 hover:border-red-200 opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
+                  title="Delete message"
+                >
+                  <Trash2 className="h-3 w-3" />
+                </button>
               </div>
             </div>
           ))}
@@ -911,64 +734,126 @@ function BriefTab({
   )
 }
 
-// --- Conversations Tab (#19 Phase 2) ---
-// The "Next round" card (config + dispatch) pinned at the top, with past
-// conversations below. Replaces the old Sessions + Setup tabs.
+// --- Conversations Tab (#120 reader-first) ---
+// The transcript IS the page: a status strip (turn state + full maker roster +
+// reminders) with the one state-aware dispatch action on top, then the
+// selected conversation, chronological and read-only.
 
 function ConversationsTab({
   project,
   projectId,
   slug,
-  userEmail,
   sessions,
   sessionsLoaded,
   activeSession,
+  turn,
   onShare,
-  justImported = false,
-  onImportedConsumed,
   onOpenImport,
 }: {
   project: Project | undefined
   projectId: string
   slug?: string
-  userEmail: string
   sessions: Session[]
   sessionsLoaded: boolean
   activeSession: Session | null
+  turn: ReturnType<typeof getTurnIndicator>
   onShare: (mode?: 'maker' | 'add') => void
-  justImported?: boolean
-  onImportedConsumed?: () => void
   onOpenImport?: () => void
 }) {
+  const searchParams = useSearchParams()
+  const router = useRouter()
+  const sessionParam = searchParams.get('session')
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const { data: currentUser } = useCurrentUser()
+  const isAdmin = currentUser?.system_roles?.includes('admin') ?? false
+
+  // Selected conversation: URL param wins, else the live one, else the newest.
+  useEffect(() => {
+    if (sessionParam && sessions.some((s) => s.id === sessionParam)) {
+      setSelectedId(sessionParam)
+    } else if (activeSession) {
+      setSelectedId(activeSession.id)
+    } else if (sessions.length > 0) {
+      setSelectedId(sessions[0].id) // sessions come newest-first
+    }
+  }, [sessionParam, sessions, activeSession])
+
+  const handleSelect = (sessionId: string) => {
+    setSelectedId(sessionId)
+    const params = new URLSearchParams(searchParams.toString())
+    params.set('session', sessionId)
+    params.delete('tab')
+    router.replace(`/projects/${slug || projectId}?${params.toString()}`, { scroll: false })
+  }
+
   if (!project || !sessionsLoaded) {
     return <Skeleton className="h-64 w-full rounded-lg" />
   }
 
+  const selectedSession = sessions.find((s) => s.id === selectedId) || null
+  // sessions are newest-first; conversation numbers count up from the oldest.
+  const numberOf = (id: string) => sessions.length - sessions.findIndex((s) => s.id === id)
+
   return (
-    <div className="space-y-8">
-      <NextRound
+    <div className="space-y-4">
+      <StatusStrip
         project={project}
         projectId={projectId}
         sessions={sessions}
         activeSession={activeSession}
+        turn={turn}
         onShare={onShare}
-        justImported={justImported}
-        onImportedConsumed={onImportedConsumed}
         onOpenImport={onOpenImport}
       />
 
-      {sessions.length > 0 && (
+      {sessions.length === 0 ? (
+        <EmptyState
+          icon={MessageSquare}
+          title="No conversations yet"
+          description="Start the first conversation from the button above — the transcript lives here."
+        />
+      ) : (
         <div>
-          <h2 className="text-sm font-semibold text-brand-slate uppercase tracking-wide mb-3">
-            Previous conversations
-          </h2>
-          <SessionsTab
-            projectId={projectId}
-            slug={slug}
-            userEmail={userEmail}
-            sessions={sessions}
-            sessionsLoaded={sessionsLoaded}
-          />
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+            {selectedSession && (
+              <h2 className="text-sm font-semibold text-brand-slate uppercase tracking-wide flex items-center gap-2">
+                {selectedSession.status === 'active' && (
+                  <span className="w-2 h-2 rounded-full bg-green-500" aria-hidden />
+                )}
+                {conversationLabel(numberOf(selectedSession.id), selectedSession.status)}
+                {/* Token/cost is operator telemetry, not reading material — admin-only (#120). */}
+                {isAdmin && selectedSession.token_usage_input != null && (
+                  <span className="text-[11px] font-normal normal-case tracking-normal text-gray-400">
+                    {((selectedSession.token_usage_input + (selectedSession.token_usage_output || 0)) / 1000).toFixed(1)}k tokens
+                    {selectedSession.token_cost_usd != null && <> · ~{formatCostUsd(selectedSession.token_cost_usd)}</>}
+                  </span>
+                )}
+              </h2>
+            )}
+            {sessions.length > 1 && (
+              <div className="flex items-center gap-1" aria-label="Conversations">
+                {[...sessions].reverse().map((s) => {
+                  const n = numberOf(s.id)
+                  const isSelected = s.id === selectedId
+                  return (
+                    <button
+                      key={s.id}
+                      onClick={() => handleSelect(s.id)}
+                      title={`Conversation ${n} · ${new Date(s.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`}
+                      className={`min-w-7 px-2 py-1 rounded text-xs font-medium transition-colors ${
+                        isSelected
+                          ? 'bg-brand-navy text-white'
+                          : 'bg-white border border-gray-200 text-gray-500 hover:text-brand-navy'
+                      }`}
+                    >
+                      {n}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+          {selectedSession && <TranscriptPane key={selectedSession.id} session={selectedSession} />}
         </div>
       )}
     </div>
@@ -1002,81 +887,106 @@ function PeopleTab({ project, onShare }: { project: Project | undefined; onShare
   return <PeoplePanel project={project} onInvite={() => onShare('add')} />
 }
 
-// --- Next round (config + dispatch) ---
+// --- Status strip + dispatch (#120) ---
+// One row: turn state, the full maker roster (not just the first requester),
+// reminders state, and the single state-aware dispatch action.
 
-function NextRound({
+function StatusStrip({
   project,
   projectId,
   sessions,
   activeSession,
+  turn,
   onShare,
-  justImported = false,
-  onImportedConsumed,
   onOpenImport,
 }: {
   project: Project
   projectId: string
   sessions: Session[]
   activeSession: Session | null
+  turn: ReturnType<typeof getTurnIndicator>
   onShare: (mode?: 'maker' | 'add') => void
-  justImported?: boolean
-  onImportedConsumed?: () => void
   onOpenImport?: () => void
 }) {
+  const { data: members } = useProjectMembers(project.id)
   const { data: activeMessages } = useMessages(activeSession?.id)
   const hasUserMessages = activeMessages?.some((m) => m.role === 'user') ?? false
 
-  // Capture the import signal at mount so it survives the parent resetting the
-  // one-shot flag, then clear it. Drives the auto-expanded config so a JSON
-  // import lands the builder on the thing to review (#25).
-  const [arrivedFromImport] = useState(justImported)
-  useEffect(() => {
-    if (justImported) onImportedConsumed?.()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  const roster = makerRoster(members, project)
+  const dispatch = getDispatchState({
+    project,
+    members,
+    sessionCount: sessions.length,
+    hasActiveSession: !!activeSession,
+    makerRepliedInActive: hasUserMessages,
+  })
+  const remindersLine = remindersStripLine(project, Date.now())
 
-  // When the maker owes a turn, the "Waiting on …" card is the single most
-  // important thing here — pin it to the top, above the (collapsed) Agent setup
-  // card (#21). Other states keep Agent setup first.
-  const waitingOnMaker = !!project.requester_email && !!activeSession && !hasUserMessages
+  // Post-dispatch confirmation, rendered full-width under the strip so the
+  // sent/copied/suppressed outcome stays visible after the modal closes.
+  const [result, setResult] = useState<{
+    sessionNumber: number
+    sent?: string[]
+    copied?: boolean
+    suppressed?: boolean
+  } | null>(null)
 
   return (
-    <div className="space-y-6">
-      <h2 className="text-sm font-semibold text-brand-slate uppercase tracking-wide">Next round</h2>
-
-      {waitingOnMaker && (
-        <RenudgeCard project={project} projectId={projectId} sessionNumber={sessions.length} />
-      )}
-
-      {/* The one agent-config home (#19 Phase 1) — shown in every state. Opens
-          expanded right after a JSON import so the builder lands on it (#25). */}
-      <AgentConfigCard project={project} defaultExpanded={arrivedFromImport} />
-
-      {/* Dispatch: invite (no maker yet) or prep next round. The waiting/re-nudge
-          state is rendered above, ahead of Agent setup. */}
-      {!project.requester_email ? (
-        <Card hover={false}>
-          <CardBody>
-            <h2 className="text-sm font-semibold text-brand-slate uppercase tracking-wide flex items-center gap-1.5 mb-3">
-              <Share2 className="h-4 w-4" />
+    <div className="bg-white border border-gray-200 rounded-lg px-4 py-3 space-y-2">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 min-w-0">
+          {turn && (
+            <TurnBadge turn={turn} className={`text-xs px-2 py-0.5 rounded-full font-medium shrink-0 ${turn.className}`} />
+          )}
+          <span className="flex items-center gap-1.5 text-sm text-gray-700 min-w-0">
+            <Users className="h-3.5 w-3.5 text-gray-400 shrink-0" />
+            <span className="truncate">{roster.canSend ? roster.names : 'No maker yet'}</span>
+          </span>
+          <span className="text-xs text-gray-400">{remindersLine}</span>
+        </div>
+        <div className="shrink-0">
+          {dispatch.kind === 'invite' && (
+            <LoadingButton variant="primary" size="sm" icon={Share2} onClick={() => onShare('maker')}>
               Invite a maker
-            </h2>
-            <p className="text-sm text-gray-600 mb-4">
-              Share this project with a maker to start the first conversation. You&apos;ll get a link and passcode to send them.
-            </p>
-            <LoadingButton variant="primary" icon={Share2} onClick={() => onShare('maker')}>
-              Share project
             </LoadingButton>
-          </CardBody>
-        </Card>
-      ) : waitingOnMaker ? null : (
-        <PrepNextSession
-          project={project}
-          projectId={projectId}
-          sessionNumber={sessions.length + 1}
-          onShare={onShare}
-          onOpenImport={onOpenImport}
-        />
+          )}
+          {dispatch.kind === 'nudge' && (
+            <NudgeDispatch
+              project={project}
+              projectId={projectId}
+              makerNames={dispatch.makerNames}
+              sessionNumber={dispatch.sessionNumber}
+            />
+          )}
+          {dispatch.kind === 'start' && (
+            <StartDispatch
+              project={project}
+              projectId={projectId}
+              sessionNumber={dispatch.sessionNumber}
+              makerNames={dispatch.makerNames}
+              canSend={dispatch.canSend}
+              onShare={onShare}
+              onOpenImport={onOpenImport}
+              onResult={setResult}
+            />
+          )}
+        </div>
+      </div>
+
+      {result && (
+        <div className="flex items-start gap-2 text-sm border-t border-gray-100 pt-2">
+          <Check className="h-4 w-4 text-green-600 mt-0.5 shrink-0" />
+          <p>
+            <span className="font-medium text-green-800">Conversation {result.sessionNumber} created.</span>{' '}
+            <span className="text-gray-600">
+              {result.copied
+                ? 'Nudge copied — paste it whenever you like.'
+                : result.suppressed
+                  ? `Dev: would have emailed ${result.sent?.join(' + ')} (suppressed on preview).`
+                  : `Emailed ${result.sent?.join(' + ')} — their replies come back to you.`}
+            </span>
+          </p>
+        </div>
       )}
     </div>
   )
@@ -1139,8 +1049,8 @@ function ShareModal({ project, onClose, mode = 'maker' }: { project: Project; on
   // The first-time invite message (boilerplate + "Send invitation") belongs ONLY
   // to a fresh invite. For someone already on the brief who's opening this just to
   // grab their link/passcode, re-serving the "I'm putting together a brief…" copy
-  // is the wrong tone (#19 Phase 4) — recurring contact is the Next round nudge,
-  // not the invite. So gate the invite block on a fresh share this session.
+  // is the wrong tone (#19 Phase 4) — recurring contact is the Conversations
+  // dispatch nudge, not the invite. So gate the invite block on a fresh share.
   const justInvited = shareProject.isSuccess
   // The person the confirmation refers to: the just-invited person on success,
   // otherwise the stored originator.
@@ -1272,7 +1182,7 @@ function ShareModal({ project, onClose, mode = 'maker' }: { project: Project; on
           )}
           {/* First-time invite copy + send — only for a fresh invite (#19 Phase 4).
               An established maker opening this for their link/passcode sees access
-              only; to contact them again, use the Next round nudge. */}
+              only; to contact them again, use the Conversations dispatch nudge. */}
           {justInvited ? (
             <div>
               <p className="text-xs text-gray-600 mb-1 flex items-center gap-1"><Mail className="h-3.5 w-3.5" /> Invite message</p>
@@ -1287,8 +1197,8 @@ function ShareModal({ project, onClose, mode = 'maker' }: { project: Project; on
             </div>
           ) : (
             <p className="text-xs text-gray-500">
-              Already on the brief. To reach {project.requester_first_name || 'them'} again, send the next round from{' '}
-              <span className="font-medium text-gray-600">Conversations → Next round</span>.
+              Already on the brief. To reach {project.requester_first_name || 'them'} again, use the send action at the
+              top of <span className="font-medium text-gray-600">Conversations</span>.
             </p>
           )}
           <div className="flex justify-end">
@@ -1957,75 +1867,124 @@ function SendToMakerButton({
   )
 }
 
-function RenudgeCard({ project, projectId, sessionNumber }: { project: Project; projectId: string; sessionNumber?: number }) {
+// Waiting-on-maker dispatch: nudge instead of starting a new round. The send
+// targets the requester — the reminder path is single-recipient by design
+// (see /api/projects/[id]/email).
+function NudgeDispatch({
+  project,
+  projectId,
+  makerNames,
+  sessionNumber,
+}: {
+  project: Project
+  projectId: string
+  makerNames: string
+  sessionNumber: number
+}) {
+  const [open, setOpen] = useState(false)
+  const sendEmail = useSendMakerEmail()
   const { copied, copyNudge } = useNudgeCopy(projectId)
+  const [sentTo, setSentTo] = useState<string | null>(null)
 
   const shareLink = getProjectShareLink(project.slug, projectId)
   const reminderMessage = copy.nudge.reminder({
     firstName: project.requester_first_name || null,
-    sessionNumber: sessionNumber ?? null,
+    sessionNumber,
     shareLink,
   })
-  const makerName = getMakerShortName(project.requester_first_name, project.requester_email)
+
+  if (sentTo) {
+    return (
+      <span className="flex items-center gap-1.5 text-xs text-green-600 font-medium">
+        <Check className="h-3.5 w-3.5" /> Reminder sent to {sentTo}
+      </span>
+    )
+  }
 
   return (
-    <Card hover={false}>
-      <CardBody>
-        <h2 className="text-sm font-semibold text-brand-slate uppercase tracking-wide flex items-center gap-1.5 mb-3">
-          <Mail className="h-4 w-4" />
-          Waiting on {makerName}
-        </h2>
-        <p className="text-sm text-gray-600 mb-3">
-          {makerName} hasn&apos;t responded yet. Send a reminder:
-        </p>
-        <textarea readOnly value={reminderMessage} rows={3} className="w-full px-2.5 py-1.5 bg-gray-50 border border-gray-300 rounded-md text-sm text-gray-700 resize-none mb-2" />
-        <div className="flex items-center gap-4">
-          <SendToMakerButton projectId={projectId} kind="reminder" makerEmail={project.requester_email || ''} idleLabel="Send reminder" />
-          <button
-            onClick={() => copyNudge(reminderMessage)}
-            className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand-navy"
-          >
-            {copied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
-            {copied ? 'Copied!' : 'Copy reminder'}
-          </button>
+    <>
+      <LoadingButton variant="primary" size="sm" icon={Mail} onClick={() => { sendEmail.reset(); setOpen(true) }}>
+        Nudge {makerNames}
+      </LoadingButton>
+      <Modal isOpen={open} onClose={() => { if (!sendEmail.isPending) setOpen(false) }} title={`Waiting on ${makerNames}`} size="sm">
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600">No reply yet in conversation {sessionNumber}. Send a reminder:</p>
+          <textarea
+            readOnly
+            value={reminderMessage}
+            rows={3}
+            className="w-full px-2.5 py-1.5 bg-gray-50 border border-gray-300 rounded-md text-sm text-gray-700 resize-none"
+          />
+          {sendEmail.isError && <StatusMessage type="error" message={sendEmail.error.message} />}
+          <div className="flex items-center justify-end gap-4">
+            <button
+              onClick={() => copyNudge(reminderMessage)}
+              className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand-navy"
+            >
+              {copied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+              {copied ? 'Copied!' : 'Copy reminder'}
+            </button>
+            <LoadingButton
+              variant="primary"
+              loading={sendEmail.isPending}
+              loadingText="Sending…"
+              icon={Send}
+              disabled={!project.requester_email}
+              onClick={async () => {
+                try {
+                  const r = await sendEmail.mutateAsync({ project_id: projectId, kind: 'reminder' })
+                  setSentTo(r.to.join(' + '))
+                  setOpen(false)
+                } catch {
+                  // surfaced via sendEmail.isError; keep the modal open
+                }
+              }}
+            >
+              Send reminder
+            </LoadingButton>
+          </div>
         </div>
-      </CardBody>
-    </Card>
+      </Modal>
+    </>
   )
 }
 
-// The dispatch card ("Next round"): create the next conversation + message the
-// maker in one click. Pure dispatch now (#19 UX-scrub Phase 1) — agent config
-// moved to the single AgentConfigCard above, so this reads the *saved* config
-// from `project` and no longer carries a duplicate edit fold or a nudge-note.
-function PrepNextSession({ project, projectId, sessionNumber, onShare, onOpenImport }: {
+// The "done with this round?" dispatch — the #115 machinery behind one header
+// button. The confirm modal carries the prep summary, the email/copy actions,
+// and the load-a-payload + invite escape hatches. Starting a new conversation
+// closes the current one, hence the confirm.
+function StartDispatch({
+  project,
+  projectId,
+  sessionNumber,
+  makerNames,
+  canSend,
+  onShare,
+  onOpenImport,
+  onResult,
+}: {
   project: Project
   projectId: string
   sessionNumber: number
+  makerNames: string
+  canSend: boolean
   onShare: (mode?: 'maker' | 'add') => void
   onOpenImport?: () => void
+  onResult: (r: { sessionNumber: number; sent?: string[]; copied?: boolean; suppressed?: boolean }) => void
 }) {
-  const [result, setResult] = useState<{ sent?: string[]; copied?: boolean; suppressed?: boolean } | null>(null)
-  // Starting a new conversation closes the current one — guard it behind a
-  // confirm so it can't be triggered by accident when the builder really just
-  // wanted to invite someone to the conversation already in progress.
-  const [confirm, setConfirm] = useState<null | 'send' | 'copy'>(null)
-
+  const [open, setOpen] = useState(false)
   const updateProject = useUpdateProject()
   const createSession = useCreateSession()
   const sendEmail = useSendMakerEmail()
   const generatePrep = useGeneratePrep()
   const { copyNudge } = useNudgeCopy(projectId)
-  // The send fans out to every active maker on the brief (#115); load the
-  // roster so the button says who it's actually going to.
-  const { data: members } = useProjectMembers(project.id)
 
   const shareLink = getProjectShareLink(project.slug, projectId)
-  const makerEmail = project.requester_email || ''
   const sessionMode = project.session_mode || 'discover'
 
-  // AI-prepped focus + nudge (slice 2). Seed from the stored values, refresh from
-  // the eager prep call. Local state shows the freshest result without a refetch.
+  // AI-prepped focus + nudge (slice 2). Seed from the stored values, refresh
+  // from the eager prep call. Local state shows the freshest result without a
+  // refetch.
   const [prep, setPrep] = useState<{ focus: string; nudge_message: string } | null>(
     project.prep_focus && project.prep_nudge
       ? { focus: project.prep_focus, nudge_message: project.prep_nudge }
@@ -2041,7 +2000,7 @@ function PrepNextSession({ project, projectId, sessionNumber, onShare, onOpenImp
 
   // Pre-warm prep once on mount. The route is idempotent (dedupes on a config
   // fingerprint) so this only pays for a Sonnet call when the config/brief
-  // actually changed since the last generation — covers JSON-import + stale briefs.
+  // actually changed since the last generation.
   useEffect(() => {
     if (prepFiredRef.current) return
     prepFiredRef.current = true
@@ -2054,9 +2013,9 @@ function PrepNextSession({ project, projectId, sessionNumber, onShare, onOpenImp
     ? [nudgeBodyText, '', shareLink].join('\n')
     : copy.nudge.body({ projectTitle: project.title, shareLink, sessionMode })
 
-  // Config is saved separately (AgentConfigCard); the dispatch just creates the
-  // session + sends. Touch builder activity + refresh prep so a stale fingerprint
-  // re-warms.
+  // Config is saved separately (Agent setup tab); the dispatch just creates
+  // the session + sends. Touch builder activity + refresh prep so a stale
+  // fingerprint re-warms.
   const createAndThen = async () => {
     runPrep()
     await createSession.mutateAsync({ project_id: projectId })
@@ -2066,26 +2025,28 @@ function PrepNextSession({ project, projectId, sessionNumber, onShare, onOpenImp
     })
   }
 
-  const handleCreateAndSend = async () => {
-    await createAndThen()
-    const r = await sendEmail.mutateAsync({ project_id: projectId, kind: 'nudge' })
-    setResult({ sent: r.to, suppressed: r.suppressed })
+  const handleSend = async () => {
+    try {
+      await createAndThen()
+      const r = await sendEmail.mutateAsync({ project_id: projectId, kind: 'nudge' })
+      onResult({ sessionNumber, sent: r.to, suppressed: r.suppressed })
+      setOpen(false)
+    } catch {
+      // surfaced via actionError; keep the modal open
+    }
   }
 
-  const handleCreateAndCopy = async () => {
-    await createAndThen()
-    copyNudge(nudgeMessage)
-    setResult({ copied: true })
+  const handleCopy = async () => {
+    try {
+      await createAndThen()
+      copyNudge(nudgeMessage)
+      onResult({ sessionNumber, copied: true })
+      setOpen(false)
+    } catch {
+      // surfaced via actionError; keep the modal open
+    }
   }
 
-  // Everyone the send goes to. Falls back to the legacy requester fields while
-  // the roster loads (or on old briefs with no maker member rows).
-  const makerMembers = (members || []).filter((m) => m.role === 'maker')
-  const makerName =
-    makerMembers.length > 0
-      ? makerMembers.map((m) => (m.display_name || m.email).split(' ')[0]).join(' + ')
-      : project.requester_first_name || makerEmail || 'the maker'
-  const canSend = makerMembers.length > 0 || !!makerEmail
   const firstFocusItem = sessionMode === 'discover' ? project.seed_questions?.[0] : project.builder_directives?.[0]
   const mechanicalFocus = `${sessionMode === 'converge' ? 'Converge' : 'Discover'}${firstFocusItem ? ` · ${firstFocusItem}` : ''}`
   const focusLine = prep?.focus || mechanicalFocus
@@ -2094,117 +2055,75 @@ function PrepNextSession({ project, projectId, sessionNumber, onShare, onOpenImp
   const busy = updateProject.isPending || createSession.isPending || sendEmail.isPending
   const actionError = updateProject.error || createSession.error || sendEmail.error
 
-  if (result) {
-    return (
-      <Card hover={false}>
-        <CardBody>
-          <div className="flex items-start gap-2">
-            <Check className="h-4 w-4 text-green-600 mt-0.5 shrink-0" />
-            <div className="text-sm">
-              <p className="font-medium text-green-800">Conversation {sessionNumber} created.</p>
-              {result.copied ? (
-                <p className="text-gray-600 mt-0.5">Nudge copied — paste it to {makerName} whenever you like.</p>
-              ) : result.suppressed ? (
-                <p className="text-gray-600 mt-0.5">Dev: would have emailed {result.sent?.join(' + ')} (suppressed on preview).</p>
+  return (
+    <>
+      <button
+        onClick={() => setOpen(true)}
+        disabled={busy || !canSend}
+        title={canSend ? undefined : 'Add a maker email to this brief to send.'}
+        className="flex items-center gap-1.5 text-sm font-medium text-brand-navy hover:underline disabled:opacity-40 disabled:no-underline"
+      >
+        <RotateCw className="h-3.5 w-3.5" /> Start conversation {sessionNumber} &amp; email {makerNames}
+      </button>
+
+      <Modal isOpen={open} onClose={() => { if (!busy) setOpen(false) }} title={`Start conversation ${sessionNumber}?`} size="sm">
+        <div className="space-y-4">
+          {/* What the next round will do — the old dispatch card's compact summary. */}
+          <div className="space-y-1.5 text-sm">
+            <div className="flex gap-2">
+              <span className="text-gray-400 w-20 shrink-0">Focus</span>
+              {prepping ? (
+                <span className="text-gray-400 italic">Summarizing… ✨ send anytime — you&apos;re CC&apos;d.</span>
               ) : (
-                <p className="text-gray-600 mt-0.5">Emailed {result.sent?.join(' + ')} — their replies come back to you.</p>
+                <span className="text-gray-700">{focusLine}</span>
               )}
             </div>
-          </div>
-        </CardBody>
-      </Card>
-    )
-  }
-
-  return (
-    <Card hover={false}>
-      <CardBody>
-        <h2 className="text-sm font-semibold text-brand-slate uppercase tracking-wide flex items-center gap-1.5">
-          <RotateCw className="h-4 w-4" />
-          Conversation {sessionNumber} ready to send
-        </h2>
-
-        {/* Compact summary */}
-        <div className="mt-3 space-y-1.5 text-sm">
-          <div className="flex gap-2">
-            <span className="text-gray-400 w-20 shrink-0">Focus</span>
-            {prepping ? (
-              <span className="text-gray-400 italic">Summarizing… ✨ send anytime — you&apos;re CC&apos;d.</span>
-            ) : (
-              <span className="text-gray-700">{focusLine}</span>
+            {openerPreview && (
+              <div className="flex gap-2 min-w-0">
+                <span className="text-gray-400 w-20 shrink-0">Opens with</span>
+                <span className="text-gray-500 truncate">{openerPreview}</span>
+              </div>
             )}
           </div>
-          {openerPreview && (
-            <div className="flex gap-2 min-w-0">
-              <span className="text-gray-400 w-20 shrink-0">Opens with</span>
-              <span className="text-gray-500 truncate">{openerPreview}</span>
-            </div>
-          )}
-          <div className="flex gap-2">
-            <span className="text-gray-400 w-20 shrink-0">Reminders</span>
-            <span className="text-gray-500">{project.auto_reminders_enabled ? 'On · stops when they reply' : 'Off'}</span>
-          </div>
-        </div>
-
-        {/* Invite someone to the CURRENT conversation — no new session. This is
-            the common action; bringing a 2nd/3rd person in doesn't start a new
-            round. Decoupled from session creation to kill the old footgun. */}
-        <div className="mt-4">
-          <LoadingButton variant="primary" size="sm" icon={UserPlus} onClick={() => onShare('add')}>
-            Invite someone to this conversation
-          </LoadingButton>
-          <p className="text-xs text-gray-400 mt-1.5">They join the conversation that&apos;s already going — no new conversation is started.</p>
-        </div>
-
-        {/* Start the NEXT conversation — deliberate + confirmed, because it
-            closes the current one. */}
-        <div className="mt-4 pt-3 border-t border-gray-100">
-          <p className="text-xs text-gray-500 mb-2">Done with this round?</p>
+          <p className="text-sm text-gray-600">
+            This <span className="font-medium text-gray-900">closes the current conversation</span> and starts a fresh
+            one (#{sessionNumber}). Everyone on the brief moves to the new conversation.
+          </p>
+          {actionError && <StatusMessage type="error" message={actionError.message || 'Failed'} />}
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-            <button onClick={() => setConfirm('send')} disabled={busy || !canSend} className="flex items-center gap-1.5 text-sm font-medium text-brand-navy hover:underline disabled:opacity-40 disabled:no-underline">
-              <RotateCw className="h-3.5 w-3.5" /> Start conversation {sessionNumber} &amp; email {makerName}
-            </button>
-            <button onClick={() => setConfirm('copy')} disabled={busy} className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand-navy disabled:opacity-40">
-              <Copy className="h-3.5 w-3.5" /> Copy nudge instead
-            </button>
             {onOpenImport && (
-              <button onClick={onOpenImport} className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand-navy">
+              <button
+                onClick={() => { setOpen(false); onOpenImport() }}
+                disabled={busy}
+                className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand-navy disabled:opacity-40"
+              >
                 <Upload className="h-3.5 w-3.5" /> Load a next-convo payload first
               </button>
             )}
+            <button
+              onClick={() => { setOpen(false); onShare('add') }}
+              disabled={busy}
+              className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand-navy disabled:opacity-40"
+            >
+              <UserPlus className="h-3.5 w-3.5" /> Invite someone to this conversation instead
+            </button>
           </div>
-          {!canSend && <p className="text-xs text-gray-400 mt-1.5">Add a maker email to this brief to send.</p>}
+          <div className="flex justify-end gap-2 pt-1">
+            <button
+              onClick={handleCopy}
+              disabled={busy}
+              className="px-3 py-2 text-sm text-gray-600 hover:text-gray-800 disabled:opacity-50 flex items-center gap-1.5"
+            >
+              <Copy className="h-3.5 w-3.5" /> Start &amp; copy nudge
+            </button>
+            <LoadingButton variant="primary" loading={busy} loadingText="Working…" icon={Send} onClick={handleSend} disabled={!canSend}>
+              Start conversation {sessionNumber}
+            </LoadingButton>
+          </div>
+          <p className="text-xs text-gray-400">Edit how the agent behaves in the Agent setup tab.</p>
         </div>
-
-        {actionError && <div className="mt-2"><StatusMessage type="error" message={actionError.message || 'Failed'} /></div>}
-        <p className="mt-3 text-xs text-gray-400">Edit how the agent behaves in Agent setup above.</p>
-
-        <Modal isOpen={confirm !== null} onClose={() => { if (!busy) setConfirm(null) }} title={`Start conversation ${sessionNumber}?`} size="sm">
-          <div className="space-y-4">
-            <p className="text-sm text-gray-600">
-              This <span className="font-medium text-gray-900">closes the current conversation</span> and starts a fresh one (#{sessionNumber}). Everyone on the brief moves to the new conversation.
-            </p>
-            <p className="text-sm text-gray-600">
-              Just want to bring someone into the conversation that&apos;s already going? Cancel and use <span className="font-medium text-gray-900">Invite someone to this conversation</span> instead.
-            </p>
-            {actionError && <StatusMessage type="error" message={actionError.message || 'Failed'} />}
-            <div className="flex justify-end gap-2">
-              <button type="button" onClick={() => setConfirm(null)} disabled={busy} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 disabled:opacity-50">
-                Cancel
-              </button>
-              <LoadingButton variant="primary" loading={busy} loadingText="Working…" icon={confirm === 'copy' ? Copy : Send}
-                onClick={async () => {
-                  if (confirm === 'copy') await handleCreateAndCopy()
-                  else await handleCreateAndSend()
-                  setConfirm(null)
-                }}>
-                Start conversation {sessionNumber}
-              </LoadingButton>
-            </div>
-          </div>
-        </Modal>
-      </CardBody>
-    </Card>
+      </Modal>
+    </>
   )
 }
 
