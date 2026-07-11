@@ -483,13 +483,14 @@ function BriefTab({
   const briefContent = brief?.content as BriefContent | undefined
   const hasBrief = briefContent && hasBriefContent(briefContent)
 
-  // Arriving via the Next-round card's "load a payload" link (#115): expand
-  // the import fold and scroll to it, then consume the one-shot flag.
-  const importFoldRef = useRef<HTMLDetailsElement>(null)
+  // Arriving via the dispatch modal's "load a payload" link (#115): scroll to
+  // the import card + focus its textarea, then consume the one-shot flag.
+  const importCardRef = useRef<HTMLDivElement>(null)
+  const importTextareaRef = useRef<HTMLTextAreaElement>(null)
   useEffect(() => {
-    if (autoOpenImport && importFoldRef.current) {
-      importFoldRef.current.open = true
-      importFoldRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    if (autoOpenImport && importCardRef.current) {
+      importCardRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      importTextareaRef.current?.focus()
       onAutoOpenConsumed?.()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -658,37 +659,45 @@ function BriefTab({
         </button>
       </div>
 
-      <BriefEditor projectId={projectId} content={briefContent} version={brief?.version} loading={briefLoading} />
+      {/* Paste target for the next-convo payload — the ferry's landing spot,
+          so it gets first-class placement above the brief (was a fold at the
+          bottom; Nico 2026-07-11). Accepts the full payload (brief + agent
+          config) or brief-only JSON; the BriefEditor's raw view covers
+          in-place edits. */}
+      <Card hover={false}>
+        <CardBody>
+          <div ref={importCardRef} className="space-y-2">
+            <h3 className="text-sm font-semibold text-brand-slate uppercase tracking-wide flex items-center gap-1.5">
+              <Upload className="h-4 w-4" /> Paste next-convo payload
+            </h3>
+            <p className="text-xs text-gray-400">
+              The JSON from your prep chat — full payload (brief + agent config) or brief-only.
+            </p>
+            <textarea
+              ref={importTextareaRef}
+              value={pasteJson}
+              onChange={(e) => { setPasteJson(e.target.value); setPasteError(null) }}
+              placeholder='Paste the "next-convo" JSON here...'
+              rows={3}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm font-mono focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
+            />
+            {pasteError && <StatusMessage type="error" message={pasteError} />}
+            <LoadingButton
+              variant="secondary"
+              size="sm"
+              loading={updateBrief.isPending}
+              loadingText="Importing..."
+              disabled={!pasteJson.trim()}
+              onClick={handleImportJson}
+              icon={Upload}
+            >
+              Import JSON
+            </LoadingButton>
+          </div>
+        </CardBody>
+      </Card>
 
-      {/* Import full payload — demoted escape hatch (#19). Accepts the whole
-          next-convo payload (brief + agent config), the ferry's bulk paste
-          target; the BriefEditor's raw view covers brief-only edits. */}
-      <details ref={importFoldRef} className="group">
-        <summary className="cursor-pointer text-xs font-medium text-gray-400 hover:text-gray-600 list-none flex items-center gap-1.5">
-          <Upload className="h-3.5 w-3.5" /> Import full payload (brief + agent config)
-        </summary>
-        <div className="mt-2 space-y-2">
-          <textarea
-            value={pasteJson}
-            onChange={(e) => { setPasteJson(e.target.value); setPasteError(null) }}
-            placeholder='Paste the "next-convo" JSON (full payload with brief + agent config, or brief-only)...'
-            rows={8}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm font-mono focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
-          />
-          {pasteError && <StatusMessage type="error" message={pasteError} />}
-          <LoadingButton
-            variant="secondary"
-            size="sm"
-            loading={updateBrief.isPending}
-            loadingText="Importing..."
-            disabled={!pasteJson.trim()}
-            onClick={handleImportJson}
-            icon={Upload}
-          >
-            Import JSON
-          </LoadingButton>
-        </div>
-      </details>
+      <BriefEditor projectId={projectId} content={briefContent} version={brief?.version} loading={briefLoading} />
 
       {/* Confirm the metered-API regen — it overwrites the brief (locked
           decisions survive). Offer a copy-first so no manual edit is lost. */}
