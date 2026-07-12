@@ -66,6 +66,18 @@ if (pasteIdx < 0 || problemIdx < 0) fail(`missing sections (paste@${pasteIdx}, p
 else if (pasteIdx > problemIdx) fail('paste card renders below the brief content')
 else ok('paste card sits above the brief')
 
+// Decisions live OUTSIDE the collapse clamp (Nico 2026-07-12) — the seeded
+// locked decision must not sit inside the max-height container even while the
+// brief is collapsed. (innerText can't distinguish clipped text, so check the
+// DOM ancestry instead.)
+const decisionInClamp = await page
+  .getByText('Stripe only')
+  .first()
+  .evaluate((el) => !!el.closest('.max-h-28'))
+  .catch(() => null)
+if (decisionInClamp !== false) fail(`decision buried in the collapse clamp (inClamp=${decisionInClamp})`)
+else ok('decisions visible outside the collapsed brief')
+
 const showMore = page.getByRole('button', { name: 'Show full brief' })
 if (!(await showMore.count())) fail('long brief is not collapsed (no "Show full brief")')
 else {

@@ -156,7 +156,7 @@ export function BriefEditor({
           {hasAnyContent(base) ? (
             <>
               <div ref={readRef} className={expanded ? undefined : 'relative max-h-28 overflow-hidden'}>
-                <BriefReadView content={base} sessions={sessions} />
+                <BriefReadView content={base} />
                 {!expanded && overflowing && (
                   <div className="absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-white to-transparent pointer-events-none" />
                 )}
@@ -169,6 +169,11 @@ export function BriefEditor({
                   {expanded ? 'Show less' : 'Show full brief'}
                 </button>
               )}
+              {/* Decisions live OUTSIDE the collapse (Nico 2026-07-12): they're
+                  what a builder acts on — durable constraints + provenance —
+                  and were buried under the ~4-line clamp with the rest of the
+                  document. Compact by nature, so always show them. */}
+              <DecisionsSection decisions={base.decisions} sessions={sessions} />
             </>
           ) : loading ? (
             <div className="space-y-2 py-2">
@@ -260,10 +265,9 @@ export function BriefEditor({
 
 // --- Read view: the brief as a calm document (empty sections hidden) ---
 
-function BriefReadView({ content, sessions }: { content: BriefContent; sessions?: Session[] }) {
-  // #121: quiet provenance suffix per decision — "conv 2 · Jul 11" (or
-  // "added Jul 11" for out-of-band). Unstamped decisions render as before.
-  const sessionNumbers = sessionNumberById(sessions || [])
+// The brief document minus decisions — those render in their own always-visible
+// DecisionsSection outside the collapse clamp.
+function BriefReadView({ content }: { content: BriefContent }) {
   const prose = [
     { label: 'Problem', value: content.problem },
     { label: 'Target users', value: content.target_users },
@@ -271,7 +275,6 @@ function BriefReadView({ content, sessions }: { content: BriefContent; sessions?
     { label: 'Additional context', value: content.additional_context },
   ].filter((s) => s.value)
   const features = content.features || []
-  const decisions = lockedFirst(content.decisions)
   const openRisks = content.open_risks || []
 
   return (
@@ -288,10 +291,42 @@ function BriefReadView({ content, sessions }: { content: BriefContent; sessions?
           </ul>
         </Section>
       )}
-      {decisions.length > 0 && (
-        <Section label="Decisions">
-          <ul className="space-y-2">
-            {decisions.map((d, i) => (
+      {openRisks.length > 0 && (
+        <Section label="Open risks">
+          <ul className="list-disc list-inside space-y-1">
+            {openRisks.map((r, i) => <li key={i} className="text-gray-800 text-sm">{r}</li>)}
+          </ul>
+        </Section>
+      )}
+    </div>
+  )
+}
+
+// Always-visible decisions block below the (possibly collapsed) brief document.
+// Locked-first, provenance suffix (#121). A long list gets its own toggle so
+// the block stays scannable without re-burying anything under the brief clamp.
+const DECISIONS_PREVIEW_COUNT = 6
+
+function DecisionsSection({
+  decisions,
+  sessions,
+}: {
+  decisions: BriefDecision[] | undefined
+  sessions?: Session[]
+}) {
+  const [showAll, setShowAll] = useState(false)
+  const ordered = lockedFirst(decisions)
+  const sessionNumbers = sessionNumberById(sessions || [])
+  if (ordered.length === 0) return null
+  const visible = showAll ? ordered : ordered.slice(0, DECISIONS_PREVIEW_COUNT)
+
+  return (
+    <div className="mt-4">
+      <Section label="Decisions">
+        <ul className="space-y-2">
+          {visible.map((d, i) => {
+            const suffix = decisionProvenanceSuffix(d, sessionNumbers)
+            return (
               <li key={i} className="text-sm">
                 {d.locked && (
                   <span
@@ -303,24 +338,22 @@ function BriefReadView({ content, sessions }: { content: BriefContent; sessions?
                 )}
                 <span className="font-medium text-gray-900">{d.topic}:</span>{' '}
                 <span className="text-gray-700">{d.decision}</span>
-                {(() => {
-                  const suffix = decisionProvenanceSuffix(d, sessionNumbers)
-                  return suffix ? (
-                    <span className="text-xs text-gray-400 whitespace-nowrap"> · {suffix}</span>
-                  ) : null
-                })()}
+                {suffix && (
+                  <span className="text-xs text-gray-400 whitespace-nowrap"> · {suffix}</span>
+                )}
               </li>
-            ))}
-          </ul>
-        </Section>
-      )}
-      {openRisks.length > 0 && (
-        <Section label="Open risks">
-          <ul className="list-disc list-inside space-y-1">
-            {openRisks.map((r, i) => <li key={i} className="text-gray-800 text-sm">{r}</li>)}
-          </ul>
-        </Section>
-      )}
+            )
+          })}
+        </ul>
+        {ordered.length > DECISIONS_PREVIEW_COUNT && (
+          <button
+            onClick={() => setShowAll((v) => !v)}
+            className="mt-2 text-xs font-medium text-brand-navy hover:underline"
+          >
+            {showAll ? 'Show fewer decisions' : `Show all ${ordered.length} decisions`}
+          </button>
+        )}
+      </Section>
     </div>
   )
 }
