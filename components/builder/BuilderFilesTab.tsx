@@ -1,10 +1,11 @@
 'use client'
 
 import { useState, useRef, useCallback } from 'react'
-import { Upload } from 'lucide-react'
+import { Upload, FolderPlus } from 'lucide-react'
 import { FilesGrid } from '@/components/ui/FilesGrid'
 import { StatusMessage } from '@/components/ui/StatusMessage'
-import { useUploadFiles } from '@/lib/query/hooks'
+import { useUploadFiles, useProjectFolders, useCreateFolder } from '@/lib/query/hooks'
+import { validateFolderName } from '@/lib/files/folders'
 import type { ProjectFile } from '@/lib/types'
 
 const MAX_FILE_SIZE = 25 * 1024 * 1024
@@ -17,9 +18,29 @@ export function BuilderFilesTab({
   files: ProjectFile[]
 }) {
   const uploadFiles = useUploadFiles()
+  const { data: folders } = useProjectFolders(projectId)
+  const createFolder = useCreateFolder()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [dragOver, setDragOver] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [addingFolder, setAddingFolder] = useState(false)
+  const [folderName, setFolderName] = useState('')
+
+  const submitFolder = useCallback(async () => {
+    const validated = validateFolderName(folderName)
+    if (!validated.ok) {
+      setError(validated.error)
+      return
+    }
+    setError(null)
+    try {
+      await createFolder.mutateAsync({ projectId, name: validated.name })
+      setAddingFolder(false)
+      setFolderName('')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Create folder failed')
+    }
+  }, [folderName, projectId, createFolder])
 
   const startUpload = useCallback(async (incoming: FileList | File[]) => {
     setError(null)
@@ -74,14 +95,23 @@ export function BuilderFilesTab({
         <p className="text-sm text-gray-500">
           {dragOver ? 'Drop files to upload' : 'Drop files here, or click upload.'}
         </p>
-        <button
-          onClick={() => fileInputRef.current?.click()}
-          disabled={isUploading}
-          className="inline-flex items-center gap-2 px-3 py-1.5 text-sm bg-brand-navy text-white rounded-lg hover:bg-brand-navy-light disabled:opacity-50 transition-colors"
-        >
-          <Upload className="h-4 w-4" />
-          {isUploading ? 'Uploading…' : 'Upload files'}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setAddingFolder((v) => !v)}
+            className="inline-flex items-center gap-2 px-3 py-1.5 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+          >
+            <FolderPlus className="h-4 w-4" />
+            New folder
+          </button>
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isUploading}
+            className="inline-flex items-center gap-2 px-3 py-1.5 text-sm bg-brand-navy text-white rounded-lg hover:bg-brand-navy-light disabled:opacity-50 transition-colors"
+          >
+            <Upload className="h-4 w-4" />
+            {isUploading ? 'Uploading…' : 'Upload files'}
+          </button>
+        </div>
         <input
           ref={fileInputRef}
           type="file"
@@ -94,11 +124,44 @@ export function BuilderFilesTab({
         />
       </div>
 
+      {addingFolder && (
+        <div className="flex items-center gap-2">
+          <input
+            value={folderName}
+            onChange={(e) => setFolderName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') submitFolder()
+              if (e.key === 'Escape') setAddingFolder(false)
+            }}
+            autoFocus
+            placeholder="Folder name"
+            className="text-sm border border-gray-300 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-brand-navy"
+          />
+          <button
+            onClick={submitFolder}
+            disabled={createFolder.isPending}
+            className="px-3 py-1.5 text-sm font-medium text-white bg-brand-navy rounded-lg hover:bg-brand-navy-light disabled:opacity-50 transition-colors"
+          >
+            {createFolder.isPending ? 'Creating…' : 'Create'}
+          </button>
+          <button
+            onClick={() => {
+              setAddingFolder(false)
+              setFolderName('')
+            }}
+            className="px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+          >
+            Cancel
+          </button>
+        </div>
+      )}
+
       {error && <StatusMessage type="error" message={error} onDismiss={() => setError(null)} />}
 
-      {/* Builder console context — deletion is gated to builder+ on the server
-          too (the maker view renders FilesGrid without canDelete). */}
-      <FilesGrid files={files} canDelete />
+      {/* Builder console context — deletion + folder management are gated to
+          builder+ on the server too (the maker view renders FilesGrid with
+          folders but no manage props). */}
+      <FilesGrid files={files} folders={folders ?? []} canDelete canManage />
     </div>
   )
 }

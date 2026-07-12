@@ -12,5 +12,6 @@ export const queryKeys = {
   members: (projectId: string | undefined) => ['members', projectId] as const,
   messages: (sessionId: string | undefined) => ['messages', sessionId] as const,
   files: (projectId: string | undefined) => ['files', projectId] as const,
+  folders: (projectId: string | undefined) => ['folders', projectId] as const,
   fileUrl: (fileId: string | undefined) => ['fileUrl', fileId] as const,
 }

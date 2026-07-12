@@ -56,6 +56,50 @@ export async function GET(
   }
 }
 
+// PATCH /api/files/[fileId] — move a file into a folder (#23b). Builder+.
+// Body: { folder_id: string | null } — null moves it back to unfiled.
+export async function PATCH(
+  request: Request,
+  { params }: { params: Promise<{ fileId: string }> }
+) {
+  const auth = await getAuthenticatedUser(request)
+  if (auth.error) return auth.error
+
+  const { fileId } = await params
+
+  const db = getAdminDb()
+  const fileRef = db.collection('files').doc(fileId)
+  const fileDoc = await fileRef.get()
+
+  if (!fileDoc.exists) {
+    return NextResponse.json({ error: 'File not found' }, { status: 404 })
+  }
+
+  const fileData = fileDoc.data()!
+  const role = await getProjectRole(db, fileData.project_id, auth.uid, auth.email, auth.systemRoles, auth)
+  const roleCheck = requireRole(role, 'builder')
+  if (roleCheck) return roleCheck
+
+  const body = await request.json().catch(() => ({}))
+  if (!('folder_id' in (body as Record<string, unknown>))) {
+    return NextResponse.json({ error: 'folder_id is required (null to unfile)' }, { status: 400 })
+  }
+  const folderId = (body as { folder_id: string | null }).folder_id
+
+  if (folderId !== null) {
+    if (typeof folderId !== 'string' || !folderId) {
+      return NextResponse.json({ error: 'folder_id must be a string or null' }, { status: 400 })
+    }
+    const folderDoc = await db.collection('file_folders').doc(folderId).get()
+    if (!folderDoc.exists || folderDoc.data()!.project_id !== fileData.project_id) {
+      return NextResponse.json({ error: 'Folder not found in this brief' }, { status: 400 })
+    }
+  }
+
+  await fileRef.update({ folder_id: folderId, updated_at: new Date().toISOString() })
+  return NextResponse.json({ id: fileId, folder_id: folderId })
+}
+
 // DELETE /api/files/[fileId] — remove a file (S3 object + Firestore doc).
 // Builder+ only (#23a). Dangling file_ids on old messages are left as-is — they
 // degrade gracefully (download 404s, UI shows nothing).
