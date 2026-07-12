@@ -3,26 +3,32 @@
 import { WireframePreview } from './WireframePreview'
 import type { WireframeMockup } from '@/lib/types'
 
-// A segment is either plain text or a wireframe JSON block.
+// A segment is plain text, a wireframe JSON block, or an options block (#131).
 export type Segment =
   | { type: 'text'; content: string }
   | { type: 'wireframe'; raw: string; parsed: WireframeMockup | null }
+  | { type: 'options'; raw: string; parsed: string[] | null }
 
-// Split message content into text and wireframe segments.
+// Split message content into text, wireframe, and options segments.
 //
 // How it works:
-// 1. We look for complete ```wireframe ... ``` fenced blocks using a regex
+// 1. We look for complete ```wireframe ... ``` and ```options ... ``` fenced
+//    blocks using a regex
 // 2. Everything between/around those blocks is plain text
-// 3. For each wireframe block, we try to parse the JSON inside
+// 3. For each block, we try to parse the JSON inside
 // 4. If the JSON is bad, parsed is null → we'll show fallback text
-// 5. If there's an opening ```wireframe without a closing ```, that's a
+// 5. If there's an opening fence without a closing ```, that's a
 //    streaming-in-progress block → we flag it so the UI can show a hint
 //
-export function parseMessageContent(content: string): { segments: Segment[]; hasIncompleteBlock: boolean } {
+export function parseMessageContent(content: string): {
+  segments: Segment[]
+  hasIncompleteBlock: boolean
+  incompleteKind?: 'wireframe' | 'options'
+} {
   if (!content) return { segments: [], hasIncompleteBlock: false }
 
-  // Match complete ```wireframe\n...\n``` blocks
-  const fencePattern = /```wireframe\n([\s\S]*?)```/g
+  // Match complete ```wireframe\n...\n``` and ```options\n...\n``` blocks
+  const fencePattern = /```(wireframe|options)\n([\s\S]*?)```/g
   const segments: Segment[] = []
   let lastIndex = 0
 
@@ -33,19 +39,13 @@ export function parseMessageContent(content: string): { segments: Segment[]; has
       if (text.trim()) segments.push({ type: 'text', content: text })
     }
 
-    // The wireframe block — try to parse the JSON inside the fences
-    const json = match[1].trim()
-    let parsed: WireframeMockup | null = null
-    try {
-      const obj = JSON.parse(json)
-      // Basic validation: must have title and sections array
-      if (obj && typeof obj.title === 'string' && Array.isArray(obj.sections)) {
-        parsed = obj as WireframeMockup
-      }
-    } catch {
-      // Bad JSON — parsed stays null, we'll show raw fallback
+    const kind = match[1] as 'wireframe' | 'options'
+    const json = match[2].trim()
+    if (kind === 'wireframe') {
+      segments.push({ type: 'wireframe', raw: json, parsed: parseWireframe(json) })
+    } else {
+      segments.push({ type: 'options', raw: json, parsed: parseOptions(json) })
     }
-    segments.push({ type: 'wireframe', raw: json, parsed })
 
     lastIndex = match.index + match[0].length
   }
@@ -53,24 +53,65 @@ export function parseMessageContent(content: string): { segments: Segment[]; has
   // Remaining text after the last block
   const remaining = content.slice(lastIndex)
 
-  // Check if there's an unclosed ```wireframe (agent still streaming the block)
-  const incompleteMatch = remaining.match(/```wireframe\n[\s\S]*$/)
+  // Check if there's an unclosed fence (agent still streaming the block)
+  const incompleteMatch = remaining.match(/```(wireframe|options)\n[\s\S]*$/)
   if (incompleteMatch) {
     // Text before the incomplete block
     const textBefore = remaining.slice(0, incompleteMatch.index)
     if (textBefore.trim()) segments.push({ type: 'text', content: textBefore })
-    return { segments, hasIncompleteBlock: true }
+    return { segments, hasIncompleteBlock: true, incompleteKind: incompleteMatch[1] as 'wireframe' | 'options' }
   }
 
   if (remaining.trim()) segments.push({ type: 'text', content: remaining })
   return { segments, hasIncompleteBlock: false }
 }
 
-// Render message content, replacing wireframe blocks with visual previews.
-export function MessageContent({ content, className }: { content: string; className?: string }) {
-  const { segments, hasIncompleteBlock } = parseMessageContent(content)
+function parseWireframe(json: string): WireframeMockup | null {
+  try {
+    const obj = JSON.parse(json)
+    // Basic validation: must have title and sections array
+    if (obj && typeof obj.title === 'string' && Array.isArray(obj.sections)) {
+      return obj as WireframeMockup
+    }
+  } catch {
+    // Bad JSON — fall through to null, we'll show raw fallback
+  }
+  return null
+}
 
-  // No wireframe blocks at all — fast path, render as plain text
+// An options block is a JSON array of short, non-empty strings.
+function parseOptions(json: string): string[] | null {
+  try {
+    const arr = JSON.parse(json)
+    if (
+      Array.isArray(arr) &&
+      arr.length > 0 &&
+      arr.every((o) => typeof o === 'string' && o.trim().length > 0)
+    ) {
+      return arr as string[]
+    }
+  } catch {
+    // Bad JSON — fall through to null, we'll show raw fallback
+  }
+  return null
+}
+
+// Render message content, replacing wireframe blocks with visual previews and
+// options blocks with choice chips. When onOptionSelect is provided the chips
+// are tappable (maker chat, newest message); without it they render as a
+// static, muted list (transcripts, older messages).
+export function MessageContent({
+  content,
+  className,
+  onOptionSelect,
+}: {
+  content: string
+  className?: string
+  onOptionSelect?: (option: string) => void
+}) {
+  const { segments, hasIncompleteBlock, incompleteKind } = parseMessageContent(content)
+
+  // No fenced blocks at all — fast path, render as plain text
   if (segments.length <= 1 && segments[0]?.type === 'text' && !hasIncompleteBlock) {
     return <p className={className || 'whitespace-pre-wrap text-sm leading-relaxed'}>{content}</p>
   }
@@ -85,6 +126,14 @@ export function MessageContent({ content, className }: { content: string; classN
             </p>
           )
         }
+        if (seg.type === 'options') {
+          if (seg.parsed) {
+            return <OptionChips key={i} options={seg.parsed} onSelect={onOptionSelect} />
+          }
+          // Malformed block — hide it rather than show raw JSON to a maker;
+          // the surrounding question text still reads fine without chips.
+          return null
+        }
         // Wireframe segment
         if (seg.parsed) {
           return <WireframePreview key={i} mockup={seg.parsed} />
@@ -97,7 +146,34 @@ export function MessageContent({ content, className }: { content: string; classN
         )
       })}
       {hasIncompleteBlock && (
-        <p className="text-xs text-gray-400 italic mt-1 animate-pulse">Drawing layout...</p>
+        <p className="text-xs text-gray-400 italic mt-1 animate-pulse">
+          {incompleteKind === 'wireframe' ? 'Drawing layout...' : '…'}
+        </p>
+      )}
+    </div>
+  )
+}
+
+function OptionChips({ options, onSelect }: { options: string[]; onSelect?: (option: string) => void }) {
+  return (
+    <div className="flex flex-wrap gap-2 mt-2">
+      {options.map((option, i) =>
+        onSelect ? (
+          <button
+            key={i}
+            onClick={() => onSelect(option)}
+            className="px-3 py-1.5 text-sm rounded-full border border-brand-navy/30 text-brand-navy bg-white hover:bg-brand-navy hover:text-white transition-colors"
+          >
+            {option}
+          </button>
+        ) : (
+          <span
+            key={i}
+            className="px-3 py-1.5 text-sm rounded-full border border-gray-200 text-gray-500 bg-gray-50"
+          >
+            {option}
+          </span>
+        ),
       )}
     </div>
   )
