@@ -3,8 +3,10 @@ import {
   getAuthenticatedUser,
   getAdminDb,
   getProjectRole,
+  getUserDisplayName,
   requireRole,
 } from '@/lib/api/firebase-server-helpers'
+import { joinNames } from '@/lib/names'
 import {
   generatePrepOutbound,
   prepConfigHash,
@@ -59,9 +61,28 @@ export async function POST(
     briefSignal = (d.version as number) ?? (d.updated_at as string) ?? ''
   }
 
+  // The nudge fans out to every active maker (#115), so the draft must greet
+  // all of them — addressing only the first maker read as a mail-merge bug.
+  // Falls back to the legacy requester_first_name on briefs with no member rows.
+  const makerSnap = await db
+    .collection('project_members')
+    .where('project_id', '==', projectId)
+    .where('role', '==', 'maker')
+    .get()
+  const firstNames: string[] = []
+  for (const doc of makerSnap.docs) {
+    const d = doc.data()
+    if (d.removed_at || !d.email) continue
+    const display = await getUserDisplayName(db, (d.user_id as string) || '', d.email as string)
+    firstNames.push(display.split(' ')[0])
+  }
+  const makerNames = firstNames.length
+    ? joinNames(firstNames)
+    : ((project.requester_first_name as string | undefined) ?? null)
+
   const input: PrepInput = {
     projectTitle: (project.title as string) || 'your brief',
-    makerFirstName: (project.requester_first_name as string | undefined) ?? null,
+    makerNames,
     brief,
     sessionMode: (project.session_mode as 'discover' | 'converge' | undefined) ?? 'discover',
     seedQuestions: (project.seed_questions as string[] | undefined) ?? [],
