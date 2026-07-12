@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiFetch } from '@/lib/firebase/api-fetch'
 import { queryKeys } from './keys'
-import type { Project, Session, Message, Brief, SystemRole, ProjectFile, ProjectMemberSummary } from '@/lib/types'
+import type { Project, Session, Message, Brief, SystemRole, ProjectFile, FileFolder, ProjectMemberSummary } from '@/lib/types'
 
 // --- Current user ---
 
@@ -739,6 +739,96 @@ export function useDeleteFile() {
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
         throw new Error(data?.error || `Delete failed (${res.status})`)
+      }
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.files(variables.projectId) })
+    },
+  })
+}
+
+// --- File folders (#23b) ---
+
+export function useProjectFolders(projectId: string | undefined) {
+  return useQuery<FileFolder[]>({
+    queryKey: queryKeys.folders(projectId),
+    queryFn: async () => {
+      const res = await apiFetch(`/api/folders?project_id=${projectId}`)
+      if (!res.ok) throw new Error('Failed to load folders')
+      return res.json()
+    },
+    enabled: !!projectId,
+  })
+}
+
+export function useCreateFolder() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ projectId, name }: { projectId: string; name: string }): Promise<FileFolder> => {
+      const res = await apiFetch('/api/folders', {
+        method: 'POST',
+        body: JSON.stringify({ project_id: projectId, name }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data?.error || `Create folder failed (${res.status})`)
+      }
+      return res.json()
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.folders(variables.projectId) })
+    },
+  })
+}
+
+export function useRenameFolder() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ folderId, name }: { folderId: string; projectId: string; name: string }): Promise<void> => {
+      const res = await apiFetch(`/api/folders/${folderId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ name }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data?.error || `Rename failed (${res.status})`)
+      }
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.folders(variables.projectId) })
+    },
+  })
+}
+
+export function useDeleteFolder() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ folderId }: { folderId: string; projectId: string }): Promise<void> => {
+      const res = await apiFetch(`/api/folders/${folderId}`, { method: 'DELETE' })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data?.error || `Delete folder failed (${res.status})`)
+      }
+    },
+    onSuccess: (_data, variables) => {
+      // Files may have moved back to unfiled — refresh both.
+      queryClient.invalidateQueries({ queryKey: queryKeys.folders(variables.projectId) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.files(variables.projectId) })
+    },
+  })
+}
+
+export function useMoveFile() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ fileId, folderId }: { fileId: string; projectId: string; folderId: string | null }): Promise<void> => {
+      const res = await apiFetch(`/api/files/${fileId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ folder_id: folderId }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data?.error || `Move failed (${res.status})`)
       }
     },
     onSuccess: (_data, variables) => {

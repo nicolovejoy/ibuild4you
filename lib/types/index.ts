@@ -156,6 +156,16 @@ export interface ProjectFile extends BaseEntity {
   // upload completed, then 'ready'. Files written before this field existed
   // are treated as ready by the UI.
   status?: 'pending' | 'ready'
+  // Flat folder assignment (#23b). Absent/null = unfiled.
+  folder_id?: string | null
+}
+
+// File folders collection — flat, per-project organization for files (#23b).
+// Purely organizational: deleting a folder moves its files back to unfiled.
+export interface FileFolder extends BaseEntity {
+  project_id: string
+  name: string
+  created_by_email?: string
 }
 
 // Briefs collection — the living brief for a project

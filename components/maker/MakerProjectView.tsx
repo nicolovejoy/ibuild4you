@@ -20,6 +20,7 @@ import {
   useMessages,
   useCreateSession,
   useProjectFiles,
+  useProjectFolders,
   useUploadFiles,
   useCurrentUser,
   useUpdateCurrentUser,
@@ -175,7 +176,7 @@ export function MakerProjectView({ projectId, userEmail }: { projectId: string; 
 
         {/* Project files */}
         {projectFiles && projectFiles.length > 0 && (
-          <FilesPanel files={projectFiles} />
+          <FilesPanel files={projectFiles} projectId={projectId} />
         )}
 
         {/* Previous conversations */}
@@ -591,8 +592,10 @@ export function MockupsPanel({ mockups }: { mockups: WireframeMockup[] }) {
   )
 }
 
-function FilesPanel({ files }: { files: ProjectFile[] }) {
+function FilesPanel({ files, projectId }: { files: ProjectFile[]; projectId: string }) {
   const [expanded, setExpanded] = useState(false)
+  // Read-only folder grouping for makers — folder management stays builder-side.
+  const { data: folders } = useProjectFolders(projectId)
 
   return (
     <Card hover={false}>
@@ -612,7 +615,7 @@ function FilesPanel({ files }: { files: ProjectFile[] }) {
         </button>
         {expanded && (
           <div className="mt-3">
-            <FilesGrid files={files} />
+            <FilesGrid files={files} folders={folders ?? []} />
           </div>
         )}
       </CardBody>

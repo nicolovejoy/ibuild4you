@@ -39,11 +39,23 @@ that #16 left on the backlog. File lifecycle is one domain — do it in phases.
   alongside sessions/messages/briefs/members. Pending files (no `storage_path`)
   skip the S3 call. Closes the #16 S3-orphan leftover. TDD (3 added tests).
 
-## Phase 2 — folders (#23b, larger, separate PR)
+## Phase 2 — folders (#23b) ✅ SHIPPED
 
-- Schema: `folder_id?: string` on `ProjectFile`; new `file_folders` collection
-  (project_id, name, parent_id, created_at).
-- UI: folder tree on Attachments, move-to / drag-into actions.
+- Schema: `folder_id?: string | null` on `ProjectFile`; new `file_folders`
+  collection (project_id, name, created_by_email). **Deviation from the
+  original sketch: flat folders, no `parent_id`/nesting** — organizational
+  need is grouping, not a tree; nesting adds move-cycle/breadcrumb complexity
+  nobody asked for. Trivially migratable into the #83 artifacts model.
+- Routes: `GET/POST /api/folders`, `PATCH/DELETE /api/folders/[folderId]`,
+  `PATCH /api/files/[fileId]` (move; `folder_id: null` = unfile). Folder CRUD
+  + move are builder+ (same gate as delete); folder *list* is any member so
+  makers see the grouping read-only.
+- Deleting a folder never touches files — they move back to Unfiled in the
+  same batch as the folder-doc delete.
+- Pure helpers in `lib/files/folders.ts` (validate/dedupe/group), TDD.
+- UI: grouped sections in `FilesGrid` (folder headers w/ inline rename +
+  delete-confirm), "New folder" on the builder Attachments area, move via a
+  Folder select in the preview modal. No drag-into v1.
 - Keep separate from brief folders — briefs cluster across projects, files
   within one project.
 
