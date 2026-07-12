@@ -10,31 +10,13 @@
 //   node scripts/with-preview-env.mjs node scripts/backdate-cast-session.mjs            # dry-run
 //   node scripts/with-preview-env.mjs node scripts/backdate-cast-session.mjs --apply    # write
 
-import { initializeApp, cert, getApps } from 'firebase-admin/app'
-import { getFirestore } from 'firebase-admin/firestore'
+import { initFixtureDb } from './fixtures/db.mjs'
 
 const APPLY = process.argv.includes('--apply')
 const PROJECT_SLUG = 'test-cast-cafe'
 const HOURS_AGO = 25 // -> humanizeGap "about a day", so the recap is visible
 
-const sa = process.env.FIREBASE_SERVICE_ACCOUNT
-if (!sa) {
-  console.error('Set FIREBASE_SERVICE_ACCOUNT (use scripts/with-preview-env.mjs as wrapper)')
-  process.exit(1)
-}
-const firebaseProjectId = (() => {
-  try {
-    return JSON.parse(sa).project_id || ''
-  } catch {
-    return ''
-  }
-})()
-if (APPLY && !firebaseProjectId.includes('preview')) {
-  console.error(`Refusing to --apply: Firebase project is "${firebaseProjectId}", not the preview sandbox.`)
-  process.exit(1)
-}
-if (!getApps().length) initializeApp({ credential: cert(JSON.parse(sa)) })
-const db = getFirestore()
+const { db, firebaseProjectId } = initFixtureDb({ requireWrite: APPLY })
 
 const projSnap = await db.collection('projects').where('slug', '==', PROJECT_SLUG).limit(1).get()
 if (projSnap.empty) {

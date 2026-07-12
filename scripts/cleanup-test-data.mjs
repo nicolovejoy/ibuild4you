@@ -16,9 +16,8 @@
  *   node --env-file=.env.local scripts/cleanup-test-data.mjs --email foo@example.com --apply
  */
 
-import { initializeApp, cert, getApps } from 'firebase-admin/app'
-import { getFirestore } from 'firebase-admin/firestore'
 import { S3Client, DeleteObjectCommand } from '@aws-sdk/client-s3'
+import { initAdminDb } from './fixtures/db.mjs'
 
 const APPLY = process.argv.includes('--apply')
 const emailIdx = process.argv.indexOf('--email')
@@ -29,16 +28,9 @@ if (!TARGET_EMAIL.endsWith('@example.com')) {
   process.exit(1)
 }
 
-function initAdmin() {
-  if (getApps().length === 0) {
-    const sa = process.env.FIREBASE_SERVICE_ACCOUNT
-    if (!sa) throw new Error('FIREBASE_SERVICE_ACCOUNT not set (run with `node --env-file=.env.local ...`)')
-    initializeApp({ credential: cert(JSON.parse(sa)) })
-  }
-}
-
-initAdmin()
-const db = getFirestore()
+// Ungated init — this cleanup legitimately targets prod (the @example.com
+// guard above is the safety rail, not the environment).
+const { db } = initAdminDb()
 const s3 = new S3Client({ region: process.env.AWS_REGION || 'us-east-1' })
 const S3_BUCKET = process.env.AWS_S3_BUCKET || 'ibuild4you-files'
 

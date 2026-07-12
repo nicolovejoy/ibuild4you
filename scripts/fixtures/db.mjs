@@ -23,13 +23,13 @@ const FIXTURE_COLLECTIONS = ['messages', 'sessions', 'briefs', 'project_members'
 
 export const iso = (msAgo = 0) => new Date(Date.now() - msAgo).toISOString()
 
-// Init the Admin SDK from FIREBASE_SERVICE_ACCOUNT. With requireWrite, refuses
-// to proceed unless the service account targets the preview sandbox — the same
-// guard every seed script needs, in one place.
-export function initFixtureDb({ requireWrite = false } = {}) {
+// Init the Admin SDK from FIREBASE_SERVICE_ACCOUNT with NO environment guard.
+// Only for the few maintenance scripts that legitimately target prod
+// (seed-test-admin, cleanup-test-data). Fixture seeds use initFixtureDb.
+export function initAdminDb() {
   const sa = process.env.FIREBASE_SERVICE_ACCOUNT
   if (!sa) {
-    console.error('Set FIREBASE_SERVICE_ACCOUNT (use scripts/with-preview-env.mjs as wrapper)')
+    console.error('Set FIREBASE_SERVICE_ACCOUNT (use scripts/with-preview-env.mjs or with-prod-env.mjs as wrapper)')
     process.exit(1)
   }
   let firebaseProjectId = ''
@@ -39,12 +39,20 @@ export function initFixtureDb({ requireWrite = false } = {}) {
     console.error('FIREBASE_SERVICE_ACCOUNT is not valid JSON')
     process.exit(1)
   }
-  if (requireWrite && !firebaseProjectId.includes('preview')) {
-    console.error(`Refusing to write: Firebase project is "${firebaseProjectId}", not the preview sandbox.`)
-    process.exit(1)
-  }
   if (!getApps().length) initializeApp({ credential: cert(JSON.parse(sa)) })
   return { db: getFirestore(), adminAuth: getAuth(), firebaseProjectId }
+}
+
+// Init the Admin SDK from FIREBASE_SERVICE_ACCOUNT. With requireWrite, refuses
+// to proceed unless the service account targets the preview sandbox — the same
+// guard every seed script needs, in one place.
+export function initFixtureDb({ requireWrite = false } = {}) {
+  const handles = initAdminDb()
+  if (requireWrite && !handles.firebaseProjectId.includes('preview')) {
+    console.error(`Refusing to write: Firebase project is "${handles.firebaseProjectId}", not the preview sandbox.`)
+    process.exit(1)
+  }
+  return handles
 }
 
 // Stamp seed_tag (+ optional seed_scenario) onto a doc body.

@@ -14,11 +14,10 @@
 // After --apply, the freshly generated passcode lands on the clipboard via
 // pbcopy — it is never printed to stdout. Paste it into 1Password.
 
-import { initializeApp, cert, getApps } from 'firebase-admin/app'
-import { getAuth } from 'firebase-admin/auth'
-import { getFirestore, FieldValue } from 'firebase-admin/firestore'
+import { FieldValue } from 'firebase-admin/firestore'
 import { randomBytes } from 'node:crypto'
 import { spawnSync } from 'node:child_process'
+import { initAdminDb } from './fixtures/db.mjs'
 
 const APPLY = process.argv.includes('--apply')
 
@@ -32,14 +31,10 @@ const LAST_NAME = 'Admin'
 const TEST_PROJECT_TITLE = 'Test Admin Access (Playwright)'
 const TEST_PROJECT_SLUG = 'test-admin-access'
 
-const sa = process.env.FIREBASE_SERVICE_ACCOUNT
-if (!sa) {
-  console.error('Set FIREBASE_SERVICE_ACCOUNT (use scripts/with-prod-env.mjs as wrapper)')
-  process.exit(1)
-}
-if (!getApps().length) initializeApp({ credential: cert(JSON.parse(sa)) })
-const db = getFirestore()
-const adminAuth = getAuth()
+// Deliberately ungated init (targets prod AND preview), and deliberately NO
+// seed_tag on any doc: the test admin is persistent infrastructure, not
+// fixture data — tagging it would let `seed.mjs reset` wipe the e2e login.
+const { db, adminAuth } = initAdminDb()
 
 // Generate a 10-char upper-alphanumeric passcode (no ambiguous chars).
 // The passcode-login route uppercases input, so we generate uppercase.
