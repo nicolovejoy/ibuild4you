@@ -128,6 +128,9 @@ describe('PUT /api/briefs', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockGetProjectRole.mockResolvedValue('builder')
+    // PUT fetches the latest stored brief for provenance carry-forward (#121) —
+    // default to "no brief yet"; tests override for carry-forward cases.
+    mockGet.mockResolvedValue({ empty: true, docs: [] })
     mockUpsertBrief.mockResolvedValue({
       id: 'brief-1',
       project_id: 'proj1',
@@ -218,10 +221,11 @@ describe('PUT /api/briefs', () => {
       },
     }))
 
+    // New decisions on the paste path get out-of-band provenance stamps (#121).
     const contentArg = mockUpsertBrief.mock.calls[0][2]
     expect(contentArg.decisions).toEqual([
-      { topic: 'Tech stack', decision: 'Next.js' },
-      { topic: 'Hosting', decision: 'Vercel' },
+      { topic: 'Tech stack', decision: 'Next.js', decided_in_session: null, decided_at: expect.any(String) },
+      { topic: 'Hosting', decision: 'Vercel', decided_in_session: null, decided_at: expect.any(String) },
     ])
   })
 
@@ -239,8 +243,78 @@ describe('PUT /api/briefs', () => {
 
     const contentArg = mockUpsertBrief.mock.calls[0][2]
     expect(contentArg.decisions).toEqual([
-      { topic: 'Stack', decision: 'Next.js, no Vue', locked: true },
-      { topic: 'Hosting', decision: 'Vercel' },
+      { topic: 'Stack', decision: 'Next.js, no Vue', locked: true, decided_in_session: null, decided_at: expect.any(String) },
+      { topic: 'Hosting', decision: 'Vercel', decided_in_session: null, decided_at: expect.any(String) },
+    ])
+  })
+
+  // --- Decision provenance (#121) ---
+
+  it('restores stamps the payload dropped, from the stored brief', async () => {
+    mockGet.mockResolvedValue({
+      empty: false,
+      docs: [
+        {
+          id: 'brief-1',
+          data: () => ({
+            version: 3,
+            content: {
+              problem: 'p',
+              decisions: [
+                {
+                  topic: 'Payment',
+                  decision: 'Stripe',
+                  decided_in_session: 's2',
+                  decided_at: '2026-07-05T00:00:00Z',
+                },
+              ],
+            },
+          }),
+        },
+      ],
+    })
+
+    await PUT(makePutRequest({
+      project_id: 'proj1',
+      // Round-tripped through an outside agent that dropped the stamps.
+      content: { problem: 'p', decisions: [{ topic: 'Payment', decision: 'Stripe' }] },
+    }))
+
+    const contentArg = mockUpsertBrief.mock.calls[0][2]
+    expect(contentArg.decisions).toEqual([
+      {
+        topic: 'Payment',
+        decision: 'Stripe',
+        decided_in_session: 's2',
+        decided_at: '2026-07-05T00:00:00Z',
+      },
+    ])
+  })
+
+  it('honors explicit provenance supplied in the payload', async () => {
+    await PUT(makePutRequest({
+      project_id: 'proj1',
+      content: {
+        problem: 'p',
+        decisions: [
+          {
+            topic: 'Auth',
+            decision: 'Google',
+            decided_in_session: 's1',
+            decided_at: '2026-07-01T00:00:00Z',
+          },
+        ],
+      },
+    }))
+
+    const contentArg = mockUpsertBrief.mock.calls[0][2]
+    expect(contentArg.decisions).toEqual([
+      {
+        topic: 'Auth',
+        decision: 'Google',
+        decided_in_session: 's1',
+        decided_at: '2026-07-01T00:00:00Z',
+      },
     ])
   })
 

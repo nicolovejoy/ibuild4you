@@ -5,7 +5,12 @@ import {
 } from '@/lib/agent/next-convo-prompt'
 import { BRIEF_MODEL, BRIEF_MAX_TOKENS, BRIEF_TEMPERATURE } from '@/lib/agent/constants'
 import { logAnthropicCall } from '@/lib/observability/anthropic'
-import { reconcileBrief } from '@/lib/api/brief-merge'
+import {
+  reconcileBrief,
+  stampDecisionProvenance,
+  stripDecisionProvenance,
+} from '@/lib/api/brief-merge'
+import { isArchivedSession } from '@/lib/sessions/active'
 import Anthropic from '@anthropic-ai/sdk'
 
 // Forced tool that the model must call. Using tool use (vs. asking for JSON in
@@ -71,15 +76,24 @@ export async function regenerateBriefForProject(
 
   const sessionIds = sessionsSnap.docs.map((d) => d.id)
 
+  // Provenance stamping context (#121): the latest non-archived session that
+  // has messages. Archived sessions are skipped so the stamp agrees with
+  // conversation numbering (lib/sessions/active.ts); empty sessions are skipped
+  // because nothing was decided in them.
+  let stampSessionId: string | null = null
+
   const allMessages: { role: string; content: string }[] = []
-  for (const sid of sessionIds) {
+  for (const doc of sessionsSnap.docs) {
     const msgSnap = await db
       .collection('messages')
-      .where('session_id', '==', sid)
+      .where('session_id', '==', doc.id)
       .orderBy('created_at', 'asc')
       .get()
-    for (const doc of msgSnap.docs) {
-      allMessages.push({ role: doc.data().role, content: doc.data().content })
+    for (const m of msgSnap.docs) {
+      allMessages.push({ role: m.data().role, content: m.data().content })
+    }
+    if (msgSnap.docs.length > 0 && !isArchivedSession(doc.data())) {
+      stampSessionId = doc.id // sessions are ordered asc — last hit wins
     }
   }
 
@@ -207,7 +221,21 @@ export async function regenerateBriefForProject(
   // reworded, so a constraint survives regen verbatim across many sessions.
   const reconciled = reconcileBrief(currentBrief, briefContent)
 
-  return upsertBrief(db, projectId, reconciled)
+  // #121: stamp decision provenance by code. The coercion above already strips
+  // model-emitted decided_* fields (it maps only topic/decision/locked);
+  // stripDecisionProvenance is belt-and-braces should that shape ever widen —
+  // on the regen path, prev-carry-forward is the only source of truth.
+  const stamped: BriefContent = {
+    ...reconciled,
+    decisions: stampDecisionProvenance({
+      prev: currentBrief?.decisions,
+      next: stripDecisionProvenance(reconciled.decisions ?? []),
+      sessionId: stampSessionId,
+      now: new Date().toISOString(),
+    }),
+  }
+
+  return upsertBrief(db, projectId, stamped)
 }
 
 // Upsert a brief: update existing doc in place (increment version) or create new

@@ -65,6 +65,32 @@ describe('normalizeBriefContent', () => {
     if (r.ok) expect(r.value.decisions).toEqual([{ topic: 't', decision: 'd' }])
   })
 
+  // #121 — the raw-JSON editor view must not strip provenance stamps on a
+  // round-trip (the server would restore them via carry-forward, but the raw
+  // view should show what's really stored).
+  it('preserves decided_* provenance fields on decisions', () => {
+    const r = normalizeBriefContent({
+      decisions: [
+        { topic: 't', decision: 'd', decided_in_session: 's1', decided_at: '2026-07-11T00:00:00Z' },
+        { topic: 'u', decision: 'e', decided_in_session: null, decided_at: '2026-07-10T00:00:00Z' },
+      ],
+    })
+    expect(r.ok).toBe(true)
+    if (r.ok)
+      expect(r.value.decisions).toEqual([
+        { topic: 't', decision: 'd', decided_in_session: 's1', decided_at: '2026-07-11T00:00:00Z' },
+        { topic: 'u', decision: 'e', decided_in_session: null, decided_at: '2026-07-10T00:00:00Z' },
+      ])
+  })
+
+  it('drops malformed decided_* fields', () => {
+    const r = normalizeBriefContent({
+      decisions: [{ topic: 't', decision: 'd', decided_in_session: 42, decided_at: 99 }],
+    })
+    expect(r.ok).toBe(true)
+    if (r.ok) expect(r.value.decisions).toEqual([{ topic: 't', decision: 'd' }])
+  })
+
   it('filters empty-string list items', () => {
     const r = normalizeBriefContent({ features: ['a', '', '  '], open_risks: ['', 'r'] })
     expect(r.ok).toBe(true)

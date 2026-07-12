@@ -238,6 +238,12 @@ export interface BriefDecision {
   // list). Survives brief regen verbatim and the agent must reconcile new intake
   // against it rather than silently overwriting. See lib/api/brief-merge.ts (#71).
   locked?: boolean
+  // Provenance (#121) — stamped by code (stampDecisionProvenance), never by the
+  // model. Session doc id (stable; conversation number is derived at render);
+  // null = decided out-of-band (e.g. prep chat → paste). Old decisions without
+  // stamps stay unstamped — no backfill.
+  decided_in_session?: string | null
+  decided_at?: string // ISO timestamp
 }
 
 // Wireframe mockup — visual layout the agent can show inline in chat

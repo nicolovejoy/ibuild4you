@@ -70,7 +70,7 @@ When I say "give me the output", produce ONLY valid JSON matching this schema (n
     "features": ["Feature 1", "Feature 2"],
     "constraints": "Any constraints, limitations, or things the user explicitly doesn't want",
     "additional_context": "Any other relevant information that doesn't fit the above categories",
-    "decisions": [{ "topic": "short label", "decision": "what was decided" }],
+    "decisions": [{ "topic": "short label", "decision": "what was decided", "decided_in_session": "optional session id", "decided_at": "optional ISO timestamp" }],
     "open_risks": ["plain-language description of something unresolved, unclear, or risky"]
   },
   "welcome_message": "The greeting the agent sends when the maker opens the next session — sets tone and picks up where we left off",
@@ -102,6 +102,7 @@ Rules:
 - A decision = the user committed to a specific choice (not just mentioned an option). Each decision has a short topic label and the decision itself.
 - Preserve prior decisions unless the user explicitly reversed one in the conversation.
 - A decision may carry \`"locked": true\` — a durable constraint (e.g. a locked convention or do-not-use rule). NEVER drop, reword, or unset a locked decision; carry it forward verbatim with \`"locked": true\`. If the conversation contains a statement that contradicts a locked decision, keep the locked decision as-is and record the contradiction in \`open_risks\` (e.g. "conflicts with locked decision: <topic>") — do not silently overwrite it.
+- A decision may carry \`decided_in_session\` (session id, or null for out-of-band) and \`decided_at\` (ISO timestamp) — provenance stamps. Carry these through unchanged if present; you may set them when you know the real provenance; omit otherwise (the system stamps new decisions itself).
 - Open risks = things that are unresolved, unclear, or risky based on the conversation. Extract from what the user actually said — don't invent risks. Examples: "no plan for getting first users", "pricing model undecided", "unclear how data gets into the system".
 
 Please review the project data the builder will give you next and let's discuss:
@@ -150,7 +151,7 @@ When I say "give me the output", produce ONLY valid JSON matching this schema (n
     "features": ["Feature 1", "Feature 2"],
     "constraints": "Any constraints, limitations, or things the user explicitly doesn't want",
     "additional_context": "Any other relevant information that doesn't fit the above categories",
-    "decisions": [{ "topic": "short label", "decision": "what was decided" }],
+    "decisions": [{ "topic": "short label", "decision": "what was decided", "decided_in_session": "optional session id", "decided_at": "optional ISO timestamp" }],
     "open_risks": ["plain-language description of something unresolved, unclear, or risky"]
   },
   "welcome_message": "The greeting the agent sends when the maker opens the next session — sets tone and picks up where we left off",
@@ -182,6 +183,7 @@ Rules:
 - A decision = the user committed to a specific choice (not just mentioned an option). Each decision has a short topic label and the decision itself.
 - Preserve prior decisions unless the user explicitly reversed one in the conversation.
 - A decision may carry \`"locked": true\` — a durable constraint (e.g. a locked convention or do-not-use rule). NEVER drop, reword, or unset a locked decision; carry it forward verbatim with \`"locked": true\`. If the conversation contains a statement that contradicts a locked decision, keep the locked decision as-is and record the contradiction in \`open_risks\` (e.g. "conflicts with locked decision: <topic>") — do not silently overwrite it.
+- A decision may carry \`decided_in_session\` (session id, or null for out-of-band) and \`decided_at\` (ISO timestamp) — provenance stamps. Carry these through unchanged if present; you may set them when you know the real provenance; omit otherwise (the system stamps new decisions itself).
 - Open risks = things that are unresolved, unclear, or risky based on the conversation. Extract from what the user actually said — don't invent risks. Examples: "no plan for getting first users", "pricing model undecided", "unclear how data gets into the system".
 
 Please review the project data the builder will give you next and let's discuss:
@@ -243,7 +245,7 @@ When I say "give me the output", produce ONLY valid JSON matching this schema (n
     "features": ["Feature 1", "Feature 2"],
     "constraints": "Any constraints, limitations, or things the user explicitly doesn't want",
     "additional_context": "Any other relevant information that doesn't fit the above categories",
-    "decisions": [{ "topic": "short label", "decision": "what was decided" }],
+    "decisions": [{ "topic": "short label", "decision": "what was decided", "decided_in_session": "optional session id", "decided_at": "optional ISO timestamp" }],
     "open_risks": ["plain-language description of something unresolved, unclear, or risky"]
   },
   "welcome_message": "The greeting the agent sends when the maker opens the next session — sets tone and picks up where we left off",
@@ -275,6 +277,7 @@ Rules:
 - A decision = the user committed to a specific choice (not just mentioned an option). Each decision has a short topic label and the decision itself.
 - Preserve prior decisions unless the user explicitly reversed one in the conversation.
 - A decision may carry \`"locked": true\` — a durable constraint (e.g. a locked convention or do-not-use rule). NEVER drop, reword, or unset a locked decision; carry it forward verbatim with \`"locked": true\`. If the conversation contains a statement that contradicts a locked decision, keep the locked decision as-is and record the contradiction in \`open_risks\` (e.g. "conflicts with locked decision: <topic>") — do not silently overwrite it.
+- A decision may carry \`decided_in_session\` (session id, or null for out-of-band) and \`decided_at\` (ISO timestamp) — provenance stamps. Carry these through unchanged if present; you may set them when you know the real provenance; omit otherwise (the system stamps new decisions itself).
 - Open risks = things that are unresolved, unclear, or risky based on the conversation. Extract from what the user actually said — don't invent risks. Examples: "no plan for getting first users", "pricing model undecided", "unclear how data gets into the system".
 
 Please review the project data the builder will give you next and let's discuss:
@@ -313,7 +316,7 @@ When I say "give me the output", produce ONLY valid JSON matching this schema (n
     "features": ["Feature 1", "Feature 2"],
     "constraints": "Any constraints, limitations, or things the user explicitly doesn't want",
     "additional_context": "Any other relevant information that doesn't fit the above categories",
-    "decisions": [{ "topic": "short label", "decision": "what was decided" }],
+    "decisions": [{ "topic": "short label", "decision": "what was decided", "decided_in_session": "optional session id", "decided_at": "optional ISO timestamp" }],
     "open_risks": ["plain-language description of something unresolved, unclear, or risky"]
   },
   "welcome_message": "The greeting the agent sends when the maker opens the next session — sets tone and picks up where we left off",
@@ -345,6 +348,7 @@ Rules:
 - A decision = the user committed to a specific choice (not just mentioned an option). Each decision has a short topic label and the decision itself.
 - Preserve prior decisions unless the user explicitly reversed one in the conversation.
 - A decision may carry \`"locked": true\` — a durable constraint (e.g. a locked convention or do-not-use rule). NEVER drop, reword, or unset a locked decision; carry it forward verbatim with \`"locked": true\`. If the conversation contains a statement that contradicts a locked decision, keep the locked decision as-is and record the contradiction in \`open_risks\` (e.g. "conflicts with locked decision: <topic>") — do not silently overwrite it.
+- A decision may carry \`decided_in_session\` (session id, or null for out-of-band) and \`decided_at\` (ISO timestamp) — provenance stamps. Carry these through unchanged if present; you may set them when you know the real provenance; omit otherwise (the system stamps new decisions itself).
 - Open risks = things that are unresolved, unclear, or risky based on the conversation. Extract from what the user actually said — don't invent risks. Examples: "no plan for getting first users", "pricing model undecided", "unclear how data gets into the system".
 
 Please review the project data the builder will give you next and let's discuss:

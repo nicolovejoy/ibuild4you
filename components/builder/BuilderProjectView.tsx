@@ -20,6 +20,7 @@ import { useEscapeBack } from '@/lib/hooks/useEscapeBack'
 import { useNudgeCopy } from '@/lib/hooks/useNudgeCopy'
 import { getProjectShareLink } from '@/lib/url'
 import { lockedFirst } from '@/lib/api/brief-merge'
+import { sessionNumberById, decisionProvenanceMarkdown } from '@/lib/builder/decision-provenance'
 import { Modal } from '@/components/ui/Modal'
 import {
   useProject,
@@ -486,6 +487,9 @@ function BriefTab({
   const [loadingPayload, setLoadingPayload] = useState(false)
   const updateBrief = useUpdateBrief()
   const updateProject = useUpdateProject()
+  // #121: session id → conversation number, for decision-provenance suffixes in
+  // the read view and the markdown copy. Query is shared with the other tabs.
+  const { data: briefTabSessions } = useSessions(projectId)
 
   const briefContent = brief?.content as BriefContent | undefined
   const hasBrief = briefContent && hasBriefContent(briefContent)
@@ -611,11 +615,13 @@ function BriefTab({
     if (briefContent.decisions?.length) {
       // Locked-first, and mark locked ones — the markdown export is the
       // build↔brief ferry, so the lock must survive the round-trip to an outside
-      // agent (#71), not just show in-app.
+      // agent (#71), not just show in-app. Provenance rides along too (#121).
+      const numbers = sessionNumberById(briefTabSessions || [])
       sections.push(
         `## Decisions`,
         ...lockedFirst(briefContent.decisions).map(
-          (d) => `- ${d.locked ? '🔒 ' : ''}**${d.topic}:** ${d.decision}`,
+          (d) =>
+            `- ${d.locked ? '🔒 ' : ''}**${d.topic}:** ${d.decision}${decisionProvenanceMarkdown(d, numbers)}`,
         ),
         '',
       )
@@ -706,7 +712,7 @@ function BriefTab({
         </CardBody>
       </Card>
 
-      <BriefEditor projectId={projectId} content={briefContent} version={brief?.version} loading={briefLoading} />
+      <BriefEditor projectId={projectId} content={briefContent} version={brief?.version} loading={briefLoading} sessions={briefTabSessions} />
 
       {/* Confirm the metered-API regen — it overwrites the brief (locked
           decisions survive). Offer a copy-first so no manual edit is lost. */}

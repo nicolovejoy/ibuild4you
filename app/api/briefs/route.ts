@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getAuthenticatedUser, getAdminDb, getProjectRole, requireRole } from '@/lib/api/firebase-server-helpers'
 import { upsertBrief } from '@/lib/api/briefs'
+import { stampDecisionProvenance } from '@/lib/api/brief-merge'
 import type { BriefContent } from '@/lib/types'
 
 // GET /api/briefs?project_id=xxx — get the latest brief for a project
@@ -78,12 +79,37 @@ export async function PUT(request: Request) {
             decision: d.decision as string,
             // #71: preserve the durable-constraint flag set by the builder.
             ...(d.locked === true && { locked: true }),
+            // #121: explicit provenance in the payload is honored — an outside
+            // agent may know the real origin. Anything else is stamped below.
+            ...(typeof d.decided_at === 'string' && { decided_at: d.decided_at }),
+            ...((typeof d.decided_in_session === 'string' || d.decided_in_session === null) && {
+              decided_in_session: d.decided_in_session as string | null,
+            }),
           }))
       : [],
     open_risks: Array.isArray(content.open_risks)
       ? content.open_risks.filter((r: unknown) => typeof r === 'string' && (r as string).trim())
       : [],
   }
+
+  // #121: stamp decision provenance against the latest stored brief. Paste path
+  // stamps sessionId null ("decided out-of-band"); carry-forward also restores
+  // stamps an outside agent dropped when round-tripping the brief JSON.
+  const prevSnap = await db
+    .collection('briefs')
+    .where('project_id', '==', project_id)
+    .orderBy('version', 'desc')
+    .limit(1)
+    .get()
+  const prevContent = prevSnap.empty
+    ? null
+    : (prevSnap.docs[0].data().content as BriefContent | undefined)
+  briefContent.decisions = stampDecisionProvenance({
+    prev: prevContent?.decisions,
+    next: briefContent.decisions ?? [],
+    sessionId: null,
+    now: new Date().toISOString(),
+  })
 
   // Upsert: find existing brief or create new
   const result = await upsertBrief(db, project_id, briefContent)
