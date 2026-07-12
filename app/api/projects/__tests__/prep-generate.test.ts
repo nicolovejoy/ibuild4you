@@ -13,6 +13,7 @@ const projectUpdates: Record<string, unknown>[] = []
 let projectDocData: Record<string, unknown> = {}
 let briefEmpty = true
 let sessionEmpty = true
+let memberDocs: Array<{ data: () => Record<string, unknown> }> = []
 
 const mockProjectDocUpdate = vi.fn(async (data: Record<string, unknown>) => {
   projectUpdates.push(data)
@@ -52,6 +53,13 @@ const mockCollection = vi.fn((name: string) => {
       where: () => ({ orderBy: () => ({ get: async () => ({ docs: [] }) }) }),
     }
   }
+  if (name === 'project_members') {
+    const chain = {
+      where: () => chain,
+      get: async () => ({ empty: memberDocs.length === 0, docs: memberDocs }),
+    }
+    return chain
+  }
   return { where: () => ({}), doc: () => ({}) }
 })
 
@@ -65,6 +73,8 @@ vi.mock('@/lib/api/firebase-server-helpers', () => ({
   })),
   getAdminDb: vi.fn(() => ({ collection: mockCollection })),
   getProjectRole: (...args: unknown[]) => mockGetProjectRole(...args),
+  // Name resolution mirrors the real helper's fallback: email prefix.
+  getUserDisplayName: vi.fn(async (_db: unknown, _uid: string, email: string) => email.split('@')[0]),
   requireRole: (role: string | null, minimum: string) => {
     const levels: Record<string, number> = { maker: 0, apprentice: 1, builder: 2, owner: 3 }
     if (!role || levels[role] < levels[minimum]) {
@@ -96,6 +106,7 @@ describe('POST /api/projects/[id]/prep/generate', () => {
     projectDocData = { title: 'Cafe App', session_mode: 'discover', seed_questions: ['Q1'] }
     briefEmpty = true
     sessionEmpty = true
+    memberDocs = []
     mockGetProjectRole.mockResolvedValue('builder')
   })
 
@@ -118,6 +129,26 @@ describe('POST /api/projects/[id]/prep/generate', () => {
     expect(projectUpdates[0].prep_config_hash).toBeTruthy()
   })
 
+  it('passes every active maker first name to the generator, joined naturally', async () => {
+    memberDocs = [
+      { data: () => ({ email: 'matt@example.com', role: 'maker', user_id: '' }) },
+      { data: () => ({ email: 'scott@example.com', role: 'maker', user_id: '' }) },
+      { data: () => ({ email: 'gone@example.com', role: 'maker', user_id: '', removed_at: '2026-01-01' }) },
+    ]
+    mockGenerate.mockResolvedValue({ focus: 'f', nudge_message: 'n' })
+    const res = await POST(makeReq(), ctx)
+    expect(res.status).toBe(200)
+    expect(mockGenerate.mock.calls[0][0].makerNames).toBe('matt and scott')
+  })
+
+  it('falls back to requester_first_name when the brief has no maker member rows', async () => {
+    projectDocData.requester_first_name = 'Mara'
+    mockGenerate.mockResolvedValue({ focus: 'f', nudge_message: 'n' })
+    const res = await POST(makeReq(), ctx)
+    expect(res.status).toBe(200)
+    expect(mockGenerate.mock.calls[0][0].makerNames).toBe('Mara')
+  })
+
   it('serves the stored prep without calling the model when the fingerprint matches', async () => {
     const hash = prepConfigHash({
       sessionMode: 'discover',
@@ -125,7 +156,7 @@ describe('POST /api/projects/[id]/prep/generate', () => {
       builderDirectives: [],
       welcomeMessage: null,
       voiceSample: null,
-      makerFirstName: null,
+      makerNames: null,
       briefSignal: '',
     })
     projectDocData = {
@@ -150,7 +181,7 @@ describe('POST /api/projects/[id]/prep/generate', () => {
       builderDirectives: [],
       welcomeMessage: null,
       voiceSample: null,
-      makerFirstName: null,
+      makerNames: null,
       briefSignal: '',
     })
     projectDocData = { title: 'Cafe App', session_mode: 'discover', seed_questions: ['Q1'], prep_config_hash: hash, prep_nudge: 'old', prep_focus: 'old' }

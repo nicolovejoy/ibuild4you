@@ -25,9 +25,10 @@ type Recipient = {
 // Resend (invite / new-conversation nudge / reminder). To: maker, BCC +
 // Reply-To: the builder, so a maker who replies reaches a human. Bodies/
 // subjects come from lib/copy so the email matches what the builder sees in
-// the UI. Invite and nudge fan out to every active maker on the brief (#115),
-// one email per person; reminder stays a single send to the requester (the
-// cron path owns multi-recipient reminders if we ever want them).
+// the UI. Invite fans out to every active maker on the brief (#115), one email
+// per person (each carries its own passcode); nudge is ONE email addressed to
+// all active makers; reminder stays a single send to the requester (the cron
+// path owns multi-recipient reminders if we ever want them).
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -148,42 +149,62 @@ export async function POST(
     ['nlovejoy@me.com', 'nicholas.lovejoy@gmail.com'].includes(email.toLowerCase())
 
   const results: Array<{ to: string; emailId: string; suppressed: boolean }> = []
-  for (const r of recipients) {
-    let text: string
-    if (kind === 'invite') {
-      // The invite body includes the maker's sign-in passcode. Mint + persist
-      // one if the membership doesn't have one yet (mirrors share GET).
+  if (kind === 'invite') {
+    // Invite stays one email per person — each body carries that person's own
+    // sign-in passcode.
+    for (const r of recipients) {
+      // Mint + persist a passcode if the membership doesn't have one yet
+      // (mirrors share GET).
       let passcode = r.passcode
       if (!passcode && r.ref) {
         passcode = generatePasscode()
         await r.ref.update({ passcode, updated_at: now })
       }
-      text = copy.invite.body({ projectTitle, shareLink, email: r.email, passcode })
-    } else {
-      text = sharedText!
-    }
+      const text = copy.invite.body({ projectTitle, shareLink, email: r.email, passcode })
 
-    const suppressed = !isProd && !allowlisted(r.email)
+      const suppressed = !isProd && !allowlisted(r.email)
+      let emailId = 'suppressed'
+      if (!suppressed) {
+        ;({ emailId } = await sendMakerEmail({
+          to: r.email,
+          bcc: auth.email ? [auth.email] : undefined,
+          replyTo: auth.email || undefined,
+          subject,
+          text,
+        }))
+      }
+      results.push({ to: r.email, emailId, suppressed })
+    }
+  } else {
+    // Nudge/reminder: ONE email addressed to everyone. Separate per-person
+    // copies of the same body read as a mail-merge bug (both said "Hey Matt";
+    // Nico 2026-07-11), and a shared To: lets the makers see each other.
+    const deliverable = recipients.filter((r) => isProd || allowlisted(r.email))
     let emailId = 'suppressed'
-    if (!suppressed) {
+    if (deliverable.length > 0) {
       ;({ emailId } = await sendMakerEmail({
-        to: r.email,
+        to: deliverable.map((r) => r.email),
         bcc: auth.email ? [auth.email] : undefined,
         replyTo: auth.email || undefined,
         subject,
-        text,
+        text: sharedText!,
       }))
     }
-    results.push({ to: r.email, emailId, suppressed })
+    for (const r of recipients) {
+      const suppressed = !deliverable.includes(r)
+      results.push({ to: r.email, emailId: suppressed ? 'suppressed' : emailId, suppressed })
+    }
+  }
 
+  for (const r of results) {
     console.log(
       JSON.stringify({
         event: 'maker_email_sent',
         project_id: projectId,
         kind,
-        to: r.email,
-        email_id: emailId,
-        suppressed,
+        to: r.to,
+        email_id: r.emailId,
+        suppressed: r.suppressed,
         by: auth.email,
       })
     )

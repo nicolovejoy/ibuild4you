@@ -3,7 +3,7 @@ import { buildPrepUserContent, prepConfigHash, type PrepInput } from '../prep-ou
 
 const base: PrepInput = {
   projectTitle: "Sam's Cafe App",
-  makerFirstName: 'Sam',
+  makerNames: 'Sam',
   sessionMode: 'discover',
   seedQuestions: ['What does a typical day look like?'],
 }
@@ -15,8 +15,13 @@ describe('buildPrepUserContent', () => {
     expect(out).toContain('Sam')
   })
 
+  it('includes every maker name on a multi-maker brief', () => {
+    const out = buildPrepUserContent({ ...base, makerNames: 'Matt and Scott' })
+    expect(out).toContain('Matt and Scott')
+  })
+
   it('keeps it general when no maker name', () => {
-    const out = buildPrepUserContent({ ...base, makerFirstName: null })
+    const out = buildPrepUserContent({ ...base, makerNames: null })
     expect(out).toContain('keep it general')
   })
 

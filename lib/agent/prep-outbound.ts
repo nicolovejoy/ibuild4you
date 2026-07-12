@@ -10,7 +10,9 @@ import type { BriefContent } from '@/lib/types'
 
 export interface PrepInput {
   projectTitle: string
-  makerFirstName?: string | null
+  // All active makers' first names, pre-joined ("Matt and Scott") — the nudge
+  // goes to everyone on the brief (#115), so the greeting must too.
+  makerNames?: string | null
   brief?: BriefContent | null
   // Most recent session's conversation, oldest → newest. Used as "last session recap".
   lastSessionMessages?: { role: string; content: string }[]
@@ -31,7 +33,7 @@ export interface PrepResult {
 // House tone, locked. Keep in sync with feedback_outbound_tone memory + slice-2 spec.
 const PREP_SYSTEM_PROMPT = `You prepare the "next session" handoff for an iBuild4you brief — a living document a developer builds from. You produce two things in one shot:
 
-1. nudge_message — a short message inviting the maker (the non-technical person with the idea) back for the next session. Tone: friendly, helpful, terse, on-point. 2-3 sentences MAX. Warm but not gushing. Reference where they left off and what this round will cover, concretely. End with a light, low-pressure ask (e.g. "~10 min whenever you've got a moment"). Do NOT include a link, sign-off, subject line, or placeholders — just the body. Address the maker by first name if one is given.
+1. nudge_message — a short message inviting the maker (the non-technical person with the idea) back for the next session. Tone: friendly, helpful, terse, on-point. 2-3 sentences MAX. Warm but not gushing. Reference where they left off and what this round will cover, concretely. End with a light, low-pressure ask (e.g. "~10 min whenever you've got a moment"). Do NOT include a link, sign-off, subject line, or placeholders — just the body. Address the makers by first name if names are given — greet every listed name, never just the first (e.g. "Hi Matt and Scott" when two are listed).
 
 2. focus — a single short line (≤ 10 words, no trailing period) for the builder's dashboard summarizing what this next session drives at. Plain language.
 
@@ -93,7 +95,7 @@ export function buildPrepUserContent(input: PrepInput): string {
 
   const sections = [
     `Brief title: ${input.projectTitle}`,
-    `Maker first name: ${input.makerFirstName?.trim() || '(unknown — keep it general)'}`,
+    `Maker first name(s): ${input.makerNames?.trim() || '(unknown — keep it general)'}`,
     `\nBrief so far:\n${briefSummary(input.brief)}`,
     `\nWhere the last session left off:\n${recapFromMessages(input.lastSessionMessages)}`,
     `\nWhat the next session is set up to do:\n${intent.join('\n')}`,
@@ -110,7 +112,7 @@ export function buildPrepUserContent(input: PrepInput): string {
 export function prepConfigHash(
   input: Pick<
     PrepInput,
-    'sessionMode' | 'seedQuestions' | 'builderDirectives' | 'welcomeMessage' | 'voiceSample' | 'makerFirstName'
+    'sessionMode' | 'seedQuestions' | 'builderDirectives' | 'welcomeMessage' | 'voiceSample' | 'makerNames'
   > & { briefSignal?: string | number | null },
 ): string {
   const payload = JSON.stringify({
@@ -119,7 +121,7 @@ export function prepConfigHash(
     d: input.builderDirectives || [],
     w: (input.welcomeMessage || '').trim(),
     v: (input.voiceSample || '').trim(),
-    n: (input.makerFirstName || '').trim(),
+    n: (input.makerNames || '').trim(),
     b: input.briefSignal ?? '',
   })
   // djb2 — small, stable, no crypto dependency.

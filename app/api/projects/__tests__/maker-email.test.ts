@@ -112,7 +112,7 @@ describe('POST /api/projects/[id]/email', () => {
     const res = await POST(makeReq({ kind: 'reminder' }), { params })
     expect(res.status).toBe(200)
     const call = sendMakerEmailMock.mock.calls[0][0]
-    expect(call.to).toBe('maker@example.com')
+    expect(call.to).toEqual(['maker@example.com'])
     expect(call.replyTo).toBe('builder@example.com')
     expect(call.bcc).toEqual(['builder@example.com'])
     expect(call.text).toContain('https://ibuild4you.com/projects/byside')
@@ -163,23 +163,22 @@ describe('POST /api/projects/[id]/email', () => {
     }
   }
 
-  it('nudge fans out to every active maker, one email each', async () => {
+  it('nudge sends ONE email addressed to every active maker', async () => {
     twoMakers()
     const res = await POST(makeReq({ kind: 'nudge' }), { params })
     expect(res.status).toBe(200)
-    expect(sendMakerEmailMock).toHaveBeenCalledTimes(2)
-    const tos = sendMakerEmailMock.mock.calls.map((c) => c[0].to)
-    expect(tos).toEqual(['matt@example.com', 'scott@example.com'])
-    for (const c of sendMakerEmailMock.mock.calls) {
-      expect(c[0].bcc).toEqual(['builder@example.com'])
-      expect(c[0].replyTo).toBe('builder@example.com')
-    }
+    expect(sendMakerEmailMock).toHaveBeenCalledOnce()
+    const call = sendMakerEmailMock.mock.calls[0][0]
+    expect(call.to).toEqual(['matt@example.com', 'scott@example.com'])
+    expect(call.bcc).toEqual(['builder@example.com'])
+    expect(call.replyTo).toBe('builder@example.com')
     const data = await res.json()
     expect(data.to).toEqual(['matt@example.com', 'scott@example.com'])
+    expect(data.results).toHaveLength(2)
     expect(data.suppressed).toBe(false)
   })
 
-  it('excludes removed makers from the fan-out', async () => {
+  it('excludes removed makers from the nudge recipients', async () => {
     twoMakers()
     memberSnap.docs.push({
       data: () => ({ email: 'gone@example.com', removed_at: '2026-01-01T00:00:00Z' }),
@@ -187,8 +186,8 @@ describe('POST /api/projects/[id]/email', () => {
     })
     const res = await POST(makeReq({ kind: 'nudge' }), { params })
     expect(res.status).toBe(200)
-    const tos = sendMakerEmailMock.mock.calls.map((c) => c[0].to)
-    expect(tos).toEqual(['matt@example.com', 'scott@example.com'])
+    expect(sendMakerEmailMock).toHaveBeenCalledOnce()
+    expect(sendMakerEmailMock.mock.calls[0][0].to).toEqual(['matt@example.com', 'scott@example.com'])
   })
 
   it('invite sends each maker their own passcode', async () => {
@@ -226,7 +225,7 @@ describe('POST /api/projects/[id]/email', () => {
     const res = await POST(makeReq({ kind: 'nudge' }), { params })
     expect(res.status).toBe(200)
     expect(sendMakerEmailMock).toHaveBeenCalledOnce()
-    expect(sendMakerEmailMock.mock.calls[0][0].to).toBe('maker@example.com')
+    expect(sendMakerEmailMock.mock.calls[0][0].to).toEqual(['maker@example.com'])
   })
 
   it('suppresses per recipient on preview (allowlisted maker still sends)', async () => {
@@ -241,7 +240,7 @@ describe('POST /api/projects/[id]/email', () => {
     const res = await POST(makeReq({ kind: 'nudge' }), { params })
     expect(res.status).toBe(200)
     expect(sendMakerEmailMock).toHaveBeenCalledOnce()
-    expect(sendMakerEmailMock.mock.calls[0][0].to).toBe('test@ibuild4you.com')
+    expect(sendMakerEmailMock.mock.calls[0][0].to).toEqual(['test@ibuild4you.com'])
     const data = await res.json()
     expect(data.suppressed).toBe(false)
     expect(data.results).toEqual([

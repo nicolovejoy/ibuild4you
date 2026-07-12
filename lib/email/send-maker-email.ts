@@ -6,7 +6,9 @@ import { Resend } from 'resend'
 // replyTo to the builder's address so maker replies reach a human.
 
 export interface SendMakerEmailInput {
-  to: string
+  // One address, or several for a single shared email (multi-maker nudge —
+  // everyone sees everyone, replies go to the whole thread).
+  to: string | string[]
   bcc?: string[]
   replyTo?: string
   subject: string
@@ -27,7 +29,7 @@ export async function sendMakerEmail(input: SendMakerEmailInput): Promise<SendMa
   const resend = new Resend(process.env.RESEND_API_KEY)
   const { data, error } = await resend.emails.send({
     from: FROM,
-    to: [input.to],
+    to: Array.isArray(input.to) ? input.to : [input.to],
     bcc: input.bcc,
     replyTo: input.replyTo,
     subject: input.subject,
