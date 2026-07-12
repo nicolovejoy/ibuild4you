@@ -107,6 +107,11 @@ export function BuilderProjectView({ projectId }: { projectId: string }) {
   // tab's payload-import fold, which is otherwise hard to find. One-shot,
   // consumed by BriefTab after it expands + scrolls to the fold.
   const [openImport, setOpenImport] = useState(false)
+  // Forward leg of the payload ferry: a successful paste hands the builder to
+  // the Conversations tab with the Start modal auto-opened (or a dismissible
+  // loaded-confirmation when it isn't start's turn). One-shot, consumed when
+  // the modal closes / the line is dismissed.
+  const [importedPayload, setImportedPayload] = useState<{ configUpdated: boolean } | null>(null)
   const rawTab = searchParams.get('tab') || ''
   const tabParam: TabId | null = (['brief', 'conversations', 'people', 'setup'].includes(rawTab)
     ? (rawTab as TabId)
@@ -277,7 +282,7 @@ export function BuilderProjectView({ projectId }: { projectId: string }) {
               briefLoading={briefLoading}
               project={project}
               files={projectFiles || []}
-              onImported={() => setTab('conversations')}
+              onImported={(r) => { setImportedPayload(r); setTab('conversations') }}
               autoOpenImport={openImport}
               onAutoOpenConsumed={() => setOpenImport(false)}
             />
@@ -293,6 +298,8 @@ export function BuilderProjectView({ projectId }: { projectId: string }) {
               turn={turn}
               onShare={openShare}
               onOpenImport={() => { setOpenImport(true); setTab('brief') }}
+              justImported={importedPayload}
+              onImportedConsumed={() => setImportedPayload(null)}
             />
           )}
           {activeTab === 'people' && (
@@ -464,7 +471,7 @@ function BriefTab({
   briefLoading?: boolean
   project: Project | undefined
   files?: ProjectFile[]
-  onImported?: () => void
+  onImported?: (r: { configUpdated: boolean }) => void
   autoOpenImport?: boolean
   onAutoOpenConsumed?: () => void
 }) {
@@ -569,6 +576,7 @@ function BriefTab({
     }
 
     try {
+      let configUpdated = false
       if (result.value.mode === 'multi') {
         await updateBrief.mutateAsync({ project_id: projectId, content: result.value.brief })
         if (Object.keys(result.value.projectUpdate).length > 0) {
@@ -576,6 +584,7 @@ function BriefTab({
             project_id: projectId,
             ...result.value.projectUpdate,
           } as Parameters<typeof updateProject.mutateAsync>[0])
+          configUpdated = true
         }
       } else {
         await updateBrief.mutateAsync({ project_id: projectId, content: result.value.brief as BriefContent })
@@ -583,7 +592,7 @@ function BriefTab({
       setPasteJson('')
       // Import succeeded — hand the builder to the next step instead of leaving
       // them staring at the updated brief with no cue (#25).
-      onImported?.()
+      onImported?.({ configUpdated })
     } catch (err) {
       setPasteError(err instanceof Error ? err.message : 'Failed to save')
     }
@@ -758,6 +767,8 @@ function ConversationsTab({
   turn,
   onShare,
   onOpenImport,
+  justImported,
+  onImportedConsumed,
 }: {
   project: Project | undefined
   projectId: string
@@ -768,6 +779,8 @@ function ConversationsTab({
   turn: ReturnType<typeof getTurnIndicator>
   onShare: (mode?: 'maker' | 'add') => void
   onOpenImport?: () => void
+  justImported?: { configUpdated: boolean } | null
+  onImportedConsumed?: () => void
 }) {
   const searchParams = useSearchParams()
   const router = useRouter()
@@ -813,6 +826,8 @@ function ConversationsTab({
         turn={turn}
         onShare={onShare}
         onOpenImport={onOpenImport}
+        justImported={justImported}
+        onImportedConsumed={onImportedConsumed}
       />
 
       {sessions.length === 0 ? (
@@ -908,6 +923,8 @@ function StatusStrip({
   turn,
   onShare,
   onOpenImport,
+  justImported,
+  onImportedConsumed,
 }: {
   project: Project
   projectId: string
@@ -916,6 +933,8 @@ function StatusStrip({
   turn: ReturnType<typeof getTurnIndicator>
   onShare: (mode?: 'maker' | 'add') => void
   onOpenImport?: () => void
+  justImported?: { configUpdated: boolean } | null
+  onImportedConsumed?: () => void
 }) {
   const { data: members } = useProjectMembers(project.id)
   const { data: activeMessages } = useMessages(activeSession?.id)
@@ -977,10 +996,32 @@ function StatusStrip({
               onShare={onShare}
               onOpenImport={onOpenImport}
               onResult={setResult}
+              justImported={justImported}
+              onImportedConsumed={onImportedConsumed}
             />
           )}
         </div>
       </div>
+
+      {/* Payload landed but it isn't start's turn (maker still mid-conversation,
+          or no maker yet) — confirm the paste took instead of opening the Start
+          modal. Config only snapshots into the NEXT session, hence the caveat. */}
+      {justImported && dispatch.kind !== 'start' && (
+        <div className="flex items-start justify-between gap-2 text-sm border-t border-gray-100 pt-2">
+          <div className="flex items-start gap-2">
+            <Check className="h-4 w-4 text-green-600 mt-0.5 shrink-0" />
+            <p>
+              <span className="font-medium text-green-800">Payload loaded.</span>{' '}
+              <span className="text-gray-600">
+                Brief updated{justImported.configUpdated ? '; agent config applies from the next conversation' : ''}.
+              </span>
+            </p>
+          </div>
+          <button onClick={onImportedConsumed} aria-label="Dismiss" className="text-gray-400 hover:text-gray-600 shrink-0">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
 
       {result && (
         <div className="flex items-start gap-2 text-sm border-t border-gray-100 pt-2">
@@ -1971,6 +2012,8 @@ function StartDispatch({
   onShare,
   onOpenImport,
   onResult,
+  justImported,
+  onImportedConsumed,
 }: {
   project: Project
   projectId: string
@@ -1980,8 +2023,25 @@ function StartDispatch({
   onShare: (mode?: 'maker' | 'add') => void
   onOpenImport?: () => void
   onResult: (r: { sessionNumber: number; sent?: string[]; copied?: boolean; suppressed?: boolean }) => void
+  justImported?: { configUpdated: boolean } | null
+  onImportedConsumed?: () => void
 }) {
   const [open, setOpen] = useState(false)
+
+  // Return leg of the ferry: arriving from a successful payload paste opens
+  // the modal directly — the paste's whole purpose is starting the next
+  // conversation. One-shot; closing the modal (any way) consumes the flag.
+  const autoOpenedRef = useRef(false)
+  useEffect(() => {
+    if (justImported && !autoOpenedRef.current) {
+      autoOpenedRef.current = true
+      setOpen(true)
+    }
+  }, [justImported])
+  const close = () => {
+    setOpen(false)
+    if (justImported) onImportedConsumed?.()
+  }
   const updateProject = useUpdateProject()
   const createSession = useCreateSession()
   const sendEmail = useSendMakerEmail()
@@ -2039,7 +2099,7 @@ function StartDispatch({
       await createAndThen()
       const r = await sendEmail.mutateAsync({ project_id: projectId, kind: 'nudge' })
       onResult({ sessionNumber, sent: r.to, suppressed: r.suppressed })
-      setOpen(false)
+      close()
     } catch {
       // surfaced via actionError; keep the modal open
     }
@@ -2050,7 +2110,7 @@ function StartDispatch({
       await createAndThen()
       copyNudge(nudgeMessage)
       onResult({ sessionNumber, copied: true })
-      setOpen(false)
+      close()
     } catch {
       // surfaced via actionError; keep the modal open
     }
@@ -2075,8 +2135,17 @@ function StartDispatch({
         <RotateCw className="h-3.5 w-3.5" /> Start conversation {sessionNumber} &amp; email {makerNames}
       </button>
 
-      <Modal isOpen={open} onClose={() => { if (!busy) setOpen(false) }} title={`Start conversation ${sessionNumber}?`} size="sm">
+      <Modal isOpen={open} onClose={() => { if (!busy) close() }} title={`Start conversation ${sessionNumber}?`} size="sm">
         <div className="space-y-4">
+          {justImported && (
+            <div className="flex items-start gap-2 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
+              <Check className="h-4 w-4 mt-0.5 shrink-0 text-green-600" />
+              <span>
+                <span className="font-medium">Payload loaded</span> — brief
+                {justImported.configUpdated ? ' + agent config' : ''} updated.
+              </span>
+            </div>
+          )}
           {/* What the next round will do — the old dispatch card's compact summary. */}
           <div className="space-y-1.5 text-sm">
             <div className="flex gap-2">
@@ -2102,7 +2171,7 @@ function StartDispatch({
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
             {onOpenImport && (
               <button
-                onClick={() => { setOpen(false); onOpenImport() }}
+                onClick={() => { close(); onOpenImport() }}
                 disabled={busy}
                 className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand-navy disabled:opacity-40"
               >
@@ -2110,7 +2179,7 @@ function StartDispatch({
               </button>
             )}
             <button
-              onClick={() => { setOpen(false); onShare('add') }}
+              onClick={() => { close(); onShare('add') }}
               disabled={busy}
               className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand-navy disabled:opacity-40"
             >
