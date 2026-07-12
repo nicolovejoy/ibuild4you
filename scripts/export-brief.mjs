@@ -162,8 +162,18 @@ async function exportProject(id, data) {
     if (c.additional_context) b.push(`\n## Additional context\n\n${c.additional_context}`)
     if ((c.decisions || []).length) {
       b.push(`\n## Decisions\n`)
-      for (const d of c.decisions)
-        b.push(`- **${d.topic}**: ${d.decision}${d.locked ? ' _(locked)_' : ''}`)
+      // #121: provenance suffix — sessions here are already archived-excluded
+      // and sorted oldest-first, so index+1 is the conversation number.
+      const convNumber = new Map(sessions.map((s, i) => [s.id, i + 1]))
+      for (const d of c.decisions) {
+        let prov = ''
+        if (d.decided_at) {
+          const date = d.decided_at.slice(0, 10)
+          const n = d.decided_in_session ? convNumber.get(d.decided_in_session) : undefined
+          prov = n ? ` _(decided conv ${n}, ${date})_` : ` _(added ${date})_`
+        }
+        b.push(`- **${d.topic}**: ${d.decision}${d.locked ? ' _(locked)_' : ''}${prov}`)
+      }
     }
     if ((c.open_risks || []).length) {
       b.push(`\n## Open risks\n`)

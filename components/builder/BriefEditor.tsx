@@ -9,7 +9,8 @@ import { Skeleton } from '@/components/ui/Skeleton'
 import { useUpdateBrief } from '@/lib/query/hooks'
 import { parseBriefJson, serializeBriefContent, emptyBrief } from '@/lib/api/brief-json'
 import { lockedFirst } from '@/lib/api/brief-merge'
-import type { BriefContent, BriefDecision } from '@/lib/types'
+import { sessionNumberById, decisionProvenanceSuffix } from '@/lib/builder/decision-provenance'
+import type { BriefContent, BriefDecision, Session } from '@/lib/types'
 
 // Brief-as-document editor (#19 Phase 3). Read-first: the brief renders as a
 // calm document by default; "Edit brief" enters an explicit edit mode with two
@@ -29,6 +30,7 @@ export function BriefEditor({
   content,
   version,
   loading = false,
+  sessions,
 }: {
   projectId: string
   content: BriefContent | undefined
@@ -38,6 +40,8 @@ export function BriefEditor({
   // The brief query is still in flight — show a skeleton, not "no brief yet"
   // (which would mislead while a populated brief loads).
   loading?: boolean
+  // For decision-provenance suffixes (#121): session id → conversation number.
+  sessions?: Session[]
 }) {
   const base = content && Object.keys(content).length > 0 ? content : emptyBrief()
   const updateBrief = useUpdateBrief()
@@ -152,7 +156,7 @@ export function BriefEditor({
           {hasAnyContent(base) ? (
             <>
               <div ref={readRef} className={expanded ? undefined : 'relative max-h-28 overflow-hidden'}>
-                <BriefReadView content={base} />
+                <BriefReadView content={base} sessions={sessions} />
                 {!expanded && overflowing && (
                   <div className="absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-white to-transparent pointer-events-none" />
                 )}
@@ -256,7 +260,10 @@ export function BriefEditor({
 
 // --- Read view: the brief as a calm document (empty sections hidden) ---
 
-function BriefReadView({ content }: { content: BriefContent }) {
+function BriefReadView({ content, sessions }: { content: BriefContent; sessions?: Session[] }) {
+  // #121: quiet provenance suffix per decision — "conv 2 · Jul 11" (or
+  // "added Jul 11" for out-of-band). Unstamped decisions render as before.
+  const sessionNumbers = sessionNumberById(sessions || [])
   const prose = [
     { label: 'Problem', value: content.problem },
     { label: 'Target users', value: content.target_users },
@@ -296,6 +303,12 @@ function BriefReadView({ content }: { content: BriefContent }) {
                 )}
                 <span className="font-medium text-gray-900">{d.topic}:</span>{' '}
                 <span className="text-gray-700">{d.decision}</span>
+                {(() => {
+                  const suffix = decisionProvenanceSuffix(d, sessionNumbers)
+                  return suffix ? (
+                    <span className="text-xs text-gray-400 whitespace-nowrap"> · {suffix}</span>
+                  ) : null
+                })()}
               </li>
             ))}
           </ul>

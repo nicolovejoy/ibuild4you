@@ -57,6 +57,13 @@ export function normalizeBriefContent(input: unknown): ParseResult<BriefContent>
         topic: dd.topic,
         decision: dd.decision,
         ...(dd.locked === true ? { locked: true } : {}),
+        // #121: provenance stamps must survive the raw-view round-trip — the
+        // server would restore dropped ones via carry-forward, but the raw view
+        // should show what's really stored.
+        ...(typeof dd.decided_at === 'string' ? { decided_at: dd.decided_at } : {}),
+        ...(typeof dd.decided_in_session === 'string' || dd.decided_in_session === null
+          ? { decided_in_session: dd.decided_in_session as string | null }
+          : {}),
       })
     }
   }

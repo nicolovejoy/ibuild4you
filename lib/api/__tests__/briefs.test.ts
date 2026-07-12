@@ -202,7 +202,10 @@ describe('regenerateBriefForProject', () => {
     const stored = briefAddCalls[0].content as Record<string, unknown>
     expect(stored.problem).toBe('')
     expect(stored.features).toEqual([])
-    expect(stored.decisions).toEqual([{ topic: 'OK', decision: 'fine' }])
+    expect(stored.decisions).toEqual([
+      // New decision this round → provenance stamped by code (#121).
+      { topic: 'OK', decision: 'fine', decided_in_session: 's1', decided_at: expect.any(String) },
+    ])
     expect(stored.open_risks).toEqual(['risk one'])
   })
 
@@ -299,8 +302,91 @@ describe('regenerateBriefForProject', () => {
     ]
     const persisted = updateArgs[0]
     expect(persisted.content.decisions).toEqual([
+      // Locked decision carried verbatim — unstamped stays unstamped (#121);
+      // the model's new decision is stamped with the current session.
       { topic: 'Stack', decision: 'Next.js, no Vue', locked: true },
-      { topic: 'Payment', decision: 'Stripe' },
+      { topic: 'Payment', decision: 'Stripe', decided_in_session: 's1', decided_at: expect.any(String) },
+    ])
+  })
+
+  // #121 — provenance is stamped by code on regen: a decision new this round
+  // gets the latest non-archived session that has messages; unchanged decisions
+  // keep their prior stamps; model-echoed decided_* fields are stripped.
+  it('stamps a new decision with the latest non-archived session that has messages', async () => {
+    sessionsByProject.p1 = [
+      { id: 's1', data: () => ({ created_at: '2026-01-01T00:00:00Z' }) },
+      { id: 's-arch', data: () => ({ created_at: '2026-01-02T00:00:00Z', status: 'archived' }) },
+      { id: 's2', data: () => ({ created_at: '2026-01-03T00:00:00Z', status: 'active' }) },
+      { id: 's-empty', data: () => ({ created_at: '2026-01-04T00:00:00Z', status: 'active' }) },
+    ]
+    messagesBySession.s1 = [{ id: 'm1', data: () => ({ role: 'user', content: 'hi' }) }]
+    messagesBySession['s-arch'] = [{ id: 'm2', data: () => ({ role: 'user', content: 'x' }) }]
+    messagesBySession.s2 = [{ id: 'm3', data: () => ({ role: 'user', content: 'more' }) }]
+    // s-empty has no messages — must not be the stamp target
+    projectDocs.p1 = { exists: true, data: () => ({ title: 'X' }) }
+    mockMessagesCreate.mockResolvedValue(
+      toolUseResponse({ ...validBrief, decisions: [{ topic: 'Auth', decision: 'Google' }] }),
+    )
+
+    await regenerateBriefForProject(makeDb(), 'p1')
+
+    const stored = briefAddCalls[0].content as { decisions: Record<string, unknown>[] }
+    expect(stored.decisions).toHaveLength(1)
+    expect(stored.decisions[0].decided_in_session).toBe('s2')
+    expect(typeof stored.decisions[0].decided_at).toBe('string')
+  })
+
+  it('keeps prior stamps on unchanged decisions and ignores model-echoed provenance', async () => {
+    sessionsByProject.p1 = [{ id: 's1', data: () => ({ created_at: '2026-01-01T00:00:00Z' }) }]
+    messagesBySession.s1 = [{ id: 'm1', data: () => ({ role: 'user', content: 'hi' }) }]
+    projectDocs.p1 = { exists: true, data: () => ({ title: 'X' }) }
+    briefsByProject.p1 = [
+      {
+        id: 'brief-1',
+        data: () => ({
+          version: 1,
+          content: {
+            ...validBrief,
+            decisions: [
+              {
+                topic: 'Payment',
+                decision: 'Stripe',
+                decided_in_session: 's0',
+                decided_at: '2026-06-01T00:00:00Z',
+              },
+            ],
+          },
+        }),
+        ref: { update: mockBriefUpdate },
+      },
+    ]
+    // Model echoes the decision with hallucinated provenance.
+    mockMessagesCreate.mockResolvedValue(
+      toolUseResponse({
+        ...validBrief,
+        decisions: [
+          {
+            topic: 'Payment',
+            decision: 'Stripe',
+            decided_in_session: 'hallucinated',
+            decided_at: '2099-01-01T00:00:00Z',
+          },
+        ],
+      }),
+    )
+
+    await regenerateBriefForProject(makeDb(), 'p1')
+
+    const updateArgs = mockBriefUpdate.mock.calls[0] as unknown as [
+      { content: { decisions: Record<string, unknown>[] } },
+    ]
+    expect(updateArgs[0].content.decisions).toEqual([
+      {
+        topic: 'Payment',
+        decision: 'Stripe',
+        decided_in_session: 's0',
+        decided_at: '2026-06-01T00:00:00Z',
+      },
     ])
   })
 

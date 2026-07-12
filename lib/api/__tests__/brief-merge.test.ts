@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest'
-import { mergeLockedDecisions, reconcileBrief, lockedFirst } from '../brief-merge'
+import {
+  mergeLockedDecisions,
+  reconcileBrief,
+  lockedFirst,
+  stampDecisionProvenance,
+  stripDecisionProvenance,
+} from '../brief-merge'
 import type { BriefContent, BriefDecision } from '@/lib/types'
 
 // #71 brief↔build reconciliation — locked decisions are durable through regen.
@@ -96,6 +102,212 @@ describe('reconcileBrief', () => {
   it('is a no-op on decisions when prev is null', () => {
     const next: BriefContent = { ...base, decisions: [d('Auth', 'Google')] }
     expect(reconcileBrief(null, next).decisions).toEqual([d('Auth', 'Google')])
+  })
+})
+
+// #121 decision provenance — stamps are authored by code, never by the model.
+// One pure function used by BOTH write paths (regen + paste), run after
+// mergeLockedDecisions.
+describe('stampDecisionProvenance', () => {
+  const NOW = '2026-07-11T20:00:00.000Z'
+
+  it('stamps a brand-new topic with the current session context', () => {
+    const out = stampDecisionProvenance({
+      prev: [],
+      next: [d('Auth', 'Google only')],
+      sessionId: 's2',
+      now: NOW,
+    })
+    expect(out).toEqual([
+      { topic: 'Auth', decision: 'Google only', decided_in_session: 's2', decided_at: NOW },
+    ])
+  })
+
+  it('stamps decided_in_session null on the paste path (out-of-band decision)', () => {
+    const out = stampDecisionProvenance({
+      prev: undefined,
+      next: [d('Auth', 'Google only')],
+      sessionId: null,
+      now: NOW,
+    })
+    expect(out).toEqual([
+      { topic: 'Auth', decision: 'Google only', decided_in_session: null, decided_at: NOW },
+    ])
+  })
+
+  it('honors explicit provenance on a new decision (outside agent knows the truth)', () => {
+    const out = stampDecisionProvenance({
+      prev: [],
+      next: [
+        {
+          topic: 'Auth',
+          decision: 'Google only',
+          decided_in_session: 's1',
+          decided_at: '2026-07-01T00:00:00Z',
+        },
+      ],
+      sessionId: null,
+      now: NOW,
+    })
+    expect(out).toEqual([
+      {
+        topic: 'Auth',
+        decision: 'Google only',
+        decided_in_session: 's1',
+        decided_at: '2026-07-01T00:00:00Z',
+      },
+    ])
+  })
+
+  it('carries prev stamps forward verbatim when the decision text is unchanged', () => {
+    const prev: BriefDecision[] = [
+      {
+        topic: 'Auth',
+        decision: 'Google only',
+        decided_in_session: 's1',
+        decided_at: '2026-07-01T00:00:00Z',
+      },
+    ]
+    const out = stampDecisionProvenance({
+      prev,
+      next: [d('Auth', 'Google only')],
+      sessionId: 's3',
+      now: NOW,
+    })
+    expect(out).toEqual(prev)
+  })
+
+  it('restores stamps an outside agent dropped when round-tripping the JSON', () => {
+    // The ferry may return decisions without decided_* — carry-forward puts them back.
+    const prev: BriefDecision[] = [
+      { topic: 'Payment', decision: 'Stripe', decided_in_session: 's2', decided_at: '2026-07-05T00:00:00Z' },
+    ]
+    const out = stampDecisionProvenance({
+      prev,
+      next: [{ topic: 'payment', decision: 'Stripe' }], // topic case differs; text same
+      sessionId: null,
+      now: NOW,
+    })
+    expect(out).toEqual([
+      { topic: 'payment', decision: 'Stripe', decided_in_session: 's2', decided_at: '2026-07-05T00:00:00Z' },
+    ])
+  })
+
+  it('never fabricates: an unstamped unchanged decision stays unstamped', () => {
+    const out = stampDecisionProvenance({
+      prev: [d('Auth', 'Google only')],
+      next: [d('Auth', 'Google only')],
+      sessionId: 's3',
+      now: NOW,
+    })
+    expect(out).toEqual([{ topic: 'Auth', decision: 'Google only' }])
+  })
+
+  it('ignores echoed stamps on an unchanged decision — prev is the source of truth', () => {
+    // Model saw stamps in its prompt and echoed (or hallucinated) them back.
+    const out = stampDecisionProvenance({
+      prev: [
+        { topic: 'Auth', decision: 'Google only', decided_in_session: 's1', decided_at: '2026-07-01T00:00:00Z' },
+      ],
+      next: [
+        { topic: 'Auth', decision: 'Google only', decided_in_session: 's9', decided_at: '2099-01-01T00:00:00Z' },
+      ],
+      sessionId: 's3',
+      now: NOW,
+    })
+    expect(out).toEqual([
+      { topic: 'Auth', decision: 'Google only', decided_in_session: 's1', decided_at: '2026-07-01T00:00:00Z' },
+    ])
+  })
+
+  it('restamps with the current context when the decision text changed this round', () => {
+    const out = stampDecisionProvenance({
+      prev: [
+        { topic: 'Auth', decision: 'Google only', decided_in_session: 's1', decided_at: '2026-07-01T00:00:00Z' },
+      ],
+      next: [d('Auth', 'Google + passcode')],
+      sessionId: 's3',
+      now: NOW,
+    })
+    expect(out).toEqual([
+      { topic: 'Auth', decision: 'Google + passcode', decided_in_session: 's3', decided_at: NOW },
+    ])
+  })
+
+  it('honors explicit provenance on a changed decision (paste path)', () => {
+    const out = stampDecisionProvenance({
+      prev: [
+        { topic: 'Auth', decision: 'Google only', decided_in_session: 's1', decided_at: '2026-07-01T00:00:00Z' },
+      ],
+      next: [
+        { topic: 'Auth', decision: 'Google + passcode', decided_in_session: null, decided_at: '2026-07-10T00:00:00Z' },
+      ],
+      sessionId: null,
+      now: NOW,
+    })
+    expect(out).toEqual([
+      { topic: 'Auth', decision: 'Google + passcode', decided_in_session: null, decided_at: '2026-07-10T00:00:00Z' },
+    ])
+  })
+
+  it('preserves stamps on a locked decision through the merge+stamp pipeline', () => {
+    const prev: BriefDecision[] = [
+      {
+        topic: 'Stack',
+        decision: 'Next.js, no Vue',
+        locked: true,
+        decided_in_session: 's1',
+        decided_at: '2026-07-01T00:00:00Z',
+      },
+    ]
+    // Regen dropped the locked decision; merge re-injects it, stamp carries stamps.
+    const merged = mergeLockedDecisions(prev, [d('Auth', 'Google only')])
+    const out = stampDecisionProvenance({ prev, next: merged, sessionId: 's3', now: NOW })
+    expect(out).toEqual([
+      {
+        topic: 'Stack',
+        decision: 'Next.js, no Vue',
+        locked: true,
+        decided_in_session: 's1',
+        decided_at: '2026-07-01T00:00:00Z',
+      },
+      { topic: 'Auth', decision: 'Google only', decided_in_session: 's3', decided_at: NOW },
+    ])
+  })
+
+  it('is idempotent: restamping unchanged output changes nothing', () => {
+    const first = stampDecisionProvenance({
+      prev: [],
+      next: [d('Auth', 'Google only')],
+      sessionId: 's2',
+      now: NOW,
+    })
+    const second = stampDecisionProvenance({
+      prev: first,
+      next: first,
+      sessionId: 's9',
+      now: '2027-01-01T00:00:00Z',
+    })
+    expect(second).toEqual(first)
+  })
+})
+
+describe('stripDecisionProvenance', () => {
+  it('removes decided_* fields and keeps everything else', () => {
+    const input: BriefDecision[] = [
+      {
+        topic: 'Auth',
+        decision: 'Google only',
+        locked: true,
+        decided_in_session: 's1',
+        decided_at: '2026-07-01T00:00:00Z',
+      },
+      { topic: 'DB', decision: 'Firestore' },
+    ]
+    expect(stripDecisionProvenance(input)).toEqual([
+      { topic: 'Auth', decision: 'Google only', locked: true },
+      { topic: 'DB', decision: 'Firestore' },
+    ])
   })
 })
 

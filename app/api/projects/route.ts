@@ -14,6 +14,7 @@ import { resolveBriefRole, defaultBriefRole } from '@/lib/roles/brief-role'
 import { copy } from '@/lib/copy'
 import { deleteS3Object } from '@/lib/s3/client'
 import { generatePasscode } from '@/lib/passcode'
+import { stampDecisionProvenance } from '@/lib/api/brief-merge'
 import type { BriefRole, MemberRole } from '@/lib/types'
 
 // Ensure slug is unique by appending -2, -3, etc. if needed
@@ -528,7 +529,33 @@ export async function POST(request: Request) {
       features: Array.isArray(b.features) ? b.features.filter((f: unknown) => typeof f === 'string') : [],
       constraints: typeof b.constraints === 'string' ? b.constraints : '',
       additional_context: typeof b.additional_context === 'string' ? b.additional_context : '',
-      ...(Array.isArray(b.decisions) && b.decisions.length > 0 && { decisions: b.decisions }),
+      // #121: stamp provenance on seeded decisions — explicit decided_* in the
+      // payload is honored; the rest get decided_at now, session null (there is
+      // no conversation yet). Also sanitizes to the known decision fields.
+      ...(Array.isArray(b.decisions) &&
+        b.decisions.length > 0 && {
+          decisions: stampDecisionProvenance({
+            prev: undefined,
+            next: b.decisions
+              .filter(
+                (d: unknown) =>
+                  d &&
+                  typeof (d as Record<string, unknown>).topic === 'string' &&
+                  typeof (d as Record<string, unknown>).decision === 'string'
+              )
+              .map((d: Record<string, unknown>) => ({
+                topic: d.topic as string,
+                decision: d.decision as string,
+                ...(d.locked === true && { locked: true }),
+                ...(typeof d.decided_at === 'string' && { decided_at: d.decided_at }),
+                ...((typeof d.decided_in_session === 'string' || d.decided_in_session === null) && {
+                  decided_in_session: d.decided_in_session as string | null,
+                }),
+              })),
+            sessionId: null,
+            now,
+          }),
+        }),
       ...(Array.isArray(b.open_risks) && b.open_risks.length > 0 && {
         open_risks: b.open_risks.filter((r: unknown) => typeof r === 'string' && r.trim()),
       }),
