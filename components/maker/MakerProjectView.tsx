@@ -447,14 +447,16 @@ function MakerChat({
   }
 
   return (
-    <div className="space-y-3">
+    <div
+      // The whole chat panel is the drop target — aiming at just the composer
+      // row was too fiddly (backlog: bigger drag-and-drop zone).
+      className={`space-y-3 rounded-lg transition-colors ${dragOver ? 'ring-2 ring-brand-navy ring-offset-2 bg-brand-navy/5' : ''}`}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
       {/* Input area */}
-      <div
-        className={`space-y-2 rounded-lg transition-colors ${dragOver ? 'ring-2 ring-brand-navy ring-offset-2 bg-brand-navy/5' : ''}`}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
-      >
+      <div className="space-y-2">
         <div className="flex gap-2">
           <button
             onClick={() => fileInputRef.current?.click()}
