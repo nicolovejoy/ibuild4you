@@ -2,6 +2,7 @@ import { getAuthenticatedUser, getAdminDb, getProjectRole, getUserDisplayName, h
 import { buildSystemPrompt } from '@/lib/agent/system-prompt'
 import { fetchPrototypeFeedback } from '@/lib/api/prototype-feedback'
 import { fetchPrototypeContext } from '@/lib/api/prototype-context'
+import { fetchPinnedArtifacts } from '@/lib/api/artifact-context'
 import { loadAttachmentBlocks, type AttachmentBlock, type DroppedAttachment } from '@/lib/agent/attachments'
 import { AGENT_MODEL, AGENT_MAX_TOKENS, AGENT_TEMPERATURE } from '@/lib/agent/constants'
 import { logAnthropicCall } from '@/lib/observability/anthropic'
@@ -324,9 +325,10 @@ async function handleChat(
   // #72: ground Sam in what the maker actually reported from the running
   // prototype (Loop feedback, keyed by slug) instead of confabulating.
   // B2 adds structural page captures alongside the text feedback.
-  const [prototypeFeedback, prototypeContext] = await Promise.all([
+  const [prototypeFeedback, prototypeContext, pinnedArtifacts] = await Promise.all([
     fetchPrototypeFeedback(db, projectData.slug as string | undefined, Date.now()),
     fetchPrototypeContext(db, projectData.slug as string | undefined, Date.now()),
+    fetchPinnedArtifacts(db, projectId),
   ])
 
   const systemPrompt = buildSystemPrompt({
@@ -344,6 +346,7 @@ async function handleChat(
     participants,
     prototypeFeedback,
     prototypeContext,
+    pinnedArtifacts,
   })
 
   // Stream response from Claude

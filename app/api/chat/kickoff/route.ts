@@ -2,6 +2,7 @@ import { getAuthenticatedUser, getAdminDb, getProjectRole, getUserDisplayName } 
 import { buildSystemPrompt } from '@/lib/agent/system-prompt'
 import { fetchPrototypeFeedback } from '@/lib/api/prototype-feedback'
 import { fetchPrototypeContext } from '@/lib/api/prototype-context'
+import { fetchPinnedArtifacts } from '@/lib/api/artifact-context'
 import { AGENT_MODEL, AGENT_MAX_TOKENS, AGENT_TEMPERATURE } from '@/lib/agent/constants'
 import { logAnthropicCall } from '@/lib/observability/anthropic'
 import { accumulateSessionUsage } from '@/lib/observability/session-cost'
@@ -221,9 +222,10 @@ export async function POST(request: Request) {
 
   // #72: ground the kickoff recap in real prototype feedback + structural
   // page captures too.
-  const [prototypeFeedback, prototypeContext] = await Promise.all([
+  const [prototypeFeedback, prototypeContext, pinnedArtifacts] = await Promise.all([
     fetchPrototypeFeedback(db, projectData.slug as string | undefined, Date.now()),
     fetchPrototypeContext(db, projectData.slug as string | undefined, Date.now()),
+    fetchPinnedArtifacts(db, projectId),
   ])
 
   const systemPrompt = buildSystemPrompt({
@@ -241,6 +243,7 @@ export async function POST(request: Request) {
     participants,
     prototypeFeedback,
     prototypeContext,
+    pinnedArtifacts,
   })
 
   // --- Stream + store the agent greeting ---
