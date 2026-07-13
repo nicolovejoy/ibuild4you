@@ -29,7 +29,7 @@ const day = (iso) => (iso || '').slice(0, 10)
 // `sessions` must already be archived-excluded and sorted oldest-first (so
 // index+1 is the conversation number for #121 decision provenance). Returns
 // markdown with a trailing newline (matches what the exporter writes to disk).
-export function renderBriefMd({ project, brief, sessions, reviews }) {
+export function renderBriefMd({ project, brief, sessions, reviews, files = [] }) {
   const slug = project.slug || project.id
   const b = []
   b.push(`# Brief: ${project.title}`)
@@ -68,6 +68,27 @@ export function renderBriefMd({ project, brief, sessions, reviews }) {
     if ((c.open_risks || []).length) {
       b.push(`\n## Open risks\n`)
       for (const r of c.open_risks) b.push(`- ${r}`)
+    }
+  }
+  if (files.length) {
+    b.push(`\n## Files & artifacts\n`)
+    // Pinned first (they're the ones builders marked as load-bearing), then by
+    // upload date. #83 fields (url/description/pinned) are additive — plain
+    // uploads render with just a name and date.
+    const sorted = [...files].sort(
+      (x, y) =>
+        (y.pinned ? 1 : 0) - (x.pinned ? 1 : 0) ||
+        (x.created_at || '').localeCompare(y.created_at || '')
+    )
+    for (const f of sorted) {
+      const parts = [`- **${f.filename || f.id}**`]
+      if (f.description) parts.push(` — ${f.description}`)
+      if (f.url) parts.push(` — ${f.url}`)
+      const meta = [f.pinned ? 'pinned' : null, f.created_at ? `added ${day(f.created_at)}` : null]
+        .filter(Boolean)
+        .join(', ')
+      if (meta) parts.push(` _(${meta})_`)
+      b.push(parts.join(''))
     }
   }
   if (reviews.some((r) => (r.annotations || []).length)) {

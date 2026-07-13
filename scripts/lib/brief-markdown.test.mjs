@@ -81,6 +81,32 @@ describe('renderBriefMd', () => {
     )
   })
 
+  it('renders a Files & artifacts section, pinned first, links with URLs', () => {
+    const files = [
+      { filename: 'notes.txt', created_at: '2026-01-02T00:00:00Z' },
+      {
+        filename: 'Pricing sheet',
+        url: 'https://example.com/sheet',
+        description: 'Source of truth for tiers',
+        pinned: true,
+        created_at: '2026-01-03T00:00:00Z',
+      },
+    ]
+    const md = renderBriefMd({ project, brief, sessions, reviews, files })
+    expect(md).toContain(
+      '\n## Files & artifacts\n\n' +
+        '- **Pricing sheet** — Source of truth for tiers — https://example.com/sheet _(pinned, added 2026-01-03)_\n' +
+        '- **notes.txt** _(added 2026-01-02)_\n'
+    )
+  })
+
+  it('omits the Files & artifacts section when files are absent or empty', () => {
+    expect(renderBriefMd({ project, brief, sessions, reviews })).not.toContain('## Files & artifacts')
+    expect(renderBriefMd({ project, brief, sessions, reviews, files: [] })).not.toContain(
+      '## Files & artifacts'
+    )
+  })
+
   it('handles no brief yet and empty features/reviews', () => {
     const md = renderBriefMd({
       project: { id: 'p2', slug: 'x', title: 'X' },

@@ -147,8 +147,8 @@ server.registerTool(
     } catch (e) {
       return asError(e.message)
     }
-    const { brief, sessions, reviews } = await loadBriefBundle(project)
-    return asText(renderBriefMd({ project, brief, sessions, reviews }))
+    const { brief, sessions, reviews, files } = await loadBriefBundle(project)
+    return asText(renderBriefMd({ project, brief, sessions, reviews, files }))
   }
 )
 

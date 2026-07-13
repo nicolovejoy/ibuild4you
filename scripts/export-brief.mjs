@@ -121,14 +121,15 @@ async function exportProject(id, data) {
   sessions.sort((a, b) => (a.created_at || '').localeCompare(b.created_at || ''))
 
   const reviews = reviewSnap.docs.map((d) => ({ id: d.id, ...d.data() }))
-  const fileNames = new Map(fileSnap.docs.map((d) => [d.id, d.data().filename || d.id]))
+  const files = fileSnap.docs.map((d) => ({ id: d.id, ...d.data() }))
+  const fileNames = new Map(files.map((f) => [f.id, f.filename || f.id]))
 
   const outDir = join(OUT_ROOT, slug)
   if (existsSync(outDir)) rmSync(outDir, { recursive: true }) // stale files from removed sessions
   mkdirSync(outDir, { recursive: true })
 
   // brief.md
-  writeFileSync(join(outDir, 'brief.md'), renderBriefMd({ project, brief, sessions, reviews }))
+  writeFileSync(join(outDir, 'brief.md'), renderBriefMd({ project, brief, sessions, reviews, files }))
   console.log(`wrote ${join(outDir, 'brief.md')}`)
 
   // session-NN.md — one per conversation, oldest first
