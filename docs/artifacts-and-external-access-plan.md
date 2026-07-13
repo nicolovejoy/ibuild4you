@@ -1,9 +1,16 @@
-# #83 artifacts + #133 external access: plan (PROPOSED 2026-07-12)
+# #83 artifacts + #133 external access: plan (DECIDED 2026-07-12)
 
 One plan, two issues, because they interlock: #133's external reader should see
 artifacts, so #83's schema must carry what an outside agent needs (`source`,
 `description`, `url`). Build order is #133 first (small, independent), then #83
-phases. Target: one Opus build session (two if Phase C makes the cut).
+phases. Build session may run on Fable (Nico has token headroom) — Opus also fine.
+
+All three open questions ANSWERED 2026-07-12: (1) UI label stays "Files"
+everywhere; (2) Phase C is IN scope (last, still the first thing to cut if the
+session runs long); (3) registration via checked-in `.mcp.json` in the
+consumer repos — structural isolation + self-documentation beat the committed
+absolute path in solo repos (swap to `claude mcp add --scope local` later if
+it ever bothers).
 
 ## Decisions already made (context for the builder)
 
@@ -208,13 +215,6 @@ Phase C gives it a reason. Default if undecided: leave every label alone.
 3. #83 Phase B + the #133/`export-brief` artifacts follow-through. **PR 3.**
 4. Phase C only if 1–3 land with room to spare (or its own later session).
 
-## Open questions (answer before the build session)
+## Open questions
 
-1. **UI naming** — keep "Files" everywhere for now (my default), or rename the
-   builder-side label to "Artifacts" already in Phase A?
-2. **Phase C in scope?** Save-wireframe-as-artifact is the first agent-produced
-   artifact and makes the "Artifacts" story real, but it's cuttable. In the
-   Opus session or parked?
-3. **MCP registration** — checked-in `.mcp.json` in byside/prntd (my default;
-   no secrets in it, absolute paths acceptable for a this-machine tool), or
-   your global `~/.claude` config instead?
+None — all three answered 2026-07-12 (see header). Build from this doc as-is.
