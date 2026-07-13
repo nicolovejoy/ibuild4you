@@ -460,4 +460,32 @@ describe('buildSystemPrompt', () => {
     const result = buildSystemPrompt({ ...minimalInput, sessionNumber: 1 })
     expect(result).toContain("their developer will build from")
   })
+
+  // ---------------------------------------------------------------------------
+  // Quick choices via ```options blocks (#131)
+  // ---------------------------------------------------------------------------
+
+  it('teaches the options-block convention in both modes', () => {
+    const discover = buildSystemPrompt(minimalInput)
+    const converge = buildSystemPrompt({ ...minimalInput, sessionMode: 'converge' })
+    for (const prompt of [discover, converge]) {
+      expect(prompt).toContain('## Offering quick choices')
+      expect(prompt).toContain('```options')
+      // Chips must never replace free typing.
+      expect(prompt).toContain('They can always type their own answer instead')
+    }
+  })
+
+  // ---------------------------------------------------------------------------
+  // Frustration-adaptive rule (#132)
+  // ---------------------------------------------------------------------------
+
+  it('guardrails include the frustration rule in both modes', () => {
+    const discover = buildSystemPrompt(minimalInput)
+    const converge = buildSystemPrompt({ ...minimalInput, sessionMode: 'converge' })
+    for (const prompt of [discover, converge]) {
+      expect(prompt).toContain('If they sound frustrated')
+      expect(prompt).toContain('offer to wrap up')
+    }
+  })
 })

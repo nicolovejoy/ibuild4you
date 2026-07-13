@@ -83,4 +83,63 @@ describe('parseMessageContent', () => {
     expect(segments[0].type).toBe('wireframe')
     expect(segments[1].type).toBe('text')
   })
+
+  // --- options blocks (#131) ---
+
+  it('parses an options block into a string array', () => {
+    const content = 'Which way do you lean?\n\n```options\n["Pickup", "Delivery", "Both"]\n```'
+    const { segments, hasIncompleteBlock } = parseMessageContent(content)
+    expect(segments).toHaveLength(2)
+    expect(segments[0]).toEqual({ type: 'text', content: 'Which way do you lean?\n\n' })
+    expect(segments[1].type).toBe('options')
+    if (segments[1].type === 'options') {
+      expect(segments[1].parsed).toEqual(['Pickup', 'Delivery', 'Both'])
+    }
+    expect(hasIncompleteBlock).toBe(false)
+  })
+
+  it('rejects an options block that is not an array of strings', () => {
+    const content = '```options\n{"a": 1}\n```'
+    const { segments } = parseMessageContent(content)
+    expect(segments[0].type).toBe('options')
+    if (segments[0].type === 'options') {
+      expect(segments[0].parsed).toBeNull()
+      expect(segments[0].raw).toBe('{"a": 1}')
+    }
+  })
+
+  it('rejects options with non-string or empty entries', () => {
+    const bad = ['```options\n["A", 2]\n```', '```options\n["A", ""]\n```', '```options\n[]\n```']
+    for (const content of bad) {
+      const { segments } = parseMessageContent(content)
+      expect(segments[0].type).toBe('options')
+      if (segments[0].type === 'options') {
+        expect(segments[0].parsed).toBeNull()
+      }
+    }
+  })
+
+  it('handles malformed JSON in an options block', () => {
+    const content = '```options\n[not json\n```'
+    const { segments } = parseMessageContent(content)
+    expect(segments[0].type).toBe('options')
+    if (segments[0].type === 'options') {
+      expect(segments[0].parsed).toBeNull()
+    }
+  })
+
+  it('detects an incomplete options block (streaming in progress)', () => {
+    const content = 'Pick one:\n\n```options\n["Pick'
+    const { segments, hasIncompleteBlock } = parseMessageContent(content)
+    expect(hasIncompleteBlock).toBe(true)
+    expect(segments).toHaveLength(1)
+    expect(segments[0]).toEqual({ type: 'text', content: 'Pick one:\n\n' })
+  })
+
+  it('handles a wireframe and an options block in the same message', () => {
+    const content =
+      '```wireframe\n{"title":"A","sections":[]}\n```\n\nLike this?\n\n```options\n["Yes", "No"]\n```'
+    const { segments } = parseMessageContent(content)
+    expect(segments.map((s) => s.type)).toEqual(['wireframe', 'text', 'options'])
+  })
 })

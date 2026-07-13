@@ -315,15 +315,20 @@ function MakerChat({
     }
   }, [addFiles])
 
-  const handleSend = async () => {
-    const hasText = !!input.trim()
-    const hasFiles = pendingFiles.length > 0
+  // overrideText: a tapped option chip (#131) sends its label as the message
+  // without touching the composer — typed text and staged files stay put.
+  const handleSend = async (overrideText?: string) => {
+    const hasText = overrideText ? true : !!input.trim()
+    const hasFiles = overrideText ? false : pendingFiles.length > 0
     if ((!hasText && !hasFiles) || streaming || creatingSession || uploading) return
 
-    const userMessage = input.trim()
-    setInput('')
-    const filesToUpload = [...pendingFiles]
-    setPendingFiles([])
+    const userMessage = overrideText ?? input.trim()
+    let filesToUpload: File[] = []
+    if (!overrideText) {
+      setInput('')
+      filesToUpload = [...pendingFiles]
+      setPendingFiles([])
+    }
     setError(null)
 
     // Auto-create session if none active
@@ -339,7 +344,7 @@ function MakerChat({
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to start session')
         setCreatingSession(false)
-        setPendingFiles(filesToUpload) // restore files
+        if (!overrideText) setPendingFiles(filesToUpload) // restore files
         return
       }
       setCreatingSession(false)
@@ -489,7 +494,7 @@ function MakerChat({
             className="flex-1 resize-none px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy disabled:bg-gray-50 disabled:text-gray-400"
           />
           <button
-            onClick={handleSend}
+            onClick={() => handleSend()}
             disabled={!canSend}
             className="p-2.5 bg-brand-navy text-white rounded-lg hover:bg-brand-navy-light disabled:bg-brand-slate disabled:cursor-not-allowed transition-colors"
           >
@@ -529,7 +534,12 @@ function MakerChat({
         </div>
       ) : (
         <div className="space-y-3">
-          {displayMessages.map((msg, i) => (
+          {displayMessages.map((msg, i) => {
+            // Option chips (#131) are tappable only on the newest message, and
+            // only when it's an agent turn the maker hasn't answered yet.
+            // Older messages render their chips as a static, muted list.
+            const chipsActive = i === 0 && msg.role === 'agent' && !streaming && !creatingSession && !uploading
+            return (
             <div key={msg.id || i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
               <div className={`max-w-[80%] rounded-lg px-4 py-2.5 ${
                 msg.role === 'user'
@@ -551,10 +561,16 @@ function MakerChat({
                     })}
                   </div>
                 )}
-                {msg.content && <MessageContent content={msg.content} />}
+                {msg.content && (
+                  <MessageContent
+                    content={msg.content}
+                    onOptionSelect={chipsActive ? (option) => handleSend(option) : undefined}
+                  />
+                )}
               </div>
             </div>
-          ))}
+            )
+          })}
         </div>
       )}
     </div>
