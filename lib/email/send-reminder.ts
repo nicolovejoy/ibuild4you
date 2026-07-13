@@ -1,6 +1,7 @@
 import { Resend } from 'resend'
 import { NOTIFICATION_EMAILS } from '@/lib/constants'
 import { copy } from '@/lib/copy'
+import { buildReminderEmail, type MakerBatch } from '@/lib/email/reminder-digest'
 
 // Sends the auto-reminder email for a project. Used by the daily cron at
 // /api/cron/maker-reminders. To: maker, BCC: builder (NOTIFICATION_EMAILS),
@@ -77,6 +78,51 @@ export async function sendReminderEmail(input: SendReminderInput): Promise<SendR
   const { data, error } = await resend.emails.send({
     from: FROM,
     to: [input.makerEmail],
+    bcc: NOTIFICATION_EMAILS,
+    replyTo: REPLY_TO,
+    subject,
+    text,
+  })
+
+  if (error) {
+    throw new Error(`Resend error: ${error.name} — ${error.message}`)
+  }
+
+  return { emailId: data?.id || 'unknown', dryRun: false }
+}
+
+// Send ONE reminder email for a maker's whole batch of pending briefs (#141).
+// Single-brief batches render identically to sendReminderEmail; multi-brief
+// batches collapse into one digest so a maker on N briefs gets 1 email, not N.
+// Same FROM/REPLY_TO/BCC + REMINDER_DRY_RUN handling as sendReminderEmail.
+export async function sendReminderDigest(batch: MakerBatch): Promise<SendReminderResult> {
+  const { subject, text } = buildReminderEmail(batch)
+  const dryRun = process.env.REMINDER_DRY_RUN === 'true'
+  const projectIds = batch.items.map((i) => i.projectId)
+
+  if (dryRun) {
+    console.log(
+      JSON.stringify({
+        event: 'reminder_email_dry_run',
+        project_ids: projectIds,
+        to: batch.email,
+        bcc: NOTIFICATION_EMAILS,
+        subject,
+        brief_count: batch.items.length,
+        text_preview: text.slice(0, 200),
+      }),
+    )
+    return { emailId: 'dry-run', dryRun: true }
+  }
+
+  if (!process.env.RESEND_API_KEY) {
+    throw new Error('RESEND_API_KEY is not configured')
+  }
+
+  const resend = new Resend(process.env.RESEND_API_KEY)
+  const { data, error } = await resend.emails.send({
+    from: FROM,
+    to: [batch.email],
     bcc: NOTIFICATION_EMAILS,
     replyTo: REPLY_TO,
     subject,

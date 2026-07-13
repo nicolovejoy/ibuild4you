@@ -1,11 +1,22 @@
 import { NextResponse } from 'next/server'
 import { getAdminDb } from '@/lib/api/firebase-server-helpers'
 import { decideReminder } from '@/lib/api/reminder-cadence'
-import { sendReminderEmail } from '@/lib/email/send-reminder'
+import { sendReminderDigest } from '@/lib/email/send-reminder'
+import { groupReminderSends, type PendingReminder } from '@/lib/email/reminder-digest'
 
 // Daily cron (see vercel.json — "0 16 * * *" = 09:00 PT in summer).
 // For each project that's opted in to auto-reminders, check the cadence
 // (2d → 5d → 10d, cap at 3 per maker-engagement cycle) and email the maker.
+//
+// Two passes (#141): pass 1 decides every candidate; pass 2 groups the pending
+// sends by maker email and sends ONE email per maker (a maker on N briefs used
+// to get N near-identical emails in a single cron run). Counters + one
+// reminder_log row are still tracked PER PROJECT — the batch shares one
+// email_id, which is the batch marker /admin/reminders reads.
+//
+// Known limitation: targeting reads project.requester_email only, so additional
+// makers on multi-maker briefs don't get cron reminders (that's the #115
+// fan-out surface — deliberately out of scope here).
 //
 // Maker activity in /api/chat resets the cycle (reminders_sent_count=0,
 // last_reminder_sent_at=null) so the next prepped session starts fresh.
@@ -82,6 +93,17 @@ export async function GET(request: Request) {
     }
   }
 
+  // Pass 1: decide every candidate. Skips/errors are recorded immediately;
+  // pending sends are collected (with the per-project bookkeeping the send pass
+  // needs) so they can be grouped by maker before sending.
+  type Bookkeeping = {
+    docRef: (typeof candidates.docs)[number]['ref']
+    prevCount: number
+    daysSinceLastTouch: number
+  }
+  const pending: PendingReminder[] = []
+  const bookkeeping = new Map<string, Bookkeeping>()
+
   for (const doc of candidates.docs) {
     const project = doc.data()
     const projectId = doc.id
@@ -114,36 +136,19 @@ export async function GET(request: Request) {
       }
 
       const slug = (project.slug as string) || projectId
-      const result = await sendReminderEmail({
+      pending.push({
+        projectId,
         makerEmail: project.requester_email as string,
         makerFirstName: (project.requester_first_name as string | undefined) || null,
         projectTitle: (project.title as string) || 'Untitled project',
-        projectId,
         shareLink: `https://ibuild4you.com/projects/${slug}`,
-        reminderNumber: decision.reminderNumber,
         sessionNumber: (project.session_count as number | undefined) ?? null,
+        reminderNumber: decision.reminderNumber,
       })
-
-      // Only a REAL send advances the cadence. In dry-run we log the
-      // would-send but leave reminders_sent_count / last_reminder_sent_at
-      // untouched — otherwise dry-run would silently consume a real maker's
-      // 3-reminder budget before we ever flip live.
-      if (!result.dryRun) {
-        const prevCount = (project.reminders_sent_count as number | undefined) ?? 0
-        await doc.ref.update({
-          reminders_sent_count: prevCount + 1,
-          last_reminder_sent_at: nowIso,
-          updated_at: nowIso,
-        })
-      }
-
-      await record(projectId, makerEmail, {
-        decision: result.dryRun ? 'would_send' : 'sent',
-        reason: null,
-        reminder_number: decision.reminderNumber,
-        days_since_last_touch: decision.daysSinceLastTouch,
-        email_id: result.emailId,
-        dry_run: result.dryRun,
+      bookkeeping.set(projectId, {
+        docRef: doc.ref,
+        prevCount: (project.reminders_sent_count as number | undefined) ?? 0,
+        daysSinceLastTouch: decision.daysSinceLastTouch,
       })
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
@@ -159,11 +164,66 @@ export async function GET(request: Request) {
     }
   }
 
+  // Pass 2: one email per maker. A batch shares a single email_id across its
+  // projects; each project still advances its own cadence + logs its own row.
+  let emailsDispatched = 0
+  for (const batch of groupReminderSends(pending)) {
+    let result: { emailId: string; dryRun: boolean }
+    try {
+      result = await sendReminderDigest(batch)
+    } catch (err) {
+      // A failed batch send fails every project in it — none advance.
+      const message = err instanceof Error ? err.message : String(err)
+      console.error(
+        `[cron/maker-reminders] batch send failed for ${batch.email}:`,
+        message,
+      )
+      for (const item of batch.items) {
+        const bk = bookkeeping.get(item.projectId)
+        await record(item.projectId, item.makerEmail, {
+          decision: 'error',
+          reason: message,
+          reminder_number: item.reminderNumber,
+          days_since_last_touch: bk?.daysSinceLastTouch ?? null,
+          email_id: null,
+          dry_run: false,
+        })
+      }
+      continue
+    }
+
+    if (!result.dryRun) emailsDispatched++
+
+    for (const item of batch.items) {
+      const bk = bookkeeping.get(item.projectId)
+      // Only a REAL send advances the cadence. In dry-run we log the would-send
+      // but leave the counters untouched — otherwise dry-run would silently
+      // consume a real maker's 3-reminder budget before we ever flip live.
+      if (!result.dryRun && bk) {
+        await bk.docRef.update({
+          reminders_sent_count: bk.prevCount + 1,
+          last_reminder_sent_at: nowIso,
+          updated_at: nowIso,
+        })
+      }
+      await record(item.projectId, item.makerEmail, {
+        decision: result.dryRun ? 'would_send' : 'sent',
+        reason: null,
+        reminder_number: item.reminderNumber,
+        days_since_last_touch: bk?.daysSinceLastTouch ?? null,
+        email_id: result.emailId,
+        dry_run: result.dryRun,
+      })
+    }
+  }
+
   // Aggregate counts for the response (the per-project array is useful in
-  // logs but noisy in the cron-run summary).
+  // logs but noisy in the cron-run summary). `emails` = distinct emails
+  // actually dispatched (< `sent` when makers share briefs).
   const summary = {
     candidates: candidates.size,
     sent: outcomes.filter((o) => o.decision === 'sent').length,
+    emails: emailsDispatched,
     would_send: outcomes.filter((o) => o.decision === 'would_send').length,
     skipped: outcomes.filter((o) => o.decision === 'skipped').length,
     errors: outcomes.filter((o) => o.decision === 'error').length,

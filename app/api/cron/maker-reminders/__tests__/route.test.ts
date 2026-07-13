@@ -31,10 +31,12 @@ vi.mock('@/lib/api/firebase-server-helpers', () => ({
   getAdminDb: () => ({ collection: mockCollection }),
 }))
 
-const mockSendReminder = vi.fn(async () => ({ emailId: 'em_1', dryRun: false }))
+const mockSendDigest = vi.fn(
+  async (_batch: unknown) => ({ emailId: 'em_1', dryRun: false }),
+)
 vi.mock('@/lib/email/send-reminder', () => ({
-  sendReminderEmail: (...args: unknown[]) =>
-    mockSendReminder(...(args as Parameters<typeof mockSendReminder>)),
+  sendReminderDigest: (...args: unknown[]) =>
+    mockSendDigest(...(args as Parameters<typeof mockSendDigest>)),
 }))
 
 import { GET } from '../route'
@@ -65,8 +67,8 @@ function makeReq() {
 describe('GET /api/cron/maker-reminders', () => {
   beforeEach(() => {
     mockProjects = []
-    mockSendReminder.mockClear()
-    mockSendReminder.mockResolvedValue({ emailId: 'em_1', dryRun: false })
+    mockSendDigest.mockClear()
+    mockSendDigest.mockResolvedValue({ emailId: 'em_1', dryRun: false })
     mockReminderLogAdd.mockClear()
     mockCollection.mockClear()
     process.env.CRON_SECRET = 'test-secret'
@@ -76,7 +78,7 @@ describe('GET /api/cron/maker-reminders', () => {
     const req = new Request('http://localhost/api/cron/maker-reminders')
     const res = await GET(req)
     expect(res.status).toBe(401)
-    expect(mockSendReminder).not.toHaveBeenCalled()
+    expect(mockSendDigest).not.toHaveBeenCalled()
   })
 
   it('sends reminder #1 when a project is past the 2-day cadence', async () => {
@@ -86,7 +88,7 @@ describe('GET /api/cron/maker-reminders', () => {
     const res = await GET(makeReq())
     const body = await res.json()
 
-    expect(mockSendReminder).toHaveBeenCalledOnce()
+    expect(mockSendDigest).toHaveBeenCalledOnce()
     expect(body.sent).toBe(1)
     expect(body.skipped).toBe(0)
 
@@ -130,7 +132,7 @@ describe('GET /api/cron/maker-reminders', () => {
     const res = await GET(makeReq())
     const body = await res.json()
 
-    expect(mockSendReminder).not.toHaveBeenCalled()
+    expect(mockSendDigest).not.toHaveBeenCalled()
     expect(body.sent).toBe(0)
     expect(body.skipped).toBe(1)
     expect(body.outcomes[0].reason).toBe('cap_reached')
@@ -147,16 +149,26 @@ describe('GET /api/cron/maker-reminders', () => {
     const res = await GET(makeReq())
     const body = await res.json()
 
-    expect(mockSendReminder).not.toHaveBeenCalled()
+    expect(mockSendDigest).not.toHaveBeenCalled()
     expect(body.outcomes[0].reason).toBe('maker_already_responded')
   })
 
-  it('continues to the next project when one project fails to send', async () => {
-    const failing = makeProject({ id: 'p_fail', latest_session_created_at: day(3) })
-    const ok = makeProject({ id: 'p_ok', latest_session_created_at: day(3) })
+  it('continues to the next maker when one batch fails to send', async () => {
+    // Distinct emails → two batches, so one failing send doesn't block the other.
+    const failing = makeProject({
+      id: 'p_fail',
+      requester_email: 'fail@example.com',
+      latest_session_created_at: day(3),
+    })
+    const ok = makeProject({
+      id: 'p_ok',
+      requester_email: 'ok@example.com',
+      latest_session_created_at: day(3),
+    })
     mockProjects = [failing, ok]
 
-    mockSendReminder
+    // Batches are ordered by email: fail@ before ok@.
+    mockSendDigest
       .mockRejectedValueOnce(new Error('Resend exploded'))
       .mockResolvedValueOnce({ emailId: 'em_ok', dryRun: false })
 
@@ -165,15 +177,40 @@ describe('GET /api/cron/maker-reminders', () => {
 
     expect(body.errors).toBe(1)
     expect(body.sent).toBe(1)
-    // the failing project should NOT have its count incremented
+    // the failing batch's project should NOT have its count incremented
     expect(failing.ref.update).not.toHaveBeenCalled()
     expect(ok.ref.update).toHaveBeenCalled()
+  })
+
+  it('sends ONE email for two briefs sharing a maker email, advancing both', async () => {
+    const a = makeProject({ id: 'p_a', title: 'Brief A', latest_session_created_at: day(3) })
+    const b = makeProject({ id: 'p_b', title: 'Brief B', latest_session_created_at: day(3) })
+    mockProjects = [a, b]
+
+    const res = await GET(makeReq())
+    const body = await res.json()
+
+    // Both briefs share maker@example.com → exactly one send call.
+    expect(mockSendDigest).toHaveBeenCalledOnce()
+    const batch = mockSendDigest.mock.calls[0][0] as { email: string; items: unknown[] }
+    expect(batch.email).toBe('maker@example.com')
+    expect(batch.items).toHaveLength(2)
+
+    // But each project advances its own counter + logs its own row.
+    expect(a.ref.update).toHaveBeenCalledOnce()
+    expect(b.ref.update).toHaveBeenCalledOnce()
+    expect(body.sent).toBe(2)
+    expect(body.emails).toBe(1)
+    expect(mockReminderLogAdd).toHaveBeenCalledTimes(2)
+    // Both log rows carry the SAME email_id (the batch marker).
+    const ids = mockReminderLogAdd.mock.calls.map((c) => c[0].email_id)
+    expect(ids).toEqual(['em_1', 'em_1'])
   })
 
   it('records a would_send in dry-run WITHOUT advancing the cadence counters', async () => {
     const proj = makeProject({ latest_session_created_at: day(3) })
     mockProjects = [proj]
-    mockSendReminder.mockResolvedValueOnce({ emailId: 'dry-run', dryRun: true })
+    mockSendDigest.mockResolvedValueOnce({ emailId: 'dry-run', dryRun: true })
 
     const res = await GET(makeReq())
     const body = await res.json()
