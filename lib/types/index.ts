@@ -139,6 +139,7 @@ export interface Message extends BaseEntity {
   sender_email?: string // who sent this message (for user messages)
   sender_display_name?: string // cached display name at write time
   file_ids?: string[] // attached file IDs
+  rating?: 'up' | 'down' | null // maker's 👍/👎 on an agent message (#130)
 }
 
 // Files collection — uploaded files within a project

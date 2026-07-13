@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { NextResponse } from 'next/server'
-import { GET, DELETE } from '../route'
+import { GET, DELETE, PATCH } from '../route'
 
 // =============================================================================
 // MESSAGE ROUTE TESTS
@@ -23,6 +23,7 @@ import { GET, DELETE } from '../route'
 
 const mockGetProjectRole = vi.fn()
 const mockDelete = vi.fn(async () => {})
+const mockUpdate = vi.fn(async () => {})
 
 // Data returned by doc(id).get() — keyed by collection name
 let docData: Record<string, { exists: boolean; data: () => Record<string, unknown> }>
@@ -44,6 +45,7 @@ const mockCollection = vi.fn((name: string) => {
     doc: vi.fn(() => ({
       get: vi.fn(async () => docData[lastCollection] || { exists: false }),
       delete: mockDelete,
+      update: mockUpdate,
     })),
   }
 })
@@ -172,5 +174,86 @@ describe('DELETE /api/messages', () => {
     expect(data.deleted).toBe(true)
     expect(data.message_id).toBe('m1')
     expect(mockDelete).toHaveBeenCalledTimes(1)
+  })
+})
+
+// PATCH /api/messages — maker rates an agent message (#130). Any member may
+// rate; only agent messages are ratable; rating is up | down | null (clear).
+describe('PATCH /api/messages', () => {
+  const patchReq = (body: unknown) =>
+    new Request('http://localhost/api/messages', { method: 'PATCH', body: JSON.stringify(body) })
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockGetProjectRole.mockResolvedValue('maker')
+    docData = {
+      messages: {
+        exists: true,
+        data: () => ({ session_id: 'session-1', role: 'agent', content: 'Hello' }),
+      },
+      sessions: {
+        exists: true,
+        data: () => ({ project_id: 'proj1' }),
+      },
+    }
+  })
+
+  it('returns 400 when message_id is missing', async () => {
+    const res = await PATCH(patchReq({ rating: 'up' }))
+    expect(res.status).toBe(400)
+  })
+
+  it('returns 400 on an invalid rating value', async () => {
+    const res = await PATCH(patchReq({ message_id: 'm1', rating: 'meh' }))
+    expect(res.status).toBe(400)
+  })
+
+  it('returns 400 on invalid JSON body', async () => {
+    const req = new Request('http://localhost/api/messages', { method: 'PATCH', body: 'not json' })
+    const res = await PATCH(req)
+    expect(res.status).toBe(400)
+  })
+
+  it('returns 404 when message does not exist', async () => {
+    docData = { ...docData, messages: { exists: false, data: () => ({}) } }
+    const res = await PATCH(patchReq({ message_id: 'm1', rating: 'up' }))
+    expect(res.status).toBe(404)
+  })
+
+  it('returns 404 when user has no role on the project', async () => {
+    mockGetProjectRole.mockResolvedValue(null)
+    const res = await PATCH(patchReq({ message_id: 'm1', rating: 'up' }))
+    expect(res.status).toBe(404)
+  })
+
+  it('returns 400 when rating a user message', async () => {
+    docData = {
+      ...docData,
+      messages: { exists: true, data: () => ({ session_id: 'session-1', role: 'user', content: 'Hi' }) },
+    }
+    const res = await PATCH(patchReq({ message_id: 'm1', rating: 'up' }))
+    expect(res.status).toBe(400)
+  })
+
+  it('makers can rate an agent message up', async () => {
+    const res = await PATCH(patchReq({ message_id: 'm1', rating: 'up' }))
+    expect(res.status).toBe(200)
+    const data = await res.json()
+    expect(data).toEqual({ message_id: 'm1', rating: 'up' })
+    expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({ rating: 'up' }))
+  })
+
+  it('rating down works too', async () => {
+    const res = await PATCH(patchReq({ message_id: 'm1', rating: 'down' }))
+    expect(res.status).toBe(200)
+    expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({ rating: 'down' }))
+  })
+
+  it('null clears the rating', async () => {
+    const res = await PATCH(patchReq({ message_id: 'm1', rating: null }))
+    expect(res.status).toBe(200)
+    const data = await res.json()
+    expect(data).toEqual({ message_id: 'm1', rating: null })
+    expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({ rating: null }))
   })
 })
