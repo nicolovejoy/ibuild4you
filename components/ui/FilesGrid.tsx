@@ -301,7 +301,7 @@ function FileCard({
             e.stopPropagation()
             if (canManage) onTogglePin()
           }}
-          aria-label={file.pinned ? 'Unpin' : 'Pin'}
+          aria-label={file.pinned ? 'Unpin artifact' : 'Pin artifact'}
           disabled={!canManage}
           className={`absolute top-1.5 right-1.5 z-10 p-1 rounded-full bg-white/80 backdrop-blur-sm ${
             file.pinned ? 'text-amber-500' : 'text-gray-300 opacity-0 group-hover:opacity-100'
