@@ -2,6 +2,7 @@ import { AGENT_BEHAVIOR_RULES, CONVERGE_BEHAVIOR_RULES, DEFAULT_IDENTITY } from 
 import { briefRoleLabel } from '@/lib/roles/display'
 import { renderPrototypeFeedbackBlock, type PrototypeFeedbackItem } from './prototype-feedback'
 import { renderPrototypeContextBlock, type PrototypeContextItem } from './prototype-context'
+import { renderArtifactContextBlock, type ArtifactContextItem } from './artifact-context'
 import type { BriefContent, BriefRole, WireframeMockup } from '@/lib/types'
 
 // Maker name and gap-since-last-message are read live per request (not
@@ -28,6 +29,9 @@ interface SystemPromptInput {
   // #72 B2: structural page captures (route/title/headings/control labels)
   // taken from the maker's own browser via the Loop widget.
   prototypeContext?: PrototypeContextItem[]
+  // #83 B: pinned artifacts (files + links) on this brief — names + descriptions
+  // only, so Sam knows they exist without claiming to have read them.
+  pinnedArtifacts?: ArtifactContextItem[]
 }
 
 const ONE_HOUR_MS = 60 * 60 * 1000
@@ -40,7 +44,7 @@ function humanizeGap(ms: number): string {
   return 'over a week'
 }
 
-export function buildSystemPrompt({ briefContent, projectContext, sessionNumber, seedQuestions, builderDirectives, sessionMode, layoutMockups, identity, makerFirstName, makerLastName, gapSinceLastMakerMessageMs, participants, prototypeFeedback, prototypeContext }: SystemPromptInput): string {
+export function buildSystemPrompt({ briefContent, projectContext, sessionNumber, seedQuestions, builderDirectives, sessionMode, layoutMockups, identity, makerFirstName, makerLastName, gapSinceLastMakerMessageMs, participants, prototypeFeedback, prototypeContext, pinnedArtifacts }: SystemPromptInput): string {
   const parts: string[] = []
 
   parts.push(identity || DEFAULT_IDENTITY)
@@ -192,6 +196,11 @@ ${formatBrief(briefContent)}
 
   if (prototypeContext && prototypeContext.length > 0) {
     const block = renderPrototypeContextBlock(prototypeContext)
+    if (block) parts.push(block)
+  }
+
+  if (pinnedArtifacts && pinnedArtifacts.length > 0) {
+    const block = renderArtifactContextBlock(pinnedArtifacts)
     if (block) parts.push(block)
   }
 
