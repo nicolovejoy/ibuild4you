@@ -1,10 +1,31 @@
 'use client'
 
 import { useState } from 'react'
-import { FileIcon, Image, Download, Trash2, Folder, Pencil, Check, X } from 'lucide-react'
-import { useFileUrl, useDeleteFile, useRenameFolder, useDeleteFolder, useMoveFile } from '@/lib/query/hooks'
+import {
+  FileIcon,
+  Image,
+  Download,
+  Trash2,
+  Folder,
+  Pencil,
+  Check,
+  X,
+  Star,
+  Link2,
+  ExternalLink,
+} from 'lucide-react'
+import {
+  useFileUrl,
+  useDeleteFile,
+  useRenameFolder,
+  useDeleteFolder,
+  useMoveFile,
+  useUpdateFileMeta,
+} from '@/lib/query/hooks'
 import { apiFetch } from '@/lib/firebase/api-fetch'
 import { groupFilesByFolder, validateFolderName } from '@/lib/files/folders'
+import { partitionPinned, isLinked } from '@/lib/files/artifacts'
+import { StatusMessage } from './StatusMessage'
 import { Modal } from './Modal'
 import type { ProjectFile, FileFolder } from '@/lib/types'
 
@@ -17,11 +38,13 @@ export function FilesGrid({
   files: ProjectFile[]
   folders?: FileFolder[]
   canDelete?: boolean
-  // Folder rename/delete + moving files. Builder+ console only — the server
-  // enforces the same gate regardless.
+  // Folder rename/delete + moving/pinning/describing files. Builder+ console
+  // only — the server enforces the same gate regardless.
   canManage?: boolean
 }) {
   const [selectedFile, setSelectedFile] = useState<ProjectFile | null>(null)
+  const [pinError, setPinError] = useState<string | null>(null)
+  const updateMeta = useUpdateFileMeta()
 
   if (files.length === 0 && folders.length === 0) {
     return (
@@ -32,19 +55,56 @@ export function FilesGrid({
     )
   }
 
-  const { sections, unfiled } = groupFilesByFolder(files, folders)
+  // Pinned artifacts surface in their own section at the top and drop out of
+  // their folder/unfiled group, so they aren't shown twice.
+  const { pinned, rest } = partitionPinned(files)
+  const { sections, unfiled } = groupFilesByFolder(rest, folders)
+
+  const togglePin = async (file: ProjectFile) => {
+    setPinError(null)
+    try {
+      await updateMeta.mutateAsync({
+        fileId: file.id,
+        projectId: file.project_id,
+        pinned: !file.pinned,
+      })
+    } catch (err) {
+      setPinError(err instanceof Error ? err.message : 'Could not update pin')
+    }
+  }
 
   const grid = (items: ProjectFile[]) => (
     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
       {items.map((file) => (
-        <FileCard key={file.id} file={file} onClick={() => setSelectedFile(file)} />
+        <FileCard
+          key={file.id}
+          file={file}
+          canManage={canManage}
+          onClick={() => setSelectedFile(file)}
+          onTogglePin={() => togglePin(file)}
+        />
       ))}
     </div>
   )
 
   return (
     <>
+      {pinError && (
+        <div className="mb-3">
+          <StatusMessage type="error" message={pinError} onDismiss={() => setPinError(null)} />
+        </div>
+      )}
       <div className="space-y-5">
+        {pinned.length > 0 && (
+          <div className="space-y-2">
+            <p className="flex items-center gap-1.5 text-sm font-medium text-gray-600">
+              <Star className="h-4 w-4 text-amber-500" fill="currentColor" />
+              Pinned
+            </p>
+            {grid(pinned)}
+          </div>
+        )}
+
         {sections.map(({ folder, files: folderFiles }) => (
           <div key={folder.id} className="space-y-2">
             <FolderHeader folder={folder} count={folderFiles.length} canManage={canManage} />
@@ -58,7 +118,7 @@ export function FilesGrid({
 
         {unfiled.length > 0 && (
           <div className="space-y-2">
-            {sections.length > 0 && (
+            {(sections.length > 0 || pinned.length > 0) && (
               <p className="text-sm font-medium text-gray-500">Unfiled</p>
             )}
             {grid(unfiled)}
@@ -209,8 +269,19 @@ function FolderHeader({
   )
 }
 
-function FileCard({ file, onClick }: { file: ProjectFile; onClick: () => void }) {
-  const isImage = file.content_type.startsWith('image/')
+function FileCard({
+  file,
+  canManage,
+  onClick,
+  onTogglePin,
+}: {
+  file: ProjectFile
+  canManage: boolean
+  onClick: () => void
+  onTogglePin: () => void
+}) {
+  const linked = isLinked(file)
+  const isImage = !linked && !!file.content_type?.startsWith('image/')
   const { data: url } = useFileUrl(isImage ? file.id : undefined)
 
   const date = new Date(file.created_at).toLocaleDateString('en-US', {
@@ -218,25 +289,48 @@ function FileCard({ file, onClick }: { file: ProjectFile; onClick: () => void })
     day: 'numeric',
   })
 
+  // The star shows for pinned files always (so makers see the badge) and on
+  // hover for builders on unpinned files (a quick-pin affordance).
+  const showStar = file.pinned || canManage
+
   return (
-    <button
-      onClick={onClick}
-      className="group bg-white rounded-lg border border-gray-200 overflow-hidden hover:border-gray-300 hover:shadow-sm transition-all text-left"
-    >
-      <div className="aspect-square bg-gray-50 flex items-center justify-center overflow-hidden">
-        {isImage && url ? (
-          <img src={url} alt={file.filename} className="w-full h-full object-cover" />
-        ) : (
-          <FileIcon className="h-8 w-8 text-gray-300" />
-        )}
-      </div>
-      <div className="p-2">
-        <p className="text-xs font-medium text-gray-700 truncate">{file.filename}</p>
-        <p className="text-[10px] text-gray-400 mt-0.5">
-          {file.uploaded_by_name || file.uploaded_by_email.split('@')[0]} &middot; {date}
-        </p>
-      </div>
-    </button>
+    <div className="group relative bg-white rounded-lg border border-gray-200 overflow-hidden hover:border-gray-300 hover:shadow-sm transition-all">
+      {showStar && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            if (canManage) onTogglePin()
+          }}
+          aria-label={file.pinned ? 'Unpin artifact' : 'Pin artifact'}
+          disabled={!canManage}
+          className={`absolute top-1.5 right-1.5 z-10 p-1 rounded-full bg-white/80 backdrop-blur-sm ${
+            file.pinned ? 'text-amber-500' : 'text-gray-300 opacity-0 group-hover:opacity-100'
+          } ${canManage ? 'hover:text-amber-500' : 'cursor-default'} transition-colors`}
+        >
+          <Star className="h-3.5 w-3.5" fill={file.pinned ? 'currentColor' : 'none'} />
+        </button>
+      )}
+      <button onClick={onClick} className="block w-full text-left">
+        <div className="aspect-square bg-gray-50 flex items-center justify-center overflow-hidden">
+          {isImage && url ? (
+            <img src={url} alt={file.filename} className="w-full h-full object-cover" />
+          ) : linked ? (
+            <Link2 className="h-8 w-8 text-gray-300" />
+          ) : (
+            <FileIcon className="h-8 w-8 text-gray-300" />
+          )}
+        </div>
+        <div className="p-2">
+          <p className="text-xs font-medium text-gray-700 truncate">{file.filename}</p>
+          {file.description && (
+            <p className="text-[10px] text-gray-500 mt-0.5 line-clamp-2">{file.description}</p>
+          )}
+          <p className="text-[10px] text-gray-400 mt-0.5">
+            {file.uploaded_by_name || file.uploaded_by_email.split('@')[0]} &middot; {date}
+          </p>
+        </div>
+      </button>
+    </div>
   )
 }
 
@@ -253,12 +347,18 @@ function FilePreviewModal({
   canManage?: boolean
   onClose: () => void
 }) {
-  const isImage = file.content_type.startsWith('image/')
-  const { data: url } = useFileUrl(file.id)
+  const linked = isLinked(file)
+  const isImage = !linked && !!file.content_type?.startsWith('image/')
+  const { data: url } = useFileUrl(isImage ? file.id : undefined)
   const deleteFile = useDeleteFile()
   const moveFile = useMoveFile()
+  const updateMeta = useUpdateFileMeta()
   const [confirming, setConfirming] = useState(false)
   const [moveError, setMoveError] = useState<string | null>(null)
+  const [desc, setDesc] = useState(file.description ?? '')
+  const [descError, setDescError] = useState<string | null>(null)
+
+  const descDirty = desc.trim() !== (file.description ?? '').trim()
 
   const handleDelete = async () => {
     try {
@@ -276,6 +376,24 @@ function FilePreviewModal({
       onClose()
     } catch (err) {
       setMoveError(err instanceof Error ? err.message : 'Move failed')
+    }
+  }
+
+  const saveDescription = async () => {
+    setDescError(null)
+    try {
+      await updateMeta.mutateAsync({ fileId: file.id, projectId: file.project_id, description: desc })
+    } catch (err) {
+      setDescError(err instanceof Error ? err.message : 'Could not save')
+    }
+  }
+
+  const togglePin = async () => {
+    setDescError(null)
+    try {
+      await updateMeta.mutateAsync({ fileId: file.id, projectId: file.project_id, pinned: !file.pinned })
+    } catch (err) {
+      setDescError(err instanceof Error ? err.message : 'Could not update pin')
     }
   }
 
@@ -300,8 +418,18 @@ function FilePreviewModal({
   return (
     <Modal isOpen onClose={onClose} size="lg">
       <div className="space-y-4">
-        {/* Image preview or file icon */}
-        {isImage ? (
+        {/* Preview: image, link, or generic file */}
+        {linked ? (
+          <a
+            href={file.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center justify-center gap-2 py-12 bg-gray-50 rounded-lg text-brand-navy hover:bg-gray-100 transition-colors"
+          >
+            <ExternalLink className="h-5 w-5" />
+            <span className="text-sm font-medium truncate max-w-[80%]">{file.url}</span>
+          </a>
+        ) : isImage ? (
           <div className="flex items-center justify-center bg-gray-50 rounded-lg overflow-hidden">
             {url ? (
               <img src={url} alt={file.filename} className="max-h-[60vh] max-w-full object-contain" />
@@ -315,15 +443,30 @@ function FilePreviewModal({
           </div>
         )}
 
-        {/* File info + download */}
+        {/* Info + actions */}
         <div className="flex items-center justify-between">
-          <div>
-            <p className="font-medium text-gray-800">{file.filename}</p>
+          <div className="min-w-0">
+            <p className="font-medium text-gray-800 truncate">{file.filename}</p>
             <p className="text-sm text-gray-400">
-              {file.uploaded_by_name || file.uploaded_by_email.split('@')[0]} &middot; {date} &middot; {formatFileSize(file.size_bytes)}
+              {file.uploaded_by_name || file.uploaded_by_email.split('@')[0]} &middot; {date}
+              {typeof file.size_bytes === 'number' && ` · ${formatFileSize(file.size_bytes)}`}
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
+            {canManage && (
+              <button
+                onClick={togglePin}
+                disabled={updateMeta.isPending}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                  file.pinned
+                    ? 'text-amber-600 hover:bg-amber-50'
+                    : 'text-gray-600 hover:text-brand-navy hover:bg-gray-100'
+                }`}
+              >
+                <Star className="h-4 w-4" fill={file.pinned ? 'currentColor' : 'none'} />
+                {file.pinned ? 'Pinned' : 'Pin'}
+              </button>
+            )}
             {canDelete && (
               <button
                 onClick={() => setConfirming(true)}
@@ -333,15 +476,60 @@ function FilePreviewModal({
                 Delete
               </button>
             )}
-            <button
-              onClick={handleDownload}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 hover:text-brand-navy hover:bg-gray-100 rounded-lg transition-colors"
-            >
-              <Download className="h-4 w-4" />
-              Download
-            </button>
+            {linked ? (
+              <a
+                href={file.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 hover:text-brand-navy hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <ExternalLink className="h-4 w-4" />
+                Open
+              </a>
+            ) : (
+              <button
+                onClick={handleDownload}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 hover:text-brand-navy hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <Download className="h-4 w-4" />
+                Download
+              </button>
+            )}
           </div>
         </div>
+
+        {/* Description — editable for builder+, read-only otherwise */}
+        {canManage ? (
+          <div className="space-y-1.5">
+            <label htmlFor="artifact-desc" className="text-sm text-gray-500">
+              Description
+            </label>
+            <div className="flex items-start gap-2">
+              <input
+                id="artifact-desc"
+                value={desc}
+                onChange={(e) => setDesc(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && descDirty) saveDescription()
+                }}
+                placeholder="One line — what this is, so the agent knows it exists"
+                className="flex-1 text-sm border border-gray-300 rounded-lg px-2 py-1.5 text-gray-700 focus:outline-none focus:ring-1 focus:ring-brand-navy"
+              />
+              {descDirty && (
+                <button
+                  onClick={saveDescription}
+                  disabled={updateMeta.isPending}
+                  className="px-3 py-1.5 text-sm font-medium text-white bg-brand-navy rounded-lg hover:bg-brand-navy-light disabled:opacity-50 transition-colors"
+                >
+                  Save
+                </button>
+              )}
+            </div>
+            {descError && <p className="text-xs text-red-600">{descError}</p>}
+          </div>
+        ) : (
+          file.description && <p className="text-sm text-gray-600">{file.description}</p>
+        )}
 
         {/* Move to folder */}
         {canManage && folders.length > 0 && (
@@ -370,7 +558,7 @@ function FilePreviewModal({
         {confirming && (
           <div className="rounded-lg border border-red-200 bg-red-50 p-3 space-y-3">
             <p className="text-sm text-red-800">
-              Delete &ldquo;{file.filename}&rdquo;? This removes the file and any agent references. This can&apos;t be undone.
+              Delete &ldquo;{file.filename}&rdquo;? This removes the {linked ? 'link' : 'file'} and any agent references. This can&apos;t be undone.
             </p>
             {deleteFile.error && (
               <p className="text-xs text-red-600">{deleteFile.error.message}</p>

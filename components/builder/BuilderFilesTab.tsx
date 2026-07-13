@@ -1,11 +1,12 @@
 'use client'
 
 import { useState, useRef, useCallback } from 'react'
-import { Upload, FolderPlus } from 'lucide-react'
+import { Upload, FolderPlus, Link2 } from 'lucide-react'
 import { FilesGrid } from '@/components/ui/FilesGrid'
 import { StatusMessage } from '@/components/ui/StatusMessage'
-import { useUploadFiles, useProjectFolders, useCreateFolder } from '@/lib/query/hooks'
+import { useUploadFiles, useProjectFolders, useCreateFolder, useCreateLink } from '@/lib/query/hooks'
 import { validateFolderName } from '@/lib/files/folders'
+import { validateLinkInput } from '@/lib/files/artifacts'
 import type { ProjectFile } from '@/lib/types'
 
 const MAX_FILE_SIZE = 25 * 1024 * 1024
@@ -20,11 +21,16 @@ export function BuilderFilesTab({
   const uploadFiles = useUploadFiles()
   const { data: folders } = useProjectFolders(projectId)
   const createFolder = useCreateFolder()
+  const createLink = useCreateLink()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [dragOver, setDragOver] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [addingFolder, setAddingFolder] = useState(false)
   const [folderName, setFolderName] = useState('')
+  const [addingLink, setAddingLink] = useState(false)
+  const [linkUrl, setLinkUrl] = useState('')
+  const [linkName, setLinkName] = useState('')
+  const [linkDesc, setLinkDesc] = useState('')
 
   const submitFolder = useCallback(async () => {
     const validated = validateFolderName(folderName)
@@ -41,6 +47,29 @@ export function BuilderFilesTab({
       setError(err instanceof Error ? err.message : 'Create folder failed')
     }
   }, [folderName, projectId, createFolder])
+
+  const submitLink = useCallback(async () => {
+    const validated = validateLinkInput({ url: linkUrl, filename: linkName, description: linkDesc })
+    if (!validated.ok) {
+      setError(validated.error)
+      return
+    }
+    setError(null)
+    try {
+      await createLink.mutateAsync({
+        projectId,
+        url: validated.value.url,
+        filename: linkName.trim() || undefined,
+        description: validated.value.description,
+      })
+      setAddingLink(false)
+      setLinkUrl('')
+      setLinkName('')
+      setLinkDesc('')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Add link failed')
+    }
+  }, [linkUrl, linkName, linkDesc, projectId, createLink])
 
   const startUpload = useCallback(async (incoming: FileList | File[]) => {
     setError(null)
@@ -97,6 +126,13 @@ export function BuilderFilesTab({
         </p>
         <div className="flex items-center gap-2">
           <button
+            onClick={() => setAddingLink((v) => !v)}
+            className="inline-flex items-center gap-2 px-3 py-1.5 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+          >
+            <Link2 className="h-4 w-4" />
+            Add link
+          </button>
+          <button
             onClick={() => setAddingFolder((v) => !v)}
             className="inline-flex items-center gap-2 px-3 py-1.5 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
           >
@@ -123,6 +159,54 @@ export function BuilderFilesTab({
           }}
         />
       </div>
+
+      {addingLink && (
+        <div className="space-y-2 rounded-lg border border-gray-200 p-3">
+          <input
+            value={linkUrl}
+            onChange={(e) => setLinkUrl(e.target.value)}
+            autoFocus
+            placeholder="https://…  (Figma, doc, live prototype…)"
+            className="w-full text-sm border border-gray-300 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-brand-navy"
+          />
+          <input
+            value={linkName}
+            onChange={(e) => setLinkName(e.target.value)}
+            placeholder="Display name (optional — defaults to the URL)"
+            className="w-full text-sm border border-gray-300 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-brand-navy"
+          />
+          <input
+            value={linkDesc}
+            onChange={(e) => setLinkDesc(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') submitLink()
+              if (e.key === 'Escape') setAddingLink(false)
+            }}
+            placeholder="One line — what it is, so the agent knows it exists (optional)"
+            className="w-full text-sm border border-gray-300 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-brand-navy"
+          />
+          <div className="flex items-center gap-2">
+            <button
+              onClick={submitLink}
+              disabled={createLink.isPending}
+              className="px-3 py-1.5 text-sm font-medium text-white bg-brand-navy rounded-lg hover:bg-brand-navy-light disabled:opacity-50 transition-colors"
+            >
+              {createLink.isPending ? 'Adding…' : 'Add link'}
+            </button>
+            <button
+              onClick={() => {
+                setAddingLink(false)
+                setLinkUrl('')
+                setLinkName('')
+                setLinkDesc('')
+              }}
+              className="px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       {addingFolder && (
         <div className="flex items-center gap-2">

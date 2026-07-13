@@ -769,6 +769,69 @@ export function useDeleteFile() {
   })
 }
 
+// --- Artifacts (#83): pin/describe a file, add a linked artifact ---
+
+// Update pinned and/or description on a file/artifact (builder+).
+export function useUpdateFileMeta() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({
+      fileId,
+      pinned,
+      description,
+    }: {
+      fileId: string
+      projectId: string
+      pinned?: boolean
+      description?: string
+    }): Promise<void> => {
+      const body: Record<string, unknown> = {}
+      if (pinned !== undefined) body.pinned = pinned
+      if (description !== undefined) body.description = description
+      const res = await apiFetch(`/api/files/${fileId}`, { method: 'PATCH', body: JSON.stringify(body) })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data?.error || `Update failed (${res.status})`)
+      }
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.files(variables.projectId) })
+    },
+  })
+}
+
+// Create a linked artifact (builder+) — an external URL, no file bytes.
+export function useCreateLink() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (input: {
+      projectId: string
+      url: string
+      filename?: string
+      description?: string
+      folderId?: string | null
+    }): Promise<void> => {
+      const res = await apiFetch('/api/files/link', {
+        method: 'POST',
+        body: JSON.stringify({
+          project_id: input.projectId,
+          url: input.url,
+          filename: input.filename,
+          description: input.description,
+          folder_id: input.folderId ?? null,
+        }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data?.error || `Add link failed (${res.status})`)
+      }
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.files(variables.projectId) })
+    },
+  })
+}
+
 // --- File folders (#23b) ---
 
 export function useProjectFolders(projectId: string | undefined) {

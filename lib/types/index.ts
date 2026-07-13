@@ -142,14 +142,18 @@ export interface Message extends BaseEntity {
   rating?: 'up' | 'down' | null // maker's 👍/👎 on an agent message (#130)
 }
 
-// Files collection — uploaded files within a project
+// Files collection — uploaded files and artifacts within a project.
+// "Artifacts" (#83) evolve this collection in place: additive optional fields,
+// no migration. A legacy upload has none of them and keeps working.
 export interface ProjectFile extends BaseEntity {
   project_id: string
   session_id?: string
   filename: string
-  content_type: string
-  size_bytes: number
-  storage_path: string
+  // Bytes-backed fields — present for uploaded/agent artifacts, absent for
+  // linked artifacts (which point at an external URL, no S3 object).
+  content_type?: string
+  size_bytes?: number
+  storage_path?: string
   uploaded_by_email: string
   uploaded_by_uid: string
   uploaded_by_name?: string // cached display name at write time
@@ -159,6 +163,17 @@ export interface ProjectFile extends BaseEntity {
   status?: 'pending' | 'ready'
   // Flat folder assignment (#23b). Absent/null = unfiled.
   folder_id?: string | null
+  // --- Artifacts (#83), all additive/optional ---
+  // Where the artifact came from. Absent = 'uploaded' (legacy).
+  source?: 'uploaded' | 'agent' | 'linked'
+  // Linked artifacts only: the external URL. Such docs have no storage_path.
+  url?: string
+  // One-line human- or agent-written note. Feeds agent context + the MCP reader.
+  description?: string
+  // Load-bearing artifact — sorts first, named in the agent prompt (#83 Phase B).
+  pinned?: boolean
+  // Coarse attribution (#43-lite).
+  created_by_role?: 'maker' | 'builder' | 'agent'
 }
 
 // File folders collection — flat, per-project organization for files (#23b).

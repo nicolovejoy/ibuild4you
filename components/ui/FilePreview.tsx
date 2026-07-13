@@ -4,8 +4,8 @@ import { X, FileIcon } from 'lucide-react'
 import { useFileUrl } from '@/lib/query/hooks'
 import type { ProjectFile } from '@/lib/types'
 
-function isImageType(contentType: string) {
-  return contentType.startsWith('image/')
+function isImageType(contentType?: string) {
+  return !!contentType?.startsWith('image/')
 }
 
 // Preview for an already-uploaded file (fetches via auth-gated endpoint)
@@ -38,7 +38,9 @@ export function UploadedFilePreview({
     <div className="inline-flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-lg border border-gray-200 text-sm">
       <FileIcon className="h-4 w-4 text-gray-400 flex-shrink-0" />
       <span className="truncate max-w-[200px]">{file.filename}</span>
-      <span className="text-gray-400 text-xs">{formatFileSize(file.size_bytes)}</span>
+      {typeof file.size_bytes === 'number' && (
+        <span className="text-gray-400 text-xs">{formatFileSize(file.size_bytes)}</span>
+      )}
     </div>
   )
 }
