@@ -30,6 +30,7 @@ import { initializeApp, cert } from 'firebase-admin/app'
 import { getFirestore } from 'firebase-admin/firestore'
 import { mkdirSync, writeFileSync, rmSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
+import { repoMatches, renderBriefMd, renderSessionMd } from './lib/brief-markdown.mjs'
 
 const argv = process.argv.slice(2)
 const flagValue = (name) => {
@@ -51,15 +52,6 @@ if (!targets.length && !GREP && !REPO) {
   )
   process.exit(1)
 }
-
-// Normalize a github_repo value to "owner/name" (lowercased). Stored values
-// vary: "owner/name", bare "name", or a full https URL.
-const normalizeRepo = (v) =>
-  (v || '')
-    .toLowerCase()
-    .replace(/^https?:\/\/github\.com\//, '')
-    .replace(/\.git$/, '')
-    .replace(/\/+$/, '')
 
 const sa = process.env.FIREBASE_SERVICE_ACCOUNT
 if (!sa) {
@@ -90,17 +82,14 @@ for (const target of targets) {
 }
 
 if (GREP || REPO) {
-  const wantRepo = normalizeRepo(REPO)
-  const wantName = wantRepo.split('/').pop() // bare stored values ("byside") match by name
   const snap = await db.collection('projects').get()
   for (const d of snap.docs) {
     const { slug = '', title = '', github_repo } = d.data()
     if (GREP && (slug.toLowerCase().includes(GREP) || title.toLowerCase().includes(GREP))) {
       projects.set(d.id, d.data())
     }
-    if (REPO && github_repo) {
-      const stored = normalizeRepo(github_repo)
-      if (stored === wantRepo || stored === wantName) projects.set(d.id, d.data())
+    if (REPO && github_repo && repoMatches(github_repo, REPO)) {
+      projects.set(d.id, d.data())
     }
   }
   if (!projects.size) {
@@ -108,8 +97,6 @@ if (GREP || REPO) {
     process.exit(1)
   }
 }
-
-const day = (iso) => (iso || '').slice(0, 10)
 
 async function exportProject(id, data) {
   const project = { id, ...data }
@@ -141,54 +128,7 @@ async function exportProject(id, data) {
   mkdirSync(outDir, { recursive: true })
 
   // brief.md
-  const b = []
-  b.push(`# Brief: ${project.title}`)
-  b.push('')
-  b.push(
-    `Exported from ibuild4you.com prod. Project slug: \`${slug}\`. Status: ${project.status || 'active'}.`
-  )
-  b.push(
-    `Conversations: ${sessions.length}. Brief version: ${brief ? brief.version : 'none yet'} (updated ${brief ? day(brief.updated_at) : '—'}).`
-  )
-  if (project.context) b.push(`\n## Builder-provided context\n\n${project.context}`)
-  if (brief) {
-    const c = brief.content || {}
-    b.push(`\n## Problem\n\n${c.problem || '—'}`)
-    b.push(`\n## Target users\n\n${c.target_users || '—'}`)
-    b.push(`\n## Features\n`)
-    for (const f of c.features || []) b.push(`- ${f}`)
-    if (!(c.features || []).length) b.push('—')
-    b.push(`\n## Constraints\n\n${c.constraints || '—'}`)
-    if (c.additional_context) b.push(`\n## Additional context\n\n${c.additional_context}`)
-    if ((c.decisions || []).length) {
-      b.push(`\n## Decisions\n`)
-      // #121: provenance suffix — sessions here are already archived-excluded
-      // and sorted oldest-first, so index+1 is the conversation number.
-      const convNumber = new Map(sessions.map((s, i) => [s.id, i + 1]))
-      for (const d of c.decisions) {
-        let prov = ''
-        if (d.decided_at) {
-          const date = d.decided_at.slice(0, 10)
-          const n = d.decided_in_session ? convNumber.get(d.decided_in_session) : undefined
-          prov = n ? ` _(decided conv ${n}, ${date})_` : ` _(added ${date})_`
-        }
-        b.push(`- **${d.topic}**: ${d.decision}${d.locked ? ' _(locked)_' : ''}${prov}`)
-      }
-    }
-    if ((c.open_risks || []).length) {
-      b.push(`\n## Open risks\n`)
-      for (const r of c.open_risks) b.push(`- ${r}`)
-    }
-  }
-  if (reviews.some((r) => (r.annotations || []).length)) {
-    b.push(`\n## Reviewer annotations\n`)
-    for (const r of reviews) {
-      for (const a of r.annotations || []) {
-        b.push(`- [${a.section}] ${a.comment} _(${day(a.created_at)})_`)
-      }
-    }
-  }
-  writeFileSync(join(outDir, 'brief.md'), b.join('\n') + '\n')
+  writeFileSync(join(outDir, 'brief.md'), renderBriefMd({ project, brief, sessions, reviews }))
   console.log(`wrote ${join(outDir, 'brief.md')}`)
 
   // session-NN.md — one per conversation, oldest first
@@ -199,30 +139,9 @@ async function exportProject(id, data) {
     const messages = msgSnap.docs.map((d) => ({ id: d.id, ...d.data() }))
     messages.sort((a, b) => (a.created_at || '').localeCompare(b.created_at || ''))
 
-    const m = []
-    m.push(`# ${project.title} — conversation ${n} of ${sessions.length}`)
-    m.push('')
-    m.push(
-      `Started ${day(session.created_at)}. Status: ${session.status}. Messages: ${messages.length}.`
-    )
-    if (session.summary) m.push(`\nSummary: ${session.summary}`)
-    m.push('')
-    for (const msg of messages) {
-      const who =
-        msg.role === 'agent'
-          ? 'Agent (Sam)'
-          : msg.sender_display_name || msg.sender_email || 'Maker'
-      m.push(`## ${who} — ${day(msg.created_at)}`)
-      m.push('')
-      m.push(msg.content || '')
-      if ((msg.file_ids || []).length) {
-        m.push('')
-        m.push(`_Attached: ${msg.file_ids.map((fid) => fileNames.get(fid) || fid).join(', ')}_`)
-      }
-      m.push('')
-    }
+    const md = renderSessionMd({ project, session, n, total: sessions.length, messages, fileNames })
     const name = `session-${String(n).padStart(2, '0')}.md`
-    writeFileSync(join(outDir, name), m.join('\n'))
+    writeFileSync(join(outDir, name), md)
     console.log(`wrote ${join(outDir, name)} (${messages.length} messages)`)
   }
 }
