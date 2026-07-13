@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Send, ChevronDown, ChevronUp, MessageSquare, HelpCircle, Paperclip, Pencil } from 'lucide-react'
+import { ArrowLeft, Send, ChevronDown, ChevronUp, MessageSquare, HelpCircle, Paperclip, Pencil, ThumbsUp, ThumbsDown } from 'lucide-react'
 import { getTurnIndicator } from '@/lib/turn-indicator'
 import { isSupportedUpload, SUPPORTED_TYPES_LABEL } from '@/lib/files/supported-types'
 import { BuildTimestamp } from '@/components/build-timestamp'
@@ -24,6 +24,7 @@ import {
   useUploadFiles,
   useCurrentUser,
   useUpdateCurrentUser,
+  useRateMessage,
 } from '@/lib/query/hooks'
 import { Modal } from '@/components/ui/Modal'
 import { LoadingButton } from '@/components/ui/LoadingButton'
@@ -227,10 +228,20 @@ function MakerChat({
       setMessages(savedMessages.map((m) => ({
         id: m.id, role: m.role, content: m.content,
         created_at: m.created_at, sender_email: m.sender_email, sender_display_name: m.sender_display_name,
-        file_ids: m.file_ids,
+        file_ids: m.file_ids, rating: m.rating,
       })))
     }
   }, [savedMessages, streaming, setMessages])
+
+  // Rate an agent message 👍/👎 (#130). Tapping the active thumb clears it.
+  // Optimistic local flip; the mutation invalidates the query behind it.
+  const rateMessage = useRateMessage()
+  const handleRate = useCallback((messageId: string, current: 'up' | 'down' | null | undefined, tapped: 'up' | 'down') => {
+    if (!sessionId) return
+    const rating = current === tapped ? null : tapped
+    setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, rating } : m)))
+    rateMessage.mutate({ messageId, sessionId, rating })
+  }, [sessionId, setMessages, rateMessage])
 
   // Agent kickoff (#31): when the maker opens a stale session, have the agent
   // greet them first (typing indicator + name-aware recap) instead of waiting
@@ -566,6 +577,26 @@ function MakerChat({
                     content={msg.content}
                     onOptionSelect={chipsActive ? (option) => handleSend(option) : undefined}
                   />
+                )}
+                {/* 👍/👎 on agent messages (#130) — quiet, tap again to clear.
+                    Only persisted messages have an id to rate. */}
+                {msg.role === 'agent' && msg.id && (
+                  <div className="flex gap-0.5 mt-1 -ml-1">
+                    <button
+                      onClick={() => handleRate(msg.id!, msg.rating, 'up')}
+                      className="p-1 rounded hover:bg-gray-100"
+                      title={msg.rating === 'up' ? 'Remove rating' : 'Helpful'}
+                    >
+                      <ThumbsUp className={`h-3.5 w-3.5 ${msg.rating === 'up' ? 'text-emerald-600 fill-emerald-100' : 'text-gray-300 hover:text-gray-500'}`} />
+                    </button>
+                    <button
+                      onClick={() => handleRate(msg.id!, msg.rating, 'down')}
+                      className="p-1 rounded hover:bg-gray-100"
+                      title={msg.rating === 'down' ? 'Remove rating' : 'Not helpful'}
+                    >
+                      <ThumbsDown className={`h-3.5 w-3.5 ${msg.rating === 'down' ? 'text-rose-600 fill-rose-100' : 'text-gray-300 hover:text-gray-500'}`} />
+                    </button>
+                  </div>
                 )}
               </div>
             </div>

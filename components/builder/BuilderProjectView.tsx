@@ -383,6 +383,8 @@ function TranscriptPane({ session }: { session: Session }) {
                 <p className={`text-[10px] mb-1 ${msg.role === 'user' ? 'text-blue-200' : 'text-gray-400'}`}>
                   {msg.role === 'user' ? (msg.sender_display_name || msg.sender_email?.split('@')[0] || 'Maker') : copy.chat.agentLabel}
                   {msg.created_at ? ` · ${formatTimestamp(msg.created_at)}` : ''}
+                  {/* Maker's rating (#130) — quiet signal for the builder */}
+                  {msg.role === 'agent' && msg.rating ? (msg.rating === 'up' ? ' · 👍' : ' · 👎') : ''}
                 </p>
                 <MessageContent content={msg.content} />
                 <button

@@ -13,6 +13,7 @@ export type ChatMessage = {
   sender_email?: string
   sender_display_name?: string
   file_ids?: string[]
+  rating?: 'up' | 'down' | null // maker's 👍/👎 on an agent message (#130)
 }
 
 /**

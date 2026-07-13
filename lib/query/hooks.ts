@@ -620,6 +620,28 @@ export function useDeleteMessage() {
   })
 }
 
+// Maker rates an agent message 👍/👎 (#130). rating null clears.
+export function useRateMessage() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({ messageId, rating }: { messageId: string; sessionId: string; rating: 'up' | 'down' | null }) => {
+      const res = await apiFetch('/api/messages', {
+        method: 'PATCH',
+        body: JSON.stringify({ message_id: messageId, rating }),
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || 'Failed to rate message')
+      }
+      return res.json()
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.messages(variables.sessionId) })
+    },
+  })
+}
+
 export function useMessages(sessionId: string | undefined) {
   return useQuery<Message[]>({
     queryKey: queryKeys.messages(sessionId),
