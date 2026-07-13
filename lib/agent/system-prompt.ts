@@ -3,6 +3,7 @@ import { briefRoleLabel } from '@/lib/roles/display'
 import { renderPrototypeFeedbackBlock, type PrototypeFeedbackItem } from './prototype-feedback'
 import { renderPrototypeContextBlock, type PrototypeContextItem } from './prototype-context'
 import { renderArtifactContextBlock, type ArtifactContextItem } from './artifact-context'
+import { renderSiblingDecisionsBlock, type SiblingDecision } from './sibling-decisions'
 import type { BriefContent, BriefRole, WireframeMockup } from '@/lib/types'
 
 // Maker name and gap-since-last-message are read live per request (not
@@ -32,6 +33,9 @@ interface SystemPromptInput {
   // #83 B: pinned artifacts (files + links) on this brief — names + descriptions
   // only, so Sam knows they exist without claiming to have read them.
   pinnedArtifacts?: ArtifactContextItem[]
+  // #142: locked decisions settled in sibling briefs (same product/github_repo)
+  // so Sam doesn't re-ask about things already decided in a related conversation.
+  siblingDecisions?: SiblingDecision[]
 }
 
 const ONE_HOUR_MS = 60 * 60 * 1000
@@ -44,7 +48,7 @@ function humanizeGap(ms: number): string {
   return 'over a week'
 }
 
-export function buildSystemPrompt({ briefContent, projectContext, sessionNumber, seedQuestions, builderDirectives, sessionMode, layoutMockups, identity, makerFirstName, makerLastName, gapSinceLastMakerMessageMs, participants, prototypeFeedback, prototypeContext, pinnedArtifacts }: SystemPromptInput): string {
+export function buildSystemPrompt({ briefContent, projectContext, sessionNumber, seedQuestions, builderDirectives, sessionMode, layoutMockups, identity, makerFirstName, makerLastName, gapSinceLastMakerMessageMs, participants, prototypeFeedback, prototypeContext, pinnedArtifacts, siblingDecisions }: SystemPromptInput): string {
   const parts: string[] = []
 
   parts.push(identity || DEFAULT_IDENTITY)
@@ -187,6 +191,13 @@ Here's what we know so far. Use this to avoid re-asking things they've already t
 
 ${formatBrief(briefContent)}
 `.trim())
+  }
+
+  // #142: locked decisions from sibling briefs — qualifies this brief, so it
+  // sits right after the brief content.
+  if (siblingDecisions && siblingDecisions.length > 0) {
+    const block = renderSiblingDecisionsBlock(siblingDecisions)
+    if (block) parts.push(block)
   }
 
   if (prototypeFeedback && prototypeFeedback.length > 0) {
