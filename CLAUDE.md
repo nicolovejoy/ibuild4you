@@ -243,6 +243,8 @@ Full dated history: `docs/changelog.md`. Most recent below.
 - Plan P4/P5 — denormalized session counters + retire `requester_*` legacy fields. `~/.claude/plans/zesty-tumbling-fountain.md`. Telemetry-gated.
 - Users & roles Phase 1: display names everywhere (`docs/users-and-roles-plan.md`).
 - Add tests for `useStreamingChat` hook (RTL setup proven, see `components/__tests__/FeedbackWidget.test.tsx`).
+- **Garm `garmCheck` TTL-expiry test.** `lib/__tests__/garm.test.ts` covers cache-hit *within* TTL but not that the cache re-fetches *after* 60s. Add a fake-timers case (`vi.useFakeTimers` + `vi.advanceTimersByTime(61_000)` → second call re-fetches). Small, closes the one gap in a security-critical module.
+- **Garm gating fail-closed tests (do WITH Garm 3/4).** Once `garmCheck` wires into the session/page-load boundaries, add tests asserting each boundary denies (a) a grantless signed-in email and (b) an unreachable Garm (fail-closed) — this is a security-regression surface, so it shouldn't ship on manual smoke alone. Plan: `docs/garm-2-seed-plan.md` (2/4) → then 3/4.
 - Project folders for the dashboard — group stale projects, badge with builder-turn count.
 - Maker experience design exploration (`docs/maker-experience-functionality.md`). Next: hand to design agents.
 - Maker re-engagement flow — signed-token email links, snooze/opt-out (`docs/maker-re-engagement-plan.md`). Blocked on a builder review.
