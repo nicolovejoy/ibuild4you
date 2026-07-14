@@ -76,7 +76,7 @@ that predate it ignore it.
    old (catches stale-form replays). Outside the window → `400 Invalid
    submission`. **Drift on either bound silently rejects submissions** —
    keep this window in mind if you cache the form HTML.
-3. **Rate limit.** 5 submissions per IP per hour. Exceeded →
+3. **Rate limit.** 20 submissions per IP per hour. Exceeded →
    `429 Too many submissions` with a `Retry-After` header in seconds.
 4. **Slug gate.** `projectId` must match an existing `projects.slug`.
    Unknown slug → `404 Unknown project`.

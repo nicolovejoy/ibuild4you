@@ -3,6 +3,7 @@ import { Resend } from 'resend'
 import { getAdminAuth, getAdminDb } from '@/lib/firebase/admin'
 import { NOTIFICATION_EMAILS } from '@/lib/constants'
 import { checkRateLimit, getClientIp } from '@/lib/api/rate-limit'
+import { RATE_LIMIT_PER_HOUR } from '@/lib/feedback/limits'
 import type { FeedbackType } from '@/lib/types'
 
 // Public endpoint: receives submissions from <FeedbackWidget> embedded on
@@ -12,7 +13,6 @@ import type { FeedbackType } from '@/lib/types'
 
 const ALLOWED_TYPES: FeedbackType[] = ['bug', 'idea', 'other']
 const MAX_BODY_CHARS = 5000
-const RATE_LIMIT_PER_HOUR = 5
 const ONE_HOUR_MS = 60 * 60 * 1000
 // Honeypot timing: anything submitted faster than this is almost certainly a bot.
 // 24h ceiling stops replays of stale forms.

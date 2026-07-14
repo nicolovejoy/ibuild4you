@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { POST, OPTIONS } from '../route'
+import { RATE_LIMIT_PER_HOUR } from '@/lib/feedback/limits'
 import { _resetRateLimit } from '@/lib/api/rate-limit'
 
 // =============================================================================
@@ -259,10 +260,10 @@ describe('POST /api/feedback — capture', () => {
 })
 
 describe('POST /api/feedback — rate limiting', () => {
-  it('429s after the 6th attempt from the same IP within the hour', async () => {
+  it(`429s after attempt ${RATE_LIMIT_PER_HOUR + 1} from the same IP within the hour`, async () => {
     const headers = { 'x-forwarded-for': '1.2.3.4' }
 
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < RATE_LIMIT_PER_HOUR; i++) {
       const res = await POST(makeRequest(validPayload(), { headers }))
       expect(res.status).toBe(201)
     }
@@ -271,11 +272,11 @@ describe('POST /api/feedback — rate limiting', () => {
     expect(res.status).toBe(429)
     expect(res.headers.get('Retry-After')).toBeTruthy()
     // Did not write or notify on the rate-limited call.
-    expect(mockAdd).toHaveBeenCalledTimes(5)
+    expect(mockAdd).toHaveBeenCalledTimes(RATE_LIMIT_PER_HOUR)
   })
 
   it('separates rate-limit buckets by IP', async () => {
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < RATE_LIMIT_PER_HOUR; i++) {
       const res = await POST(makeRequest(validPayload(), { headers: { 'x-forwarded-for': '1.2.3.4' } }))
       expect(res.status).toBe(201)
     }
