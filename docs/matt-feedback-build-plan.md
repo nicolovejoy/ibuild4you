@@ -118,9 +118,9 @@ Prerequisites already done (2026-07-13): PRs #138 + #140 merged (#83 Phases A+B 
 
 ## Leftovers checklist (small, fold into whichever PR is convenient or do standalone)
 
-- [ ] `renderBriefMd` artifacts section in `scripts/lib/brief-markdown.mjs` (#83/#137 follow-up; `get_artifacts` already covers the MCP reader; keep `export-brief.mjs` output changes deliberate — the byside/prntd exports are consumed by other repo sessions).
-- [ ] Commit the uncommitted `.mcp.json` in `~/src/byside` + `~/src/prntd` (paths only, no secrets).
-- [ ] #83 Phase C (save-wireframe-as-artifact) — gated/cut-first, own PR only if wanted.
+- [x] `renderBriefMd` artifacts section in `scripts/lib/brief-markdown.mjs` — shipped `44d53bd`.
+- [x] Commit the uncommitted `.mcp.json` in `~/src/byside` + `~/src/prntd` — done (byside `9d9604d`, prntd `01e5427`); both tracked, trees clean.
+- [~] #83 Phase C (save-wireframe-as-artifact) — **cut**, not leftover cleanup. It's a feature decision (own PR) if ever wanted, not a loose end.
 
 ## Conventions reminders for the build session
 
