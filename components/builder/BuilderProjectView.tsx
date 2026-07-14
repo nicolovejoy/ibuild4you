@@ -369,9 +369,9 @@ function TranscriptPane({ session }: { session: Session }) {
           <p className="text-sm">No messages yet.</p>
         </div>
       ) : (
-        {/* #146 — visible box + always-visible scrollbar so it's obvious the
-            transcript scrolls and where you are in it (auto-scroll lands at
-            the bottom; macOS overlay scrollbars gave no hint of the overflow). */}
+        // #146 — visible box + always-visible scrollbar so it's obvious the
+        // transcript scrolls and where you are in it (auto-scroll lands at the
+        // bottom; macOS overlay scrollbars gave no hint of the overflow).
         <div
           ref={paneRef}
           className="scrollbar-visible max-h-[65vh] overflow-y-auto space-y-3 rounded-lg border border-gray-200 bg-gray-50/60 p-3"
