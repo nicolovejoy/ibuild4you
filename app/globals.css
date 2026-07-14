@@ -58,3 +58,23 @@ h6 {
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite;
 }
+
+/* #146 — always-visible scrollbar for the builder transcript pane. macOS
+   overlay scrollbars hide until you scroll, which made the auto-scrolled
+   transcript read as "the conversation starts here". Styling the WebKit
+   scrollbar opts out of the overlay style; Firefox gets thin + colored. */
+.scrollbar-visible {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(148 163 184) rgb(241 245 249);
+}
+.scrollbar-visible::-webkit-scrollbar {
+  width: 8px;
+}
+.scrollbar-visible::-webkit-scrollbar-thumb {
+  background: rgb(148 163 184);
+  border-radius: 4px;
+}
+.scrollbar-visible::-webkit-scrollbar-track {
+  background: rgb(241 245 249);
+  border-radius: 4px;
+}

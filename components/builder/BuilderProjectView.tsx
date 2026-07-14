@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
   ArrowLeft, MessageSquare, Send, FileText, Sparkles, Plus, X,
@@ -16,11 +16,6 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { MessageContent } from '@/components/ui/MessageContent'
 import { parseNextConvoPayload } from '@/lib/api/import-payload'
 import { nextReminderAt } from '@/lib/api/reminder-cadence'
-import {
-  hiddenMessageCounts,
-  offscreenLabel,
-  TRANSCRIPT_PILL_IDLE_MS,
-} from '@/lib/builder/transcript-scroll'
 import { useEscapeBack } from '@/lib/hooks/useEscapeBack'
 import { useNudgeCopy } from '@/lib/hooks/useNudgeCopy'
 import { getProjectShareLink } from '@/lib/url'
@@ -353,55 +348,11 @@ function TranscriptPane({ session }: { session: Session }) {
   const deleteMessage = useDeleteMessage()
   const paneRef = useRef<HTMLDivElement>(null)
 
-  // #146 — the auto-scroll lands readers at the bottom of a fixed-height pane
-  // with no visible scrollbar, so earlier messages read as lost. Overlay pills
-  // ("↑ N earlier messages") say what's hidden; they get out of the way while
-  // the reader scrolls and return after a quiet spell.
-  const [pills, setPills] = useState<{ above: number; below: number } | null>(null)
-  const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  // Programmatic scrolls (auto-scroll, pill clicks) fire scroll events too —
-  // ignore them briefly so they don't hide the pills we just showed.
-  const suppressScrollUntil = useRef(0)
-
-  const measurePills = useCallback(() => {
-    const el = paneRef.current
-    if (!el) return
-    const boxes = Array.from(el.children).map((child) => ({
-      top: (child as HTMLElement).offsetTop,
-      height: (child as HTMLElement).offsetHeight,
-    }))
-    setPills(hiddenMessageCounts(boxes, el.scrollTop, el.clientHeight))
-  }, [])
-
-  const handleScroll = useCallback(() => {
-    if (Date.now() < suppressScrollUntil.current) return
-    setPills(null)
-    if (idleTimer.current) clearTimeout(idleTimer.current)
-    idleTimer.current = setTimeout(measurePills, TRANSCRIPT_PILL_IDLE_MS)
-  }, [measurePills])
-
-  const scrollToEnd = (end: 'top' | 'bottom') => {
-    const el = paneRef.current
-    if (!el) return
-    suppressScrollUntil.current = Date.now() + 1200 // smooth scroll fires many events
-    el.scrollTo({ top: end === 'top' ? 0 : el.scrollHeight, behavior: 'smooth' })
-    if (idleTimer.current) clearTimeout(idleTimer.current)
-    idleTimer.current = setTimeout(measurePills, 1200)
-  }
-
-  useEffect(() => () => {
-    if (idleTimer.current) clearTimeout(idleTimer.current)
-  }, [])
-
   // Land the reader on the latest message whenever the transcript grows.
   useEffect(() => {
     const el = paneRef.current
-    if (el) {
-      suppressScrollUntil.current = Date.now() + 300
-      el.scrollTop = el.scrollHeight
-    }
-    measurePills()
-  }, [savedMessages?.length, measurePills])
+    if (el) el.scrollTop = el.scrollHeight
+  }, [savedMessages?.length])
 
   const messages = savedMessages || []
 
@@ -418,28 +369,13 @@ function TranscriptPane({ session }: { session: Session }) {
           <p className="text-sm">No messages yet.</p>
         </div>
       ) : (
-        <div className="relative">
-          {pills && pills.above > 0 && (
-            <button
-              onClick={() => scrollToEnd('top')}
-              className="absolute top-2 left-1/2 -translate-x-1/2 z-10 rounded-full bg-brand-navy/85 text-white text-xs px-3 py-1 shadow-sm hover:bg-brand-navy transition-colors"
-            >
-              {offscreenLabel(pills.above, 'earlier')}
-            </button>
-          )}
-          {pills && pills.below > 0 && (
-            <button
-              onClick={() => scrollToEnd('bottom')}
-              className="absolute bottom-2 left-1/2 -translate-x-1/2 z-10 rounded-full bg-brand-navy/85 text-white text-xs px-3 py-1 shadow-sm hover:bg-brand-navy transition-colors"
-            >
-              {offscreenLabel(pills.below, 'later')}
-            </button>
-          )}
-          <div
-            ref={paneRef}
-            onScroll={handleScroll}
-            className="relative max-h-[65vh] overflow-y-auto space-y-3 pr-1"
-          >
+        // #146 — visible box + always-visible scrollbar so it's obvious the
+        // transcript scrolls and where you are in it (auto-scroll lands at the
+        // bottom; macOS overlay scrollbars gave no hint of the overflow).
+        <div
+          ref={paneRef}
+          className="scrollbar-visible max-h-[65vh] overflow-y-auto space-y-3 rounded-lg border border-gray-200 bg-gray-50/60 p-3"
+        >
           {messages.map((msg) => (
             <div
               key={msg.id}
@@ -467,7 +403,6 @@ function TranscriptPane({ session }: { session: Session }) {
               </div>
             </div>
           ))}
-          </div>
         </div>
       )}
 
