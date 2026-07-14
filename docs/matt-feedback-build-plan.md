@@ -98,6 +98,22 @@ Prerequisites already done (2026-07-13): PRs #138 + #140 merged (#83 Phases A+B 
 - Unit tests above.
 - Preview e2e: POST a real widget-shaped payload at the preview `/api/feedback` (honeypot `_ts` must be >2s old), then load `/admin/feedback?focus=<id>` logged in as test admin and grade the highlight. Email itself can't be observed on preview (RESEND_API_KEY is Vercel-only and BCC target bounces on preview) — the pure builder tests carry that.
 
+### Build spec — fleshed out 2026-07-13 (post-recon, current line refs)
+
+**Route recon (`app/api/feedback/route.ts`).** The inline email builder is now at **~208–231** (shifted from the 209–228 in the plan above; main advanced with #141/#142). Everything the pure builder needs is already in scope at that point:
+- `type` (FeedbackType), `projectTitle` (line ~161), `projectId` (**the SLUG** — `feedback.project_id` is stored as the slug, line 170), `bodyRaw` (raw, use `.trim()`), `submitterEmail` (already lowercased+trimmed, `null` when anonymous), `pageUrl`, `viewport`, `userAgent` (all pre-sliced/clamped), `docRef.id` (= `feedbackId`), `now` (**ISO string** — `new Date().toISOString()`, line 168).
+- So `buildFeedbackEmail({ type, projectTitle, body: bodyRaw, submitterEmail, pageUrl, viewport, userAgent, feedbackId: docRef.id, burstIndex })` — swap the inline `subject`/`text` (lines 215–227) for the builder's return. Resend call + non-blocking try/catch + `NOTIFICATION_EMAILS` unchanged.
+- Anonymous line: current code prints `From: ${submitterEmail ?? 'anonymous'}`. Plan wants `From: submitter not captured (widget not identity-aware yet)` when null — put that in the builder.
+
+**Burst counting.** Insert right after the projectTitle lookup (~line 161), before the notify block. Feedback docs carry `project_id` (slug) + `created_at` (ISO string), both single-field-queryable. `const cutoff = new Date(Date.now() - 15*60*1000).toISOString()`; query `feedback where project_id == projectId`, `.get()`, filter in memory `d.created_at > cutoff` (string compare is valid on ISO), `burstIndex = recentCount + 1` (the just-written doc is already in the collection, so +1 lands on 1 for a lone note, 2 for the first repeat, etc. — **verify** the just-added doc IS counted by the query; if `docRef.add` hasn't propagated to the query, compute `burstIndex = matchingOlderDocs + 1` instead — write the test to pin whichever it is). Wrap in try/catch → `burstIndex = 1` on any failure. No composite index (single-field `where`), matches the admin-inbox query pattern.
+
+**Admin `?focus=` recon (`app/admin/feedback/page.tsx`).** Two things the plan didn't know:
+1. **Cards are ALWAYS expanded.** `FeedbackRow` renders full detail unconditionally — there is **no** open/collapse or selected state to reuse. So `?focus=` means: **scroll the matching card into view + apply a transient highlight ring** (e.g. `ring-2 ring-brand-navy` for ~2.5s, then clear). Don't invent an "expanded" concept.
+2. **No `<Suspense>` boundary exists.** The page is `'use client'` but `useSearchParams()` in App Router still needs a Suspense wrapper or the build errors. Plan: read `focus` inside a small child (or keep `FeedbackList` and wrap its render site), and wrap `<FeedbackList />` (line 62) in `<Suspense fallback={...}>`. Pass `focusId` → each `FeedbackRow`; when `item.id === focusId`, attach a ref + `scrollIntoView({ block: 'center' })` on mount + the ring, clearing via a `setTimeout`.
+3. **Filter interplay.** Default inbox shows all statuses (`status=''`), but if the operator has a status filter active OR the item was triaged out of the loaded set, the focused id simply won't be in `items` → **no-op, no crash, no effect loop** (guard the effect on presence + a one-shot ran-ref so it can't re-fire). The email links with `?focus=` only; don't auto-change the status filter.
+
+**Test file touchpoints:** new `lib/feedback/__tests__/notify-email.test.ts` (pure builder); update `app/api/feedback/__tests__/route.test.ts` for the new subject shape + a burst case (two posts <15min → burstIndex 2 / ordinal suffix). Admin page has no test today — the preview e2e carries the `?focus=` highlight.
+
 ---
 
 ## Leftovers checklist (small, fold into whichever PR is convenient or do standalone)
