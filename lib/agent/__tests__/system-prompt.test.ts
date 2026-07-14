@@ -81,6 +81,24 @@ describe('buildSystemPrompt', () => {
     expect(result).not.toContain('## Topics to explore')
   })
 
+  it('includes the sibling-decisions block when provided', () => {
+    const result = buildSystemPrompt({
+      ...minimalInput,
+      siblingDecisions: [{ topic: 'Fee split', decision: '60/40', briefTitle: 'Brief A' }],
+    })
+    expect(result).toContain('## Decisions settled in related conversations')
+    expect(result).toContain('**Fee split** — 60/40 _(from "Brief A")_')
+  })
+
+  it('omits the sibling-decisions block when empty or absent', () => {
+    expect(buildSystemPrompt({ ...minimalInput, siblingDecisions: [] })).not.toContain(
+      '## Decisions settled in related conversations',
+    )
+    expect(buildSystemPrompt(minimalInput)).not.toContain(
+      '## Decisions settled in related conversations',
+    )
+  })
+
   it('includes numbered builder directives', () => {
     const result = buildSystemPrompt({
       ...minimalInput,
