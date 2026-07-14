@@ -4,6 +4,7 @@ import { getAdminAuth, getAdminDb } from '@/lib/firebase/admin'
 import { NOTIFICATION_EMAILS } from '@/lib/constants'
 import { checkRateLimit, getClientIp } from '@/lib/api/rate-limit'
 import { RATE_LIMIT_PER_HOUR } from '@/lib/feedback/limits'
+import { buildFeedbackEmail } from '@/lib/feedback/notify-email'
 import type { FeedbackType } from '@/lib/types'
 
 // Public endpoint: receives submissions from <FeedbackWidget> embedded on
@@ -160,6 +161,24 @@ export async function POST(request: Request) {
   const project = projectSnap.docs[0]
   const projectTitle = (project.data().title as string) || projectId
 
+  // #143 burst counter: how many notes has this project gotten in the last 15
+  // minutes? Single-field query (no composite index), in-memory time filter.
+  // We count BEFORE writing this note, so the count is the number of *prior*
+  // notes and burstIndex = prior + 1 (deterministic, no read-after-write race).
+  // Any failure must never block the notification.
+  let burstIndex = 1
+  try {
+    const cutoff = new Date(Date.now() - 15 * 60 * 1000).toISOString()
+    const recent = await db.collection('feedback').where('project_id', '==', projectId).get()
+    const priorInWindow = recent.docs.filter(
+      (d) => ((d.data().created_at as string) ?? '') > cutoff
+    ).length
+    burstIndex = priorInWindow + 1
+  } catch (err) {
+    console.error('[feedback] burst count failed:', err)
+    burstIndex = 1
+  }
+
   // #72: optional structural page capture. Stored in its own agent-facing
   // collection (prototype_context), NOT on the feedback row — feedback drives
   // the admin inbox, captures feed the agent's system prompt and expire.
@@ -209,22 +228,22 @@ export async function POST(request: Request) {
   // Notify admins — non-blocking; submission succeeds even if email fails.
   try {
     const resend = new Resend(process.env.RESEND_API_KEY)
+    const { subject, text } = buildFeedbackEmail({
+      type,
+      projectTitle,
+      body: bodyRaw,
+      submitterEmail,
+      pageUrl,
+      viewport,
+      userAgent,
+      feedbackId: docRef.id,
+      burstIndex,
+    })
     await resend.emails.send({
       from: 'iBuild4you <noreply@ibuild4you.com>',
       to: NOTIFICATION_EMAILS,
-      subject: `[${projectTitle}] New ${type}`,
-      text: [
-        `New ${type} on ${projectTitle} (${projectId})`,
-        '',
-        bodyRaw.trim(),
-        '',
-        `From: ${submitterEmail ?? 'anonymous'}`,
-        `Page: ${pageUrl || 'n/a'}`,
-        `Viewport: ${viewport || 'n/a'}`,
-        `UA: ${userAgent || 'n/a'}`,
-        '',
-        `Feedback ID: ${docRef.id}`,
-      ].join('\n'),
+      subject,
+      text,
     })
   } catch (err) {
     console.error('[feedback] admin notification failed:', err)

@@ -15,6 +15,9 @@ import { _resetRateLimit } from '@/lib/api/rate-limit'
 const mockAdd = vi.fn<(doc: Record<string, unknown>) => Promise<{ id: string }>>(
   async () => ({ id: 'feedback-1' })
 )
+// Burst-counter query: feedback.where('project_id','==',slug).get(). Default: no
+// prior notes in the window. Override .docs in a test to simulate a burst.
+const mockFeedbackWhereGet = vi.fn(async () => ({ docs: [] as Array<{ data: () => Record<string, unknown> }> }))
 const mockContextAdd = vi.fn<(doc: Record<string, unknown>) => Promise<{ id: string }>>(
   async () => ({ id: 'context-1' })
 )
@@ -39,7 +42,7 @@ vi.mock('@/lib/firebase/admin', () => ({
         return { add: mockContextAdd }
       }
       // feedback
-      return { add: mockAdd }
+      return { add: mockAdd, where: () => ({ get: mockFeedbackWhereGet }) }
     }),
   })),
   getAdminAuth: vi.fn(() => ({ verifyIdToken: mockVerifyIdToken })),
@@ -82,6 +85,7 @@ beforeEach(() => {
     empty: false,
     docs: [{ id: 'project-1', data: () => ({ title: 'Sample Cafe', slug: 'sample-cafe' }) }],
   })
+  mockFeedbackWhereGet.mockResolvedValue({ docs: [] })
 })
 
 describe('OPTIONS /api/feedback (CORS preflight)', () => {
@@ -111,7 +115,41 @@ describe('POST /api/feedback — validation', () => {
 
     expect(mockResendSend).toHaveBeenCalledOnce()
     const email = mockResendSend.mock.calls[0][0]
-    expect(email.subject).toContain('Sample Cafe')
+    expect(email.subject).toBe('[bug] Sample Cafe: Header is broken on mobile')
+    expect(email.text).toContain('Review: https://ibuild4you.com/admin/feedback?focus=feedback-1')
+    expect(email.text).toContain('From: sam@example.com')
+    // Lone note → no burst suffix.
+    expect(email.subject).not.toContain('note this session')
+  })
+
+  it('adds an ordinal burst suffix when prior notes exist in the window', async () => {
+    const recent = new Date().toISOString()
+    // One prior note in the last 15 min → this is the 2nd.
+    mockFeedbackWhereGet.mockResolvedValue({
+      docs: [{ data: () => ({ created_at: recent }) }],
+    })
+    const res = await POST(makeRequest(validPayload()))
+    expect(res.status).toBe(201)
+    const email = mockResendSend.mock.calls[0][0]
+    expect(email.subject).toContain(' · 2nd note this session')
+  })
+
+  it('ignores prior notes older than the 15-minute burst window', async () => {
+    const old = new Date(Date.now() - 20 * 60 * 1000).toISOString()
+    mockFeedbackWhereGet.mockResolvedValue({
+      docs: [{ data: () => ({ created_at: old }) }],
+    })
+    const res = await POST(makeRequest(validPayload()))
+    expect(res.status).toBe(201)
+    const email = mockResendSend.mock.calls[0][0]
+    expect(email.subject).not.toContain('note this session')
+  })
+
+  it('anonymous submission marks the submitter as not captured', async () => {
+    const res = await POST(makeRequest(validPayload({ submitterEmail: '' })))
+    expect(res.status).toBe(201)
+    const email = mockResendSend.mock.calls[0][0]
+    expect(email.text).toContain('From: submitter not captured (widget not identity-aware yet)')
   })
 
   it('silently 200s a honeypot trigger (does not write or notify)', async () => {
