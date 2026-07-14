@@ -2,8 +2,8 @@
 
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useApproval } from '@/lib/hooks/useApproval'
-import { useRouter } from 'next/navigation'
-import { useEffect, useMemo, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { ExternalLink, Save, Check, Github, MessageCircle } from 'lucide-react'
 import { useCurrentUser } from '@/lib/query/hooks'
 import { apiFetch } from '@/lib/firebase/api-fetch'
@@ -59,7 +59,9 @@ export default function FeedbackAdminPage() {
       <SectionHeader backHref="/admin" title="Feedback inbox" />
 
       <main className="max-w-5xl mx-auto px-4 py-6">
-        <FeedbackList />
+        <Suspense fallback={<div className="text-center text-gray-400 py-12">Loading…</div>}>
+          <FeedbackList />
+        </Suspense>
       </main>
     </div>
   )
@@ -72,6 +74,10 @@ function FeedbackList() {
   const [projectId, setProjectId] = useState('')
   const [status, setStatus] = useState<FeedbackStatus | ''>('')
   const [type, setType] = useState<FeedbackType | ''>('')
+  // #143: notification emails link here with ?focus=<feedbackId>. When that item
+  // is in the loaded set we scroll it into view + flash a highlight ring. If the
+  // active status filter hides it, this is simply a no-op (guarded in the row).
+  const focusId = useSearchParams().get('focus') || ''
 
   const queryString = useMemo(() => {
     const params = new URLSearchParams()
@@ -165,14 +171,27 @@ function FeedbackList() {
 
       <div className="space-y-3">
         {items.map((item) => (
-          <FeedbackRow key={item.id} item={item} onUpdated={handleUpdated} />
+          <FeedbackRow
+            key={item.id}
+            item={item}
+            onUpdated={handleUpdated}
+            focused={item.id === focusId}
+          />
         ))}
       </div>
     </div>
   )
 }
 
-function FeedbackRow({ item, onUpdated }: { item: Feedback; onUpdated: (f: Feedback) => void }) {
+function FeedbackRow({
+  item,
+  onUpdated,
+  focused = false,
+}: {
+  item: Feedback
+  onUpdated: (f: Feedback) => void
+  focused?: boolean
+}) {
   const [status, setStatus] = useState<FeedbackStatus>(item.status)
   const [notes, setNotes] = useState<string>(item.internal_notes ?? '')
   const [saving, setSaving] = useState(false)
@@ -180,6 +199,20 @@ function FeedbackRow({ item, onUpdated }: { item: Feedback; onUpdated: (f: Feedb
   const [err, setErr] = useState<string | null>(null)
   const [convertingGh, setConvertingGh] = useState(false)
   const [ghErr, setGhErr] = useState<string | null>(null)
+
+  // #143: on arrival via ?focus=, scroll this card into view and flash a ring.
+  // One-shot ran-ref so it can't re-fire on re-renders / list updates.
+  const rowRef = useRef<HTMLDivElement>(null)
+  const flashedRef = useRef(false)
+  const [ringOn, setRingOn] = useState(false)
+  useEffect(() => {
+    if (!focused || flashedRef.current) return
+    flashedRef.current = true
+    rowRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    setRingOn(true)
+    const t = setTimeout(() => setRingOn(false), 2500)
+    return () => clearTimeout(t)
+  }, [focused])
 
   const handleConvertToGithub = async () => {
     setConvertingGh(true)
@@ -228,7 +261,12 @@ function FeedbackRow({ item, onUpdated }: { item: Feedback; onUpdated: (f: Feedb
   }
 
   return (
-    <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-3">
+    <div
+      ref={rowRef}
+      className={`bg-white rounded-lg border p-4 space-y-3 transition-shadow ${
+        ringOn ? 'border-brand-navy ring-2 ring-brand-navy' : 'border-gray-200'
+      }`}
+    >
       <div className="flex items-baseline justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-2 text-xs">
           <span
