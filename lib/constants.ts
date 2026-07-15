@@ -1,4 +1,4 @@
-export const ADMIN_EMAILS = ['nicholas.lovejoy@gmail.com', 'mlovejoy@scu.edu']
+export const ADMIN_EMAILS = ['nicholas.lovejoy@gmail.com', 'mlovejoy@scu.edu', 'nlovejoy@me.com']
 
 // Who receives transactional/notification emails (interest form submissions,
 // "your turn" alerts, etc.). Subset of ADMIN_EMAILS by design — being an admin

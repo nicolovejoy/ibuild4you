@@ -24,7 +24,7 @@ const PROJECT = 'ibuild4you'
 // Mirrors lib/constants.ts ADMIN_EMAILS — kept as a plain literal here since
 // this script can't import a .ts module (no TS runner is wired for scripts;
 // see scripts/lib/garm-seed-plan.mjs for the same convention).
-const HARDCODED_ADMIN_EMAILS = ['nicholas.lovejoy@gmail.com', 'mlovejoy@scu.edu']
+const HARDCODED_ADMIN_EMAILS = ['nicholas.lovejoy@gmail.com', 'mlovejoy@scu.edu', 'nlovejoy@me.com']
 
 const GARM_URL = process.env.GARM_URL || 'https://garm.prompt-labs.org'
 const GARM_ADMIN_KEY = process.env.GARM_ADMIN_KEY
