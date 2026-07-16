@@ -1,4 +1,5 @@
 import type { FeedbackReply } from '@/lib/types'
+import { normalizeEmail } from '@/lib/email/normalize'
 
 // Plus-addressing inbox for routing replies back to the right feedback row.
 // MX for this host must point at Resend's inbound; the rest of the domain's
@@ -30,7 +31,7 @@ export function parseFeedbackIdFromAddress(raw: string): string | null {
   if (!raw) return null
   // Strip display-name wrappers: "Name <addr>" → "addr"
   const match = raw.match(/<([^>]+)>/)
-  const address = (match ? match[1] : raw).trim().toLowerCase()
+  const address = normalizeEmail(match ? match[1] : raw)
   const atIdx = address.lastIndexOf('@')
   if (atIdx < 0) return null
   const localpart = address.slice(0, atIdx)
@@ -77,7 +78,7 @@ export function buildInboundReply(input: InboundReplyInput): Omit<FeedbackReply,
   return {
     feedback_id: input.feedbackId,
     from: 'submitter',
-    from_email: input.fromEmail.trim().toLowerCase(),
+    from_email: normalizeEmail(input.fromEmail),
     body: input.body,
     via_email: true,
     created_at: ts,

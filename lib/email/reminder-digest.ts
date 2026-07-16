@@ -1,4 +1,5 @@
 import { copy } from '@/lib/copy'
+import { normalizeEmail } from '@/lib/email/normalize'
 
 // Pure grouping + copy for the maker reminder cron (#141). A maker on N briefs
 // used to get N near-identical reminder emails in one cron pass; we now group
@@ -30,7 +31,7 @@ export interface MakerBatch {
 export function groupReminderSends(items: PendingReminder[]): MakerBatch[] {
   const byEmail = new Map<string, PendingReminder[]>()
   for (const item of items) {
-    const key = item.makerEmail.trim().toLowerCase()
+    const key = normalizeEmail(item.makerEmail)
     const bucket = byEmail.get(key)
     if (bucket) bucket.push(item)
     else byEmail.set(key, [item])

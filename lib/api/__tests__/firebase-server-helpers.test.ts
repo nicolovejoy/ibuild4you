@@ -8,6 +8,7 @@ import {
   getAuthenticatedUser,
   getUserDisplayName,
   hasSystemRole,
+  isApprovedEmail,
 } from '../firebase-server-helpers'
 import { _resetAuthCache } from '../auth-cache'
 import { isAdminEmail } from '@/lib/constants'
@@ -32,7 +33,7 @@ vi.mock('@/lib/firebase/admin', () => ({
   })),
 }))
 
-import { getAdminAuth } from '@/lib/firebase/admin'
+import { getAdminAuth, getAdminDb } from '@/lib/firebase/admin'
 
 // Helper: set up getAdminAuth mock with a verifyIdToken that resolves to given claims
 function mockToken(claims: { uid: string; email: string; name?: string }) {
@@ -59,6 +60,34 @@ describe('isAdminEmail', () => {
 
   it('returns false for null', () => {
     expect(isAdminEmail(null)).toBe(false)
+  })
+})
+
+describe('isApprovedEmail', () => {
+  // Regression coverage for #152: the approved_emails doc lookup used to do a
+  // bare `.toLowerCase()` with no trim, so " Sam@Example.com " (whitespace
+  // from a copy-paste) would look up a doc that could never match a
+  // normally-approved "sam@example.com" row — silently locking someone out.
+  it('normalizes trim+case before the approved_emails doc lookup', async () => {
+    const docSpy = vi.fn((id: string) => ({
+      get: async () => ({ exists: id === 'sam@example.com' }),
+    }))
+    vi.mocked(getAdminDb).mockReturnValueOnce({
+      collection: () => ({ doc: docSpy }),
+    } as unknown as FirebaseFirestore.Firestore)
+
+    const approved = await isApprovedEmail('  Sam@Example.com  ')
+
+    expect(docSpy).toHaveBeenCalledWith('sam@example.com')
+    expect(approved).toBe(true)
+  })
+
+  it('is not approved when the doc genuinely does not exist', async () => {
+    vi.mocked(getAdminDb).mockReturnValueOnce({
+      collection: () => ({ doc: () => ({ get: async () => ({ exists: false }) }) }),
+    } as unknown as FirebaseFirestore.Firestore)
+
+    expect(await isApprovedEmail('nobody@example.com')).toBe(false)
   })
 })
 

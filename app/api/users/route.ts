@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getAuthenticatedUser, getAdminDb, hasSystemRole } from '@/lib/api/firebase-server-helpers'
 import { getAdminAuth } from '@/lib/firebase/admin'
+import { normalizeEmail } from '@/lib/email/normalize'
 
 // GET /api/users — admin-only: list all known people
 // Merges users collection, project_members, and approved_emails
@@ -19,7 +20,7 @@ export async function GET(request: Request) {
   const usersMap = new Map<string, Record<string, unknown>>()
   for (const doc of usersSnap.docs) {
     const data = doc.data()
-    const email = (data.email as string)?.toLowerCase()
+    const email = normalizeEmail(data.email as string | undefined)
     if (email) {
       usersMap.set(email, { id: doc.id, ...data, source: 'users' })
     }
@@ -29,7 +30,7 @@ export async function GET(request: Request) {
   const membersSnap = await db.collection('project_members').get()
   for (const doc of membersSnap.docs) {
     const data = doc.data()
-    const email = (data.email as string)?.toLowerCase()
+    const email = normalizeEmail(data.email as string | undefined)
     if (email && !usersMap.has(email)) {
       usersMap.set(email, {
         id: data.user_id || `pm:${doc.id}`,
@@ -46,7 +47,7 @@ export async function GET(request: Request) {
   // Get approved emails not yet in the map
   const approvedSnap = await db.collection('approved_emails').get()
   for (const doc of approvedSnap.docs) {
-    const email = doc.id.toLowerCase()
+    const email = normalizeEmail(doc.id)
     if (!usersMap.has(email)) {
       usersMap.set(email, {
         id: `ae:${email}`,

@@ -5,6 +5,7 @@ import { NOTIFICATION_EMAILS } from '@/lib/constants'
 import { checkRateLimit, getClientIp } from '@/lib/api/rate-limit'
 import { RATE_LIMIT_PER_HOUR } from '@/lib/feedback/limits'
 import { buildFeedbackEmail } from '@/lib/feedback/notify-email'
+import { normalizeEmail } from '@/lib/email/normalize'
 import type { FeedbackType } from '@/lib/types'
 
 // Public endpoint: receives submissions from <FeedbackWidget> embedded on
@@ -127,7 +128,7 @@ export async function POST(request: Request) {
   const type = typeRaw as FeedbackType
   const submitterEmail =
     typeof body.submitterEmail === 'string' && body.submitterEmail.trim()
-      ? body.submitterEmail.trim().toLowerCase()
+      ? normalizeEmail(body.submitterEmail)
       : null
   const pageUrl = typeof body.pageUrl === 'string' ? body.pageUrl.slice(0, 2000) : ''
   const userAgent = typeof body.userAgent === 'string' ? body.userAgent.slice(0, 500) : ''

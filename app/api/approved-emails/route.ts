@@ -6,6 +6,7 @@ import {
   isApprovedEmail,
 } from '@/lib/api/firebase-server-helpers'
 import { isAdminEmail } from '@/lib/constants'
+import { normalizeEmail } from '@/lib/email/normalize'
 
 // GET /api/approved-emails — check if the current user's email is approved
 // Also upserts the user doc with names from the auth token (Google sign-in)
@@ -67,7 +68,7 @@ export async function POST(request: Request) {
   }
 
   const db = getAdminDb()
-  const normalizedEmail = email.trim().toLowerCase()
+  const normalizedEmail = normalizeEmail(email)
   await db.collection('approved_emails').doc(normalizedEmail).set({
     email: normalizedEmail,
     approved_by: auth.email,

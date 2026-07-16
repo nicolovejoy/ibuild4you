@@ -1,5 +1,6 @@
 import type { FeedbackType } from '@/lib/types'
 import type { PageCapture } from './capture'
+import { normalizeEmail } from '@/lib/email/normalize'
 
 // Mirror server-side cap (app/api/feedback/route.ts). Kept as a constant the
 // widget and tests can both import so a future bump only happens in two places.
@@ -75,7 +76,7 @@ export function buildFeedbackPayload(
   ctx: FeedbackContext,
   capture?: PageCapture | null
 ): FeedbackPayload {
-  const submitterEmail = input.submitterEmail?.trim().toLowerCase()
+  const submitterEmail = normalizeEmail(input.submitterEmail) || undefined
   return {
     projectId: input.projectId.trim(),
     type: input.type,
