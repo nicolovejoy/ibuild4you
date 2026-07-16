@@ -9,6 +9,7 @@ import { generateWelcomeMessage } from '@/lib/agent/welcome-message'
 import { resolveBriefRole } from '@/lib/roles/brief-role'
 import { copy } from '@/lib/copy'
 import { generatePasscode } from '@/lib/passcode'
+import { ensureInviteResetLink } from '@/lib/auth/ensure-invite-account'
 
 // POST /api/projects/share — share a project with a maker (builder+)
 export async function POST(request: Request) {
@@ -159,10 +160,16 @@ export async function POST(request: Request) {
     // Don't break the share flow
   }
 
+  // Garm consumer plan Phase 1 / PR A: mint a password-setup link alongside
+  // the passcode. Additive/reversible — passcode still works, this just gives
+  // the "copy invite message" UI a link-first body to hand the maker instead.
+  const resetLink = await ensureInviteResetLink(normalizedEmail)
+
   return NextResponse.json({
     email: normalizedEmail,
     project_id,
     passcode,
+    reset_link: resetLink,
   })
 }
 

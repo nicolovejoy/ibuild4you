@@ -42,6 +42,14 @@ vi.mock('@/lib/email/send-maker-email', () => ({
   sendMakerEmail: (...args: unknown[]) => sendMakerEmailMock(...args),
 }))
 
+// Garm PR A: the invite path mints a password-setup link per recipient.
+// Default resolves per-email so the two-maker fan-out tests can each assert
+// their own person's link landed in their own email body.
+const ensureInviteResetLinkMock = vi.fn(async (email: string): Promise<string | null> => `https://example.com/reset/${email}`)
+vi.mock('@/lib/auth/ensure-invite-account', () => ({
+  ensureInviteResetLink: (...args: [string]) => ensureInviteResetLinkMock(...args),
+}))
+
 function makeReq(body: Record<string, unknown>) {
   return new Request('http://localhost/api/projects/p1/email', {
     method: 'POST',
@@ -121,14 +129,24 @@ describe('POST /api/projects/[id]/email', () => {
     )
   })
 
-  it('includes the resolved passcode in the invite body and stamps shared_at', async () => {
+  it('mints a password-setup link for the recipient, embeds it in the invite body, and stamps shared_at (Garm PR A)', async () => {
     const res = await POST(makeReq({ kind: 'invite' }), { params })
     expect(res.status).toBe(200)
+    expect(ensureInviteResetLinkMock).toHaveBeenCalledWith('maker@example.com')
     const call = sendMakerEmailMock.mock.calls[0][0]
-    expect(call.text).toContain('ABC123')
+    expect(call.text).toContain('https://example.com/reset/maker@example.com')
+    expect(call.text).not.toMatch(/passcode/i)
     expect(mockProjectUpdate).toHaveBeenCalledWith(
       expect.objectContaining({ shared_at: expect.any(String) })
     )
+  })
+
+  it('still sends the invite when link minting fails (fails soft, never blocks the invite)', async () => {
+    ensureInviteResetLinkMock.mockResolvedValueOnce(null)
+    const res = await POST(makeReq({ kind: 'invite' }), { params })
+    expect(res.status).toBe(200)
+    const call = sendMakerEmailMock.mock.calls[0][0]
+    expect(call.text).toMatch(/forgot password/i)
   })
 
   it('mints a passcode for the invite when the member has none', async () => {
@@ -190,18 +208,20 @@ describe('POST /api/projects/[id]/email', () => {
     expect(sendMakerEmailMock.mock.calls[0][0].to).toEqual(['matt@example.com', 'scott@example.com'])
   })
 
-  it('invite sends each maker their own passcode', async () => {
+  it('invite sends each maker their own password-setup link', async () => {
     twoMakers()
     const res = await POST(makeReq({ kind: 'invite' }), { params })
     expect(res.status).toBe(200)
     expect(sendMakerEmailMock).toHaveBeenCalledTimes(2)
+    expect(ensureInviteResetLinkMock).toHaveBeenCalledWith('matt@example.com')
+    expect(ensureInviteResetLinkMock).toHaveBeenCalledWith('scott@example.com')
     const [mattCall, scottCall] = sendMakerEmailMock.mock.calls.map((c) => c[0])
     expect(mattCall.to).toBe('matt@example.com')
-    expect(mattCall.text).toContain('MATT01')
-    expect(mattCall.text).not.toContain('SCOTT1')
+    expect(mattCall.text).toContain('https://example.com/reset/matt@example.com')
+    expect(mattCall.text).not.toContain('scott@example.com')
     expect(scottCall.to).toBe('scott@example.com')
-    expect(scottCall.text).toContain('SCOTT1')
-    expect(scottCall.text).not.toContain('MATT01')
+    expect(scottCall.text).toContain('https://example.com/reset/scott@example.com')
+    expect(scottCall.text).not.toContain('matt@example.com')
   })
 
   it('restricts the send to one recipient when `to` is given', async () => {
@@ -210,7 +230,7 @@ describe('POST /api/projects/[id]/email', () => {
     expect(res.status).toBe(200)
     expect(sendMakerEmailMock).toHaveBeenCalledOnce()
     expect(sendMakerEmailMock.mock.calls[0][0].to).toBe('scott@example.com')
-    expect(sendMakerEmailMock.mock.calls[0][0].text).toContain('SCOTT1')
+    expect(sendMakerEmailMock.mock.calls[0][0].text).toContain('https://example.com/reset/scott@example.com')
   })
 
   it('returns 400 when `to` is not an active maker on the brief', async () => {

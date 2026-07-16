@@ -6,11 +6,13 @@ import { copy, getMakerShortName } from '../copy'
 // not exhaustive snapshotting.
 
 describe('copy.invite.body', () => {
+  // Garm consumer plan Phase 1 / PR A: invite copy is link-first now — no more
+  // Email:/Passcode: lines. resetLink is a Firebase password-setup link, or
+  // null if minting it failed (never blocks the invite from sending).
   const args = {
     projectTitle: "Sam's Cafe",
     shareLink: 'https://ibuild4you.com/projects/sams-cafe',
-    email: 'sam@example.com',
-    passcode: '123456',
+    resetLink: 'https://ibuild4you-a0c4d.firebaseapp.com/__/auth/action?mode=resetPassword&oobCode=abc',
   }
 
   it('leads with the brief, not the AI mechanism (issue #20)', () => {
@@ -30,15 +32,32 @@ describe('copy.invite.body', () => {
     expect(copy.invite.body(args)).toMatch(/across (a few|several|multiple)? ?sessions|come back/i)
   })
 
-  it('includes the share link, email, and passcode for sign-in', () => {
+  it('includes the share link and the password-setup link, and mentions Google', () => {
     const body = copy.invite.body(args)
     expect(body).toContain(args.shareLink)
-    expect(body).toContain(args.email)
-    expect(body).toContain(args.passcode)
+    expect(body).toContain(args.resetLink)
+    expect(body).toMatch(/google/i)
   })
 
-  it('falls back to "(loading...)" when passcode is null', () => {
-    expect(copy.invite.body({ ...args, passcode: null })).toContain('(loading...)')
+  it('never prints a raw email or a passcode (the thing being replaced)', () => {
+    const body = copy.invite.body(args)
+    expect(body).not.toMatch(/email:/i)
+    expect(body).not.toMatch(/passcode/i)
+  })
+
+  it('degrades to a self-serve prompt when resetLink minting failed, with no dead end', () => {
+    const body = copy.invite.body({ ...args, resetLink: null })
+    expect(body).toMatch(/forgot password/i)
+    expect(body).not.toContain('null')
+  })
+
+  it('always tells the recipient what to do if the link has expired', () => {
+    // Firebase oob links expire — an invite that dead-ends on an expired link
+    // is worse than the passcode it replaced, so this guidance must show up
+    // whether or not resetLink was generated successfully.
+    expect(copy.invite.body(args)).toMatch(/expired/i)
+    expect(copy.invite.body(args)).toMatch(/forgot password/i)
+    expect(copy.invite.body({ ...args, resetLink: null })).toMatch(/forgot password/i)
   })
 })
 
