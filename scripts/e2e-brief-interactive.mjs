@@ -3,15 +3,10 @@
 // read → edit → save (persists across reload) → revert → cancel-discards.
 // Mutates the test-cast-cafe brief, then restores the original Problem text.
 
-import { readFileSync } from 'node:fs'
 import { chromium } from 'playwright'
+import { loginPage, BASE, shotDir } from './lib/preview-login.mjs'
 
-const ROOT = new URL('..', import.meta.url).pathname
-const BASE = 'https://preview.ibuild4you.com'
 const SLUG = process.env.E2E_SLUG || 'test-cast-cafe'
-const token = readFileSync(`${ROOT}.ibuild4you-bypass`, 'utf8').trim()
-const passcode = readFileSync(`${ROOT}.test-admin-passcode`, 'utf8').trim()
-const shotDir = `${ROOT}.playwright-mcp`
 const MARK = ' [E2E-EDIT-OK]'
 
 const browser = await chromium.launch()
@@ -27,14 +22,7 @@ const problemBox = () => page.locator('textarea').first()
 const readHasMark = () => page.getByText(MARK.trim(), { exact: false }).count().then((n) => n > 0)
 
 // login
-await page.goto(`${BASE}/dashboard?x-vercel-protection-bypass=${token}&x-vercel-set-bypass-cookie=true`, { waitUntil: 'domcontentloaded' })
-await page.waitForTimeout(1500)
-if (page.url().includes('/auth/login')) {
-  await page.getByPlaceholder('you@example.com').fill('test@ibuild4you.com')
-  await page.getByPlaceholder('ABC123').fill(passcode)
-  await page.getByRole('button', { name: 'Sign in with passcode' }).click()
-  await page.waitForURL(/dashboard/, { timeout: 12000 }).catch(() => {})
-}
+await loginPage(page)
 
 const open = async () => { await page.goto(`${BASE}/projects/${SLUG}?tab=brief`, { waitUntil: 'domcontentloaded' }); await page.waitForTimeout(3000) }
 await open()

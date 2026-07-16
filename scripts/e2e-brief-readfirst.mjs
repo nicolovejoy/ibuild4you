@@ -3,28 +3,15 @@
 // "Edit brief" button; entering edit shows the editor + Save + Cancel; Cancel
 // returns to read view. Retries to wait out a fresh deploy.
 
-import { readFileSync } from 'node:fs'
 import { chromium } from 'playwright'
+import { loginPage, BASE, shotDir } from './lib/preview-login.mjs'
 
-const ROOT = new URL('..', import.meta.url).pathname
-const BASE = 'https://preview.ibuild4you.com'
 const SLUG = process.env.E2E_SLUG || 'test-cast-cafe'
-const token = readFileSync(`${ROOT}.ibuild4you-bypass`, 'utf8').trim()
-const passcode = readFileSync(`${ROOT}.test-admin-passcode`, 'utf8').trim()
-const shotDir = `${ROOT}.playwright-mcp`
 
 const browser = await chromium.launch()
 const page = await (await browser.newContext({ viewport: { width: 1400, height: 1000 } })).newPage()
 
-await page.goto(`${BASE}/dashboard?x-vercel-protection-bypass=${token}&x-vercel-set-bypass-cookie=true`, { waitUntil: 'domcontentloaded' })
-await page.waitForTimeout(1500)
-if (page.url().includes('/auth/login')) {
-  await page.getByPlaceholder('you@example.com').fill('test@ibuild4you.com')
-  await page.getByPlaceholder('ABC123').fill(passcode)
-  await page.getByRole('button', { name: 'Sign in with passcode' }).click()
-  await page.waitForURL(/dashboard/, { timeout: 12000 }).catch(() => {})
-}
-await page.waitForTimeout(1000)
+await loginPage(page)
 
 async function check() {
   await page.goto(`${BASE}/projects/${SLUG}?tab=brief`, { waitUntil: 'domcontentloaded' })

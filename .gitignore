@@ -54,7 +54,10 @@ next-env.d.ts
 .ibuild4you-bypass
 .test-admin-passcode
 .test-admin-passcode-prod
+.test-admin-password
+.test-admin-password-prod
 .test-cast-passcodes.json
+.test-cast-passwords.json
 
 # Local brief/transcript exports (PII — never commit)
 exports/

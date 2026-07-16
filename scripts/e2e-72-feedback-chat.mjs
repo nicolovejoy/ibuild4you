@@ -10,37 +10,20 @@
 
 import { readFileSync } from 'node:fs'
 import { chromium } from 'playwright'
+import { loginWithPassword, BASE, shotDir, ROOT } from './lib/preview-login.mjs'
 
-const ROOT = new URL('..', import.meta.url).pathname
-const BASE = 'https://preview.ibuild4you.com'
 const BRIEF_PATH = '/projects/test-cast-cafe'
 const EMAIL = 'test-originator@ibuild4you.com'
 const MESSAGE =
   "Can you walk me through what's going on with the site so far — what have people been running into?"
 
-const token = readFileSync(`${ROOT}.ibuild4you-bypass`, 'utf8').trim()
-const passcodes = JSON.parse(readFileSync(`${ROOT}.test-cast-passcodes.json`, 'utf8'))
-const shotDir = `${ROOT}.playwright-mcp`
+const passwords = JSON.parse(readFileSync(`${ROOT}.test-cast-passwords.json`, 'utf8'))
 
 const browser = await chromium.launch()
 const ctx = await browser.newContext({ viewport: { width: 1200, height: 900 } })
 const page = await ctx.newPage()
 
-await page.goto(
-  `${BASE}${BRIEF_PATH}?x-vercel-protection-bypass=${token}&x-vercel-set-bypass-cookie=true`,
-  { waitUntil: 'domcontentloaded' },
-)
-await page.waitForTimeout(1500)
-if (page.url().includes('/auth/login')) {
-  await page.getByPlaceholder('you@example.com').fill(EMAIL)
-  await page.getByPlaceholder('ABC123').fill(passcodes[EMAIL])
-  await page.getByRole('button', { name: 'Sign in with passcode' }).click()
-  await page.waitForTimeout(2500)
-  if (!page.url().includes('/projects/')) {
-    await page.goto(`${BASE}${BRIEF_PATH}`, { waitUntil: 'domcontentloaded' })
-    await page.waitForTimeout(2000)
-  }
-}
+await loginWithPassword(page, { email: EMAIL, password: passwords[EMAIL], path: BRIEF_PATH })
 
 const box = page.getByPlaceholder('Type a message...')
 await box.waitFor({ timeout: 15000 })

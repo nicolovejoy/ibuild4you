@@ -13,6 +13,10 @@
 //
 // After --apply, the freshly generated passcode lands on the clipboard via
 // pbcopy — it is never printed to stdout. Paste it into 1Password.
+//
+// Garm PR C: this script still seeds the passcode (PR D is what retires it).
+// For password-based e2e login, run the sibling script AFTER this one:
+//   node scripts/with-preview-env.mjs node scripts/seed-test-admin-password.mjs --apply
 
 import { FieldValue } from 'firebase-admin/firestore'
 import { randomBytes } from 'node:crypto'

@@ -5,19 +5,8 @@
 // end, captures the POST /api/projects response (and its Bearer header), then
 // DELETEs the created brief so the preview env isn't left littered.
 
-import { readFileSync } from 'node:fs'
 import { chromium } from 'playwright'
-
-const ROOT = new URL('..', import.meta.url).pathname
-// Defaults to preview; set E2E_BASE=https://ibuild4you.com for a prod smoke test.
-const BASE = process.env.E2E_BASE || 'https://preview.ibuild4you.com'
-const EMAIL = 'test@ibuild4you.com'
-// Prod has no Vercel deployment-protection gate, so the bypass token is
-// preview-only. Read it if present; harmless extra query params otherwise.
-let token = ''
-try { token = readFileSync(`${ROOT}.ibuild4you-bypass`, 'utf8').trim() } catch {}
-const passcodeFile = process.env.E2E_PASSCODE_FILE || '.test-admin-passcode'
-const passcode = readFileSync(`${ROOT}${passcodeFile}`, 'utf8').trim()
+import { loginPage, BASE } from './lib/preview-login.mjs'
 
 // Unique-ish title without Date.now (keeps reruns from colliding via slug suffix).
 const stamp = Math.floor(performance.now()).toString(36)
@@ -36,16 +25,7 @@ const browser = await chromium.launch()
 const ctx = await browser.newContext({ viewport: { width: 1400, height: 900 } })
 const page = await ctx.newPage()
 
-await page.goto(`${BASE}/dashboard?x-vercel-protection-bypass=${token}&x-vercel-set-bypass-cookie=true`, { waitUntil: 'domcontentloaded' })
-await page.waitForURL(/\/(auth\/login|dashboard)/, { timeout: 15000 }).catch(() => {})
-await page.waitForTimeout(1500)
-if (page.url().includes('/auth/login')) {
-  await page.getByPlaceholder('you@example.com').fill(EMAIL)
-  await page.getByPlaceholder('ABC123').fill(passcode)
-  await page.getByRole('button', { name: 'Sign in with passcode' }).click()
-  await page.waitForURL(/\/dashboard/, { timeout: 15000 }).catch(() => {})
-}
-await page.waitForTimeout(1000)
+await loginPage(page)
 
 // Open the New-brief modal → Import JSON tab.
 await page.getByRole('button', { name: 'New brief' }).first().click()

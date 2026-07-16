@@ -17,6 +17,12 @@
 // in 1Password / .env.preview.local); otherwise random. On apply the full
 // {email: passcode} map is copied to the clipboard as JSON and written to the
 // gitignored .test-cast-passcodes.json. Passcodes are never printed to stdout.
+//
+// Garm PR C: each cast member also gets a Firebase Auth password (random,
+// Admin-SDK-set) written to the gitignored .test-cast-passwords.json, so e2e
+// scripts can sign in as a cast identity via password instead of passcode.
+// The passcode fields/file are left in place — PR D is what retires them, not
+// this script.
 
 import { randomBytes } from 'node:crypto'
 import { writeFileSync } from 'node:fs'
@@ -72,6 +78,16 @@ async function getOrCreateAuthUser(adminAuth, member, apply) {
     })
     return u.uid
   }
+}
+
+// Garm PR C: set (or rotate) a Firebase Auth password on the same user so the
+// harness can sign in with password instead of passcode.
+async function setPassword(adminAuth, uid, member, apply) {
+  if (!apply || uid.startsWith('(')) return null
+  const envKey = `SEED_PASSWORD_${member.key.toUpperCase()}`
+  const password = process.env[envKey]?.trim() || 'Pw-' + randomBytes(12).toString('base64url')
+  await adminAuth.updateUser(uid, { password })
+  return password
 }
 
 async function findOrCreateProject(db, apply) {
@@ -168,6 +184,7 @@ async function seed({ db, adminAuth, apply, log }) {
   log(`Brief: ${await ensureBrief(db, project.id, apply)}`)
 
   const passcodeMap = {}
+  const passwordMap = {}
   for (const member of CAST) {
     const envKey = `SEED_PASSCODE_${member.key.toUpperCase()}`
     const passcode = (process.env[envKey]?.trim() || generatePasscode()).toUpperCase()
@@ -177,6 +194,8 @@ async function seed({ db, adminAuth, apply, log }) {
     await upsertUserDoc(db, uid, member, apply)
     await upsertApprovedEmail(db, member, apply)
     const action = await upsertMembership(db, project.id, member, uid, passcode, apply)
+    const password = await setPassword(adminAuth, uid, member, apply)
+    if (password) passwordMap[member.email] = password
     log(`  ${member.key.padEnd(11)} ${member.email.padEnd(34)} role=${member.role.padEnd(7)} brief_role=${member.brief_role ?? 'null'} → ${action}`)
   }
 
@@ -186,6 +205,9 @@ async function seed({ db, adminAuth, apply, log }) {
     const r = spawnSync('pbcopy', { input: json })
     log('PASSCODES → .test-cast-passcodes.json (gitignored)' + (r.status === 0 ? ' + clipboard' : ' (pbcopy failed — read the file)'))
     log('Sign in at https://preview.ibuild4you.com/auth/login as each email + its passcode.')
+
+    writeFileSync('.test-cast-passwords.json', JSON.stringify(passwordMap, null, 2) + '\n')
+    log('PASSWORDS → .test-cast-passwords.json (gitignored, not printed) — for e2e scripts using password login (Garm PR C).')
   }
 }
 

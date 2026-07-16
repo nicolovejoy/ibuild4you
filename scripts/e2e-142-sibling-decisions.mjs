@@ -10,11 +10,10 @@
 // Usage: node scripts/e2e-142-sibling-decisions.mjs
 
 import { readFileSync } from 'node:fs'
-import { launchLoggedIn, shotDir, BASE } from './lib/preview-login.mjs'
+import { launchLoggedIn, loginWithPassword, shotDir, BASE, ROOT } from './lib/preview-login.mjs'
 
-const ROOT = new URL('..', import.meta.url).pathname
 const bypass = readFileSync(`${ROOT}.ibuild4you-bypass`, 'utf8').trim()
-const passcodes = JSON.parse(readFileSync(`${ROOT}.test-cast-passcodes.json`, 'utf8'))
+const passwords = JSON.parse(readFileSync(`${ROOT}.test-cast-passwords.json`, 'utf8'))
 
 const PROJECT_B = 'kfmFngH7VbTjauM4EqEH' // Test Cast — Cozy Italian Café (the chat brief)
 const SLUG_B = 'test-cast-cafe'
@@ -91,21 +90,7 @@ let siblingId = null
 // 3. Log in as the cast maker on B and ask about the mascot.
 const makerCtx = await browser.newContext({ viewport: { width: 1200, height: 900 } })
 const maker = await makerCtx.newPage()
-await maker.goto(
-  `${BASE}/projects/${SLUG_B}?x-vercel-protection-bypass=${bypass}&x-vercel-set-bypass-cookie=true`,
-  { waitUntil: 'domcontentloaded' },
-)
-await maker.waitForTimeout(1500)
-if (maker.url().includes('/auth/login')) {
-  await maker.locator('#email').fill(MAKER)
-  await maker.locator('#passcode').fill(passcodes[MAKER])
-  await maker.getByRole('button', { name: 'Sign in with passcode' }).click()
-  await maker.waitForTimeout(2500)
-  if (!maker.url().includes('/projects/')) {
-    await maker.goto(`${BASE}/projects/${SLUG_B}`, { waitUntil: 'domcontentloaded' })
-    await maker.waitForTimeout(2000)
-  }
-}
+await loginWithPassword(maker, { email: MAKER, password: passwords[MAKER], path: `/projects/${SLUG_B}` })
 
 // Poll for the display-name gate OR composer (#39 gotcha).
 let composer = null

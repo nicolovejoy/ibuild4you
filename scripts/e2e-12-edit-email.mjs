@@ -5,33 +5,16 @@
 // address, asserts the response + new passcode, then RESTORES the original
 // email so the preview fixture isn't left mutated. Retries to wait out a deploy.
 
-import { readFileSync } from 'node:fs'
 import { chromium } from 'playwright'
+import { loginPage, BASE, shotDir } from './lib/preview-login.mjs'
 
-const ROOT = new URL('..', import.meta.url).pathname
-const BASE = 'https://preview.ibuild4you.com'
-const EMAIL = 'test@ibuild4you.com'
 const SLUG = process.env.E2E_SLUG || 'test-cast-cafe'
 const MARKER = 'rekey-test@example.com'
-
-const token = readFileSync(`${ROOT}.ibuild4you-bypass`, 'utf8').trim()
-const passcode = readFileSync(`${ROOT}.test-admin-passcode`, 'utf8').trim()
-const shotDir = `${ROOT}.playwright-mcp`
 
 const browser = await chromium.launch()
 const ctx = await browser.newContext({ viewport: { width: 1400, height: 900 } })
 const page = await ctx.newPage()
-
-await page.goto(`${BASE}/dashboard?x-vercel-protection-bypass=${token}&x-vercel-set-bypass-cookie=true`, { waitUntil: 'domcontentloaded' })
-await page.waitForURL(/\/(auth\/login|dashboard)/, { timeout: 12000 }).catch(() => {})
-await page.waitForTimeout(1500)
-if (page.url().includes('/auth/login')) {
-  await page.getByPlaceholder('you@example.com').fill(EMAIL)
-  await page.getByPlaceholder('ABC123').fill(passcode)
-  await page.getByRole('button', { name: 'Sign in with passcode' }).click()
-  await page.waitForURL(/\/dashboard/, { timeout: 12000 }).catch(() => {})
-}
-await page.waitForTimeout(1000)
+await loginPage(page)
 
 async function openShareModal() {
   await page.goto(`${BASE}/projects/${SLUG}`, { waitUntil: 'domcontentloaded' })
