@@ -5,16 +5,9 @@
 //
 // Usage: node scripts/e2e-23a-file-delete.mjs
 
-import { readFileSync, writeFileSync } from 'node:fs'
+import { writeFileSync } from 'node:fs'
 import { chromium } from 'playwright'
-
-const ROOT = new URL('..', import.meta.url).pathname
-const BASE = 'https://preview.ibuild4you.com'
-const EMAIL = process.env.E2E_EMAIL || 'test@ibuild4you.com'
-
-const token = readFileSync(`${ROOT}.ibuild4you-bypass`, 'utf8').trim()
-const passcode = readFileSync(`${ROOT}.test-admin-passcode`, 'utf8').trim()
-const shotDir = `${ROOT}.playwright-mcp`
+import { loginPage, BASE, shotDir } from './lib/preview-login.mjs'
 
 // NB: keep "delete" out of the filename — getByRole name matching is substring,
 // so a filename containing it would also match the file-card button.
@@ -33,16 +26,7 @@ const ctx = await browser.newContext({ viewport: { width: 1400, height: 1000 } }
 const page = await ctx.newPage()
 
 // Login
-await page.goto(`${BASE}/dashboard?x-vercel-protection-bypass=${token}&x-vercel-set-bypass-cookie=true`, { waitUntil: 'domcontentloaded' })
-await page.waitForURL(/\/(auth\/login|dashboard)/, { timeout: 12000 }).catch(() => {})
-await page.waitForTimeout(1500)
-if (page.url().includes('/auth/login')) {
-  await page.getByPlaceholder('you@example.com').fill(EMAIL)
-  await page.getByPlaceholder('ABC123').fill(passcode)
-  await page.getByRole('button', { name: 'Sign in with passcode' }).click()
-  await page.waitForURL(/\/dashboard/, { timeout: 10000 }).catch(() => {})
-}
-await page.waitForTimeout(1500)
+await loginPage(page)
 
 // Go straight to the seeded brief's Brief tab (Attachments live there).
 // Direct nav avoids the sectioned-dashboard h3 ambiguity.

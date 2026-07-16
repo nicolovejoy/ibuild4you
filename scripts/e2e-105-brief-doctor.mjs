@@ -7,19 +7,12 @@
 //
 // Run under the preview env wrapper (provides FIREBASE_SERVICE_ACCOUNT):
 //   node scripts/with-preview-env.mjs node scripts/e2e-105-brief-doctor.mjs
-// Files expected (gitignored): .ibuild4you-bypass, .test-admin-passcode
+// Files expected (gitignored): .ibuild4you-bypass, .test-admin-password
 
-import { readFileSync } from 'node:fs'
 import { initializeApp, cert, getApps } from 'firebase-admin/app'
 import { getFirestore } from 'firebase-admin/firestore'
+import { loginPage, BASE, shotDir } from './lib/preview-login.mjs'
 import { chromium } from 'playwright'
-
-const ROOT = new URL('..', import.meta.url).pathname
-const BASE = process.env.E2E_BASE || 'https://preview.ibuild4you.com'
-const EMAIL = process.env.E2E_EMAIL || 'test@ibuild4you.com'
-const token = readFileSync(`${ROOT}.ibuild4you-bypass`, 'utf8').trim()
-const passcode = readFileSync(`${ROOT}.test-admin-passcode`, 'utf8').trim()
-const shotDir = `${ROOT}.playwright-mcp`
 
 const sa = process.env.FIREBASE_SERVICE_ACCOUNT
 if (!sa) {
@@ -56,18 +49,7 @@ console.log('seeded session', sessionRef.id, 'in project', projectId)
 // 2. Drive the UI.
 const browser = await chromium.launch()
 const page = await (await browser.newContext({ viewport: { width: 1400, height: 1000 } })).newPage()
-
-await page.goto(`${BASE}/dashboard?x-vercel-protection-bypass=${token}&x-vercel-set-bypass-cookie=true`, {
-  waitUntil: 'domcontentloaded',
-})
-await page.waitForTimeout(1500)
-if (page.url().includes('/auth/login')) {
-  // #104 added a second you@example.com field (password form); target by id.
-  await page.locator('#email').fill(EMAIL)
-  await page.locator('#passcode').fill(passcode)
-  await page.getByRole('button', { name: 'Sign in with passcode' }).click()
-  await page.waitForURL(/\/dashboard/, { timeout: 12000 }).catch(() => {})
-}
+await loginPage(page)
 
 await page.goto(`${BASE}/admin/briefs`, { waitUntil: 'domcontentloaded' })
 await page.waitForTimeout(1500)

@@ -16,7 +16,7 @@
 // Bonus (warn-only): live maker chat probe grading the custom-identity posture.
 //
 // Usage: node scripts/e2e-39-prep-smoke.mjs          (preview)
-//        E2E_BASE=https://ibuild4you.com E2E_PASSCODE_FILE=.test-admin-passcode-prod \
+//        E2E_BASE=https://ibuild4you.com E2E_PASSWORD_FILE=.test-admin-password-prod \
 //          node scripts/e2e-39-prep-smoke.mjs        (prod)
 
 import { chromium } from 'playwright'

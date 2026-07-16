@@ -9,22 +9,16 @@
 // ibuild4you-files bucket, so this exercises the real delete path.
 //
 // Usage: node scripts/e2e-23-p1-brief-delete-s3.mjs
-// Needs: .ibuild4you-bypass, .test-admin-passcode, AWS creds (default chain).
+// Needs: .ibuild4you-bypass, .test-admin-password, AWS creds (default chain).
 
-import { readFileSync, writeFileSync } from 'node:fs'
+import { writeFileSync } from 'node:fs'
 import { chromium } from 'playwright'
 import { S3Client, HeadObjectCommand } from '@aws-sdk/client-s3'
+import { loginPage, BASE, shotDir } from './lib/preview-login.mjs'
 
-const ROOT = new URL('..', import.meta.url).pathname
-const BASE = 'https://preview.ibuild4you.com'
-const EMAIL = process.env.E2E_EMAIL || 'test@ibuild4you.com'
 const BUCKET = process.env.AWS_S3_BUCKET || 'ibuild4you-files'
 const REGION = process.env.AWS_REGION || 'us-east-1'
 const TITLE = `ZZ s3-cleanup ${Date.now().toString(36)}`
-
-const token = readFileSync(`${ROOT}.ibuild4you-bypass`, 'utf8').trim()
-const passcode = readFileSync(`${ROOT}.test-admin-passcode`, 'utf8').trim()
-const shotDir = `${ROOT}.playwright-mcp`
 
 const fname = `e2e-s3cleanup-${Date.now()}.txt`
 const tmpPath = `/tmp/${fname}`
@@ -65,16 +59,7 @@ page.on('response', async (resp) => {
 })
 
 // Login
-await page.goto(`${BASE}/dashboard?x-vercel-protection-bypass=${token}&x-vercel-set-bypass-cookie=true`, { waitUntil: 'domcontentloaded' })
-await page.waitForURL(/\/(auth\/login|dashboard)/, { timeout: 12000 }).catch(() => {})
-await page.waitForTimeout(1500)
-if (page.url().includes('/auth/login')) {
-  await page.getByPlaceholder('you@example.com').fill(EMAIL)
-  await page.getByPlaceholder('ABC123').fill(passcode)
-  await page.getByRole('button', { name: 'Sign in with passcode' }).click()
-  await page.waitForURL(/\/dashboard/, { timeout: 12000 }).catch(() => {})
-}
-await page.waitForTimeout(1500)
+await loginPage(page)
 
 // 1. Create a throwaway brief.
 await page.getByRole('button', { name: 'New brief' }).click()

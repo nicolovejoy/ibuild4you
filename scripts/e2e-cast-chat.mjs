@@ -6,21 +6,18 @@
 // The Contributor's turn makes the session multi-human, so Sam's reply to them
 // should name the people and mediate. Dumps Sam's latest reply + screenshots.
 //
-// Secret hygiene: bypass token + passcodes read from gitignored files, never
+// Secret hygiene: bypass token + passwords read from gitignored files, never
 // printed. Seed first: scripts/with-preview-env.mjs node scripts/seed-test-cast.mjs --apply
 //
 // Usage: node scripts/e2e-cast-chat.mjs
 
 import { readFileSync } from 'node:fs'
 import { chromium } from 'playwright'
+import { loginWithPassword, BASE, shotDir, ROOT } from './lib/preview-login.mjs'
 
-const ROOT = new URL('..', import.meta.url).pathname
-const BASE = 'https://preview.ibuild4you.com'
 const BRIEF_PATH = '/projects/test-cast-cafe'
 
-const token = readFileSync(`${ROOT}.ibuild4you-bypass`, 'utf8').trim()
-const passcodes = JSON.parse(readFileSync(`${ROOT}.test-cast-passcodes.json`, 'utf8'))
-const shotDir = `${ROOT}.playwright-mcp`
+const passwords = JSON.parse(readFileSync(`${ROOT}.test-cast-passwords.json`, 'utf8'))
 
 const browser = await chromium.launch()
 
@@ -28,23 +25,8 @@ async function loginAndChat(label, email, message) {
   const ctx = await browser.newContext({ viewport: { width: 1200, height: 900 } })
   const page = await ctx.newPage()
 
-  // Prime Vercel bypass cookie, then app passcode login.
-  await page.goto(
-    `${BASE}${BRIEF_PATH}?x-vercel-protection-bypass=${token}&x-vercel-set-bypass-cookie=true`,
-    { waitUntil: 'domcontentloaded' },
-  )
-  await page.waitForTimeout(1500)
-  if (page.url().includes('/auth/login')) {
-    await page.getByPlaceholder('you@example.com').fill(email)
-    await page.getByPlaceholder('ABC123').fill(passcodes[email])
-    await page.getByRole('button', { name: 'Sign in with passcode' }).click()
-    await page.waitForTimeout(2500)
-    // After login we may land on /dashboard — navigate to the brief.
-    if (!page.url().includes('/projects/')) {
-      await page.goto(`${BASE}${BRIEF_PATH}`, { waitUntil: 'domcontentloaded' })
-      await page.waitForTimeout(2000)
-    }
-  }
+  // Prime Vercel bypass cookie, then app password login.
+  await loginWithPassword(page, { email, password: passwords[email], path: BRIEF_PATH })
 
   const box = page.getByPlaceholder('Type a message...')
   await box.waitFor({ timeout: 15000 })
