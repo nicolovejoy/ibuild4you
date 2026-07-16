@@ -126,7 +126,13 @@ export async function getProjectRole(
   const projectDoc = await db.collection('projects').doc(projectId).get()
   if (projectDoc.exists) {
     const data = projectDoc.data()!
-    if (data.requester_id === userId || normalizeEmail(data.requester_email as string | undefined) === email) {
+    // The email !== '' guard matters: normalizeEmail(undefined) is '', so
+    // without it a token carrying no email would match any project whose
+    // requester_email is missing (#155 review catch).
+    if (
+      data.requester_id === userId ||
+      (email !== '' && normalizeEmail(data.requester_email as string | undefined) === email)
+    ) {
       ctx?.roleCache.set(projectId, 'maker')
       return 'maker'
     }

@@ -415,6 +415,21 @@ describe('getProjectRole / getViewerBriefRole — email fallback normalization',
     expect(role).toBe('maker')
   })
 
+  it('getProjectRole denies an empty email even when requester_email is missing (empty-vs-missing must not match)', async () => {
+    // normalizeEmail(undefined) === '' — without the email !== '' guard an
+    // email-less token would be granted maker on any project lacking a
+    // requester_email.
+    const db = fakeDbWithEmailMember({
+      storedEmail: 'nobody-matches@example.com',
+      memberData: {},
+      requesterEmail: undefined,
+      emailWhereSpy: () => {},
+    })
+
+    const role = await getProjectRole(db, 'p1', 'uid-no-match', '', [])
+    expect(role).toBeNull()
+  })
+
   it('getViewerBriefRole normalizes the email arg before the fallback where() query', async () => {
     const emailWhereSpy = vi.fn()
     const db = fakeDbWithEmailMember({

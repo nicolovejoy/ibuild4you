@@ -41,8 +41,11 @@ export async function POST(request: Request) {
     .limit(1)
     .get()
 
-  // Also check legacy requester_email
-  const hasLegacyAccess = normalizeEmail(project?.requester_email as string | undefined) === email
+  // Also check legacy requester_email. The email !== '' guard matters:
+  // normalizeEmail(undefined) is '', so without it a token carrying no email
+  // would "match" any project whose requester_email is missing (#155 review catch).
+  const hasLegacyAccess =
+    email !== '' && normalizeEmail(project?.requester_email as string | undefined) === email
 
   if (memberSnap.empty && !hasLegacyAccess) {
     return NextResponse.json({ error: 'This project was not shared with you' }, { status: 403 })

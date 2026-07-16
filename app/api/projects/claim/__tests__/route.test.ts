@@ -135,4 +135,14 @@ describe('POST /api/projects/claim', () => {
       expect.objectContaining({ email: 'u@ibuild4you.com' })
     )
   })
+
+  it('rejects an email-less token even when the project has no requester_email (empty-vs-missing must not match)', async () => {
+    // normalizeEmail(undefined) === '' — without the email !== '' guard this
+    // would fail open: '' === '' grants legacy access and writes a ''-email row.
+    authResult = { uid: 'u1', email: '', systemRoles: [], error: null }
+    projectDoc = { exists: true, data: () => ({}) }
+    const res = await POST(makeReq({ project_id: 'p1' }))
+    expect(res.status).toBe(403)
+    expect(mockMemberAdd).not.toHaveBeenCalled()
+  })
 })
