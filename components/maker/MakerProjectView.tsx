@@ -36,6 +36,7 @@ import { copy } from '@/lib/copy'
 import { formatCostUsd } from '@/lib/observability/session-cost'
 import { shouldKickoff } from '@/lib/agent/kickoff'
 import { UserMenu } from '@/components/user-menu'
+import { MigrationBanner } from '@/components/MigrationBanner'
 import { briefRoleLabel, briefRoleShort, viewerBriefRole } from '@/lib/roles/display'
 import { BriefSwitcher } from '@/components/brief-switcher'
 import { useQueryClient } from '@tanstack/react-query'
@@ -75,6 +76,7 @@ export function MakerProjectView({ projectId, userEmail }: { projectId: string; 
 
   return (
     <div className="min-h-screen bg-brand-cream">
+      <MigrationBanner />
       <header className="bg-white border-b-2 border-amber-300/50 sticky top-0 z-10">
         <div className="px-4 sm:px-6 pt-2 sm:pt-3 pb-2">
           {/* Row 1: nav + title + identity */}

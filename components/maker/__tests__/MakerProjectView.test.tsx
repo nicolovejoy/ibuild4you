@@ -107,6 +107,11 @@ vi.mock('@/components/user-menu', () => ({
   UserMenu: () => null,
 }))
 
+// MigrationBanner (Garm PR B) also pulls in the Firebase client SDK — same reason.
+vi.mock('@/components/MigrationBanner', () => ({
+  MigrationBanner: () => null,
+}))
+
 import { MakerProjectView } from '../MakerProjectView'
 
 function renderView() {
