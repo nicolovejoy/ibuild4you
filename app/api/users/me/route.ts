@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getAuthenticatedUser, getAdminDb } from '@/lib/api/firebase-server-helpers'
 import { invalidateUser } from '@/lib/api/auth-cache'
+import { normalizeEmail } from '@/lib/email/normalize'
 
 // GET /api/users/me — return the current user's profile and system roles.
 // User doc data is read by getAuthenticatedUser and reused here (no second read).
@@ -52,6 +53,10 @@ export async function PATCH(request: Request) {
 
   const db = getAdminDb()
   const now = new Date().toISOString()
+  // Defensive normalize (#155) — auth.email is already normalized at the
+  // token boundary, but this route writes/queries it, so don't depend on
+  // that upstream invariant here.
+  const email = normalizeEmail(auth.email)
 
   // Build the partial update from whichever fields were provided.
   const fields: Record<string, string> = { updated_at: now }
@@ -69,7 +74,7 @@ export async function PATCH(request: Request) {
   if (userDoc.exists) {
     await userRef.update(fields)
   } else {
-    await userRef.set({ email: auth.email, created_at: now, ...fields })
+    await userRef.set({ email, created_at: now, ...fields })
   }
 
   // Sync requester name cache on any projects where this user is the requester.
@@ -77,7 +82,7 @@ export async function PATCH(request: Request) {
   if (hasName) {
     const projectsAsRequester = await db
       .collection('projects')
-      .where('requester_email', '==', auth.email)
+      .where('requester_email', '==', email)
       .get()
 
     if (!projectsAsRequester.empty) {

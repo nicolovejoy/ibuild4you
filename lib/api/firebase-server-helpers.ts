@@ -80,6 +80,11 @@ export async function getProjectRole(
   systemRoles: SystemRole[] = [],
   ctx?: { roleCache: Map<string, MemberRole | null> }
 ): Promise<MemberRole | null> {
+  // Normalize defensively (#155) — most callers pass auth.email, already
+  // normalized at the token boundary, but this is the app's access-control
+  // core so it shouldn't depend on every caller getting that right.
+  email = normalizeEmail(email)
+
   // Instance admins get implicit owner on all projects
   if (systemRoles.includes('admin') || isAdminEmail(email)) return 'owner'
 
@@ -121,7 +126,7 @@ export async function getProjectRole(
   const projectDoc = await db.collection('projects').doc(projectId).get()
   if (projectDoc.exists) {
     const data = projectDoc.data()!
-    if (data.requester_id === userId || data.requester_email === email) {
+    if (data.requester_id === userId || normalizeEmail(data.requester_email as string | undefined) === email) {
       ctx?.roleCache.set(projectId, 'maker')
       return 'maker'
     }
@@ -141,6 +146,7 @@ export async function getViewerBriefRole(
   userId: string,
   email: string
 ): Promise<BriefRole | null> {
+  email = normalizeEmail(email) // #155 — same defensive normalize as getProjectRole
   const byUid = await db
     .collection('project_members')
     .where('project_id', '==', projectId)
@@ -221,7 +227,10 @@ export async function getAuthenticatedUser(request: Request): Promise<AuthSucces
   }
 
   const uid = decoded.uid
-  const email = decoded.email ?? ''
+  // Normalize at the token boundary (#155) — every downstream auth.email
+  // consumer (isAdminEmail, getProjectRole, project_members writes, ...)
+  // inherits a clean value from here without re-normalizing individually.
+  const email = normalizeEmail(decoded.email)
 
   // Step 2: load user doc (with cache). Firestore errors here are infra failures,
   // NOT auth failures — return 503 so the client doesn't kick the user to the
