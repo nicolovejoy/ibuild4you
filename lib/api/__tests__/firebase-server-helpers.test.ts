@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
   requireRole,
   canChat,
@@ -13,6 +13,12 @@ import {
 import { _resetAuthCache } from '../auth-cache'
 import { isAdminEmail } from '@/lib/constants'
 import type { SystemRole } from '@/lib/types'
+
+// isApprovedEmail's Garm-shadow side effect (docs/garm-consumer-plan.md Phase 4)
+// calls out to garmCheck — mock it so these tests exercise the real
+// shadowCheckApprovedEmail/scheduleGarmShadowCheck wiring without a network call.
+vi.mock('@/lib/garm', () => ({ garmCheck: vi.fn() }))
+import { garmCheck } from '@/lib/garm'
 
 // Mock Firebase Admin SDK — we don't want real Firebase calls in unit tests
 let mockUserDoc: { exists: boolean; data: () => Record<string, unknown> | undefined } = {
@@ -88,6 +94,110 @@ describe('isApprovedEmail', () => {
     } as unknown as FirebaseFirestore.Firestore)
 
     expect(await isApprovedEmail('nobody@example.com')).toBe(false)
+  })
+})
+
+// Garm shadow mode (docs/garm-consumer-plan.md Phase 4): isApprovedEmail also
+// fires a background garmCheck() comparison, but must NEVER let Garm's answer
+// change what it returns. These tests prove that invariant holds whether Garm
+// agrees, disagrees, or is unreachable — and that the kill switch genuinely
+// gates the fetch, not just the logging.
+describe('isApprovedEmail — Garm shadow never changes the outcome', () => {
+  const OLD_ENV = { ...process.env }
+
+  // getAdminDb is mocked module-wide (see vi.mock('@/lib/firebase/admin')
+  // above) and getAuthenticatedUser tests further down rely on its default
+  // factory implementation — mockReturnValueOnce so each isApprovedEmail call
+  // in a test gets exactly one canned response and nothing leaks past this
+  // describe block.
+  function mockLocalApprovedOnce(exists: boolean) {
+    vi.mocked(getAdminDb).mockReturnValueOnce({
+      collection: () => ({ doc: () => ({ get: async () => ({ exists }) }) }),
+    } as unknown as FirebaseFirestore.Firestore)
+  }
+
+  // Let any fire-and-forget shadow promise settle before asserting on it.
+  async function flush() {
+    await Promise.resolve()
+    await Promise.resolve()
+    await Promise.resolve()
+  }
+
+  beforeEach(() => {
+    vi.mocked(garmCheck).mockClear()
+  })
+
+  afterEach(() => {
+    process.env = { ...OLD_ENV }
+  })
+
+  it('local-approved stays approved whether Garm allows, denies, or is unreachable', async () => {
+    process.env.GARM_SHADOW = 'on'
+
+    mockLocalApprovedOnce(true)
+    vi.mocked(garmCheck).mockResolvedValueOnce({ allowed: true, role: 'viewer' })
+    expect(await isApprovedEmail('sam@example.com')).toBe(true)
+    await flush()
+
+    mockLocalApprovedOnce(true)
+    vi.mocked(garmCheck).mockResolvedValueOnce({ allowed: false, role: null })
+    expect(await isApprovedEmail('sam@example.com')).toBe(true)
+    await flush()
+
+    // garmCheck itself always fails closed internally and never rejects in
+    // production, but prove the local answer survives even if the shadow call
+    // throws outright.
+    mockLocalApprovedOnce(true)
+    vi.mocked(garmCheck).mockRejectedValueOnce(new Error('garm unreachable'))
+    expect(await isApprovedEmail('sam@example.com')).toBe(true)
+    await flush()
+  })
+
+  it('local-denied stays denied whether Garm allows, denies, or is unreachable', async () => {
+    process.env.GARM_SHADOW = 'on'
+
+    mockLocalApprovedOnce(false)
+    vi.mocked(garmCheck).mockResolvedValueOnce({ allowed: true, role: 'owner' })
+    expect(await isApprovedEmail('nobody@example.com')).toBe(false)
+    await flush()
+
+    mockLocalApprovedOnce(false)
+    vi.mocked(garmCheck).mockResolvedValueOnce({ allowed: false, role: null })
+    expect(await isApprovedEmail('nobody@example.com')).toBe(false)
+    await flush()
+
+    mockLocalApprovedOnce(false)
+    vi.mocked(garmCheck).mockRejectedValueOnce(new Error('garm unreachable'))
+    expect(await isApprovedEmail('nobody@example.com')).toBe(false)
+    await flush()
+  })
+
+  it('admin fast-path stays approved regardless of the Garm answer', async () => {
+    process.env.GARM_SHADOW = 'on'
+    // Admin path never touches Firestore — no getAdminDb mock needed.
+    vi.mocked(garmCheck).mockResolvedValueOnce({ allowed: false, role: null })
+    expect(await isApprovedEmail('nicholas.lovejoy@gmail.com')).toBe(true)
+    await flush()
+  })
+
+  it('never calls garmCheck at all when GARM_SHADOW is unset (default off)', async () => {
+    delete process.env.GARM_SHADOW
+    mockLocalApprovedOnce(true)
+
+    expect(await isApprovedEmail('sam@example.com')).toBe(true)
+    await flush()
+
+    expect(garmCheck).not.toHaveBeenCalled()
+  })
+
+  it('never calls garmCheck at all when GARM_SHADOW=off', async () => {
+    process.env.GARM_SHADOW = 'off'
+    mockLocalApprovedOnce(true)
+
+    expect(await isApprovedEmail('sam@example.com')).toBe(true)
+    await flush()
+
+    expect(garmCheck).not.toHaveBeenCalled()
   })
 })
 
