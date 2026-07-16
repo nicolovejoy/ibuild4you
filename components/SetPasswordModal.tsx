@@ -6,12 +6,14 @@ import {
   GoogleAuthProvider,
   linkWithCredential,
   reauthenticateWithPopup,
+  sendPasswordResetEmail,
 } from 'firebase/auth'
 import type { User } from 'firebase/auth'
 import { Modal } from '@/components/ui/Modal'
 import { StatusMessage } from '@/components/ui/StatusMessage'
 import { LoadingButton } from '@/components/ui/LoadingButton'
 import { authErrorMessage, validatePassword } from '@/lib/auth/password'
+import { auth } from '@/lib/firebase/client'
 import { copy } from '@/lib/copy'
 
 interface SetPasswordModalProps {
@@ -30,6 +32,7 @@ export function SetPasswordModal({ isOpen, onClose, user }: SetPasswordModalProp
   const [confirm, setConfirm] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
+  const [resetLinkSent, setResetLinkSent] = useState(false)
   const [loading, setLoading] = useState(false)
 
   const close = () => {
@@ -37,6 +40,7 @@ export function SetPasswordModal({ isOpen, onClose, user }: SetPasswordModalProp
     setConfirm('')
     setError(null)
     setSuccess(false)
+    setResetLinkSent(false)
     onClose()
   }
 
@@ -64,12 +68,25 @@ export function SetPasswordModal({ isOpen, onClose, user }: SetPasswordModalProp
       try {
         await linkWithCredential(user, credential)
       } catch (err) {
-        // Linking may need a fresh login. Re-auth with Google, then retry once.
+        // Linking may need a fresh login. Re-auth with Google, then retry once —
+        // but only if this account actually has a Google provider to reauth with.
+        // A passcode-only account (custom-token sign-in, no linked providers) has
+        // none, so reauthenticateWithPopup would resolve to a different Firebase
+        // user and throw auth/user-mismatch. For that case, fall back to a
+        // password-reset-link email instead (works provider-less; see #104/PR B).
         const code =
           err && typeof err === 'object' && 'code' in err ? String((err as { code: unknown }).code) : ''
         if (code === 'auth/requires-recent-login') {
-          await reauthenticateWithPopup(user, new GoogleAuthProvider())
-          await linkWithCredential(user, credential)
+          const hasGoogle = user.providerData.some((p) => p.providerId === 'google.com')
+          if (hasGoogle) {
+            await reauthenticateWithPopup(user, new GoogleAuthProvider())
+            await linkWithCredential(user, credential)
+          } else {
+            await sendPasswordResetEmail(auth, user.email)
+            setSuccess(true)
+            setResetLinkSent(true)
+            return
+          }
         } else {
           throw err
         }
@@ -86,7 +103,10 @@ export function SetPasswordModal({ isOpen, onClose, user }: SetPasswordModalProp
     <Modal isOpen={isOpen} onClose={close} title={copy.auth.setPassword} size="sm">
       {success ? (
         <div className="space-y-4">
-          <StatusMessage type="success" message={copy.auth.setPasswordSuccess} />
+          <StatusMessage
+            type="success"
+            message={resetLinkSent ? copy.auth.migrationBanner.resetLinkSent : copy.auth.setPasswordSuccess}
+          />
           <LoadingButton type="button" loading={false} fullWidth variant="primary" onClick={close}>
             Done
           </LoadingButton>

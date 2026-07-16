@@ -202,6 +202,8 @@ export const copy = {
     signInPasscode: 'Sign in with passcode',
     signInPassword: 'Sign in with password',
     pascodeDivider: 'or sign in with a passcode',
+    passcodeDeprecationNotice:
+      "Passcodes are going away soon — we recommend Google or a password above.",
     passwordDivider: 'or sign in with a password',
     passwordLabel: 'Password',
     forgotPassword: 'Forgot password?',
@@ -212,6 +214,15 @@ export const copy = {
     setPasswordHelp:
       'Add an email + password login so you can sign in without choosing a Google account. We recommend a password manager–generated password.',
     setPasswordSuccess: 'Password set. You can now sign in with your email and password.',
+    // Post-passcode-login migration banner (Garm PR B) — nudges a passcode-only
+    // account toward a real credential. Passcodes still work; this is an onramp.
+    migrationBanner: {
+      message: 'Passcodes are going away soon. Set a password or connect Google so you never lose access to your brief.',
+      setPassword: 'Set a password',
+      connectGoogle: 'Connect Google',
+      dismiss: 'Dismiss',
+      resetLinkSent: 'Check your email — we sent a link to set your password.',
+    },
     notApprovedTitle: 'Hang tight!',
     notApprovedMessage: (email: string) =>
       `Thanks for signing up. Your account (${email}) isn't approved yet. We'll let you know when you're in.`,
