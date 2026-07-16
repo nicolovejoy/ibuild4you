@@ -1,14 +1,43 @@
-# Garm consumer track — ibuild4you plan (drafted 2026-07-13)
+# Garm consumer track — ibuild4you plan (drafted 2026-07-13; reconciled to reality 2026-07-15)
 
-Companion to `~/src/garm/docs/build-plan.md` + `~/src/garm/docs/consuming.md`. This plan covers everything that happens in THIS repo: passcode retirement, `project_members` untangling, and consuming `/gnipahellir`. Phases 1–3 don't depend on Garm existing and can start immediately; Phases 4–5 gate on Garm deployed.
+Companion to `~/src/garm/docs/build-plan.md` + `~/src/garm/docs/consuming.md`. This plan covers everything that happens in **the ibuild4you repo** (this one): passcode retirement, `project_members` untangling, and consuming `/gnipahellir`. The Garm service itself lives in `~/src/garm` and is that agent's job — don't edit it from here, relay via Nico.
 
-**Garm status 2026-07-13:** phases 0–3 built (repo https://github.com/nicolovejoy/garm, 76 tests green); Phase 4 (Vercel + Neon deploy, `ibuild4you` consumer key mint, live smoke) pending in the garm session. Don't edit that repo from here — relay via Nico.
+## Two words that are not the same word
+
+**Passcode** = the thing being killed. Our hand-rolled per-member shared secret, minted in 5 routes, pasted into invite emails, stored plaintext on `project_members` rows (`lib/passcode.ts`, `POST /api/auth/passcode`).
+
+**Password** = one of the two things replacing it (Firebase email/password auth, shipped #104), alongside Google.
+
+So "passcode retirement → makers on password" is a real sentence, not a typo. See D3/D4.
+
+## Garm status (2026-07-15)
+
+**Phases 0–4 COMPLETE.** Live in prod at https://garm.prompt-labs.org (canonical; `garm-seven.vercel.app` still resolves as a fallback alias). Neon attached, full smoke passed, `ibuild4you` consumer key minted (1Password `op://dev-secrets/garm-consumer-ibuild4you/password`). Howl v1 also shipped 2026-07-14 — daily denial digest, cron 14:00 UTC → Resend → Nico. 119 tests green.
+
+Nothing on the Garm side blocks us. Everything remaining is ibuild4you-local work.
+
+## Numbering: the 4-step track vs this doc's phases
+
+Two overlapping schemes exist and they confuse people (they confused Nico on 2026-07-15). The handoff channel's "Garm 1/4 … 4/4" track is a **compressed view of Phases 4–5 only** — it silently assumes Phases 1–3 already happened. Mapping:
+
+| handoff track | this doc | status |
+| --- | --- | --- |
+| — | Phase 1–2 (PRs A–D): passcode retirement | **not started** |
+| — | Phase 3 (PR E): `requester_*` fallback | **not started** |
+| **1/4** client wiring | Phase 4, client copy-in | **SHIPPED** (`lib/garm.ts`, PR #153) |
+| **2/4** seed script | Phase 4, seed script | **SHIPPED + run live** (32/32 grants) |
+| **3/4** cutover | Phase 5 (PR G) | blocked — see below |
+| **4/4** retire allowlist | Phase 5 (PR H) | after 3/4 |
+
+**Why 3/4 is "gated on passcode retirement":** Garm's front door answers "may this email use ibuild4you at all." A live `POST /api/auth/passcode` is a *second* front door that never asks Garm — anyone holding a passcode authenticates straight past the gate. Installing the lock while the side door stands open buys nothing. So Phases 1–3 (kill the passcode path, kill the `requester_*` parallel authz path) must land before Phase 5 flips the gate.
+
+That's the real reason. The garm-side note phrases the prerequisite as "all subjects email-keyed," which is thin — passcode auth *is* email-keyed. The side-door framing is the one that actually bites.
 
 Recon basis: full auth/membership touchpoint map, 2026-07-13 (passcode minted in 5 routes; verified in 1; displayed in ShareModal + People panel + dashboard preview; emailed via `copy.invite.body`; **~40 e2e scripts authenticate via passcode** through `scripts/lib/preview-login.mjs`; `projects.requester_id`/`requester_email` is a live parallel authz fallback).
 
 ## Decisions
 
-**D1 — Garm grain: one Garm project = one app.** ibuild4you is a single Garm project (`ibuild4you`); briefs are NOT Garm projects. Garm answers "may this email use ibuild4you at all, and how coarsely" — replacing `approved_emails` and the app-level gate. Per-brief membership (`project_members`) stays wholly local. Rationale: the needs-assessment's own finding #3 (every app's richness stays local — byside's roles are app-wide, matching this grain); brief-grain would pollute the ecosystem-wide project namespace with hundreds of ibuild4you-internal slugs and bloat Garm with rows only one consumer understands. ⚠️ This narrows the kickoff's "replace the project_members role lookup" — per-brief roles stay local by design. **Confirmed-with-Nico required before Phase 4.**
+**D1 — Garm grain: one Garm project = one app.** ibuild4you is a single Garm project (`ibuild4you`); briefs are NOT Garm projects. Garm answers "may this email use ibuild4you at all, and how coarsely" — replacing `approved_emails` and the app-level gate. Per-brief membership (`project_members`) stays wholly local. Rationale: the needs-assessment's own finding #3 (every app's richness stays local — byside's roles are app-wide, matching this grain); brief-grain would pollute the ecosystem-wide project namespace with hundreds of ibuild4you-internal slugs and bloat Garm with rows only one consumer understands. ⚠️ This narrows the kickoff's "replace the project_members role lookup" — per-brief roles stay local by design. **CONFIRMED 2026-07-15** — the 2/4 seed shipped and ran live on exactly this grain (32 app-level grants, one per email, role-collapsed across briefs), so D1 is settled in code, not just on paper.
 
 **D2 — Role mapping (app-level, for Garm grants).** Nico/admins → `(email, '*', 'owner')`. People who build/configure briefs → `(email, 'ibuild4you', 'collaborator')`. Makers + apprentices → `(email, 'ibuild4you', 'viewer')`. The 4-tier per-brief ladder (maker < apprentice < builder < owner) is finer than Garm's 3 tiers and stays in `project_members.role`, gated behind Garm's coarse check. Garm's `allowed` gates entry; local role ranks within.
 
@@ -53,14 +82,17 @@ Gate: provider audit shows all active makers have password or Google (Nico confi
 
 **Untangling inventory (post-PR-D the row is already cleaner):** `project_members` then holds: authz (`role`), participation (`brief_role`), per-viewer state (`archived_at`, `removed_at`/`removed_by`), identity link (`email`, `user_id`). Credential is gone (passcode scrubbed). Decision: **no collection split** — the remaining fields are all legitimately per-(person, brief) participation state; the conflation problem was the credential + the app-level allowlist, both of which leave. Renaming/refactoring for its own sake is churn.
 
-## Phase 4 — Garm shadow mode (PR F; gate: Garm deployed + `ibuild4you` consumer key minted)
+## Phase 4 — Garm shadow mode (PR F) — client + seed DONE, shadow wiring remains
 
-- Copy-in client: the reference implementation already exists in garm's `docs/consuming.md` (`garmCheck` with 60s TTL cache + per-call `failOpen` opt) — copy as `lib/garm/client.ts`, hardcode project `ibuild4you`, gate on `allowed` only. Env (matching the reference): `GARM_URL`, `GARM_KEY` (Vercel, both environments; preview points at the same prod Garm — it's config data, not user data).
-- Seed script `scripts/seed-garm-grants.mjs`: derive app-level grants from live data per D2 (any active builder/owner membership or admin → collaborator/owner; any active maker/apprentice membership or approved_email → viewer), POST to Garm admin API. Idempotent, re-runnable.
-- Shadow wiring: `isApprovedEmail()` and the app-entry gate keep answering from local data, but also fire `garmCheck` and log agreements/mismatches (console + a counter — measurement-minimalism: one log line per mismatch, no dashboard). Run for a week of real traffic.
+- ~~Copy-in client~~ **SHIPPED as `lib/garm.ts`** (Garm 1/4, PR #153) — not `lib/garm/client.ts` as originally planned. `garmCheck(email, project, minRole, {failOpen})`: 60s TTL cache, 2s abort timeout, `cache:'no-store'`, deny-by-default field reads, no negative caching. Env `GARM_URL=https://garm.prompt-labs.org` + `GARM_KEY`. **No call sites yet** — that's the point of 3/4.
+- ~~Seed script~~ **SHIPPED as `scripts/garm-seed-grants.mjs`** + pure planner `scripts/lib/garm-seed-plan.mjs` (Garm 2/4; plain JS, not the TS this doc first assumed — this repo has no TS script runner). Ran `--live` 2026-07-14: **32/32 grants posted**, verified via `GET /api/grants?project=ibuild4you`. Idempotent upsert — **re-run it whenever membership changes meaningfully** until 3/4 wires live sync.
+  - Seeding caught a real gap: `nlovejoy@me.com` had no `system_roles` doc and wasn't in `ADMIN_EMAILS` — the app's only admin gate never recognized it. Fixed (`73f3c8a`). Also skips 2 malformed `approved_emails` rows rather than seeding garbage.
+- **Shadow wiring — STILL TO DO.** `isApprovedEmail()` and the app-entry gate keep answering from local data, but also fire `garmCheck` and log agreements/mismatches (console + a counter — measurement-minimalism: one log line per mismatch, no dashboard). Run for a week of real traffic. This is genuinely valuable and, unlike the cutover, is **read-only and safe to ship before passcode retirement** — it changes no security decision.
 - Dual-write: membership create/remove and approved-email writes also upsert/revoke the corresponding Garm grant (fire-and-forget with logged failure — local remains source of truth in this phase).
 
-## Phase 5 — Garm authoritative (PR G, then PR H cleanup)
+## Phase 5 — Garm authoritative (PR G = track's 3/4, then PR H = 4/4 cleanup)
+
+**Gate: Phases 1–3 complete** (passcode path gone, `requester_*` fallback gone). Don't start before then — see the side-door reasoning at the top.
 
 - `isApprovedEmail()` → `garmCheck(email, 'viewer')`. The `/api/approved-emails` GET (the `useApproval` client gate) answers from Garm. Admin implicit-owner can migrate from the `ADMIN_EMAILS` constant to a Garm `'*'` owner grant (keep the constant as break-glass).
 - Fail mode per D5/Q2. Writes: Garm becomes the primary for app-level access; `approved_emails` collection frozen (export to `exports/`, then stop writing; delete later — no rush).
@@ -76,8 +108,8 @@ PRs A→B→C→D are strictly ordered; E is independent (anytime); F→G→H af
 
 ## Open questions for Nico
 
-1. **D1 grain confirm**: Garm project = the ibuild4you app (briefs stay local). OK? (This narrows the original kickoff wording — reasoning above.)
-2. **Endgame fail mode** when Garm is unreachable and cache is cold: (a) fail-closed (locked out until Garm recovers — pure, but your friends hit errors on a Garm blip), or (b) fail-open to the last-known local membership row (approved_emails is gone, but `project_members` still exists locally and can serve as the degraded-mode answer). Recommend (b) for this app's stakes.
-3. **Timing**: start Phase 1 (PR A) now, before Garm ships? It's pure ibuild4you work with no Garm dependency.
+1. ~~**D1 grain confirm**~~ **ANSWERED 2026-07-15** — app grain, confirmed by the live 32-grant seed. Briefs stay local.
+2. **Endgame fail mode** when Garm is unreachable and cache is cold: (a) fail-closed (locked out until Garm recovers — pure, but your friends hit errors on a Garm blip), or (b) fail-open to the last-known local membership row (approved_emails is gone, but `project_members` still exists locally and can serve as the degraded-mode answer). Recommend (b) for this app's stakes. **Still open** — needed before PR G, not before PR A.
+3. **Timing — this is the live decision.** Start Phase 1 (PR A) now? It's pure ibuild4you work, zero Garm dependency, and it's the long pole: everything downstream (3/4, 4/4) waits on it. Garm has been ready since 2026-07-14 and the track is stalled here.
 
-If Q1 confirms D1 (app grain), one relay to the garm agent: its `docs/build-plan.md` first-consumer section still says "`project_members.role` reads replaced by a gnip check" — should read "`approved_emails` + the app-level gate replaced; per-brief roles stay local."
+**Relay to the garm agent (still needed):** its `docs/build-plan.md:138` first-consumer section says "`approved_emails` allowlist + `project_members.role` reads replaced by a gnip check" — should read "`approved_emails` + the app-level gate replaced; per-brief roles stay local" (D1, now confirmed). Its decision #10 (line 18) is fine as written.
