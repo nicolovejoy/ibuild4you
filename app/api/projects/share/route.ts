@@ -11,6 +11,7 @@ import { copy } from '@/lib/copy'
 import { generatePasscode } from '@/lib/passcode'
 import { normalizeEmail } from '@/lib/email/normalize'
 import { ensureInviteResetLink } from '@/lib/auth/ensure-invite-account'
+import { scheduleGarmGrantSync } from '@/lib/garm-grants'
 
 // POST /api/projects/share — share a project with a maker (builder+)
 export async function POST(request: Request) {
@@ -166,6 +167,10 @@ export async function POST(request: Request) {
   // the "copy invite message" UI a link-first body to hand the maker instead.
   const resetLink = await ensureInviteResetLink(normalizedEmail)
 
+  // Garm dual-write (Phase 4): this invite/re-share just created or updated a
+  // project_members row for normalizedEmail — recompute + upsert their grant.
+  scheduleGarmGrantSync(normalizedEmail)
+
   return NextResponse.json({
     email: normalizedEmail,
     project_id,
@@ -312,6 +317,13 @@ async function rekeyRequesterEmail(
   }
 
   await projectRef.update({ requester_email: normalizedEmail, updated_at: now })
+
+  // Garm dual-write: the membership row moved from oldEmail to normalizedEmail.
+  // Sync both — the new email needs its grant upserted, and the old email's
+  // role may have just dropped (it could still hold grants via other briefs
+  // or its own approved_emails row, which this rekey never removes).
+  scheduleGarmGrantSync(normalizedEmail)
+  if (oldEmail) scheduleGarmGrantSync(oldEmail)
 
   return NextResponse.json({ email: normalizedEmail, passcode })
 }

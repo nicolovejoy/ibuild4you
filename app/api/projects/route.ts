@@ -16,6 +16,7 @@ import { deleteS3Object } from '@/lib/s3/client'
 import { generatePasscode } from '@/lib/passcode'
 import { stampDecisionProvenance } from '@/lib/api/brief-merge'
 import { normalizeEmail } from '@/lib/email/normalize'
+import { scheduleGarmGrantSync } from '@/lib/garm-grants'
 import type { BriefRole, MemberRole } from '@/lib/types'
 
 // Ensure slug is unique by appending -2, -3, etc. if needed
@@ -453,6 +454,7 @@ export async function POST(request: Request) {
     created_at: now,
     updated_at: now,
   })
+  scheduleGarmGrantSync(auth.email)
 
   // Create a membership + email approval + passcode for each participant.
   const createdMembers: Array<{
@@ -485,6 +487,7 @@ export async function POST(request: Request) {
     })
 
     createdMembers.push({ email: p.email, role: p.role, brief_role: p.brief_role, passcode })
+    scheduleGarmGrantSync(p.email)
   }
 
   // Mark project as shared once at least one participant exists.
