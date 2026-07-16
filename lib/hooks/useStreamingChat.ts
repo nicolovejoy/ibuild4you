@@ -48,6 +48,11 @@ export function useStreamingChat({ projectId }: { projectId: string }) {
       for (const line of lines) {
         if (!line.startsWith('data: ')) continue
         const data = line.slice(6)
+        // Only breaks this inner line loop, not the outer read loop below —
+        // it works because the server enqueues [DONE] and calls
+        // controller.close() back-to-back (app/api/chat/route.ts), so the
+        // next reader.read() comes back `done`. Fragile if that ordering
+        // ever changes.
         if (data === '[DONE]') break
 
         try {
@@ -135,10 +140,14 @@ export function useStreamingChat({ projectId }: { projectId: string }) {
       queryClient.invalidateQueries({ queryKey: ['messages', sessionId] })
       queryClient.invalidateQueries({ queryKey: ['sessions', projectId] })
     } catch {
+      // Drop the greeting entirely on failure, even if it partially streamed
+      // in (#156) — a cut-off fragment reads as broken, while showing
+      // nothing reads as a network blip (closer to the truth). `error` stays
+      // untouched: the composer must never be blocked by a failed greeting.
       if (placeholderAdded) {
         setMessages((prev) => {
           const updated = [...prev]
-          if (updated[updated.length - 1]?.role === 'agent' && !updated[updated.length - 1]?.content) {
+          if (updated[updated.length - 1]?.role === 'agent') {
             updated.pop()
           }
           return updated

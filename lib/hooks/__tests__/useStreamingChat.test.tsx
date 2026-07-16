@@ -296,14 +296,13 @@ describe('useStreamingChat — kickoff', () => {
     expect(result.current.messages).toHaveLength(0)
   })
 
-  // FINDING (reported, not fixed): a mid-stream drop during kickoff leaves a
-  // truncated agent bubble in place with NO error surfaced at all — unlike
-  // streamMessage, which at least sets `error` alongside any partial text.
-  // Kickoff's error-swallowing (by design, per the code comment: "a failed
-  // greeting must never block the maker") means the maker sees a half
-  // sentence with nothing to indicate it's incomplete. This test pins down
-  // the current behavior; it is not asserting that this is correct.
-  it('leaves a truncated greeting with no error indicator on a mid-stream drop (see FINDING above)', async () => {
+  // #156: a mid-stream drop during kickoff used to leave a truncated agent
+  // bubble in place with no error surfaced at all — a half sentence reading
+  // as broken rather than as a network blip. Decision: drop the partial
+  // entirely rather than show a fragment. `error` still stays null (kickoff
+  // failures must never block the maker from chatting), so the only visible
+  // effect of a mid-stream drop is that no greeting appears.
+  it('drops the partial greeting entirely on a mid-stream drop, with no error indicator', async () => {
     let call = 0
     const encoder = new TextEncoder()
     const stream = new ReadableStream<Uint8Array>({
@@ -325,7 +324,25 @@ describe('useStreamingChat — kickoff', () => {
 
     expect(result.current.streaming).toBe(false)
     expect(result.current.error).toBeNull()
-    expect(result.current.messages).toHaveLength(1)
-    expect(result.current.messages[0].content).toBe('Hey the')
+    // The partial "Hey the" bubble is removed, not left truncated.
+    expect(result.current.messages).toHaveLength(0)
+  })
+
+  it('still adds no message when the drop happens before any text streamed in', async () => {
+    const stream = new ReadableStream<Uint8Array>({
+      pull() {
+        throw new Error('dropped before anything arrived')
+      },
+    })
+    mockApiFetch.mockResolvedValue(new Response(stream, { status: 200, headers: { 'Content-Type': 'text/event-stream' } }))
+
+    const { result } = renderHook(() => useStreamingChat({ projectId: 'p1' }), { wrapper })
+    await act(async () => {
+      await result.current.kickoff('s1')
+    })
+
+    expect(result.current.streaming).toBe(false)
+    expect(result.current.error).toBeNull()
+    expect(result.current.messages).toHaveLength(0)
   })
 })
