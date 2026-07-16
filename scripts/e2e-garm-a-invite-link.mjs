@@ -96,7 +96,14 @@ if (projectId) {
 }
 
 // 3. Fire the actual invite-email route. Must succeed and must be suppressed
-// (never really emails an @example.com address on preview).
+// (never really emails an @example.com address on preview). NOTE: this mints
+// its OWN fresh reset link server-side (deliberately, so a link never goes
+// stale sitting unsent) — which supersedes/invalidates the one captured in
+// step 2 (Firebase invalidates a prior outstanding reset oobCode once a new
+// one is generated for the same account; confirmed empirically — the first
+// draft of this script tried to consume the step-2 link after this call and
+// got "expired or already used"). So step 4 below re-invites (step 2's same
+// idempotent re-share path) to mint the link we actually consume.
 if (projectId) {
   const res = await api(`/api/projects/${projectId}/email`, {
     method: 'POST',
@@ -105,6 +112,18 @@ if (projectId) {
   const body = await res.json().catch(() => ({}))
   check('invite-email route succeeded', res.status === 200, `status ${res.status}`)
   check('invite-email suppressed (no real send to a fake address)', body.suppressed === true)
+}
+
+// 3b. Re-share the same maker to mint the LAST (therefore still-valid) link —
+// share/route.ts's re-share path is idempotent and is what we'll consume.
+if (projectId) {
+  const res = await api('/api/projects/share', {
+    method: 'POST',
+    body: JSON.stringify({ project_id: projectId, email: MAKER_EMAIL, role: 'maker' }),
+  })
+  const body = await res.json().catch(() => ({}))
+  check('re-share (to get the last-minted, still-valid link) succeeded', res.status === 200, `status ${res.status}`)
+  resetLink = body.reset_link || resetLink
 }
 
 // 4. Visit the reset link in a clean, unauthenticated context and set a password.
