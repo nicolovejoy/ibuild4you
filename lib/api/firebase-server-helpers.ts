@@ -5,6 +5,7 @@ import type { BriefRole, MemberRole, SystemRole } from '@/lib/types'
 import { getCachedUser, setCachedUser } from './auth-cache'
 import { isActiveMember } from '@/lib/members/lifecycle'
 import { normalizeEmail } from '@/lib/email/normalize'
+import { scheduleGarmShadowCheck, shadowCheckApprovedEmail } from '@/lib/garm-shadow'
 
 export { ADMIN_EMAILS }
 
@@ -301,7 +302,23 @@ export async function getUserDisplayName(
   return email.split('@')[0]
 }
 
+// Garm shadow mode (docs/garm-consumer-plan.md Phase 4): fires garmCheck()
+// alongside this local answer and logs on disagreement only. It never
+// influences the return value below — the local answer is authoritative and
+// unconditional until the Phase 5 cutover (PR G, blocked on passcode
+// retirement). See lib/garm-shadow.ts for the full contract.
 export async function isApprovedEmail(email: string, systemRoles: SystemRole[] = []): Promise<boolean> {
+  const localAnswer = await computeLocalApprovedAnswer(email, systemRoles)
+
+  scheduleGarmShadowCheck(() => shadowCheckApprovedEmail(email, localAnswer))
+
+  return localAnswer
+}
+
+async function computeLocalApprovedAnswer(
+  email: string,
+  systemRoles: SystemRole[]
+): Promise<boolean> {
   if (systemRoles.includes('admin') || isAdminEmail(email)) return true
 
   const db = getAdminDb()

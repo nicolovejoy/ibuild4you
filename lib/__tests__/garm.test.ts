@@ -159,6 +159,37 @@ describe('garmCheck — caching', () => {
     expect(second).toEqual({ allowed: true, role: 'owner' })
     expect(f).toHaveBeenCalledTimes(2)
   })
+
+  // Closes the one known gap flagged in CLAUDE.md's backlog: cache-hit within
+  // TTL was covered, but nothing proved the cache actually re-fetches once the
+  // 60s TTL has elapsed — a revocation must not linger past that window.
+  it('re-fetches after the 60s TTL has elapsed (a revocation must not linger)', async () => {
+    vi.useFakeTimers()
+    try {
+      const f = vi
+        .fn()
+        .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ allowed: true, role: 'owner' }) })
+        .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ allowed: false, role: null }) })
+      vi.stubGlobal('fetch', f)
+
+      const first = await garmCheck('sam@example.com', 'ibuild4you')
+      expect(first).toEqual({ allowed: true, role: 'owner' })
+      expect(f).toHaveBeenCalledTimes(1)
+
+      // Still within TTL — served from cache, no second fetch.
+      const withinTtl = await garmCheck('sam@example.com', 'ibuild4you')
+      expect(withinTtl).toEqual(first)
+      expect(f).toHaveBeenCalledTimes(1)
+
+      await vi.advanceTimersByTimeAsync(61_000)
+
+      const afterTtl = await garmCheck('sam@example.com', 'ibuild4you')
+      expect(afterTtl).toEqual({ allowed: false, role: null })
+      expect(f).toHaveBeenCalledTimes(2)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 })
 
 describe('garmCheck — email normalization', () => {
