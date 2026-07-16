@@ -14,6 +14,7 @@ import {
   type LifecyclePlan,
 } from '@/lib/members/lifecycle'
 import type { MemberRole } from '@/lib/types'
+import { scheduleGarmGrantSync } from '@/lib/garm-grants'
 
 // Member-scoped access-tier + lifecycle ops (#106). All builder+.
 //   PATCH  { role }            → change access tier
@@ -51,13 +52,17 @@ async function loadRoster(request: Request, projectId: string, memberId: string)
 }
 
 // Apply a planner result to the target doc, or surface its error as a 400.
+// `email` (the target member's, from the already-loaded roster) drives the
+// post-write Garm dual-write sync — a no-op unless GARM_DUAL_WRITE=on.
 async function apply(
   db: FirebaseFirestore.Firestore,
   memberId: string,
+  email: string,
   plan: LifecyclePlan
 ) {
   if ('error' in plan) return NextResponse.json({ error: plan.error }, { status: 400 })
   await db.collection('project_members').doc(memberId).update(plan.patch)
+  scheduleGarmGrantSync(email)
   return NextResponse.json({ ok: true, ...plan.patch })
 }
 
@@ -78,12 +83,13 @@ export async function PATCH(
   if (!loaded.ok) return loaded.response
   const { db, members } = loaded
   const now = new Date().toISOString()
+  const targetEmail = members.find((m) => m.id === memberId)?.email ?? ''
 
   if (body.removed === false) {
-    return apply(db, memberId, planRestoreMember({ members, memberId, now }))
+    return apply(db, memberId, targetEmail, planRestoreMember({ members, memberId, now }))
   }
   if ('role' in body) {
-    return apply(db, memberId, planAccessTierChange({ members, memberId, newRole: body.role, now }))
+    return apply(db, memberId, targetEmail, planAccessTierChange({ members, memberId, newRole: body.role, now }))
   }
   return NextResponse.json({ error: 'Provide { role } to change tier or { removed: false } to restore.' }, { status: 400 })
 }
@@ -98,10 +104,12 @@ export async function DELETE(
   const loaded = await loadRoster(request, projectId, memberId)
   if (!loaded.ok) return loaded.response
   const { db, members, auth } = loaded
+  const targetEmail = members.find((m) => m.id === memberId)?.email ?? ''
 
   return apply(
     db,
     memberId,
+    targetEmail,
     planRemoveMember({ members, memberId, actorEmail: auth.email, now: new Date().toISOString() })
   )
 }

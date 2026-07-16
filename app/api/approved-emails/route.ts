@@ -7,6 +7,7 @@ import {
 } from '@/lib/api/firebase-server-helpers'
 import { isAdminEmail } from '@/lib/constants'
 import { normalizeEmail } from '@/lib/email/normalize'
+import { scheduleGarmGrantSync } from '@/lib/garm-grants'
 
 // GET /api/approved-emails — check if the current user's email is approved
 // Also upserts the user doc with names from the auth token (Google sign-in)
@@ -74,6 +75,7 @@ export async function POST(request: Request) {
     approved_by: auth.email,
     created_at: new Date().toISOString(),
   })
+  scheduleGarmGrantSync(normalizedEmail)
 
   return NextResponse.json({ email: normalizedEmail }, { status: 201 })
 }
