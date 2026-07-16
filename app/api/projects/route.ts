@@ -15,6 +15,7 @@ import { copy } from '@/lib/copy'
 import { deleteS3Object } from '@/lib/s3/client'
 import { generatePasscode } from '@/lib/passcode'
 import { stampDecisionProvenance } from '@/lib/api/brief-merge'
+import { normalizeEmail } from '@/lib/email/normalize'
 import type { BriefRole, MemberRole } from '@/lib/types'
 
 // Ensure slug is unique by appending -2, -3, etc. if needed
@@ -385,9 +386,13 @@ export async function POST(request: Request) {
     }
   }
 
-  // Normalize + dedup by lowercased email; drop entries without an email and
-  // the creator's own email (they're already the owner).
-  const creatorEmail = auth.email?.toLowerCase()
+  // Normalize + dedup by normalized email; drop entries without an email and
+  // the creator's own email (they're already the owner). The stored `email`
+  // is the fully normalized (trim+lowercase) form — not just trimmed — so it
+  // matches how project_members.email is read elsewhere (passcode login,
+  // getProjectRole): a previous version stored participants' emails trimmed
+  // but NOT lowercased, which could silently lock out a mixed-case email.
+  const creatorEmail = normalizeEmail(auth.email)
   const participants: Array<{
     email: string
     first_name?: string
@@ -397,11 +402,10 @@ export async function POST(request: Request) {
   }> = []
   const seenEmails = new Set<string>()
   for (const p of rawParticipants) {
-    const email = typeof p.email === 'string' ? p.email.trim() : ''
+    const email = normalizeEmail(typeof p.email === 'string' ? p.email : '')
     if (!email) continue
-    const lower = email.toLowerCase()
-    if (lower === creatorEmail || seenEmails.has(lower)) continue
-    seenEmails.add(lower)
+    if (email === creatorEmail || seenEmails.has(email)) continue
+    seenEmails.add(email)
     const role: MemberRole =
       typeof p.role === 'string' && (VALID_MEMBER_ROLES as string[]).includes(p.role)
         ? (p.role as MemberRole)
@@ -471,9 +475,11 @@ export async function POST(request: Request) {
       updated_at: now,
     })
 
-    // Approve email so they can sign in (doc ID must be the email)
-    await db.collection('approved_emails').doc(p.email.toLowerCase()).set({
-      email: p.email.toLowerCase(),
+    // Approve email so they can sign in (doc ID must be the email). p.email is
+    // already normalizeEmail()'d above, but normalize again defensively so this
+    // stays correct even if the participants[] normalization ever changes.
+    await db.collection('approved_emails').doc(normalizeEmail(p.email)).set({
+      email: normalizeEmail(p.email),
       approved_by: auth.email,
       created_at: now,
     })

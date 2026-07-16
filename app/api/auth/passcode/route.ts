@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getAdminAuth, getAdminDb } from '@/lib/firebase/admin'
 import { isActiveMember } from '@/lib/members/lifecycle'
+import { normalizeEmail } from '@/lib/email/normalize'
 // POST /api/auth/passcode — verify email + passcode, return custom token
 export async function POST(request: Request) {
   const body = await request.json()
@@ -13,7 +14,7 @@ export async function POST(request: Request) {
     )
   }
 
-  const normalizedEmail = email.trim().toLowerCase()
+  const normalizedEmail = normalizeEmail(email)
   const normalizedPasscode = passcode.trim().toUpperCase()
 
   const db = getAdminDb()

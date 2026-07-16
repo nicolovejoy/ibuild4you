@@ -6,6 +6,7 @@ import {
   requireRole,
 } from '@/lib/api/firebase-server-helpers'
 import { isBriefRole } from '@/lib/roles/brief-role'
+import { normalizeEmail } from '@/lib/email/normalize'
 
 // GET /api/projects/role?project_id=xxx — get the current user's role on a project
 export async function GET(request: Request) {
@@ -40,7 +41,7 @@ export async function PATCH(request: Request) {
   }
 
   const projectId = typeof body.project_id === 'string' ? body.project_id : ''
-  const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : ''
+  const email = typeof body.email === 'string' ? normalizeEmail(body.email) : ''
   const briefRole = body.brief_role
 
   if (!projectId || !email) {

@@ -303,6 +303,24 @@ describe('POST /api/projects', () => {
     expect(members[0].role).toBe('owner')
   })
 
+  it('normalizes (trim+lowercase) a mixed-case participant email in project_members, not just trims it', async () => {
+    // #152 regression: participants[] used to store the trimmed-but-not-
+    // lowercased email on project_members, while passcode login and
+    // getProjectRole match on a fully normalized email — a mixed-case-only
+    // participant could never sign in via passcode.
+    await POST(makeRequest({
+      title: 'Team Brief',
+      participants: [{ email: '  Jamie@Example.COM  ', role: 'maker' }],
+    }))
+
+    const member = addedDocs['project_members'].find((m) => m.role === 'maker')!
+    expect(member.email).toBe('jamie@example.com')
+
+    const approval = setDocs['approved_emails'].find((a) => a.docId === 'jamie@example.com')
+    expect(approval).toBeDefined()
+    expect(approval!.data.email).toBe('jamie@example.com')
+  })
+
   it('defaults an unspecified participant role to maker', async () => {
     await POST(makeRequest({
       title: 'Team Brief',

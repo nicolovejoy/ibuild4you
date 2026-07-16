@@ -4,6 +4,7 @@ import { ADMIN_EMAILS, isAdminEmail } from '@/lib/constants'
 import type { BriefRole, MemberRole, SystemRole } from '@/lib/types'
 import { getCachedUser, setCachedUser } from './auth-cache'
 import { isActiveMember } from '@/lib/members/lifecycle'
+import { normalizeEmail } from '@/lib/email/normalize'
 
 export { ADMIN_EMAILS }
 
@@ -304,7 +305,7 @@ export async function isApprovedEmail(email: string, systemRoles: SystemRole[] =
   if (systemRoles.includes('admin') || isAdminEmail(email)) return true
 
   const db = getAdminDb()
-  const doc = await db.collection('approved_emails').doc(email.toLowerCase()).get()
+  const doc = await db.collection('approved_emails').doc(normalizeEmail(email)).get()
   return doc.exists
 }
 

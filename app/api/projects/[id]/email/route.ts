@@ -9,6 +9,7 @@ import { sendMakerEmail } from '@/lib/email/send-maker-email'
 import { getServerShareLink } from '@/lib/url'
 import { generatePasscode } from '@/lib/passcode'
 import { copy } from '@/lib/copy'
+import { normalizeEmail } from '@/lib/email/normalize'
 
 const KINDS = ['invite', 'nudge', 'reminder'] as const
 type EmailKind = (typeof KINDS)[number]
@@ -46,7 +47,7 @@ export async function POST(
   const note = typeof body.note === 'string' && body.note.trim() ? body.note.trim() : undefined
   // Optional single-recipient filter — the ShareModal's "Send to X" invite
   // targets one person; without it, invite/nudge go to every active maker.
-  const onlyTo = typeof body.to === 'string' && body.to.trim() ? body.to.trim().toLowerCase() : null
+  const onlyTo = typeof body.to === 'string' && body.to.trim() ? normalizeEmail(body.to) : null
   if (!KINDS.includes(kind)) {
     return NextResponse.json({ error: 'invalid kind' }, { status: 400 })
   }
@@ -89,7 +90,7 @@ export async function POST(
     }
   }
   if (onlyTo) {
-    recipients = recipients.filter((r) => r.email.toLowerCase() === onlyTo)
+    recipients = recipients.filter((r) => normalizeEmail(r.email) === onlyTo)
     if (recipients.length === 0) {
       return NextResponse.json(
         { error: 'That person is not an active maker on this brief.' },
@@ -146,7 +147,7 @@ export async function POST(
   const isProd = process.env.VERCEL_ENV === 'production'
   const allowlisted = (email: string) =>
     email.endsWith('@ibuild4you.com') ||
-    ['nlovejoy@me.com', 'nicholas.lovejoy@gmail.com'].includes(email.toLowerCase())
+    ['nlovejoy@me.com', 'nicholas.lovejoy@gmail.com'].includes(normalizeEmail(email))
 
   const results: Array<{ to: string; emailId: string; suppressed: boolean }> = []
   if (kind === 'invite') {

@@ -9,6 +9,7 @@ import { generateWelcomeMessage } from '@/lib/agent/welcome-message'
 import { resolveBriefRole } from '@/lib/roles/brief-role'
 import { copy } from '@/lib/copy'
 import { generatePasscode } from '@/lib/passcode'
+import { normalizeEmail } from '@/lib/email/normalize'
 
 // POST /api/projects/share — share a project with a maker (builder+)
 export async function POST(request: Request) {
@@ -31,7 +32,7 @@ export async function POST(request: Request) {
   const roleCheck = requireRole(callerRole, 'builder')
   if (roleCheck) return roleCheck
 
-  const normalizedEmail = email.trim().toLowerCase()
+  const normalizedEmail = normalizeEmail(email)
 
   // Verify project exists
   const projectDoc = await db.collection('projects').doc(project_id).get()
@@ -89,7 +90,7 @@ export async function POST(request: Request) {
   // when re-sharing the same person. Additional invitees live solely as
   // project_members rows (created above); the multi-human roster reads from
   // there, not from project.requester_email.
-  const existingRequester = (projectData.requester_email as string | undefined)?.toLowerCase()
+  const existingRequester = normalizeEmail(projectData.requester_email as string | undefined) || undefined
   const isFirstShare = !existingRequester
   const isSameRequester = existingRequester === normalizedEmail
   const projectUpdate: Record<string, unknown> = { updated_at: now }
@@ -264,13 +265,13 @@ async function rekeyRequesterEmail(
   rawEmail: string,
   actorEmail: string
 ) {
-  const normalizedEmail = rawEmail.trim().toLowerCase()
+  const normalizedEmail = normalizeEmail(rawEmail)
   const projectRef = db.collection('projects').doc(project_id)
   const projectDoc = await projectRef.get()
   if (!projectDoc.exists) {
     return NextResponse.json({ error: 'Project not found' }, { status: 404 })
   }
-  const oldEmail = (projectDoc.data()?.requester_email as string | undefined)?.toLowerCase()
+  const oldEmail = normalizeEmail(projectDoc.data()?.requester_email as string | undefined) || undefined
   const now = new Date().toISOString()
 
   // Approve the new email for sign-in (old one left in place — see PATCH note).

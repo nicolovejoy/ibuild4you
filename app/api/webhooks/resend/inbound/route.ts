@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { Webhook, WebhookVerificationError } from 'svix'
 import { getAdminDb } from '@/lib/firebase/admin'
 import { buildInboundReply, findFeedbackIdInRecipients } from '@/lib/feedback/inbound'
+import { normalizeEmail } from '@/lib/email/normalize'
 
 // =============================================================================
 // POST /api/webhooks/resend/inbound — receives Resend's `email.received`
@@ -88,7 +89,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, ignored: 'feedback-not-found' })
   }
 
-  const fromEmail = (data.from ?? '').trim().toLowerCase()
+  const fromEmail = normalizeEmail(data.from)
   const subject = data.subject ?? ''
   const emailId = data.email_id ?? ''
 
