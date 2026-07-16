@@ -117,7 +117,10 @@ export async function PATCH(request: Request) {
 
   // For users without a real UID, look up by email
   // They might have a Firebase Auth user from passcode login
-  const targetEmail = email || ''
+  // #155: normalize the admin-supplied email — nothing enforced this before,
+  // so a mixed-case/whitespace paste would silently fail to sync user_id
+  // onto project_members and derive a divergent users doc ID.
+  const targetEmail = normalizeEmail(email)
   if (!targetEmail) {
     return NextResponse.json({ error: 'Email required for this user' }, { status: 400 })
   }

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { POST } from '../route'
+import { getAuthenticatedUser } from '@/lib/api/firebase-server-helpers'
 
 // =============================================================================
 // HOW THIS TEST FILE WORKS
@@ -127,6 +128,22 @@ describe('POST /api/projects', () => {
       email: 'nico@ibuild4you.com',
       role: 'owner',
     })
+  })
+
+  // #155: the owner-membership write used a raw auth.email — inconsistent
+  // with the participant rows in the same handler, which normalize.
+  it('normalizes a mixed-case auth.email on the owner membership write', async () => {
+    vi.mocked(getAuthenticatedUser).mockResolvedValueOnce({
+      uid: 'user-123',
+      email: '  Owner@X.COM  ',
+      error: null,
+    } as never)
+
+    await POST(makeRequest({ title: 'Test' }))
+
+    const members = addedDocs['project_members']
+    const owner = members.find((m) => m.role === 'owner')
+    expect(owner).toMatchObject({ email: 'owner@x.com', added_by: 'owner@x.com' })
   })
 
   it('creates first session linked to the project', async () => {

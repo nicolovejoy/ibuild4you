@@ -6,12 +6,15 @@ import {
   canConfigure,
   canManage,
   getAuthenticatedUser,
+  getProjectRole,
+  getViewerBriefRole,
   getUserDisplayName,
   hasSystemRole,
   isApprovedEmail,
 } from '../firebase-server-helpers'
 import { _resetAuthCache } from '../auth-cache'
-import { isAdminEmail } from '@/lib/constants'
+import { isAdminEmail, ADMIN_EMAILS } from '@/lib/constants'
+import { normalizeEmail } from '@/lib/email/normalize'
 import type { SystemRole } from '@/lib/types'
 
 // isApprovedEmail's Garm-shadow side effect (docs/garm-consumer-plan.md Phase 4)
@@ -66,6 +69,20 @@ describe('isAdminEmail', () => {
 
   it('returns false for null', () => {
     expect(isAdminEmail(null)).toBe(false)
+  })
+
+  // #155: the app's only admin gate did zero normalization, relying entirely
+  // on token emails always arriving lowercase+trimmed — an unenforced upstream
+  // invariant. Mixed case / whitespace must still match.
+  it('returns true for a mixed-case, whitespace-padded admin email', () => {
+    expect(isAdminEmail(' NLovejoy@Me.com ')).toBe(true)
+  })
+
+  // Invariant guard: every ADMIN_EMAILS entry must already be normalized.
+  // A mixed-case entry here would be permanently unmatchable once callers'
+  // input is normalized before the .includes() check.
+  it('every ADMIN_EMAILS entry is already normalized', () => {
+    expect(ADMIN_EMAILS.every((e) => e === normalizeEmail(e))).toBe(true)
   })
 })
 
@@ -321,6 +338,112 @@ describe('getUserDisplayName', () => {
   })
 })
 
+// #155: getProjectRole / getViewerBriefRole fall back to an email-based
+// project_members lookup (for members who haven't claimed via user_id yet).
+// Stored rows are normalized; the incoming `email` param — pre-#155 the raw
+// token email — must be normalized too or the fallback never matches.
+describe('getProjectRole / getViewerBriefRole — email fallback normalization', () => {
+  // Fake db: no membership row by user_id, one row by (project_id, email),
+  // stored fully normalized. Captures every `where('email', ...)` value so
+  // tests can assert the query argument itself was normalized, not just the
+  // final answer.
+  function fakeDbWithEmailMember(opts: {
+    storedEmail: string
+    memberData: Record<string, unknown>
+    requesterEmail?: string
+    emailWhereSpy: (value: string) => void
+  }) {
+    return {
+      collection: (name: string) => {
+        if (name === 'projects') {
+          return {
+            doc: () => ({
+              get: async () => ({
+                exists: true,
+                data: () => ({ requester_email: opts.requesterEmail ?? null }),
+              }),
+            }),
+          }
+        }
+        // project_members — first where() is always project_id in the real
+        // call sites; the second where() carries the field that matters here.
+        return {
+          where: () => ({
+            where: (field2: string, _op2: string, value2: string) => {
+              if (field2 === 'email') opts.emailWhereSpy(value2)
+              const isMatch = field2 === 'email' && value2 === opts.storedEmail
+              return {
+                get: async () => ({
+                  docs: isMatch ? [{ data: () => opts.memberData }] : [],
+                }),
+                limit: () => ({
+                  get: async () => ({
+                    empty: !isMatch,
+                    docs: isMatch ? [{ data: () => opts.memberData }] : [],
+                  }),
+                }),
+              }
+            },
+          }),
+        }
+      },
+    } as unknown as FirebaseFirestore.Firestore
+  }
+
+  it('getProjectRole normalizes the email arg before the fallback where() query', async () => {
+    const emailWhereSpy = vi.fn()
+    const db = fakeDbWithEmailMember({
+      storedEmail: 'sam@example.com',
+      memberData: { role: 'builder' },
+      emailWhereSpy,
+    })
+
+    const role = await getProjectRole(db, 'p1', 'uid-no-match', '  Sam@Example.COM  ', [])
+    expect(role).toBe('builder')
+    expect(emailWhereSpy).toHaveBeenCalledWith('sam@example.com')
+  })
+
+  it('getProjectRole normalizes the requester_email legacy comparison', async () => {
+    const db = fakeDbWithEmailMember({
+      storedEmail: 'nobody-matches@example.com',
+      memberData: {},
+      requesterEmail: 'sam@example.com',
+      emailWhereSpy: () => {},
+    })
+
+    const role = await getProjectRole(db, 'p1', 'uid-no-match', '  Sam@Example.COM  ', [])
+    expect(role).toBe('maker')
+  })
+
+  it('getProjectRole denies an empty email even when requester_email is missing (empty-vs-missing must not match)', async () => {
+    // normalizeEmail(undefined) === '' — without the email !== '' guard an
+    // email-less token would be granted maker on any project lacking a
+    // requester_email.
+    const db = fakeDbWithEmailMember({
+      storedEmail: 'nobody-matches@example.com',
+      memberData: {},
+      requesterEmail: undefined,
+      emailWhereSpy: () => {},
+    })
+
+    const role = await getProjectRole(db, 'p1', 'uid-no-match', '', [])
+    expect(role).toBeNull()
+  })
+
+  it('getViewerBriefRole normalizes the email arg before the fallback where() query', async () => {
+    const emailWhereSpy = vi.fn()
+    const db = fakeDbWithEmailMember({
+      storedEmail: 'sam@example.com',
+      memberData: { brief_role: 'contributor' },
+      emailWhereSpy,
+    })
+
+    const briefRole = await getViewerBriefRole(db, 'p1', 'uid-no-match', '  Sam@Example.COM  ')
+    expect(briefRole).toBe('contributor')
+    expect(emailWhereSpy).toHaveBeenCalledWith('sam@example.com')
+  })
+})
+
 describe('getAuthenticatedUser', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -369,6 +492,17 @@ describe('getAuthenticatedUser', () => {
       expect(result.systemRoles).toEqual([])
     }
     expect(mockVerify).toHaveBeenCalledWith('valid-token')
+  })
+
+  // #155: normalize at the token boundary so every downstream auth.email
+  // consumer (getProjectRole, isAdminEmail, project_members writes, etc.)
+  // inherits a clean value without having to normalize individually.
+  it('normalizes (trim+lowercase) the token email', async () => {
+    mockToken({ uid: 'user-999', email: ' Nico@Example.COM ' })
+    const result = await getAuthenticatedUser(authedRequest())
+
+    expect(result.error).toBeNull()
+    expect(result.email).toBe('nico@example.com')
   })
 
   it('reads system_roles from the users doc when present', async () => {

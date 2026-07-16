@@ -19,6 +19,8 @@ let authResult: Record<string, unknown>
 let projectDoc: { exists: boolean; data: () => Record<string, unknown> }
 let memberDocs: { data: () => Record<string, unknown>; ref: { update: typeof mockMemberUpdate } }[]
 
+const mockEmailWhere = vi.fn()
+
 const mockCollection = vi.fn((name: string) => {
   if (name === 'projects') {
     return {
@@ -28,14 +30,17 @@ const mockCollection = vi.fn((name: string) => {
       })),
     }
   }
-  // project_members
+  // project_members — first where() is project_id, second is email.
   return {
     where: vi.fn(() => ({
-      where: vi.fn(() => ({
-        limit: vi.fn(() => ({
-          get: async () => ({ empty: memberDocs.length === 0, docs: memberDocs }),
-        })),
-      })),
+      where: vi.fn((field2: string, _op2: string, value2: string) => {
+        if (field2 === 'email') mockEmailWhere(value2)
+        return {
+          limit: vi.fn(() => ({
+            get: async () => ({ empty: memberDocs.length === 0, docs: memberDocs }),
+          })),
+        }
+      }),
     })),
     add: mockMemberAdd,
   }
@@ -109,5 +114,35 @@ describe('POST /api/projects/claim', () => {
     expect(mockMemberAdd).toHaveBeenCalledWith(
       expect.objectContaining({ user_id: 'u1', role: 'maker', brief_role: 'originator' })
     )
+  })
+
+  // #155: a mixed-case/whitespace-padded auth.email must still resolve
+  // against project_members rows and requester_email stored normalized.
+  it('normalizes a mixed-case auth.email before the membership where() query', async () => {
+    authResult = { uid: 'u1', email: '  U@IBuild4You.com  ', systemRoles: [], error: null }
+    memberDocs = [{ data: () => ({}), ref: { update: mockMemberUpdate } }]
+    const res = await POST(makeReq({ project_id: 'p1' }))
+    expect(res.status).toBe(200)
+    expect(mockEmailWhere).toHaveBeenCalledWith('u@ibuild4you.com')
+  })
+
+  it('normalizes auth.email before the legacy requester_email match and the new member write', async () => {
+    authResult = { uid: 'u1', email: '  U@IBuild4You.com  ', systemRoles: [], error: null }
+    projectDoc = { exists: true, data: () => ({ requester_email: 'u@ibuild4you.com' }) }
+    const res = await POST(makeReq({ project_id: 'p1' }))
+    expect(res.status).toBe(200)
+    expect(mockMemberAdd).toHaveBeenCalledWith(
+      expect.objectContaining({ email: 'u@ibuild4you.com' })
+    )
+  })
+
+  it('rejects an email-less token even when the project has no requester_email (empty-vs-missing must not match)', async () => {
+    // normalizeEmail(undefined) === '' — without the email !== '' guard this
+    // would fail open: '' === '' grants legacy access and writes a ''-email row.
+    authResult = { uid: 'u1', email: '', systemRoles: [], error: null }
+    projectDoc = { exists: true, data: () => ({}) }
+    const res = await POST(makeReq({ project_id: 'p1' }))
+    expect(res.status).toBe(403)
+    expect(mockMemberAdd).not.toHaveBeenCalled()
   })
 })

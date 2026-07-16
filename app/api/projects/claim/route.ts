@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getAuthenticatedUser, getAdminDb, hasSystemRole } from '@/lib/api/firebase-server-helpers'
 import { defaultBriefRole } from '@/lib/roles/brief-role'
+import { normalizeEmail } from '@/lib/email/normalize'
 
 // POST /api/projects/claim — claim a project that was shared with you
 export async function POST(request: Request) {
@@ -28,16 +29,23 @@ export async function POST(request: Request) {
     return NextResponse.json({ claimed: true, project_id })
   }
 
+  // Defensive normalize (#155) — auth.email is already normalized at the
+  // token boundary, but this is an authz decision, so don't depend on that.
+  const email = normalizeEmail(auth.email)
+
   // Check membership by email
   const memberSnap = await db
     .collection('project_members')
     .where('project_id', '==', project_id)
-    .where('email', '==', auth.email)
+    .where('email', '==', email)
     .limit(1)
     .get()
 
-  // Also check legacy requester_email
-  const hasLegacyAccess = project?.requester_email === auth.email
+  // Also check legacy requester_email. The email !== '' guard matters:
+  // normalizeEmail(undefined) is '', so without it a token carrying no email
+  // would "match" any project whose requester_email is missing (#155 review catch).
+  const hasLegacyAccess =
+    email !== '' && normalizeEmail(project?.requester_email as string | undefined) === email
 
   if (memberSnap.empty && !hasLegacyAccess) {
     return NextResponse.json({ error: 'This project was not shared with you' }, { status: 403 })
@@ -59,7 +67,7 @@ export async function POST(request: Request) {
     await db.collection('project_members').add({
       project_id,
       user_id: auth.uid,
-      email: auth.email,
+      email,
       role: 'maker',
       brief_role: defaultBriefRole('maker'),
       added_by: 'system-migration',

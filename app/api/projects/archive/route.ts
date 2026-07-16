@@ -4,6 +4,7 @@ import {
   getAdminDb,
   getProjectRole,
 } from '@/lib/api/firebase-server-helpers'
+import { normalizeEmail } from '@/lib/email/normalize'
 
 // PATCH /api/projects/archive — the caller archives/unarchives THIS brief from
 // their own dashboard. Per-viewer: the flag lives on the caller's membership, so
@@ -27,9 +28,13 @@ export async function PATCH(request: Request) {
   }
 
   const db = getAdminDb()
+  // Defensive normalize (#155) — auth.email is already normalized at the
+  // token boundary, but this route writes rows keyed on it, so don't depend
+  // on that upstream invariant here.
+  const email = normalizeEmail(auth.email)
 
   // Must be able to see the brief to archive it.
-  const role = await getProjectRole(db, projectId, auth.uid, auth.email, auth.systemRoles, auth)
+  const role = await getProjectRole(db, projectId, auth.uid, email, auth.systemRoles, auth)
   if (!role) {
     return NextResponse.json({ error: 'Not a member of this brief' }, { status: 403 })
   }
@@ -50,7 +55,7 @@ export async function PATCH(request: Request) {
         await db
           .collection('project_members')
           .where('project_id', '==', projectId)
-          .where('email', '==', auth.email)
+          .where('email', '==', email)
           .limit(1)
           .get()
       ).docs[0]
@@ -63,9 +68,9 @@ export async function PATCH(request: Request) {
     await db.collection('project_members').add({
       project_id: projectId,
       user_id: auth.uid,
-      email: auth.email,
+      email,
       role, // getProjectRole already maps instance admins to 'owner'
-      added_by: auth.email,
+      added_by: email,
       archived_at: archivedAt,
       created_at: now,
       updated_at: now,

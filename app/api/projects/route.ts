@@ -443,18 +443,20 @@ export async function POST(request: Request) {
 
   const docRef = await db.collection('projects').add(projectData)
 
-  // Create owner membership for the creator
+  // Create owner membership for the creator. Uses creatorEmail (normalized
+  // above) — #155: this used to write the raw auth.email, inconsistent with
+  // the participant rows below which already normalize.
   await db.collection('project_members').add({
     project_id: docRef.id,
     user_id: auth.uid,
-    email: auth.email,
+    email: creatorEmail,
     role: 'owner',
     brief_role: defaultBriefRole('owner'),
-    added_by: auth.email,
+    added_by: creatorEmail,
     created_at: now,
     updated_at: now,
   })
-  scheduleGarmGrantSync(auth.email)
+  scheduleGarmGrantSync(creatorEmail)
 
   // Create a membership + email approval + passcode for each participant.
   const createdMembers: Array<{
@@ -472,7 +474,7 @@ export async function POST(request: Request) {
       role: p.role,
       brief_role: p.brief_role,
       passcode,
-      added_by: auth.email,
+      added_by: creatorEmail,
       created_at: now,
       updated_at: now,
     })
@@ -482,7 +484,7 @@ export async function POST(request: Request) {
     // stays correct even if the participants[] normalization ever changes.
     await db.collection('approved_emails').doc(normalizeEmail(p.email)).set({
       email: normalizeEmail(p.email),
-      approved_by: auth.email,
+      approved_by: creatorEmail,
       created_at: now,
     })
 

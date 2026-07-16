@@ -19,6 +19,8 @@ let requesterProjects: { ref: object }[]
 
 let authResult: Record<string, unknown>
 
+const mockRequesterEmailWhere = vi.fn()
+
 const mockCollection = vi.fn((name: string) => {
   if (name === 'users') {
     return {
@@ -27,9 +29,12 @@ const mockCollection = vi.fn((name: string) => {
   }
   // projects
   return {
-    where: vi.fn(() => ({
-      get: async () => ({ empty: requesterProjects.length === 0, docs: requesterProjects }),
-    })),
+    where: vi.fn((_field: string, _op: string, value: string) => {
+      mockRequesterEmailWhere(value)
+      return {
+        get: async () => ({ empty: requesterProjects.length === 0, docs: requesterProjects }),
+      }
+    }),
   }
 })
 
@@ -172,5 +177,18 @@ describe('PATCH /api/users/me', () => {
     expect(res.status).toBe(200)
     expect(mockBatchUpdate).toHaveBeenCalledTimes(2)
     expect(mockBatchCommit).toHaveBeenCalledOnce()
+  })
+
+  // #155: defensive normalize — auth.email is already normalized at the
+  // token boundary, but this route writes/queries it directly.
+  it('normalizes a mixed-case auth.email on the new-doc write and the requester_email query', async () => {
+    authResult = { ...authResult, email: '  Sam@Example.COM  ' }
+    mockUserGet.mockResolvedValue({ exists: false })
+    const res = await PATCH(patchReq({ first_name: 'Sam' }))
+    expect(res.status).toBe(200)
+    expect(mockUserSet).toHaveBeenCalledWith(
+      expect.objectContaining({ email: 'sam@example.com' })
+    )
+    expect(mockRequesterEmailWhere).toHaveBeenCalledWith('sam@example.com')
   })
 })
