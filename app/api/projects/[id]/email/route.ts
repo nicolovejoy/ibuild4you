@@ -8,6 +8,7 @@ import {
 import { sendMakerEmail } from '@/lib/email/send-maker-email'
 import { getServerShareLink } from '@/lib/url'
 import { generatePasscode } from '@/lib/passcode'
+import { ensureInviteResetLink } from '@/lib/auth/ensure-invite-account'
 import { copy } from '@/lib/copy'
 import { normalizeEmail } from '@/lib/email/normalize'
 
@@ -161,7 +162,11 @@ export async function POST(
         passcode = generatePasscode()
         await r.ref.update({ passcode, updated_at: now })
       }
-      const text = copy.invite.body({ projectTitle, shareLink, email: r.email, passcode })
+      // Garm consumer plan Phase 1 / PR A: mint fresh each send (not at
+      // creation time) so the link is never stale by the time it's actually
+      // delivered — reset links expire, invites can sit unsent for a while.
+      const resetLink = await ensureInviteResetLink(r.email)
+      const text = copy.invite.body({ projectTitle, shareLink, resetLink })
 
       const suppressed = !isProd && !allowlisted(r.email)
       let emailId = 'suppressed'

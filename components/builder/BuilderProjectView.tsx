@@ -1120,7 +1120,8 @@ function ShareModal({ project, onClose, mode = 'maker' }: { project: Project; on
   // otherwise the stored originator.
   const sharedEmail = justInvited ? email : project.requester_email || email
 
-  const inviteEmailBody = copy.invite.body({ projectTitle: project.title, shareLink, email: sharedEmail, passcode })
+  const resetLink = shareProject.data?.reset_link ?? null
+  const inviteEmailBody = copy.invite.body({ projectTitle: project.title, shareLink, resetLink })
 
   return (
     <Modal isOpen onClose={onClose} title={isAdd ? 'Invite someone to this brief' : justInvited ? 'Share with maker' : alreadyShared ? 'Maker access' : 'Share with maker'}>

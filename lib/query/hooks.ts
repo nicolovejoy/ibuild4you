@@ -97,7 +97,12 @@ export function useShareProject() {
         const data = await res.json()
         throw new Error(data.error || 'Failed to share project')
       }
-      return res.json() as Promise<{ email: string; project_id: string; passcode: string }>
+      return res.json() as Promise<{
+        email: string
+        project_id: string
+        passcode: string
+        reset_link: string | null
+      }>
     },
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.projects() })

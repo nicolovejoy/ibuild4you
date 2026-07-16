@@ -87,6 +87,12 @@ vi.mock('@/lib/agent/welcome-message', () => ({
   generateWelcomeMessage: vi.fn(async () => 'Welcome!'),
 }))
 
+// Garm PR A: share/route.ts also mints a password-setup link per invite.
+const ensureInviteResetLinkMock = vi.fn(async (email: string) => `https://example.com/reset/${email}`)
+vi.mock('@/lib/auth/ensure-invite-account', () => ({
+  ensureInviteResetLink: (...args: [string]) => ensureInviteResetLinkMock(...args),
+}))
+
 function makeReq(body: Record<string, unknown>) {
   return new Request('http://localhost/api/projects/share', {
     method: 'POST',
@@ -131,10 +137,13 @@ describe('POST /api/projects/share', () => {
     const update = projectUpdates[0] || {}
     expect(update.requester_email).toBeUndefined()
     expect(update.shared_at).toBeUndefined()
-    // Returns the new person's passcode.
+    // Returns the new person's passcode AND a password-setup link (Garm PR A —
+    // additive, passcode stays).
     const data = await res.json()
     expect(data.email).toBe('second@example.com')
     expect(data.passcode).toBeTruthy()
+    expect(data.reset_link).toBe('https://example.com/reset/second@example.com')
+    expect(ensureInviteResetLinkMock).toHaveBeenCalledWith('second@example.com')
   })
 
   it('re-sharing the original requester keeps requester_email and may update name', async () => {

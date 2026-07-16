@@ -4,16 +4,20 @@
 export const copy = {
   // --- Invite & nudge messages ---
   invite: {
+    // Garm consumer plan Phase 1 / PR A (docs/garm-consumer-plan.md): link-first,
+    // not credential-first. resetLink is a Firebase password-setup link minted
+    // server-side (lib/auth/ensure-invite-account.ts); it's null if minting
+    // failed, which must never leave the recipient stuck — the last line always
+    // points them at "Forgot password?" as a self-serve fallback, which also
+    // covers the case where the link has since expired.
     body: ({
       projectTitle,
       shareLink,
-      email,
-      passcode,
+      resetLink,
     }: {
       projectTitle: string
       shareLink: string
-      email: string
-      passcode: string | null
+      resetLink: string | null
     }) =>
       [
         `I'm putting together a brief for ${projectTitle} and want your input to shape it.`,
@@ -22,9 +26,10 @@ export const copy = {
         '',
         shareLink,
         '',
-        `Sign in with Google, or use:`,
-        `Email: ${email}`,
-        `Passcode: ${passcode || '(loading...)'}`,
+        `Sign in with Google, or set a password:`,
+        resetLink || `Use "Forgot password?" on the sign-in page to set one.`,
+        '',
+        `(Link expired? "Forgot password?" on the sign-in page always works.)`,
       ].join('\n'),
     emailLabel: 'Invite message',
   },
