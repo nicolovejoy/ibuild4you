@@ -12,9 +12,11 @@ So "passcode retirement → makers on password" is a real sentence, not a typo. 
 
 ## Garm status (2026-07-15)
 
-**Phases 0–4 COMPLETE.** Live in prod at https://garm.prompt-labs.org (canonical; `garm-seven.vercel.app` still resolves as a fallback alias). Neon attached, full smoke passed, `ibuild4you` consumer key minted (1Password `op://dev-secrets/garm-consumer-ibuild4you/password`). Howl v1 also shipped 2026-07-14 — daily denial digest, cron 14:00 UTC → Resend → Nico. 119 tests green.
+**Phases 0–4 COMPLETE.** Live in prod at https://garm.prompt-labs.org (canonical; `garm-seven.vercel.app` still resolves as a fallback alias). Neon attached, full smoke passed, `ibuild4you` consumer key minted.
 
-Nothing on the Garm side blocks us. Everything remaining is ibuild4you-local work.
+**Nothing on the Garm side blocks us** — confirmed by the garm agent 2026-07-15: `/api/health` green, denials landing in the table correctly. The check path we actually depend on works. Everything remaining is ibuild4you-local work.
+
+Howl (daily denial-digest email) shipped 2026-07-14 but its first live digest never arrived; the garm agent is debugging. **Irrelevant to us** — Howl is an alerting layer downstream of the check path, not part of it. Don't let its status read as a Garm blocker.
 
 ## Numbering: the 4-step track vs this doc's phases
 
