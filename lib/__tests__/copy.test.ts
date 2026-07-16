@@ -15,13 +15,15 @@ describe('copy.invite.body', () => {
     resetLink: 'https://ibuild4you-a0c4d.firebaseapp.com/__/auth/action?mode=resetPassword&oobCode=abc',
   }
 
-  it('leads with the brief, not the AI mechanism (issue #20)', () => {
+  it('leads with the brief (issue #20 — first line frames the work, not the tool)', () => {
     const body = copy.invite.body(args)
     // First non-blank line frames the work as putting together a brief.
     const firstLine = body.split('\n').find((l) => l.trim().length > 0)
     expect(firstLine).toMatch(/brief/i)
-    // No leakage of the AI implementation detail.
-    expect(body).not.toMatch(/AI assistant/i)
+    // NOTE: #20's original "no AI-assistant mention anywhere" rule was relaxed
+    // 2026-07-16 at Nico's request — the invite now names Sam and frames the
+    // async-conversation model on purpose. The lead-with-the-brief intent
+    // stays (asserted above); the blanket AI-mention ban does not.
   })
 
   it('embeds the project title so the maker sees what this is about', () => {

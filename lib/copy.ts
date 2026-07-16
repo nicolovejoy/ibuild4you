@@ -22,7 +22,7 @@ export const copy = {
       [
         `I'm putting together a brief for ${projectTitle} and want your input to shape it.`,
         '',
-        `The link below opens a conversation where you can share what you're looking for. We'll come back to it across a few sessions to fill in the picture.`,
+        `The link below opens a conversation where you can share your thoughts. We'll come back to this link for more conversations over time. The idea is that with Sam, the AI assistant for ibuild4you, we can have asynchronous conversations productively. Feedback encouraged.`,
         '',
         shareLink,
         '',
