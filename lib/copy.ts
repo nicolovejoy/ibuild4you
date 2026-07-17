@@ -161,8 +161,6 @@ export const copy = {
     discoverDescription: 'Broad exploration — the agent asks open-ended questions',
     convergeDescription: 'Push for decisions — the agent narrows scope and presents options',
     shareWithMaker: 'Share with maker',
-    makerPasscode: 'Maker passcode',
-    passcodeHelp: 'Share this passcode with the maker so they can sign in',
   },
 
   // --- Brief tab ---
@@ -199,11 +197,10 @@ export const copy = {
     welcome: 'Welcome',
     signInPrompt: 'Sign in to continue',
     signInGoogle: 'Sign in with Google',
-    signInPasscode: 'Sign in with passcode',
     signInPassword: 'Sign in with password',
-    pascodeDivider: 'or sign in with a passcode',
-    passcodeDeprecationNotice:
-      "Passcodes are going away soon — we recommend Google or a password above.",
+    // Garm PR D: the retired passcode login route answers 410 Gone with this.
+    passcodeRetired:
+      'Passcodes have been retired. Sign in with Google or your email and password — use "Forgot password?" on the sign-in page to set one.',
     passwordDivider: 'or sign in with a password',
     passwordLabel: 'Password',
     forgotPassword: 'Forgot password?',
@@ -214,10 +211,11 @@ export const copy = {
     setPasswordHelp:
       'Add an email + password login so you can sign in without choosing a Google account. We recommend a password manager–generated password.',
     setPasswordSuccess: 'Password set. You can now sign in with your email and password.',
-    // Post-passcode-login migration banner (Garm PR B) — nudges a passcode-only
-    // account toward a real credential. Passcodes still work; this is an onramp.
+    // Migration banner (Garm PR B, kept after PR D): a passcode-era account
+    // with a still-persisted session has no password/Google credential — this
+    // is its in-app path to set one before that session ends.
     migrationBanner: {
-      message: 'Passcodes are going away soon. Set a password or connect Google so you never lose access to your brief.',
+      message: 'Passcodes have been retired. Set a password or connect Google now so you keep access to your brief.',
       setPassword: 'Set a password',
       connectGoogle: 'Connect Google',
       dismiss: 'Dismiss',
@@ -324,7 +322,7 @@ export const copy = {
     },
     people: {
       term: 'People',
-      short: 'Who’s on this brief — their roles, access links, and passcodes. Invite from here.',
+      short: 'Who’s on this brief — their roles and access links. Invite from here.',
     },
     setup: {
       term: 'Setup',

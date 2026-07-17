@@ -137,18 +137,19 @@ describe('POST /api/projects/share', () => {
     const update = projectUpdates[0] || {}
     expect(update.requester_email).toBeUndefined()
     expect(update.shared_at).toBeUndefined()
-    // Returns the new person's passcode AND a password-setup link (Garm PR A —
-    // additive, passcode stays).
+    // Returns the new person's password-setup link. No passcode anywhere —
+    // Garm PR D retired passcode auth entirely.
     const data = await res.json()
     expect(data.email).toBe('second@example.com')
-    expect(data.passcode).toBeTruthy()
+    expect(data.passcode).toBeUndefined()
+    expect(memberAdds[0].passcode).toBeUndefined()
     expect(data.reset_link).toBe('https://example.com/reset/second@example.com')
     expect(ensureInviteResetLinkMock).toHaveBeenCalledWith('second@example.com')
   })
 
   it('re-sharing the original requester keeps requester_email and may update name', async () => {
     projectDocData = { title: 'Cafe App', requester_email: 'first@example.com', shared_at: 'earlier' }
-    existingMemberEmpty = false // member already exists → passcode regenerated
+    existingMemberEmpty = false // member already exists → role updated in place
     const res = await POST(
       makeReq({ project_id: 'p1', email: 'first@example.com', first_name: 'First', brief_role: 'originator' })
     )

@@ -8,7 +8,7 @@ import { PATCH, DELETE } from '../route'
 // PATCH — updates allowed project fields (builder+ role required)
 // DELETE — removes project and all related data (owner role required)
 //
-// Mock patterns follow share-passcode.test.ts: mockGetProjectRole controls
+// Mock patterns follow share-rekey-email.test.ts: mockGetProjectRole controls
 // the role returned, and requireRole uses real rank logic.
 // =============================================================================
 

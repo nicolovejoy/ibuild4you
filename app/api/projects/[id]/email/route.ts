@@ -7,7 +7,6 @@ import {
 } from '@/lib/api/firebase-server-helpers'
 import { sendMakerEmail } from '@/lib/email/send-maker-email'
 import { getServerShareLink } from '@/lib/url'
-import { generatePasscode } from '@/lib/passcode'
 import { ensureInviteResetLink } from '@/lib/auth/ensure-invite-account'
 import { copy } from '@/lib/copy'
 import { normalizeEmail } from '@/lib/email/normalize'
@@ -15,12 +14,9 @@ import { normalizeEmail } from '@/lib/email/normalize'
 const KINDS = ['invite', 'nudge', 'reminder'] as const
 type EmailKind = (typeof KINDS)[number]
 
-// One outbound email target. `ref` is the member doc (null for the legacy
-// requester_email fallback, where there's no membership row to mint against).
+// One outbound email target.
 type Recipient = {
   email: string
-  passcode: string | null
-  ref: FirebaseFirestore.DocumentReference | null
 }
 
 // POST /api/projects/[id]/email — builder+ emails the maker(s) directly via
@@ -28,9 +24,9 @@ type Recipient = {
 // Reply-To: the builder, so a maker who replies reaches a human. Bodies/
 // subjects come from lib/copy so the email matches what the builder sees in
 // the UI. Invite fans out to every active maker on the brief (#115), one email
-// per person (each carries its own passcode); nudge is ONE email addressed to
-// all active makers; reminder stays a single send to the requester (the cron
-// path owns multi-recipient reminders if we ever want them).
+// per person (each carries its own fresh password-setup link); nudge is ONE
+// email addressed to all active makers; reminder stays a single send to the
+// requester (the cron path owns multi-recipient reminders if we ever want them).
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -69,7 +65,7 @@ export async function POST(
   // Resolve who gets this email.
   let recipients: Recipient[]
   if (kind === 'reminder') {
-    recipients = requesterEmail ? [{ email: requesterEmail, passcode: null, ref: null }] : []
+    recipients = requesterEmail ? [{ email: requesterEmail }] : []
   } else {
     // Every active maker membership; briefs that predate participants[] may
     // have no member rows, so fall back to the legacy requester_email.
@@ -80,14 +76,10 @@ export async function POST(
       .get()
     recipients = makerSnap.docs
       .filter((doc) => !doc.data().removed_at)
-      .map((doc) => ({
-        email: ((doc.data().email as string) || '').trim(),
-        passcode: (doc.data().passcode as string | undefined) || null,
-        ref: doc.ref,
-      }))
+      .map((doc) => ({ email: ((doc.data().email as string) || '').trim() }))
       .filter((r) => r.email)
     if (recipients.length === 0 && requesterEmail) {
-      recipients = [{ email: requesterEmail, passcode: null, ref: null }]
+      recipients = [{ email: requesterEmail }]
     }
   }
   if (onlyTo) {
@@ -112,7 +104,7 @@ export async function POST(
 
   let subject: string
   // The nudge/reminder body is the same for everyone; the invite body is
-  // per-recipient (their own email + passcode), built inside the send loop.
+  // per-recipient (their own password-setup link), built inside the send loop.
   let sharedText: string | null = null
 
   if (kind === 'invite') {
@@ -153,15 +145,8 @@ export async function POST(
   const results: Array<{ to: string; emailId: string; suppressed: boolean }> = []
   if (kind === 'invite') {
     // Invite stays one email per person — each body carries that person's own
-    // sign-in passcode.
+    // password-setup link.
     for (const r of recipients) {
-      // Mint + persist a passcode if the membership doesn't have one yet
-      // (mirrors share GET).
-      let passcode = r.passcode
-      if (!passcode && r.ref) {
-        passcode = generatePasscode()
-        await r.ref.update({ passcode, updated_at: now })
-      }
       // Garm consumer plan Phase 1 / PR A: mint fresh each send (not at
       // creation time) so the link is never stale by the time it's actually
       // delivered — reset links expire, invites can sit unsent for a while.
