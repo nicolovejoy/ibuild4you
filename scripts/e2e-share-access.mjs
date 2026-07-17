@@ -1,7 +1,8 @@
 #!/usr/bin/env node
-// Verify #19 Phase 4: the share modal for an ALREADY-shared maker shows an
-// access-only view (link + passcode + "Maker access" title), NOT the first-time
-// invite copy. Retries to wait out a fresh preview deploy.
+// Verify #19 Phase 4 (+ Garm PR D): the share modal for an ALREADY-shared maker
+// shows an access-only view (link + "Maker access" title, NO passcode block —
+// passcodes are retired), NOT the first-time invite copy. Retries to wait out
+// a fresh preview deploy.
 
 import { chromium } from 'playwright'
 import { loginPage, BASE, shotDir } from './lib/preview-login.mjs'
@@ -25,8 +26,10 @@ async function checkOnce() {
   const title = (await page.getByText('Maker access', { exact: true }).count()) > 0
   const hasInviteMsg = (await page.getByText('Invite message', { exact: true }).count()) > 0
   const hasPasscode = (await page.getByText('Maker passcode', { exact: true }).count()) > 0
-  const hasPointer = (await page.getByText(/Next round/).count()) > 0
-  return { title, hasInviteMsg, hasPasscode, hasPointer }
+  const hasLink = (await page.getByText('Brief link', { exact: true }).count()) > 0
+  // #120 renamed the recurring-contact pointer to the Conversations dispatch.
+  const hasPointer = (await page.getByText(/use the send action at the top of/).count()) > 0
+  return { title, hasInviteMsg, hasPasscode, hasLink, hasPointer }
 }
 
 let result = null
@@ -41,6 +44,6 @@ for (let i = 0; i < 12; i++) {
 await page.screenshot({ path: `${shotDir}/p4-maker-access.png` })
 console.log('FINAL:', JSON.stringify(result, null, 2))
 await browser.close()
-const pass = result && result.title && !result.hasInviteMsg && result.hasPasscode && result.hasPointer
-console.log(pass ? '\n✅ PASS — access-only view, no first-time invite copy' : '\n❌ FAIL')
+const pass = result && result.title && !result.hasInviteMsg && !result.hasPasscode && result.hasLink && result.hasPointer
+console.log(pass ? '\n✅ PASS — access-only view, link only, no passcode, no first-time invite copy' : '\n❌ FAIL')
 process.exit(pass ? 0 : 1)

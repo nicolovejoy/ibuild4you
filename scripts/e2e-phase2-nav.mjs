@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Verify #19 Phase 2 builder nav on preview: Brief · Conversations · People.
-// Logs in as the passcode test admin, opens the seeded cast brief, and checks
+// Logs in as the test admin, opens the seeded cast brief, and checks
 // each tab renders its key content. Secrets read from gitignored files.
 
 import { chromium } from 'playwright'

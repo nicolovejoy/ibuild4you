@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // Verify #12: builder can correct the originator's email from the share modal.
-// Re-keys membership + approved_emails + reissues passcode (PATCH /share with
-// new_email). Captures the original email + passcode, edits to a marker
-// address, asserts the response + new passcode, then RESTORES the original
+// Re-keys membership + approved_emails (PATCH /share with new_email). Since
+// Garm PR D there is no passcode to reissue — the response must NOT carry one.
+// Edits to a marker address, asserts the response, then RESTORES the original
 // email so the preview fixture isn't left mutated. Retries to wait out a deploy.
 
 import { chromium } from 'playwright'
@@ -30,13 +30,6 @@ async function sharedEmailText() {
   const el = page.getByText(/^Shared with /).first()
   if (!(await el.count())) return null
   return (await el.textContent()).replace('Shared with ', '').trim()
-}
-
-async function passcodeText() {
-  // The passcode is the <code> block under "Maker passcode".
-  const code = page.locator('code').first()
-  if (!(await code.count())) return null
-  return (await code.textContent()).trim()
 }
 
 // Submit a new email through the Edit-email control; return the PATCH response body.
@@ -80,19 +73,18 @@ if (!ready) {
 }
 
 const origEmail = await sharedEmailText()
-const origPasscode = await passcodeText()
-console.log('original email:', origEmail, '| passcode:', origPasscode)
+console.log('original email:', origEmail)
 
 // 1. Edit to the marker address.
 const r1 = await editEmailTo(MARKER)
 console.log('PATCH status:', r1.status, 'body:', JSON.stringify(r1.body))
 const afterEmail = await sharedEmailText()
-const afterPasscode = await passcodeText()
-console.log('after email:', afterEmail, '| passcode:', afterPasscode)
+console.log('after email:', afterEmail)
 await page.screenshot({ path: `${shotDir}/e2e-12-edited.png` })
 
 const emailChanged = r1.body?.email === MARKER && afterEmail === MARKER
-const passcodeReissued = !!r1.body?.passcode && r1.body.passcode !== origPasscode && afterPasscode === r1.body.passcode
+// PR D: the re-key response must NOT reissue a passcode.
+const noPasscode = r1.body?.passcode === undefined
 
 // 2. Restore the original email so the fixture is left as we found it.
 let restored = false
@@ -103,7 +95,7 @@ if (origEmail && origEmail !== MARKER) {
 }
 
 await browser.close()
-const pass = r1.status === 200 && emailChanged && passcodeReissued
-console.log('\nemailChanged:', emailChanged, '| passcodeReissued:', passcodeReissued, '| restored:', restored)
-console.log(pass ? '\n✅ PASS — email re-keyed + passcode reissued' : '\n❌ FAIL')
+const pass = r1.status === 200 && emailChanged && noPasscode
+console.log('\nemailChanged:', emailChanged, '| noPasscode:', noPasscode, '| restored:', restored)
+console.log(pass ? '\n✅ PASS — email re-keyed, no passcode in play' : '\n❌ FAIL')
 process.exit(pass ? 0 : 1)

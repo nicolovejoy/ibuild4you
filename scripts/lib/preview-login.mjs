@@ -1,11 +1,11 @@
 // Shared headless-login helper for agent-driven e2e on preview (and prod).
 // Extracts the bypass-cookie + sign-in dance every e2e script repeated.
 //
-// Garm PR C: passcodes are being retired for makers (PR D disables the route
-// entirely), so the harness now signs the test admin in with email+password
-// instead of a passcode. The password is set via Admin SDK by
-// scripts/seed-test-admin-password.mjs and lives in a gitignored file — same
-// pattern the old .test-admin-passcode file used.
+// Garm PR C/D: passcode auth is retired (the route answers 410), so all
+// headless sign-in is email+password. The test admin's password is set via
+// Admin SDK by scripts/seed-test-admin-password.mjs and lives in a gitignored
+// file; cast identity passwords live in .test-cast-passwords.json (seeded by
+// scripts/fixtures/scenarios/multi-human-cast.mjs — see readCastPassword).
 //
 // Env overrides:
 //   E2E_BASE           default https://preview.ibuild4you.com (set to prod URL for prod)
@@ -43,6 +43,19 @@ export function readPassword() {
   return readFileSync(`${ROOT}${PASSWORD_FILE}`, 'utf8').trim()
 }
 
+// Password for a seeded test-cast identity (e.g. test-originator@ibuild4you.com).
+// Seeded by the multi-human-cast fixture into gitignored .test-cast-passwords.json.
+export function readCastPassword(email) {
+  const map = JSON.parse(readFileSync(`${ROOT}.test-cast-passwords.json`, 'utf8'))
+  const password = map[email]
+  if (!password) {
+    throw new Error(
+      `no password for ${email} in .test-cast-passwords.json — reseed: node scripts/with-preview-env.mjs node scripts/seed.mjs multi-human-cast --apply`
+    )
+  }
+  return password
+}
+
 // Core primitive: prime the Vercel protection-bypass cookie, then sign in with
 // a given email + password. Works for the test admin OR any other seeded
 // identity (e.g. a test-cast member) — just pass its email/password.
@@ -68,9 +81,8 @@ export async function loginWithPassword(
   await page.waitForTimeout(1500)
 
   if (page.url().includes('/auth/login')) {
-    // Target the password form's inputs by id (#pw-email / #password) —
-    // placeholder matching is ambiguous since the passcode form also has a
-    // you@example.com field (the #104 dual-email-field gotcha).
+    // Target the password form's inputs by id (#pw-email / #password) — these
+    // ids are load-bearing (kept stable through the PR D passcode removal).
     await page.locator('#pw-email').fill(email)
     await page.locator('#password').fill(password)
     const respP = verbose

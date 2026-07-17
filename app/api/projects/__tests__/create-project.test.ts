@@ -178,9 +178,8 @@ describe('POST /api/projects', () => {
     // Names no longer written to project_members (Phase 3)
     expect(maker!.first_name).toBeUndefined()
     expect(maker!.last_name).toBeUndefined()
-    // Maker should have a passcode
-    expect(maker!.passcode).toBeDefined()
-    expect(typeof maker!.passcode).toBe('string')
+    // No passcode written — retired (Garm PR D)
+    expect(maker!.passcode).toBeUndefined()
   })
 
   // --- Brief role (RAAC Phase 3a) ---
@@ -241,7 +240,7 @@ describe('POST /api/projects', () => {
 
   // --- Multiple participants ---
 
-  it('creates a membership + approval + passcode for each participant', async () => {
+  it('creates a membership + approval for each participant (no passcodes — PR D)', async () => {
     await POST(makeRequest({
       title: 'Team Brief',
       participants: [
@@ -259,7 +258,7 @@ describe('POST /api/projects', () => {
     expect(byEmail('b@example.com')).toMatchObject({ role: 'apprentice', brief_role: 'contributor' })
     expect(byEmail('c@example.com')).toMatchObject({ role: 'builder', brief_role: 'reviewer' })
     for (const e of ['a@example.com', 'b@example.com', 'c@example.com']) {
-      expect(typeof byEmail(e).passcode).toBe('string')
+      expect(byEmail(e).passcode).toBeUndefined()
     }
 
     // Each participant email is approved (lowercased doc id)
@@ -269,14 +268,14 @@ describe('POST /api/projects', () => {
     )
   })
 
-  it('returns the participant invite creds in the response', async () => {
+  it('returns the participant roster in the response, without passcodes', async () => {
     const res = await POST(makeRequest({
       title: 'Team Brief',
       participants: [{ email: 'a@example.com', role: 'maker' }],
     }))
     const data = await res.json()
     expect(data.members).toEqual([
-      expect.objectContaining({ email: 'a@example.com', role: 'maker', brief_role: 'originator', passcode: expect.any(String) }),
+      { email: 'a@example.com', role: 'maker', brief_role: 'originator' },
     ])
   })
 

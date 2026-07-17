@@ -13,7 +13,6 @@ import { generateSlug } from '@/lib/utils'
 import { resolveBriefRole, defaultBriefRole } from '@/lib/roles/brief-role'
 import { copy } from '@/lib/copy'
 import { deleteS3Object } from '@/lib/s3/client'
-import { generatePasscode } from '@/lib/passcode'
 import { stampDecisionProvenance } from '@/lib/api/brief-merge'
 import { normalizeEmail } from '@/lib/email/normalize'
 import { scheduleGarmGrantSync } from '@/lib/garm-grants'
@@ -369,7 +368,7 @@ export async function POST(request: Request) {
   // people (makers, contributors, reviewers) in one create payload. The legacy
   // single-requester fields are folded in as the first participant for
   // back-compat. Each resolved participant becomes a project_members row +
-  // approved_emails entry + passcode below.
+  // approved_emails entry below.
   const VALID_MEMBER_ROLES: MemberRole[] = ['owner', 'builder', 'apprentice', 'maker']
   const rawParticipants: Array<Record<string, unknown>> = []
   if (typeof projectData.requester_email === 'string') {
@@ -390,9 +389,9 @@ export async function POST(request: Request) {
   // Normalize + dedup by normalized email; drop entries without an email and
   // the creator's own email (they're already the owner). The stored `email`
   // is the fully normalized (trim+lowercase) form — not just trimmed — so it
-  // matches how project_members.email is read elsewhere (passcode login,
-  // getProjectRole): a previous version stored participants' emails trimmed
-  // but NOT lowercased, which could silently lock out a mixed-case email.
+  // matches how project_members.email is read elsewhere (getProjectRole): a
+  // previous version stored participants' emails trimmed but NOT lowercased,
+  // which could silently lock out a mixed-case email.
   const creatorEmail = normalizeEmail(auth.email)
   const participants: Array<{
     email: string
@@ -458,22 +457,19 @@ export async function POST(request: Request) {
   })
   scheduleGarmGrantSync(creatorEmail)
 
-  // Create a membership + email approval + passcode for each participant.
+  // Create a membership + email approval for each participant.
   const createdMembers: Array<{
     email: string
     role: MemberRole
     brief_role: BriefRole | null
-    passcode: string
   }> = []
   for (const p of participants) {
-    const passcode = generatePasscode()
     await db.collection('project_members').add({
       project_id: docRef.id,
       user_id: '', // set on claim
       email: p.email,
       role: p.role,
       brief_role: p.brief_role,
-      passcode,
       added_by: creatorEmail,
       created_at: now,
       updated_at: now,
@@ -488,7 +484,7 @@ export async function POST(request: Request) {
       created_at: now,
     })
 
-    createdMembers.push({ email: p.email, role: p.role, brief_role: p.brief_role, passcode })
+    createdMembers.push({ email: p.email, role: p.role, brief_role: p.brief_role })
     scheduleGarmGrantSync(p.email)
   }
 

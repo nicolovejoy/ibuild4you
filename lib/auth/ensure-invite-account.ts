@@ -3,14 +3,15 @@ import { getAdminAuth } from '@/lib/firebase/admin'
 import { normalizeEmail } from '@/lib/email/normalize'
 
 // Garm consumer plan Phase 1 / PR A (docs/garm-consumer-plan.md): invites move
-// from "here's your passcode" to "here's a link to set your password". This is
-// ADDITIVE — passcodes keep working — and does NOT touch closed signup: it
-// only ever runs for an email the caller has already approved as an invitee
-// (share/route.ts, the maker-email invite path), never for arbitrary input.
+// from "here's your passcode" to "here's a link to set your password" — and
+// since PR D the link (or Google) is the ONLY way in. Does NOT touch closed
+// signup: it only ever runs for an email the caller has already approved as an
+// invitee (share/route.ts, the maker-email invite path), never for arbitrary
+// input.
 //
 // Firebase's generatePasswordResetLink() requires the target Auth account to
-// already exist. Some invitees only have an account because the passcode
-// route get-or-created one by email (no password ever set on it) — so before
+// already exist. Some invitees only have an account because the retired
+// passcode route get-or-created one by email (no password ever set) — so before
 // minting the link we ensure the account exists AND has the password
 // provider attached. That's the plan's own "guaranteed to work" construction;
 // we did not gamble on the unverified optimization of skipping this for
@@ -44,7 +45,13 @@ export async function ensureInviteResetLink(rawEmail: string): Promise<string | 
       }
     }
 
-    return await adminAuth.generatePasswordResetLink(email)
+    // continueUrl: Firebase's hosted "Password changed" page then links back
+    // to sign-in instead of dead-ending. Outbound email always points at prod
+    // (same rule as getServerShareLink).
+    const base = process.env.NEXT_PUBLIC_APP_URL || 'https://ibuild4you.com'
+    return await adminAuth.generatePasswordResetLink(email, {
+      url: `${base}/auth/login`,
+    })
   } catch (err) {
     console.error(
       JSON.stringify({

@@ -8,7 +8,6 @@ import {
 import { generateWelcomeMessage } from '@/lib/agent/welcome-message'
 import { resolveBriefRole } from '@/lib/roles/brief-role'
 import { copy } from '@/lib/copy'
-import { generatePasscode } from '@/lib/passcode'
 import { normalizeEmail } from '@/lib/email/normalize'
 import { ensureInviteResetLink } from '@/lib/auth/ensure-invite-account'
 import { scheduleGarmGrantSync } from '@/lib/garm-grants'
@@ -55,7 +54,6 @@ export async function POST(request: Request) {
   // Create or update project_members record
   const assignedRole = memberRole || 'maker'
   const assignedBriefRole = resolveBriefRole(brief_role, assignedRole)
-  const passcode = generatePasscode()
 
   const existingMember = await db
     .collection('project_members')
@@ -71,17 +69,15 @@ export async function POST(request: Request) {
       email: normalizedEmail,
       role: assignedRole,
       brief_role: assignedBriefRole,
-      passcode,
       added_by: auth.email,
       created_at: now,
       updated_at: now,
     })
   } else {
-    // Update role and regenerate passcode if re-sharing
+    // Update role on a re-share
     await existingMember.docs[0].ref.update({
       role: assignedRole,
       brief_role: assignedBriefRole,
-      passcode,
       updated_at: now,
     })
   }
@@ -162,9 +158,8 @@ export async function POST(request: Request) {
     // Don't break the share flow
   }
 
-  // Garm consumer plan Phase 1 / PR A: mint a password-setup link alongside
-  // the passcode. Additive/reversible — passcode still works, this just gives
-  // the "copy invite message" UI a link-first body to hand the maker instead.
+  // Mint a Firebase password-setup link (Garm PR A) — with passcodes retired
+  // (PR D) this link + Google are how the invitee signs in.
   const resetLink = await ensureInviteResetLink(normalizedEmail)
 
   // Garm dual-write (Phase 4): this invite/re-share just created or updated a
@@ -174,55 +169,13 @@ export async function POST(request: Request) {
   return NextResponse.json({
     email: normalizedEmail,
     project_id,
-    passcode,
     reset_link: resetLink,
   })
 }
 
-// GET /api/projects/share?project_id=X — get passcode for the maker member (builder+)
-export async function GET(request: Request) {
-  const auth = await getAuthenticatedUser(request)
-  if (auth.error) return auth.error
-
-  const { searchParams } = new URL(request.url)
-  const project_id = searchParams.get('project_id')
-
-  if (!project_id) {
-    return NextResponse.json({ error: 'project_id is required' }, { status: 400 })
-  }
-
-  const db = getAdminDb()
-
-  const callerRole = await getProjectRole(db, project_id, auth.uid, auth.email, auth.systemRoles, auth)
-  const roleCheck = requireRole(callerRole, 'builder')
-  if (roleCheck) return roleCheck
-
-  // Find the maker member for this project
-  const memberSnap = await db
-    .collection('project_members')
-    .where('project_id', '==', project_id)
-    .where('role', '==', 'maker')
-    .limit(1)
-    .get()
-
-  if (memberSnap.empty) {
-    return NextResponse.json({ error: 'No maker found for this project' }, { status: 404 })
-  }
-
-  const memberDoc = memberSnap.docs[0]
-  const member = memberDoc.data()
-
-  // Auto-generate passcode for pre-existing shares that don't have one
-  if (!member.passcode) {
-    const passcode = generatePasscode()
-    await memberDoc.ref.update({ passcode, updated_at: new Date().toISOString() })
-    return NextResponse.json({ passcode })
-  }
-
-  return NextResponse.json({ passcode: member.passcode })
-}
-
-// PATCH /api/projects/share — reset passcode for the maker member (builder+)
+// PATCH /api/projects/share — re-key the originator's email (#12; builder+).
+// The passcode reveal (GET) and reset (bare PATCH) are gone with passcode
+// auth (Garm PR D) — new_email is now the only PATCH operation.
 export async function PATCH(request: Request) {
   const auth = await getAuthenticatedUser(request)
   if (auth.error) return auth.error
@@ -242,33 +195,15 @@ export async function PATCH(request: Request) {
 
   // Email re-key path (#12): correct the originator's email across the three
   // coupled records — project.requester_email (display), the project_members
-  // row (maker auth), and approved_emails (sign-in gate) — and reissue a
-  // passcode so any invite that went to the wrong (typo'd) address stops
-  // working. The old approved_emails entry is left in place: it may be in use
-  // on other briefs, and removing it would risk locking someone else out.
+  // row (membership), and approved_emails (sign-in gate). The old
+  // approved_emails entry is left in place: it may be in use on other briefs,
+  // and removing it would risk locking someone else out. The corrected address
+  // gets access via the invite flow's fresh password-setup link.
   if (typeof new_email === 'string' && new_email.trim()) {
     return rekeyRequesterEmail(db, project_id, new_email, auth.email)
   }
 
-  // Find the maker member for this project
-  const memberSnap = await db
-    .collection('project_members')
-    .where('project_id', '==', project_id)
-    .where('role', '==', 'maker')
-    .limit(1)
-    .get()
-
-  if (memberSnap.empty) {
-    return NextResponse.json({ error: 'No maker found for this project' }, { status: 404 })
-  }
-
-  const newPasscode = generatePasscode()
-  await memberSnap.docs[0].ref.update({
-    passcode: newPasscode,
-    updated_at: new Date().toISOString(),
-  })
-
-  return NextResponse.json({ passcode: newPasscode })
+  return NextResponse.json({ error: 'new_email is required' }, { status: 400 })
 }
 
 async function rekeyRequesterEmail(
@@ -293,9 +228,8 @@ async function rekeyRequesterEmail(
     created_at: now,
   })
 
-  // Re-key the originator's membership row + reissue a passcode. Match by their
-  // current email first; fall back to the maker role for legacy rows.
-  const passcode = generatePasscode()
+  // Re-key the originator's membership row. Match by their current email
+  // first; fall back to the maker role for legacy rows.
   let memberSnap = oldEmail
     ? await db
         .collection('project_members')
@@ -313,7 +247,7 @@ async function rekeyRequesterEmail(
       .get()
   }
   if (!memberSnap.empty) {
-    await memberSnap.docs[0].ref.update({ email: normalizedEmail, passcode, updated_at: now })
+    await memberSnap.docs[0].ref.update({ email: normalizedEmail, updated_at: now })
   }
 
   await projectRef.update({ requester_email: normalizedEmail, updated_at: now })
@@ -325,5 +259,5 @@ async function rekeyRequesterEmail(
   scheduleGarmGrantSync(normalizedEmail)
   if (oldEmail) scheduleGarmGrantSync(oldEmail)
 
-  return NextResponse.json({ email: normalizedEmail, passcode })
+  return NextResponse.json({ email: normalizedEmail })
 }

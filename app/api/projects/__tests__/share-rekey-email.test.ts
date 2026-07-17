@@ -70,8 +70,14 @@ describe('PATCH /api/projects/share — re-key requester email (#12)', () => {
     })
     membersGet.mockResolvedValue({
       empty: false,
-      docs: [{ ref: { update: memberUpdate }, data: () => ({ email: 'typo@old.com', passcode: 'OLD123' }) }],
+      docs: [{ ref: { update: memberUpdate }, data: () => ({ email: 'typo@old.com' }) }],
     })
+  })
+
+  it('returns 400 when new_email is missing (passcode reset path retired — PR D)', async () => {
+    const res = await PATCH(patchReq({ project_id: 'proj1' }))
+    expect(res.status).toBe(400)
+    expect(memberUpdate).not.toHaveBeenCalled()
   })
 
   it('returns 403 when caller is a maker', async () => {
@@ -86,25 +92,25 @@ describe('PATCH /api/projects/share — re-key requester email (#12)', () => {
     expect(res.status).toBe(404)
   })
 
-  it('approves the new email, re-keys the member with a fresh passcode, and updates the project', async () => {
+  it('approves the new email, re-keys the member, and updates the project', async () => {
     const res = await PATCH(patchReq({ project_id: 'proj1', new_email: 'Fixed@New.com' }))
     expect(res.status).toBe(200)
     const data = await res.json()
 
-    // normalized + returned
+    // normalized + returned; no passcode anywhere (retired — PR D)
     expect(data.email).toBe('fixed@new.com')
-    expect(data.passcode).toMatch(/^[A-Z0-9_-]{6}$/)
+    expect(data.passcode).toBeUndefined()
 
     // 1. approved_emails gets the new (normalized) address
     expect(approvedSet).toHaveBeenCalledWith(
       expect.objectContaining({ email: 'fixed@new.com' })
     )
 
-    // 2. member row re-keyed to the new email + a NEW passcode (not the old one)
+    // 2. member row re-keyed to the new email, and no passcode written
     expect(memberUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({ email: 'fixed@new.com', passcode: data.passcode })
+      expect.objectContaining({ email: 'fixed@new.com' })
     )
-    expect(data.passcode).not.toBe('OLD123')
+    expect(memberUpdate.mock.calls[0][0].passcode).toBeUndefined()
 
     // 3. project.requester_email updated
     expect(projectUpdate).toHaveBeenCalledWith(
@@ -126,7 +132,7 @@ describe('PATCH /api/projects/share — re-key requester email (#12)', () => {
       .mockResolvedValueOnce({ empty: true })
       .mockResolvedValueOnce({
         empty: false,
-        docs: [{ ref: { update: memberUpdate }, data: () => ({ passcode: 'OLD123' }) }],
+        docs: [{ ref: { update: memberUpdate }, data: () => ({}) }],
       })
     const res = await PATCH(patchReq({ project_id: 'proj1', new_email: 'fixed@new.com' }))
     expect(res.status).toBe(200)

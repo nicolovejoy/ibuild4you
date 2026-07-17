@@ -1,14 +1,15 @@
 #!/usr/bin/env node
-// Garm consumer plan Phase 1 / PR A verification on preview: the invite flow
-// mints a Firebase password-setup link instead of leaning on the passcode.
+// Garm consumer plan Phase 1 / PR A verification on preview (updated for PR D:
+// passcodes retired — the share response must NOT carry one anymore): the
+// invite flow mints a Firebase password-setup link.
 //
 // Proves the REAL end-to-end flow against the deployed preview app (which has
 // its own FIREBASE_SERVICE_ACCOUNT for ibuild4you-preview as a Vercel env
 // var — this script needs none of that locally):
 //   1. Create a throwaway brief + invite a throwaway maker email via the
 //      deployed POST /api/projects/share.
-//   2. Confirm the response carries BOTH `passcode` (unchanged, still works)
-//      and a new `reset_link` (a real Firebase password-reset URL).
+//   2. Confirm the response carries a `reset_link` (a real Firebase
+//      password-reset URL) and NO `passcode` (retired, PR D).
 //   3. Confirm POST /api/projects/[id]/email kind=invite also succeeds and is
 //      SUPPRESSED (never actually emails the throwaway example.com address —
 //      preview only sends to the allowlist; see app/api/projects/[id]/email/route.ts).
@@ -23,7 +24,7 @@
 //      *@example.com identity, harmless to leave, and easy to sweep later
 //      with an Admin-SDK script Nico runs locally.
 //
-// Prereqs: .ibuild4you-bypass, .test-admin-passcode (see scripts/lib/preview-login.mjs)
+// Prereqs: .ibuild4you-bypass, .test-admin-password (see scripts/lib/preview-login.mjs)
 // Usage: node scripts/e2e-garm-a-invite-link.mjs
 
 import { launchLoggedIn, shotDir, BASE } from './lib/preview-login.mjs'
@@ -86,7 +87,7 @@ if (projectId) {
   })
   const body = await res.json().catch(() => ({}))
   check('share invite succeeded', res.status === 200, `status ${res.status}`)
-  check('passcode still present (additive, not removed)', typeof body.passcode === 'string' && body.passcode.length > 0)
+  check('no passcode in the share response (retired — PR D)', body.passcode === undefined)
   resetLink = body.reset_link || null
   check(
     'reset_link is a real Firebase action link',

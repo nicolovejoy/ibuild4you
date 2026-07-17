@@ -82,7 +82,7 @@ describe('POST /api/projects/[id]/email', () => {
       empty: false,
       docs: [
         {
-          data: () => ({ email: 'maker@example.com', passcode: 'ABC123' }),
+          data: () => ({ email: 'maker@example.com' }),
           ref: { update: mockMemberUpdate },
         },
       ],
@@ -149,18 +149,10 @@ describe('POST /api/projects/[id]/email', () => {
     expect(call.text).toMatch(/forgot password/i)
   })
 
-  it('mints a passcode for the invite when the member has none', async () => {
-    memberSnap = {
-      empty: false,
-      docs: [
-        { data: () => ({ email: 'maker@example.com' }), ref: { update: mockMemberUpdate } },
-      ],
-    }
+  it('never writes to the member row on invite (passcode minting retired — PR D)', async () => {
     const res = await POST(makeReq({ kind: 'invite' }), { params })
     expect(res.status).toBe(200)
-    expect(mockMemberUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({ passcode: expect.any(String) })
-    )
+    expect(mockMemberUpdate).not.toHaveBeenCalled()
   })
 
   // --- multi-maker fan-out (#115) ---
@@ -170,11 +162,11 @@ describe('POST /api/projects/[id]/email', () => {
       empty: false,
       docs: [
         {
-          data: () => ({ email: 'matt@example.com', passcode: 'MATT01' }),
+          data: () => ({ email: 'matt@example.com' }),
           ref: { update: vi.fn() },
         },
         {
-          data: () => ({ email: 'scott@example.com', passcode: 'SCOTT1' }),
+          data: () => ({ email: 'scott@example.com' }),
           ref: { update: vi.fn() },
         },
       ],

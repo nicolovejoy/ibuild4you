@@ -15,9 +15,12 @@ import {
 import { copy } from '@/lib/copy'
 
 /**
- * Passcode → password/Google onramp (Garm PR B). Shown to any signed-in user
- * without a migrated credential (empty providerData — the passcode-only
- * shape). Self-contained: subscribes to auth state itself (like UserMenu), so
+ * Passcode-era → password/Google migration banner (Garm PR B; kept after PR D
+ * retired passcode login). A passcode-era account with a still-persisted
+ * Firebase session has empty providerData and NO way to sign in again once
+ * that session ends — this banner is its in-app path to set a credential
+ * while still signed in. Shown to any signed-in user without a migrated
+ * credential. Self-contained: subscribes to auth state itself (like UserMenu), so
  * it can be dropped into any page without extra plumbing. Dismissal is
  * sessionStorage-scoped so it reappears next visit instead of nagging every
  * page load of the same session.

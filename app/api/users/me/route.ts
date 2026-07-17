@@ -68,7 +68,7 @@ export async function PATCH(request: Request) {
     fields.account_label = account_label.trim()
   }
 
-  // Upsert the users doc (passcode users may not have one yet)
+  // Upsert the users doc (passcode-era users may not have one yet)
   const userRef = db.collection('users').doc(auth.uid)
   const userDoc = await userRef.get()
   if (userDoc.exists) {

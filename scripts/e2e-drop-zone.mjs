@@ -5,10 +5,12 @@
 // attachment. Creates a brief, drives as its maker, deletes.
 // Usage: node scripts/e2e-drop-zone.mjs
 
-import { launchLoggedIn, readToken, BASE, shotDir } from './lib/preview-login.mjs'
+import { launchLoggedIn, loginWithPassword, readCastPassword, BASE, shotDir } from './lib/preview-login.mjs'
 
 const stamp = Math.floor(performance.now()).toString(36)
-const EMAIL = `e2e-drop-${stamp}@example.com`
+// Maker = a seeded cast identity with a password (PR D retired passcodes, so
+// an ad-hoc email can no longer sign in off the create response).
+const EMAIL = 'test-originator@ibuild4you.com'
 const fail = (msg) => { console.error(`FAIL: ${msg}`); process.exitCode = 1 }
 const ok = (msg) => console.log(`${msg} ✓`)
 
@@ -29,25 +31,15 @@ const create = await page.request.post(`${BASE}/api/projects`, {
 })
 if (create.status() !== 201) { console.error(`FAIL: create → ${create.status()}`); process.exit(1) }
 const proj = await create.json()
-const passcode = (proj.members || []).find((m) => m.email === EMAIL)?.passcode
 
 const mctx = await browser.newContext({ viewport: { width: 1200, height: 900 } })
 const mpage = await mctx.newPage()
-await mpage.goto(
-  `${BASE}/projects/${proj.slug}?x-vercel-protection-bypass=${readToken()}&x-vercel-set-bypass-cookie=true`,
-  { waitUntil: 'domcontentloaded' },
-)
-await mpage.waitForTimeout(2000)
-if (mpage.url().includes('/auth/login')) {
-  await mpage.locator('#email').fill(EMAIL)
-  await mpage.locator('#passcode').fill(passcode)
-  await mpage.getByRole('button', { name: 'Sign in with passcode' }).click()
-  await mpage.waitForTimeout(3000)
-  if (!mpage.url().includes('/projects/')) {
-    await mpage.goto(`${BASE}/projects/${proj.slug}`, { waitUntil: 'domcontentloaded' })
-    await mpage.waitForTimeout(2500)
-  }
-}
+// Password sign-in as the cast maker (primes the bypass cookie itself).
+await loginWithPassword(mpage, {
+  email: EMAIL,
+  password: readCastPassword(EMAIL),
+  path: `/projects/${proj.slug}`,
+})
 // First-visit display-name gate renders after the project loads — poll for
 // either the gate (fill it) or the welcome bubble (ready).
 const bubble = mpage.getByText('drop a file anywhere on this chat')

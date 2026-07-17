@@ -82,7 +82,9 @@ export function SetPasswordModal({ isOpen, onClose, user }: SetPasswordModalProp
             await reauthenticateWithPopup(user, new GoogleAuthProvider())
             await linkWithCredential(user, credential)
           } else {
-            await sendPasswordResetEmail(auth, user.email)
+            await sendPasswordResetEmail(auth, user.email, {
+              url: `${window.location.origin}/auth/login`,
+            })
             setSuccess(true)
             setResetLinkSent(true)
             return

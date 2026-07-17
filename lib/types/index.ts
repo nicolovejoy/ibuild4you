@@ -22,7 +22,6 @@ export interface ProjectMember extends BaseEntity {
   role: MemberRole
   brief_role?: BriefRole | null
   added_by: string // email of who added them
-  passcode?: string
   archived_at?: string | null // when this viewer archived the brief from their dashboard (per-viewer)
 }
 
