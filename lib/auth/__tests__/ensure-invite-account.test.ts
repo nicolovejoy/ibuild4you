@@ -44,7 +44,10 @@ describe('ensureInviteResetLink', () => {
     const passwordArg = mockCreateUser.mock.calls[0][0].password as string
     expect(passwordArg.length).toBeGreaterThanOrEqual(24)
     expect(mockUpdateUser).not.toHaveBeenCalled()
-    expect(mockGeneratePasswordResetLink).toHaveBeenCalledWith('new@example.com')
+    // continueUrl points the post-reset page back at sign-in (not a dead end)
+    expect(mockGeneratePasswordResetLink).toHaveBeenCalledWith('new@example.com', {
+      url: 'https://ibuild4you.com/auth/login',
+    })
     expect(link).toBe('https://example.com/reset?oobCode=abc')
   })
 
@@ -107,7 +110,9 @@ describe('ensureInviteResetLink', () => {
     expect(mockCreateUser).toHaveBeenCalledWith(
       expect.objectContaining({ email: 'weird.casing@example.com' })
     )
-    expect(mockGeneratePasswordResetLink).toHaveBeenCalledWith('weird.casing@example.com')
+    expect(mockGeneratePasswordResetLink).toHaveBeenCalledWith('weird.casing@example.com', {
+      url: 'https://ibuild4you.com/auth/login',
+    })
   })
 
   it('returns null for an empty/blank email without calling Auth', async () => {

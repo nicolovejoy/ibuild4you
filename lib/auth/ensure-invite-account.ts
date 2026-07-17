@@ -45,7 +45,13 @@ export async function ensureInviteResetLink(rawEmail: string): Promise<string | 
       }
     }
 
-    return await adminAuth.generatePasswordResetLink(email)
+    // continueUrl: Firebase's hosted "Password changed" page then links back
+    // to sign-in instead of dead-ending. Outbound email always points at prod
+    // (same rule as getServerShareLink).
+    const base = process.env.NEXT_PUBLIC_APP_URL || 'https://ibuild4you.com'
+    return await adminAuth.generatePasswordResetLink(email, {
+      url: `${base}/auth/login`,
+    })
   } catch (err) {
     console.error(
       JSON.stringify({

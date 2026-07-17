@@ -94,7 +94,11 @@ export default function LoginPage() {
       return
     }
     try {
-      await sendPasswordResetEmail(auth, email.trim())
+      // continueUrl: Firebase's hosted "Password changed" page shows a
+      // Continue button back to sign-in instead of dead-ending.
+      await sendPasswordResetEmail(auth, email.trim(), {
+        url: `${window.location.origin}/auth/login`,
+      })
     } catch (err) {
       // Don't leak whether the email exists — show the same confirmation on
       // user-not-found as on success. Only surface genuine errors (rate limit, network).
