@@ -7,7 +7,7 @@
 // the context already starts with the banner's first line.
 //
 // Prod:
-//   E2E_BASE=https://ibuild4you.com E2E_PASSCODE_FILE=.test-admin-passcode-prod \
+//   E2E_BASE=https://ibuild4you.com E2E_PASSWORD_FILE=.test-admin-password-prod \
 //     node scripts/add-context-banner.mjs <slug> "<banner text>"
 //
 // Verify afterwards read-only:

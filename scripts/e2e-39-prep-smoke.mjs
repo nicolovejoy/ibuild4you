@@ -20,7 +20,7 @@
 //          node scripts/e2e-39-prep-smoke.mjs        (prod)
 
 import { chromium } from 'playwright'
-import { launchLoggedIn, readToken, BASE } from './lib/preview-login.mjs'
+import { launchLoggedIn, loginWithPassword, readCastPassword, BASE } from './lib/preview-login.mjs'
 
 const stamp = Math.floor(performance.now()).toString(36)
 const fail = (msg) => { console.error(`FAIL: ${msg}`); process.exitCode = 1 }
@@ -93,7 +93,9 @@ await page.waitForTimeout(1500)
 const maxPayload = {
   _payload_type: 'new-project',
   title: `E2E39 maximal ${stamp} — delete me`,
-  requester_email: `e2e39-max-${stamp}@example.com`,
+  // Cast identity so the live posture probe can sign in via password
+  // (PR D retired passcode login for ad-hoc emails).
+  requester_email: 'test-originator@ibuild4you.com',
   requester_first_name: 'Mara',
   session_mode: 'discover',
   seed_questions: ['What problem are you solving?', 'Who are your customers?'],
@@ -225,27 +227,18 @@ const s2 = await s2resp.json()
 }
 
 // --- Bonus (warn-only): live maker probe of the custom-identity posture ---
-const makerCreds = (proj.members || []).find((m) => m.email === maxPayload.requester_email)
-if (!makerCreds?.passcode) warn('no maker passcode in create response — skipping live posture probe')
+const makerRow = (proj.members || []).find((m) => m.email === maxPayload.requester_email)
+if (!makerRow) warn('maker missing from create response members[] — skipping live posture probe')
 else {
   const mctx = await browser.newContext({ viewport: { width: 1200, height: 900 } })
   const mpage = await mctx.newPage()
   try {
-    await mpage.goto(
-      `${BASE}/projects/${proj.slug}?x-vercel-protection-bypass=${readToken()}&x-vercel-set-bypass-cookie=true`,
-      { waitUntil: 'domcontentloaded' },
-    )
-    await mpage.waitForTimeout(1500)
-    if (mpage.url().includes('/auth/login')) {
-      await mpage.locator('#email').fill(maxPayload.requester_email)
-      await mpage.locator('#passcode').fill(makerCreds.passcode)
-      await mpage.getByRole('button', { name: 'Sign in with passcode' }).click()
-      await mpage.waitForTimeout(2500)
-      if (!mpage.url().includes('/projects/')) {
-        await mpage.goto(`${BASE}/projects/${proj.slug}`, { waitUntil: 'domcontentloaded' })
-        await mpage.waitForTimeout(2000)
-      }
-    }
+    // Password sign-in as the cast maker (primes the bypass cookie itself).
+    await loginWithPassword(mpage, {
+      email: maxPayload.requester_email,
+      password: readCastPassword(maxPayload.requester_email),
+      path: `/projects/${proj.slug}`,
+    })
     // First-visit gate: new makers are asked for a display name before the chat.
     if ((await mpage.locator('body').innerText()).includes('What should we call you?')) {
       await mpage.locator('input:visible').first().fill('Mara')

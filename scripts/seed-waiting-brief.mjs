@@ -31,7 +31,7 @@ if (!APPLY) {
   process.exit(0)
 }
 
-// Owner = the passcode test admin, so the brief is reachable in its builder view.
+// Owner = the test admin, so the brief is reachable in its builder view.
 let ownerUid = 'fixtures'
 try {
   ownerUid = (await adminAuth.getUserByEmail('test@ibuild4you.com')).uid

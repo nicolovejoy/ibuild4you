@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Drive a headless browser through preview.ibuild4you.com as the passcode-based
+// Drive a headless browser through preview.ibuild4you.com as the password-based
 // test admin, for agent-driven UI verification on preview. Canonical example of
 // the shared preview-login helper (see scripts/lib/preview-login.mjs).
 //

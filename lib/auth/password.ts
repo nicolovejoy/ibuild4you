@@ -34,7 +34,7 @@ const MESSAGES: Record<string, string> = {
   'auth/email-already-in-use': 'A password is already set for this account. Use “Forgot password?” to reset it.',
   'auth/weak-password': `Password is too weak — use at least ${MIN_PASSWORD_LENGTH} characters.`,
   'auth/invalid-email': 'Please enter a valid email address.',
-  'auth/operation-not-allowed': 'Password sign-in is not yet enabled. Please use Google or a passcode for now.',
+  'auth/operation-not-allowed': 'Password sign-in is not yet enabled. Please use Google for now.',
   'auth/missing-email': 'Please enter your email address.',
   'auth/network-request-failed': 'Network error. Check your connection and try again.',
 }

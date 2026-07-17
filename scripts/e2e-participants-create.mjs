@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Verify participants[]: importing a new-brief JSON with two participants
-// creates a membership + passcode for each and returns them in members[].
+// creates a membership for each and returns them in members[] (no passcodes —
+// retired by Garm PR D).
 // Drives the real Import-JSON modal so it exercises the deployed API end to
 // end, captures the POST /api/projects response (and its Bearer header), then
 // DELETEs the created brief so the preview env isn't left littered.
@@ -62,22 +63,22 @@ if (!maker) fail(`maker membership missing for ${makerEmail}`)
 else {
   if (maker.role !== 'maker') fail(`maker role = ${maker.role}`)
   if (maker.brief_role !== 'originator') fail(`maker brief_role = ${maker.brief_role}`)
-  if (typeof maker.passcode !== 'string' || maker.passcode.length < 4) fail(`maker passcode bad: ${maker.passcode}`)
+  if (maker.passcode !== undefined) fail(`maker passcode should be gone (PR D), got: ${maker.passcode}`)
 }
 if (!helper) fail(`helper membership missing for ${helperEmail}`)
 else {
   if (helper.role !== 'apprentice') fail(`helper role = ${helper.role}`)
   if (helper.brief_role !== 'contributor') fail(`helper brief_role = ${helper.brief_role}`)
-  if (typeof helper.passcode !== 'string' || helper.passcode.length < 4) fail(`helper passcode bad: ${helper.passcode}`)
+  if (helper.passcode !== undefined) fail(`helper passcode should be gone (PR D), got: ${helper.passcode}`)
 }
 // Displayed requester = first maker participant.
 if (body.requester_email !== makerEmail) fail(`requester_email = ${body.requester_email}, expected ${makerEmail}`)
 if (body.requester_first_name !== 'Mae') fail(`requester_first_name = ${body.requester_first_name}`)
 
 if (!process.exitCode) {
-  console.log('PASS: 2 participants created, each with role/brief_role/passcode; requester stamped to first maker')
-  console.log(`  maker:  ${maker.role}/${maker.brief_role} passcode=${maker.passcode}`)
-  console.log(`  helper: ${helper.role}/${helper.brief_role} passcode=${helper.passcode}`)
+  console.log('PASS: 2 participants created, each with role/brief_role (no passcode); requester stamped to first maker')
+  console.log(`  maker:  ${maker.role}/${maker.brief_role}`)
+  console.log(`  helper: ${helper.role}/${helper.brief_role}`)
 }
 
 // --- Cleanup: delete the created brief using the captured Bearer token. ---

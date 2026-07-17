@@ -2,7 +2,7 @@
 //
 // The multi-human thesis (2+ people in a brief Sam mediates) can only be tested
 // with two real, separately-logged-in humans on the same brief. This seeds a
-// dedicated cast project on the preview sandbox with four passcode identities —
+// dedicated cast project on the preview sandbox with four identities —
 // Originator, Contributor, Reviewer, Owner — each with its own auth user +
 // users-doc (so display names resolve in chat) + approved_emails entry +
 // project_members row carrying brief_role. One active session + welcome message
@@ -13,20 +13,14 @@
 // seed-tagged so cleanAll({ scenario }) removes them; the auth users, user docs,
 // and approved_emails are reusable test identities and are left in place.
 //
-// Passcodes: deterministic if SEED_PASSCODE_<ROLE> env vars are set (stash them
-// in 1Password / .env.preview.local); otherwise random. On apply the full
-// {email: passcode} map is copied to the clipboard as JSON and written to the
-// gitignored .test-cast-passcodes.json. Passcodes are never printed to stdout.
-//
-// Garm PR C: each cast member also gets a Firebase Auth password (random,
-// Admin-SDK-set) written to the gitignored .test-cast-passwords.json, so e2e
-// scripts can sign in as a cast identity via password instead of passcode.
-// The passcode fields/file are left in place — PR D is what retires them, not
-// this script.
+// Garm PR C/D: each cast member gets a Firebase Auth password (deterministic
+// if SEED_PASSWORD_<ROLE> env vars are set; otherwise random, Admin-SDK-set)
+// written to the gitignored .test-cast-passwords.json — e2e scripts sign in
+// via loginWithPassword(). Passcodes are retired (PR D): nothing is minted,
+// no passcode field is written, and .test-cast-passcodes.json is no more.
 
 import { randomBytes } from 'node:crypto'
 import { writeFileSync } from 'node:fs'
-import { spawnSync } from 'node:child_process'
 import { FieldValue } from 'firebase-admin/firestore'
 import { iso, makeProject, addSession, addMessage, addBrief, findProjectBySlug } from '../db.mjs'
 
@@ -56,14 +50,6 @@ const BRIEF_CONTENT = {
   decisions: [],
 }
 
-function generatePasscode() {
-  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789' // no I/O/0/1
-  const bytes = randomBytes(10)
-  let out = ''
-  for (let i = 0; i < 10; i++) out += alphabet[bytes[i] % alphabet.length]
-  return out
-}
-
 async function getOrCreateAuthUser(adminAuth, member, apply) {
   try {
     const u = await adminAuth.getUserByEmail(member.email)
@@ -80,8 +66,8 @@ async function getOrCreateAuthUser(adminAuth, member, apply) {
   }
 }
 
-// Garm PR C: set (or rotate) a Firebase Auth password on the same user so the
-// harness can sign in with password instead of passcode.
+// Garm PR C/D: set (or rotate) a Firebase Auth password on the same user —
+// password login is how the harness signs in as a cast identity.
 async function setPassword(adminAuth, uid, member, apply) {
   if (!apply || uid.startsWith('(')) return null
   const envKey = `SEED_PASSWORD_${member.key.toUpperCase()}`
@@ -129,7 +115,7 @@ async function ensureBrief(db, pid, apply) {
   return 'created'
 }
 
-async function upsertMembership(db, pid, member, uid, passcode, apply) {
+async function upsertMembership(db, pid, member, uid, apply) {
   const existing = await db
     .collection('project_members')
     .where('project_id', '==', pid)
@@ -143,7 +129,6 @@ async function upsertMembership(db, pid, member, uid, passcode, apply) {
     email: member.email,
     role: member.role,
     brief_role: member.brief_role,
-    passcode,
     added_by: 'seed-test-cast',
     updated_at: now,
     seed_tag: 'fixture',
@@ -183,31 +168,20 @@ async function seed({ db, adminAuth, apply, log }) {
   log(`Active session: ${await ensureActiveSession(db, project.id, apply)}`)
   log(`Brief: ${await ensureBrief(db, project.id, apply)}`)
 
-  const passcodeMap = {}
   const passwordMap = {}
   for (const member of CAST) {
-    const envKey = `SEED_PASSCODE_${member.key.toUpperCase()}`
-    const passcode = (process.env[envKey]?.trim() || generatePasscode()).toUpperCase()
-    passcodeMap[member.email] = passcode
-
     const uid = await getOrCreateAuthUser(adminAuth, member, apply)
     await upsertUserDoc(db, uid, member, apply)
     await upsertApprovedEmail(db, member, apply)
-    const action = await upsertMembership(db, project.id, member, uid, passcode, apply)
+    const action = await upsertMembership(db, project.id, member, uid, apply)
     const password = await setPassword(adminAuth, uid, member, apply)
     if (password) passwordMap[member.email] = password
     log(`  ${member.key.padEnd(11)} ${member.email.padEnd(34)} role=${member.role.padEnd(7)} brief_role=${member.brief_role ?? 'null'} → ${action}`)
   }
 
   if (apply) {
-    const json = JSON.stringify(passcodeMap, null, 2)
-    writeFileSync('.test-cast-passcodes.json', json + '\n')
-    const r = spawnSync('pbcopy', { input: json })
-    log('PASSCODES → .test-cast-passcodes.json (gitignored)' + (r.status === 0 ? ' + clipboard' : ' (pbcopy failed — read the file)'))
-    log('Sign in at https://preview.ibuild4you.com/auth/login as each email + its passcode.')
-
     writeFileSync('.test-cast-passwords.json', JSON.stringify(passwordMap, null, 2) + '\n')
-    log('PASSWORDS → .test-cast-passwords.json (gitignored, not printed) — for e2e scripts using password login (Garm PR C).')
+    log('PASSWORDS → .test-cast-passwords.json (gitignored, not printed) — e2e scripts sign in via loginWithPassword().')
   }
 }
 

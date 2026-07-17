@@ -4,10 +4,12 @@
 // and grades whether the agent speaks as the custom identity.
 // Usage: node scripts/e2e-39-posture-probe.mjs
 
-import { launchLoggedIn, readToken, BASE, shotDir } from './lib/preview-login.mjs'
+import { launchLoggedIn, loginWithPassword, readCastPassword, BASE, shotDir } from './lib/preview-login.mjs'
 
 const stamp = Math.floor(performance.now()).toString(36)
-const EMAIL = `e2e39-probe-${stamp}@example.com`
+// Maker = a seeded cast identity with a password (PR D retired passcodes, so
+// an ad-hoc email can no longer sign in off the create response).
+const EMAIL = 'test-originator@ibuild4you.com'
 const IDENTITY =
   'You are Piper, a pragmatic intake assistant. Introduce yourself as Piper and end every reply with exactly one focused question.'
 
@@ -31,29 +33,17 @@ const create = await page.request.post(`${BASE}/api/projects`, {
 })
 if (create.status() !== 201) { console.error(`FAIL: create → ${create.status()}`); process.exit(1) }
 const proj = await create.json()
-const passcode = (proj.members || []).find((m) => m.email === EMAIL)?.passcode
-console.log(`created ${proj.id} (${proj.slug}), maker passcode ${passcode ? 'minted' : 'MISSING'}`)
+console.log(`created ${proj.id} (${proj.slug})`)
 
 const mctx = await browser.newContext({ viewport: { width: 1200, height: 900 } })
 const mpage = await mctx.newPage()
-await mpage.goto(
-  `${BASE}/projects/${proj.slug}?x-vercel-protection-bypass=${readToken()}&x-vercel-set-bypass-cookie=true`,
-  { waitUntil: 'domcontentloaded' },
-)
-await mpage.waitForTimeout(2000)
-console.log('after goto:', mpage.url())
-if (mpage.url().includes('/auth/login')) {
-  await mpage.locator('#email').fill(EMAIL)
-  await mpage.locator('#passcode').fill(passcode)
-  await mpage.getByRole('button', { name: 'Sign in with passcode' }).click()
-  await mpage.waitForTimeout(3000)
-  console.log('after login:', mpage.url())
-  if (!mpage.url().includes('/projects/')) {
-    await mpage.goto(`${BASE}/projects/${proj.slug}`, { waitUntil: 'domcontentloaded' })
-    await mpage.waitForTimeout(2500)
-    console.log('after re-goto:', mpage.url())
-  }
-}
+// Password sign-in as the cast maker (primes the bypass cookie itself).
+await loginWithPassword(mpage, {
+  email: EMAIL,
+  password: readCastPassword(EMAIL),
+  path: `/projects/${proj.slug}`,
+})
+console.log('after login:', mpage.url())
 await mpage.screenshot({ path: `${shotDir}/39-probe-landing.png`, fullPage: true })
 
 // First-visit gate: new makers are asked for a display name before the chat.

@@ -72,7 +72,7 @@ export async function GET(request: Request) {
 }
 
 // PATCH /api/users — admin-only: update a user's name
-// Creates a users doc if one doesn't exist yet (for passcode-only users)
+// Creates a users doc if one doesn't exist yet (for passcode-era accounts)
 export async function PATCH(request: Request) {
   const auth = await getAuthenticatedUser(request)
   if (auth.error) return auth.error
@@ -116,7 +116,7 @@ export async function PATCH(request: Request) {
   }
 
   // For users without a real UID, look up by email
-  // They might have a Firebase Auth user from passcode login
+  // They might have a Firebase Auth user from the retired passcode login era
   // #155: normalize the admin-supplied email — nothing enforced this before,
   // so a mixed-case/whitespace paste would silently fail to sync user_id
   // onto project_members and derive a divergent users doc ID.

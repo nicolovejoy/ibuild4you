@@ -5,7 +5,7 @@
 // the change is validated by the API route, not a raw Firestore write.
 //
 // Prod:
-//   E2E_BASE=https://ibuild4you.com E2E_PASSCODE_FILE=.test-admin-passcode-prod \
+//   E2E_BASE=https://ibuild4you.com E2E_PASSWORD_FILE=.test-admin-password-prod \
 //     node scripts/set-github-repo.mjs <slug> <owner/name>
 //
 // Preview (default env): node scripts/set-github-repo.mjs <slug> <owner/name>

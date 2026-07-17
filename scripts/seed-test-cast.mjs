@@ -5,9 +5,8 @@
 //   node scripts/with-preview-env.mjs node scripts/seed.mjs multi-human-cast --apply
 //   node scripts/with-preview-env.mjs node scripts/seed.mjs multi-human-cast --clean
 //
-// This wrapper preserves the original invocation (and the .test-cast-passcodes
-// .json + clipboard side effects) so existing e2e scripts and muscle memory
-// keep working. Logic lives in scripts/fixtures/scenarios/multi-human-cast.mjs.
+// This wrapper preserves the original invocation (and the .test-cast-passwords
+// .json side effect) so existing e2e scripts and muscle memory keep working. Logic lives in scripts/fixtures/scenarios/multi-human-cast.mjs.
 
 import { initFixtureDb, cleanAll } from './fixtures/db.mjs'
 import { scenario } from './fixtures/scenarios/multi-human-cast.mjs'

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Verify #21 (reminder copy + "Waiting on" card placement) and the voice_sample
-// edit field, on preview, as the passcode test admin. Reads the bypass token +
-// passcode from gitignored files (never printed). Prints PASS/FAIL per check.
+// edit field, on preview, as the test admin. Reads the bypass token +
+// password from gitignored files (never printed). Prints PASS/FAIL per check.
 //
 // Requires: scripts/seed-waiting-brief.mjs already applied (slug below).
 // Usage: node scripts/e2e-21-waiting-reminder.mjs

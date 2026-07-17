@@ -4,23 +4,19 @@
 // Why this exists: /admin/* pages need an admin login, but Google OAuth
 // can't be driven by Playwright. This script creates a fully isolated test
 // identity (Firebase Auth user + users doc with admin role + project
-// membership with a passcode) so e2e auth never touches a human account.
-// Revoking is a one-line script edit; rotating is just re-running --apply.
+// membership) so e2e auth never touches a human account. Revoking is a
+// one-line script edit; rotating is just re-running --apply.
 //
 // Run via the .env wrapper:
 //   node scripts/with-prod-env.mjs node scripts/seed-test-admin.mjs            # dry-run
 //   node scripts/with-prod-env.mjs node scripts/seed-test-admin.mjs --apply    # write
 //
-// After --apply, the freshly generated passcode lands on the clipboard via
-// pbcopy — it is never printed to stdout. Paste it into 1Password.
-//
-// Garm PR C: this script still seeds the passcode (PR D is what retires it).
-// For password-based e2e login, run the sibling script AFTER this one:
+// Garm PR D: passcode auth is retired — this script no longer mints or writes
+// a passcode. The login credential is a password, set by the sibling script
+// AFTER this one:
 //   node scripts/with-preview-env.mjs node scripts/seed-test-admin-password.mjs --apply
 
 import { FieldValue } from 'firebase-admin/firestore'
-import { randomBytes } from 'node:crypto'
-import { spawnSync } from 'node:child_process'
 import { initAdminDb } from './fixtures/db.mjs'
 
 const APPLY = process.argv.includes('--apply')
@@ -39,16 +35,6 @@ const TEST_PROJECT_SLUG = 'test-admin-access'
 // seed_tag on any doc: the test admin is persistent infrastructure, not
 // fixture data — tagging it would let `seed.mjs reset` wipe the e2e login.
 const { db, adminAuth } = initAdminDb()
-
-// Generate a 10-char upper-alphanumeric passcode (no ambiguous chars).
-// The passcode-login route uppercases input, so we generate uppercase.
-function generatePasscode() {
-  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789' // no I/O/0/1 — easier to read
-  const bytes = randomBytes(10)
-  let out = ''
-  for (let i = 0; i < 10; i++) out += alphabet[bytes[i] % alphabet.length]
-  return out
-}
 
 // Get the Firebase Auth user, creating one if it doesn't exist yet. The uid
 // is needed to key the users-doc with system_roles=['admin'].
@@ -113,7 +99,7 @@ async function findOrCreateTestProject() {
     requester_email: ADMIN_EMAIL,
     requester_first_name: 'TestAdmin',
     requester_last_name: 'Playwright',
-    context: 'Synthetic project used only as the project_members host for the passcode-based admin login. Do not delete unless rotating credentials.',
+    context: 'Synthetic project used only as the project_members host for the e2e admin login. Do not delete unless rotating credentials.',
     session_mode: 'discover',
     auto_reminders_enabled: false,
     reminders_sent_count: 0,
@@ -124,9 +110,10 @@ async function findOrCreateTestProject() {
   return { id: ref.id, created: true }
 }
 
-async function upsertMembership(projectId, passcode) {
+async function upsertMembership(projectId) {
   // One project_members row per (project_id, email). Update in place if it
-  // already exists so re-running rotates the passcode.
+  // already exists. No passcode field — retired (Garm PR D); the scrub script
+  // removes any stale one.
   const existing = await db
     .collection('project_members')
     .where('project_id', '==', projectId)
@@ -139,7 +126,6 @@ async function upsertMembership(projectId, passcode) {
     project_id: projectId,
     email: ADMIN_EMAIL,
     role: 'owner',
-    passcode,
     updated_at: now,
   }
   if (existing.empty) {
@@ -147,22 +133,15 @@ async function upsertMembership(projectId, passcode) {
     await db.collection('project_members').add({ ...payload, created_at: now })
     return { action: 'created' }
   }
-  if (!APPLY) return { action: 'would-rotate' }
+  if (!APPLY) return { action: 'would-update' }
   await existing.docs[0].ref.update(payload)
-  return { action: 'rotated' }
+  return { action: 'updated' }
 }
 
 console.log(`Mode: ${APPLY ? 'APPLY' : 'DRY-RUN (re-run with --apply to write)'}`)
 console.log(`Admin email: ${ADMIN_EMAIL}`)
 console.log(`Test project: ${TEST_PROJECT_TITLE} (slug: ${TEST_PROJECT_SLUG})`)
 console.log()
-
-// Deterministic seeding: if SEED_PASSCODE is supplied (per-environment, stored
-// in 1Password), reuse it so re-seeding is idempotent and the value in Firestore
-// always matches what callers have on file. Falls back to a fresh random one.
-// Uppercased because the passcode-login route uppercases input before matching.
-const passcodeFromEnv = process.env.SEED_PASSCODE?.trim()
-const passcode = (passcodeFromEnv || generatePasscode()).toUpperCase()
 
 const authUser = await getOrCreateAuthUser()
 console.log(`Auth user: ${authUser.created ? 'create' : 'reuse'} → uid=${authUser.uid}`)
@@ -176,38 +155,15 @@ console.log(`approved_emails entry: ${approved}`)
 const project = await findOrCreateTestProject()
 console.log(`Project: ${project.created ? 'create' : 'reuse'} → id=${project.id}`)
 
-const result = await upsertMembership(project.id, passcode)
+const result = await upsertMembership(project.id)
 console.log(`Membership: ${result.action}`)
 console.log()
 
-if (APPLY && passcodeFromEnv) {
-  // Deterministic run: the caller already has the passcode (it came from env).
-  // Nothing to copy or print — the value stays out of stdout entirely.
-  console.log('Passcode: reused from SEED_PASSCODE (deterministic seed).')
-} else if (APPLY) {
-  // Pipe the passcode to pbcopy so it never lands in terminal scrollback or
-  // chat history. Stdout only confirms success / instructions.
-  const r = spawnSync('pbcopy', { input: passcode })
-  const copied = r.status === 0
-  console.log('=============================================')
-  console.log(copied
-    ? 'PASSCODE → clipboard (paste into 1Password now, then Playwright)'
-    : 'PASSCODE generated but pbcopy failed — re-run on macOS')
-  console.log('=============================================')
-  console.log()
-  console.log('Next steps:')
-  console.log(`  1. Cmd+V the passcode into 1Password (dev-secrets vault).`)
-  console.log(`     Suggested op command (run yourself — secrets hook blocks Claude):`)
-  console.log(`       op item create --vault dev-secrets --category login \\`)
-  console.log(`         --title "ibuild4you test admin passcode" \\`)
-  console.log(`         username=${ADMIN_EMAIL} \\`)
-  console.log(`         password="$(pbpaste)" \\`)
-  console.log(`         url=https://ibuild4you.com/auth/login`)
-  console.log(`  2. Sign in at https://ibuild4you.com/auth/login (email above + passcode).`)
-  console.log(`  3. Future testing: \`pbcopy < <(op read 'op://dev-secrets/.../password')\` to`)
-  console.log(`     stage the passcode, then paste into the Playwright window yourself.`)
+if (APPLY) {
+  console.log('Next: set the login password (writes gitignored .test-admin-password):')
+  console.log('  node scripts/with-preview-env.mjs node scripts/seed-test-admin-password.mjs --apply')
 } else {
-  console.log('Dry-run complete. Re-run with --apply to actually create + copy passcode.')
+  console.log('Dry-run complete. Re-run with --apply to write.')
 }
 
 process.exit(0)

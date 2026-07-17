@@ -3,8 +3,8 @@
 // write it to a gitignored file, so scripts/lib/preview-login.mjs can sign in
 // with email+password instead of the passcode being retired in PR D.
 //
-// Sibling to scripts/seed-test-admin.mjs (which still seeds the passcode-based
-// project_members row — left alone; PR D is the one that scrubs passcodes).
+// Sibling to scripts/seed-test-admin.mjs (which seeds the identity + admin
+// role + membership; passcodes are retired as of PR D).
 // The two scripts are independent: run seed-test-admin.mjs once to create the
 // user, then this one (repeatedly, to rotate) to give it a password.
 //
