@@ -6,7 +6,6 @@ export const queryKeys = {
   projects: () => ['projects'] as const,
   project: (idOrSlug: string | undefined) => ['project', idOrSlug] as const,
   resolveProject: (slugOrId: string | undefined) => ['resolveProject', slugOrId] as const,
-  passcode: (projectId: string | undefined) => ['passcode', projectId] as const,
   brief: (projectId: string | undefined) => ['brief', projectId] as const,
   sessions: (projectId: string | undefined) => ['sessions', projectId] as const,
   members: (projectId: string | undefined) => ['members', projectId] as const,

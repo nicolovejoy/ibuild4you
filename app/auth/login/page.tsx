@@ -4,7 +4,6 @@ import { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
 import {
   signInWithPopup,
-  signInWithCustomToken,
   signInWithEmailAndPassword,
   sendPasswordResetEmail,
   GoogleAuthProvider,
@@ -29,19 +28,15 @@ function isInAppBrowser(): boolean {
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
-  const [passcode, setPasscode] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [info, setInfo] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
   const [passwordLoading, setPasswordLoading] = useState(false)
   const [googleLoading, setGoogleLoading] = useState(false)
   const [redirectTo, setRedirectTo] = useState('/dashboard')
   const [linkCopied, setLinkCopied] = useState(false)
   const router = useRouter()
 
-  // If redirecting to a project, the user is likely a maker with a passcode
-  const isMakerFlow = useMemo(() => redirectTo.startsWith('/projects/'), [redirectTo])
   const inAppBrowser = useMemo(() => isInAppBrowser(), [])
 
   useEffect(() => {
@@ -65,37 +60,14 @@ export default function LoginPage() {
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Sign-in failed'
       if (message.includes('sessionStorage') || message.includes('popup')) {
-        setError('Google sign-in is not supported in this browser. Try opening the link in Safari or Chrome, or use the passcode below.')
+        setError('Google sign-in is not supported in this browser. Try opening the link in Safari or Chrome, or sign in with your password below.')
       } else if (message.includes('popup-blocked') || message.includes('cancelled-popup-request')) {
-        setError('Pop-up was blocked. Try again, or use the passcode to sign in.')
+        setError('Pop-up was blocked. Try again, or sign in with your password below.')
       } else {
         setError(message)
       }
     } finally {
       setGoogleLoading(false)
-    }
-  }
-
-  const handlePasscodeSignIn = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setError(null)
-    setLoading(true)
-    try {
-      const res = await fetch('/api/auth/passcode', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim(), passcode: passcode.trim() }),
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        throw new Error(data.error || 'Invalid email or passcode')
-      }
-      await signInWithCustomToken(auth, data.token)
-      router.replace(redirectTo)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Sign-in failed')
-    } finally {
-      setLoading(false)
     }
   }
 
@@ -140,56 +112,6 @@ export default function LoginPage() {
     setLinkCopied(true)
     setTimeout(() => setLinkCopied(false), 2000)
   }
-
-  const passcodeForm = (
-    <form onSubmit={handlePasscodeSignIn} className="space-y-4">
-      {isMakerFlow && (
-        <p className="text-sm text-gray-600">
-          Enter the email and passcode from your invite.
-        </p>
-      )}
-      <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
-        {copy.auth.passcodeDeprecationNotice}
-      </p>
-      <div>
-        <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
-          Email
-        </label>
-        <input
-          id="email"
-          type="email"
-          required
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
-          placeholder="you@example.com"
-        />
-      </div>
-      <div>
-        <label htmlFor="passcode" className="block text-sm font-medium text-gray-700 mb-1">
-          Passcode
-        </label>
-        <input
-          id="passcode"
-          type="text"
-          required
-          value={passcode}
-          onChange={(e) => setPasscode(e.target.value)}
-          className="w-full px-3 py-2 border border-gray-300 rounded-md text-lg tracking-widest shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
-          placeholder="ABC123"
-        />
-      </div>
-      <LoadingButton
-        type="submit"
-        loading={loading}
-        loadingText="Signing in..."
-        fullWidth
-        variant="secondary"
-      >
-        Sign in with passcode
-      </LoadingButton>
-    </form>
-  )
 
   const passwordForm = (
     <form onSubmit={handlePasswordSignIn} className="space-y-4">
@@ -243,17 +165,6 @@ export default function LoginPage() {
     </form>
   )
 
-  const divider = (
-    <div className="relative">
-      <div className="absolute inset-0 flex items-center">
-        <div className="w-full border-t border-gray-300" />
-      </div>
-      <div className="relative flex justify-center text-sm">
-        <span className="px-2 bg-brand-cream text-gray-500">or sign in with a passcode</span>
-      </div>
-    </div>
-  )
-
   const passwordDivider = (
     <div className="relative">
       <div className="absolute inset-0 flex items-center">
@@ -292,7 +203,7 @@ export default function LoginPage() {
         {inAppBrowser && (
           <div className="bg-amber-50 border border-amber-200 rounded-md p-4 text-sm text-amber-800">
             <p className="font-medium mb-1">Looks like you&apos;re in an in-app browser</p>
-            <p className="mb-2">Google sign-in may not work here. Use the passcode from your invite, or open this page in Safari or Chrome.</p>
+            <p className="mb-2">Google sign-in may not work here. Sign in with your email and password, or open this page in Safari or Chrome.</p>
             <button
               onClick={handleCopyLink}
               className="text-amber-900 underline font-medium"
@@ -305,13 +216,11 @@ export default function LoginPage() {
         {error && <StatusMessage type="error" message={error} />}
         {info && <StatusMessage type="success" message={info} />}
 
-        {/* Google + password promoted for both flows; passcode demoted last
-            with a deprecation notice (Garm PR B — passcodes still work). */}
+        {/* Google first, password second. Passcode sign-in retired (Garm PR D);
+            the #pw-email / #password ids are load-bearing for the e2e harness. */}
         {googleButton}
         {passwordDivider}
         {passwordForm}
-        {divider}
-        {passcodeForm}
 
         <p className="text-center text-sm text-gray-500">
           Not sure what this is?{' '}

@@ -100,7 +100,6 @@ export function useShareProject() {
       return res.json() as Promise<{
         email: string
         project_id: string
-        passcode: string
         reset_link: string | null
       }>
     },
@@ -109,7 +108,6 @@ export function useShareProject() {
       queryClient.invalidateQueries({ queryKey: queryKeys.project(variables.project_id) })
       queryClient.invalidateQueries({ queryKey: queryKeys.resolveProject(variables.project_id) })
       queryClient.invalidateQueries({ queryKey: queryKeys.sessions(variables.project_id) })
-      queryClient.invalidateQueries({ queryKey: queryKeys.passcode(variables.project_id) })
       queryClient.invalidateQueries({ queryKey: queryKeys.members(variables.project_id) })
     },
   })
@@ -156,43 +154,9 @@ export function useSendMakerEmail() {
   })
 }
 
-export function useProjectPasscode(projectId: string | undefined) {
-  return useQuery<string | null>({
-    queryKey: queryKeys.passcode(projectId),
-    queryFn: async () => {
-      const res = await apiFetch(`/api/projects/share?project_id=${projectId}`)
-      if (!res.ok) return null
-      const data = await res.json()
-      return data.passcode || null
-    },
-    enabled: !!projectId,
-  })
-}
-
-export function useResetPasscode() {
-  const queryClient = useQueryClient()
-
-  return useMutation({
-    mutationFn: async (project_id: string) => {
-      const res = await apiFetch('/api/projects/share', {
-        method: 'PATCH',
-        body: JSON.stringify({ project_id }),
-      })
-      if (!res.ok) {
-        const data = await res.json()
-        throw new Error(data.error || 'Failed to reset passcode')
-      }
-      return res.json() as Promise<{ passcode: string }>
-    },
-    onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.passcode(variables) })
-    },
-  })
-}
-
 // Correct the originator's email (#12). Re-keys the membership row +
-// approved_emails on the server and reissues a passcode, so any invite sent to
-// the wrong address stops working. Invalidates the project + passcode caches.
+// approved_emails on the server; the corrected address gets access via a fresh
+// password-setup link from the invite flow.
 export function useChangeRequesterEmail() {
   const queryClient = useQueryClient()
 
@@ -206,13 +170,12 @@ export function useChangeRequesterEmail() {
         const data = await res.json().catch(() => ({}))
         throw new Error(data.error || 'Failed to update email')
       }
-      return res.json() as Promise<{ email: string; passcode: string }>
+      return res.json() as Promise<{ email: string }>
     },
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.projects() })
       queryClient.invalidateQueries({ queryKey: queryKeys.project(variables.project_id) })
       queryClient.invalidateQueries({ queryKey: queryKeys.resolveProject(variables.project_id) })
-      queryClient.invalidateQueries({ queryKey: queryKeys.passcode(variables.project_id) })
       queryClient.invalidateQueries({ queryKey: queryKeys.members(variables.project_id) })
     },
   })
@@ -335,22 +298,6 @@ export function useRestoreMember(projectId: string | undefined) {
       queryClient.invalidateQueries({ queryKey: queryKeys.members(projectId) })
       queryClient.invalidateQueries({ queryKey: queryKeys.project(projectId) })
       queryClient.invalidateQueries({ queryKey: queryKeys.resolveProject(projectId) })
-    },
-  })
-}
-
-// Reveal a single member's sign-in passcode on demand (#81), so the operator can
-// re-send a previously-invited person THEIR OWN creds. A mutation (not a query)
-// because the secret is fetched only on an explicit click, never cached.
-export function useRevealMemberPasscode(projectId: string | undefined) {
-  return useMutation({
-    mutationFn: async (memberId: string) => {
-      const res = await apiFetch(`/api/projects/${projectId}/members/${memberId}/passcode`)
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}))
-        throw new Error(data.error || 'Failed to reveal passcode')
-      }
-      return res.json() as Promise<{ passcode: string; email: string }>
     },
   })
 }

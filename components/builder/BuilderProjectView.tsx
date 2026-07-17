@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import {
   ArrowLeft, MessageSquare, Send, FileText, Sparkles, Plus, X,
   Share2, ChevronDown, ChevronUp, Copy, Check, Mail, RotateCw,
-  Lock, Trash2, Settings, Upload, ClipboardCopy, Users, KeyRound, UserPlus,
+  Trash2, Settings, Upload, ClipboardCopy, Users, KeyRound, UserPlus,
 } from 'lucide-react'
 import { BuildTimestamp } from '@/components/build-timestamp'
 import { Card, CardBody } from '@/components/ui/Card'
@@ -32,8 +32,6 @@ import {
   useUpdateProject,
   useGenerateWelcome,
   useShareProject,
-  useProjectPasscode,
-  useResetPasscode,
   useChangeRequesterEmail,
   useCreateSession,
   useProjectFiles,
@@ -42,7 +40,6 @@ import {
   useSetMemberRole,
   useRemoveMember,
   useRestoreMember,
-  useRevealMemberPasscode,
   useSendMakerEmail,
   useGeneratePrep,
   useDeleteProject,
@@ -94,7 +91,7 @@ export function BuilderProjectView({ projectId }: { projectId: string }) {
   const updateProject = useUpdateProject()
   const activeSession = sessions?.find((s) => s.status === 'active')
   const [showShareModal, setShowShareModal] = useState(false)
-  // 'maker' = first share / re-share the originator (link + passcode view).
+  // 'maker' = first share / re-share the originator (link view).
   // 'add'  = invite an additional person — always opens the entry form so a
   // shared brief can still grow its roster (PeoplePanel "+ Invite").
   const [shareMode, setShareMode] = useState<'maker' | 'add'>('maker')
@@ -912,7 +909,7 @@ function PeopleTab({ project, onShare }: { project: Project | undefined; onShare
             <Users className="h-4 w-4" /> People on this brief
           </h2>
           <p className="text-sm text-gray-600 mb-4">
-            No one yet. Invite the person this brief is for — you&apos;ll get a link and passcode to send them.
+            No one yet. Invite the person this brief is for — you&apos;ll get a link to send them.
           </p>
           <LoadingButton variant="primary" icon={Share2} onClick={() => onShare('maker')}>
             Invite someone
@@ -1069,7 +1066,6 @@ function ShareModal({ project, onClose, mode = 'maker' }: { project: Project; on
   // with Sam in the same brief. Both keep `maker` access so they can chat.
   const [briefRole, setBriefRole] = useState<'originator' | 'contributor'>(isAdd ? 'contributor' : 'originator')
   const [linkCopied, setLinkCopied] = useState(false)
-  const [passcodeCopied, setPasscodeCopied] = useState(false)
   const [emailCopied, setEmailCopied] = useState(false)
   const [editingName, setEditingName] = useState(false)
   const [editFirstName, setEditFirstName] = useState(project.requester_first_name || '')
@@ -1079,13 +1075,7 @@ function ShareModal({ project, onClose, mode = 'maker' }: { project: Project; on
   const shareProject = useShareProject()
   const updateProject = useUpdateProject()
   const alreadyShared = !!project.requester_email
-  const { data: fetchedPasscode } = useProjectPasscode(alreadyShared ? project.id : undefined)
-  const resetPasscode = useResetPasscode()
   const changeEmail = useChangeRequesterEmail()
-
-  // In add mode the originator's stored passcode (fetchedPasscode) is irrelevant —
-  // only the freshly invited person's passcode (from the POST response) applies.
-  const passcode = shareProject.data?.passcode || (isAdd ? null : fetchedPasscode) || null
 
   const shareLink = getProjectShareLink(project.slug, project.id)
 
@@ -1101,18 +1091,13 @@ function ShareModal({ project, onClose, mode = 'maker' }: { project: Project; on
     })
   }
 
-  const handleResetPasscode = async () => {
-    const result = await resetPasscode.mutateAsync(project.id)
-    void result
-  }
-
-  // Show the confirmation (link/passcode) after a successful share in this modal,
+  // Show the confirmation (sign-in link) after a successful share in this modal,
   // or — only in maker mode — when the brief was already shared.
   // Add mode always shows the form until the new person is actually invited.
   const showConfirmation = shareProject.isSuccess || (!isAdd && alreadyShared)
   // The first-time invite message (boilerplate + "Send invitation") belongs ONLY
   // to a fresh invite. For someone already on the brief who's opening this just to
-  // grab their link/passcode, re-serving the "I'm putting together a brief…" copy
+  // grab their link, re-serving the "I'm putting together a brief…" copy
   // is the wrong tone (#19 Phase 4) — recurring contact is the Conversations
   // dispatch nudge, not the invite. So gate the invite block on a fresh share.
   const justInvited = shareProject.isSuccess
@@ -1166,9 +1151,9 @@ function ShareModal({ project, onClose, mode = 'maker' }: { project: Project; on
               </div>
               {!isAdd && !editingName && !editingEmail && (
                 <div className="flex shrink-0 gap-3 pl-2">
-                  {/* Correcting a typo'd email reissues the passcode (the old
-                      invite stops working), so only offer it for an established
-                      maker — not a fresh invite the builder just typed. */}
+                  {/* Correcting a typo'd email re-keys membership + approval,
+                      so only offer it for an established maker — not a fresh
+                      invite the builder just typed. */}
                   {!justInvited && (
                     <button onClick={() => { setEditEmail(project.requester_email || ''); setEditingEmail(true) }} className="text-xs text-green-700 hover:text-green-900 underline">
                       Edit email
@@ -1181,7 +1166,7 @@ function ShareModal({ project, onClose, mode = 'maker' }: { project: Project; on
               )}
             </div>
             {!isAdd && editingEmail && (
-              <p className="text-xs text-green-700 mt-1">Changing the email reissues the passcode — re-send the invite to the new address below.</p>
+              <p className="text-xs text-green-700 mt-1">Changing the email moves their access — re-send the invite to the new address below.</p>
             )}
             {!isAdd && editingName && (
               <div className="mt-2 flex items-center gap-2">
@@ -1230,24 +1215,9 @@ function ShareModal({ project, onClose, mode = 'maker' }: { project: Project; on
               </button>
             </div>
           </div>
-          {passcode && (
-            <div>
-              <p className="text-xs text-gray-600 mb-1 flex items-center gap-1"><Lock className="h-3.5 w-3.5" /> Maker passcode</p>
-              <div className="flex items-center gap-2">
-                <code className="flex-1 px-2.5 py-1.5 bg-gray-50 border border-gray-300 rounded-md text-lg tracking-widest font-mono text-brand-charcoal">{passcode}</code>
-                <button onClick={async () => { await navigator.clipboard.writeText(passcode); setPasscodeCopied(true); setTimeout(() => setPasscodeCopied(false), 2000) }} className="p-1.5 text-gray-500 hover:text-brand-navy hover:bg-gray-100 rounded">
-                  {passcodeCopied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
-                </button>
-                <button onClick={handleResetPasscode} disabled={resetPasscode.isPending} className="p-1.5 text-gray-500 hover:text-brand-navy hover:bg-gray-100 rounded" title="Reset passcode">
-                  <RotateCw className={`h-4 w-4 ${resetPasscode.isPending ? 'animate-spin' : ''}`} />
-                </button>
-              </div>
-              <p className="text-xs text-gray-500 mt-1">Share this passcode with the maker so they can sign in</p>
-            </div>
-          )}
           {/* First-time invite copy + send — only for a fresh invite (#19 Phase 4).
-              An established maker opening this for their link/passcode sees access
-              only; to contact them again, use the Conversations dispatch nudge. */}
+              An established maker opening this for their link sees access only;
+              to contact them again, use the Conversations dispatch nudge. */}
           {justInvited ? (
             <div>
               <p className="text-xs text-gray-600 mb-1 flex items-center gap-1"><Mail className="h-3.5 w-3.5" /> Invite message</p>
@@ -1319,7 +1289,6 @@ function ShareModal({ project, onClose, mode = 'maker' }: { project: Project; on
           </div>
         </form>
       )}
-      {resetPasscode.error && <StatusMessage type="error" message={resetPasscode.error.message} />}
       {changeEmail.error && <StatusMessage type="error" message={changeEmail.error.message} />}
     </Modal>
   )
@@ -1452,9 +1421,9 @@ function PeoplePanel({ project, onInvite }: { project: Project; onInvite: () => 
                   </div>
                 )}
 
-                {/* Console operators sign in via OAuth — no passcode to reveal.
-                    Chat participants need re-copyable creds (#81). */}
-                {!isConsole && <MemberInviteReveal project={project} memberId={m.id} />}
+                {/* Chat participants get a re-copyable sign-in link (#81).
+                    Console operators know their way to the brief already. */}
+                {!isConsole && <MemberInviteReveal project={project} />}
               </li>
             )
           })}
@@ -1495,38 +1464,30 @@ function PeoplePanel({ project, onInvite }: { project: Project; onInvite: () => 
   )
 }
 
-// Per-member credential re-reveal (#81). The invite link is the same for everyone
-// on the brief; the passcode is what's unique per person — and after the first
-// invite it was unrecoverable, so the operator risked handing a 2nd person the
-// originator's creds. Fetched on demand (a click), never carried in the list.
-function MemberInviteReveal({ project, memberId }: { project: Project; memberId: string }) {
-  const reveal = useRevealMemberPasscode(project.id)
+// Per-member sign-in link re-copy (#81, reshaped by Garm PR D). Passcodes are
+// retired, so there's no per-person secret to reveal anymore — everyone signs
+// in with Google or their own password ("Forgot password?" resets it). The
+// share link is what the operator re-sends.
+function MemberInviteReveal({ project }: { project: Project }) {
   const [open, setOpen] = useState(false)
-  const [copied, setCopied] = useState<'link' | 'passcode' | null>(null)
+  const [copied, setCopied] = useState(false)
 
   const link = getProjectShareLink(project.slug, project.id)
-  const passcode = reveal.data?.passcode
 
-  const handleCopy = async (which: 'link' | 'passcode', value: string) => {
-    await navigator.clipboard.writeText(value)
-    setCopied(which)
-    setTimeout(() => setCopied(null), 2000)
-  }
-
-  const toggle = () => {
-    const next = !open
-    setOpen(next)
-    if (next && !reveal.data && !reveal.isPending) reveal.mutate(memberId)
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(link)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
   }
 
   return (
     <div className="mt-1.5">
       <button
-        onClick={toggle}
+        onClick={() => setOpen(!open)}
         className="text-xs text-brand-navy hover:underline flex items-center gap-1"
       >
         <KeyRound className="h-3 w-3" />
-        {open ? 'Hide sign-in details' : 'Show sign-in details'}
+        {open ? 'Hide sign-in link' : 'Show sign-in link'}
       </button>
 
       {open && (
@@ -1535,25 +1496,14 @@ function MemberInviteReveal({ project, memberId }: { project: Project; memberId:
             <p className="text-[11px] text-gray-500 mb-0.5">Link</p>
             <div className="flex items-center gap-1.5">
               <code className="flex-1 min-w-0 truncate px-2 py-1 bg-white border border-gray-300 rounded text-xs text-gray-700">{link}</code>
-              <button onClick={() => handleCopy('link', link)} className="p-1 text-gray-500 hover:text-brand-navy hover:bg-gray-100 rounded shrink-0" title="Copy link">
-                {copied === 'link' ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+              <button onClick={handleCopy} className="p-1 text-gray-500 hover:text-brand-navy hover:bg-gray-100 rounded shrink-0" title="Copy link">
+                {copied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
               </button>
             </div>
           </div>
-          <div>
-            <p className="text-[11px] text-gray-500 mb-0.5 flex items-center gap-1"><Lock className="h-3 w-3" /> Passcode</p>
-            {reveal.isPending && <Skeleton className="h-7 w-28" />}
-            {reveal.error && <StatusMessage type="error" message={(reveal.error as Error).message} />}
-            {passcode && (
-              <div className="flex items-center gap-1.5">
-                <code className="px-2 py-1 bg-white border border-gray-300 rounded text-sm tracking-widest font-mono text-brand-charcoal">{passcode}</code>
-                <button onClick={() => handleCopy('passcode', passcode)} className="p-1 text-gray-500 hover:text-brand-navy hover:bg-gray-100 rounded" title="Copy passcode">
-                  {copied === 'passcode' ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
-                </button>
-              </div>
-            )}
-          </div>
-          <p className="text-[11px] text-gray-400">Send this person their own link + passcode so they sign in as themselves.</p>
+          <p className="text-[11px] text-gray-400">
+            They sign in with Google or their email + password — &ldquo;Forgot password?&rdquo; on the sign-in page sets one.
+          </p>
         </div>
       )}
     </div>

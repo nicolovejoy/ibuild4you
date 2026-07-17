@@ -13,7 +13,7 @@ export function hasMigratedCredential(providerIds: string[]): boolean {
 }
 
 /**
- * Should we show the "passcodes are going away" banner right now?
+ * Should we show the "passcodes have been retired" banner right now?
  * Shown to any signed-in user without a migrated credential, unless they
  * dismissed it already this session (sessionStorage — reappears next visit,
  * doesn't nag every page load of the same session).

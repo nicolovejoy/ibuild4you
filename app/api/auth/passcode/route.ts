@@ -8,6 +8,6 @@ import { copy } from '@/lib/copy'
 // stale login page or old client gets a clear 410 Gone instead of a 404,
 // and it deliberately reads nothing — no body validation, no Firestore
 // lookup, no token minting.
-export async function POST() {
+export async function POST(_request: Request) {
   return NextResponse.json({ error: copy.auth.passcodeRetired }, { status: 410 })
 }
