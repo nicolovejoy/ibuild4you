@@ -16,7 +16,7 @@
 //     node scripts/with-prod-env-ro.mjs node scripts/garm-seed-grants.mjs --live   # write to Garm
 
 import { initAdminDb } from './fixtures/db.mjs'
-import { buildGrantPlan } from './lib/garm-seed-plan.mjs'
+import { buildGrantPlan, selectActiveApprovedEmails } from './lib/garm-seed-plan.mjs'
 
 const LIVE = process.argv.includes('--live')
 const PROJECT = 'ibuild4you'
@@ -53,7 +53,8 @@ function validEmails(emails, label) {
 
 async function loadApprovedEmails() {
   const snap = await db.collection('approved_emails').get()
-  return validEmails(snap.docs.map((d) => d.data().email || d.id), 'approved_emails')
+  const docs = snap.docs.map((d) => ({ id: d.id, email: d.data().email, revoked_at: d.data().revoked_at }))
+  return validEmails(selectActiveApprovedEmails(docs), 'approved_emails')
 }
 
 async function loadMembers() {

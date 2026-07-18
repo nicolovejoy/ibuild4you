@@ -10,6 +10,15 @@
 
 export const normalizeEmail = (email) => (email ?? '').trim().toLowerCase()
 
+// #163 off-boarding: a revoked approved_emails row still exists (non-
+// destructive flag, house convention) but must not be seeded into Garm as an
+// active grant. Pure so it's testable without Firestore — the script does
+// the read, this decides which rows count.
+// docs: [{ id, email, revoked_at }] → [email, ...] for active (non-revoked) rows.
+export function selectActiveApprovedEmails(docs) {
+  return docs.filter((d) => !d.revoked_at).map((d) => d.email || d.id)
+}
+
 // Highest → lowest. Index doubles as rank (lower index = higher rank).
 const MEMBER_ROLE_RANK = ['owner', 'builder', 'apprentice', 'maker']
 
