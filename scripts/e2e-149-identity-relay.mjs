@@ -5,11 +5,19 @@
 // repo are plain JS, no ts-node, so the signing logic is reimplemented here
 // rather than imported), and drive POST /api/feedback through the full route.
 //
-// Covers: a valid assertion verifies + overrides the typed email; 25 signed
-// POSTs all succeed despite the 20/hr rate limit (verified bypasses it); a
-// tampered token silently falls back to anonymous; PATCH
-// feedback_requires_identity=true then confirm an unsigned POST 403s and a
-// signed POST still 201s. Cleans up every row + the minted secret + the flag.
+// Covers: a valid assertion verifies + overrides the typed email; a tampered
+// token silently falls back to anonymous; PATCH feedback_requires_identity=
+// true then confirm an unsigned POST 403s and a signed POST still 201s; 25
+// signed POSTs all succeed despite the 20/hr rate limit (verified bypasses
+// it). Cleans up every row + the minted secret + the flag.
+//
+// Ordering note: on a live Vercel deploy, x-forwarded-for is set by the edge
+// from the real connecting client and ignores whatever this script forges —
+// so every request here shares ONE real rate-limit bucket regardless of the
+// per-block "IP" label. The unverified checks (tampered fallback, unsigned-
+// with-flag-on) run FIRST, while that shared bucket is still under the 20/hr
+// cap; the 25-request burst (whose requests are all verified and bypass
+// enforcement regardless of bucket state) runs LAST.
 //
 // Usage: node scripts/with-preview-env.mjs node scripts/e2e-149-identity-relay.mjs
 //        (E2E_BASE overrides the target, defaults to preview)
@@ -111,26 +119,15 @@ const createdFeedbackIds = []
   }
 }
 
-// --- 2. 25 signed POSTs all succeed despite the 20/hr limit (fresh IP bucket) ---
-{
-  const ip = '203.0.113.2'
-  let allOk = true
-  for (let i = 0; i < 25; i++) {
-    const token = makeToken({}, SECRET)
-    const { status, data } = await postFeedback(basePayload({ identityAssertion: token }), {
-      'x-forwarded-for': ip,
-    })
-    if (status !== 201) {
-      allOk = false
-      console.log(`  request ${i + 1}/25 → ${status}`)
-    } else if (data.id) {
-      createdFeedbackIds.push(data.id)
-    }
-  }
-  check('25 signed POSTs from one IP (past the 20/hr limit) all accepted', allOk)
-}
-
-// --- 3. A tampered token silently falls back to anonymous (fresh IP bucket) ---
+// --- 2. A tampered token silently falls back to anonymous ---
+// NOTE (ordering): run this BEFORE the 25-request burst below. Vercel's edge
+// sets x-forwarded-for from the real connecting client, ignoring whatever
+// value we forge in the header — so despite each block here labeling a
+// different "IP", checkRateLimit's in-memory bucket is keyed off ONE real
+// shared address for every request this script sends. This block sends an
+// UNVERIFIED request (tampered signature never verifies), so it's subject to
+// real rate-limit enforcement — it must run while that shared bucket is
+// still under the 20/hr cap (i.e. before the burst test below spends it).
 {
   const token = makeToken({}, SECRET)
   const tampered = token.slice(0, -2) + (token.slice(-2) === 'xx' ? 'yy' : 'xx')
@@ -148,7 +145,10 @@ const createdFeedbackIds = []
   }
 }
 
-// --- 4. feedback_requires_identity: unsigned 403s, signed still 201s ---
+// --- 3. feedback_requires_identity: unsigned 403s, signed still 201s ---
+// NOTE (ordering): this must also run before the 25-request burst below —
+// its unsigned sub-check is another unverified request subject to the same
+// shared real-IP rate-limit bucket described above.
 {
   const { browser, page } = await launchLoggedIn()
   let bearer = null
@@ -189,6 +189,28 @@ const createdFeedbackIds = []
     check('reset feedback_requires_identity=false → 200', resetRes.ok(), `status ${resetRes.status()}`)
   }
   await browser.close()
+}
+
+// --- 4. 25 signed POSTs all succeed despite the 20/hr limit ---
+// Verified requests bypass rate-limit enforcement (see route.ts), so this is
+// safe to run last, after the shared bucket has already been partly spent by
+// blocks 2 and 3's unverified requests.
+{
+  const ip = '203.0.113.2'
+  let allOk = true
+  for (let i = 0; i < 25; i++) {
+    const token = makeToken({}, SECRET)
+    const { status, data } = await postFeedback(basePayload({ identityAssertion: token }), {
+      'x-forwarded-for': ip,
+    })
+    if (status !== 201) {
+      allOk = false
+      console.log(`  request ${i + 1}/25 → ${status}`)
+    } else if (data.id) {
+      createdFeedbackIds.push(data.id)
+    }
+  }
+  check('25 signed POSTs from one IP (past the 20/hr limit) all accepted', allOk)
 }
 
 // --- Cleanup: delete every feedback row + the minted secret ---
