@@ -1528,6 +1528,9 @@ function AgentConfigCard({ project, defaultExpanded = false }: { project: Projec
   const [voiceSample, setVoiceSample] = useState(project.voice_sample || '')
   const [autoReminders, setAutoReminders] = useState(project.auto_reminders_enabled === true)
   const [githubRepo, setGithubRepo] = useState(project.github_repo || '')
+  const [feedbackRequiresIdentity, setFeedbackRequiresIdentity] = useState(
+    project.feedback_requires_identity === true
+  )
   const [saved, setSaved] = useState(false)
   const [deleting, setDeleting] = useState(false)
 
@@ -1549,7 +1552,8 @@ function AgentConfigCard({ project, defaultExpanded = false }: { project: Projec
     setVoiceSample(project.voice_sample || '')
     setAutoReminders(project.auto_reminders_enabled === true)
     setGithubRepo(project.github_repo || '')
-  }, [project.welcome_message, project.seed_questions, project.session_mode, project.builder_directives, project.identity, project.nudge_message, project.voice_sample, project.auto_reminders_enabled, project.github_repo])
+    setFeedbackRequiresIdentity(project.feedback_requires_identity === true)
+  }, [project.welcome_message, project.seed_questions, project.session_mode, project.builder_directives, project.identity, project.nudge_message, project.voice_sample, project.auto_reminders_enabled, project.github_repo, project.feedback_requires_identity])
 
   const handleSave = async () => {
     await updateProject.mutateAsync({
@@ -1563,6 +1567,7 @@ function AgentConfigCard({ project, defaultExpanded = false }: { project: Projec
       voice_sample: voiceSample || undefined,
       auto_reminders_enabled: autoReminders,
       github_repo: githubRepo.trim() || undefined,
+      feedback_requires_identity: feedbackRequiresIdentity,
       last_builder_activity_at: new Date().toISOString(),
     })
     setSaved(true)
@@ -1702,6 +1707,18 @@ function AgentConfigCard({ project, defaultExpanded = false }: { project: Projec
                 <textarea value={voiceSample} onChange={(e) => setVoiceSample(e.target.value)} placeholder="One paragraph showing how you'd text this person by hand." rows={3} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy" />
                 <p className="text-xs text-gray-400 mt-1">Anchors the AI-drafted nudge to your voice. Ignored when a nudge override is set.</p>
               </div>
+              <label className="flex items-start gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={feedbackRequiresIdentity}
+                  onChange={(e) => setFeedbackRequiresIdentity(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 rounded border-gray-300 text-brand-navy focus:ring-brand-navy"
+                />
+                <div>
+                  <div className="text-sm font-medium text-gray-700">Require a verified sign-in to send feedback</div>
+                  <p className="text-xs text-gray-400">Rejects Loop widget submissions unless the host app vouches for the sender&apos;s email. Off by default — leave off unless the host embeds a signed identity assertion (#149).</p>
+                </div>
+              </label>
               {isAdmin && (
                 <div className="pt-4 border-t border-red-100">
                   <label className="text-sm font-medium text-red-700 block mb-1.5">Danger zone</label>

@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { POST, OPTIONS } from '../route'
 import { RATE_LIMIT_PER_HOUR } from '@/lib/feedback/limits'
 import { _resetRateLimit } from '@/lib/api/rate-limit'
+import { signIdentityAssertion } from '@/lib/feedback/identity'
 
 // =============================================================================
 // Tests for POST /api/feedback — the public widget submission endpoint.
@@ -29,6 +30,12 @@ const mockVerifyIdToken = vi.fn<(token: string) => Promise<{ uid: string }>>(asy
 const mockResendSend = vi.fn<(payload: Record<string, unknown>) => Promise<{ id: string }>>(
   async () => ({ id: 'email-1' })
 )
+// #149: loop_signing_secrets/{projectDocId}. Default: no secret configured
+// (doc doesn't exist) — every test that exercises a real identityAssertion
+// overrides this to return the secret it signed the token with.
+const mockSecretGet = vi.fn<
+  () => Promise<{ exists: boolean; data: () => { keys: Record<string, string>; active_kid: string } | undefined }>
+>(async () => ({ exists: false, data: () => undefined }))
 
 vi.mock('@/lib/firebase/admin', () => ({
   getAdminDb: vi.fn(() => ({
@@ -40,6 +47,9 @@ vi.mock('@/lib/firebase/admin', () => ({
       }
       if (name === 'prototype_context') {
         return { add: mockContextAdd }
+      }
+      if (name === 'loop_signing_secrets') {
+        return { doc: () => ({ get: mockSecretGet }) }
       }
       // feedback
       return { add: mockAdd, where: () => ({ get: mockFeedbackWhereGet }) }
@@ -86,6 +96,7 @@ beforeEach(() => {
     docs: [{ id: 'project-1', data: () => ({ title: 'Sample Cafe', slug: 'sample-cafe' }) }],
   })
   mockFeedbackWhereGet.mockResolvedValue({ docs: [] })
+  mockSecretGet.mockResolvedValue({ exists: false, data: () => undefined })
 })
 
 describe('OPTIONS /api/feedback (CORS preflight)', () => {
@@ -322,5 +333,157 @@ describe('POST /api/feedback — rate limiting', () => {
       makeRequest(validPayload(), { headers: { 'x-forwarded-for': '5.6.7.8' } })
     )
     expect(res.status).toBe(201)
+  })
+})
+
+// #149/#150 — host-app identity relay + the feedback_requires_identity gate.
+describe('POST /api/feedback — identity relay (#149) and requires-identity (#150)', () => {
+  const SECRET = 'test-secret-32-bytes-of-entropy!'
+
+  function signToken(overrides: Partial<Parameters<typeof signIdentityAssertion>[0]> = {}) {
+    return signIdentityAssertion(
+      {
+        v: 1,
+        email: 'verified@example.com',
+        project: 'sample-cafe',
+        ts: Math.floor(Date.now() / 1000),
+        kid: 'k1',
+        ...overrides,
+      },
+      SECRET
+    )
+  }
+
+  function configureSecret() {
+    mockSecretGet.mockResolvedValue({
+      exists: true,
+      data: () => ({ keys: { k1: SECRET }, active_kid: 'k1' }),
+    })
+  }
+
+  it('a valid assertion overrides submitterEmail and sets submitter_email_verified', async () => {
+    configureSecret()
+    const res = await POST(
+      makeRequest(
+        validPayload({ submitterEmail: 'typed@example.com', identityAssertion: signToken() })
+      )
+    )
+    expect(res.status).toBe(201)
+    const written = mockAdd.mock.calls[0][0]
+    expect(written.submitter_email).toBe('verified@example.com')
+    expect(written.submitter_email_verified).toBe(true)
+  })
+
+  it('an invalid (tampered) token is silently treated as anonymous', async () => {
+    configureSecret()
+    const token = signToken()
+    const tampered = token.slice(0, -2) + 'xx'
+    const res = await POST(
+      makeRequest(validPayload({ submitterEmail: '', identityAssertion: tampered }))
+    )
+    expect(res.status).toBe(201)
+    const written = mockAdd.mock.calls[0][0]
+    expect(written.submitter_email).toBeNull()
+    expect(written.submitter_email_verified).toBeUndefined()
+  })
+
+  it('an assertion for the wrong project is silently treated as anonymous', async () => {
+    configureSecret()
+    const res = await POST(
+      makeRequest(
+        validPayload({ submitterEmail: '', identityAssertion: signToken({ project: 'other-project' }) })
+      )
+    )
+    expect(res.status).toBe(201)
+    const written = mockAdd.mock.calls[0][0]
+    expect(written.submitter_email_verified).toBeUndefined()
+  })
+
+  it('no secret configured for the project → assertion silently ignored', async () => {
+    // mockSecretGet default (from beforeEach) is exists:false.
+    const res = await POST(makeRequest(validPayload({ identityAssertion: signToken() })))
+    expect(res.status).toBe(201)
+    const written = mockAdd.mock.calls[0][0]
+    expect(written.submitter_email_verified).toBeUndefined()
+  })
+
+  it('verified submissions bypass the rate limit', async () => {
+    configureSecret()
+    const headers = { 'x-forwarded-for': '9.9.9.9' }
+    for (let i = 0; i < RATE_LIMIT_PER_HOUR; i++) {
+      const res = await POST(makeRequest(validPayload(), { headers }))
+      expect(res.status).toBe(201)
+    }
+    // Bucket is now full for this IP — an unverified request 429s...
+    const blocked = await POST(makeRequest(validPayload(), { headers }))
+    expect(blocked.status).toBe(429)
+    // ...but a verified one still goes through.
+    const verifiedRes = await POST(
+      makeRequest(validPayload({ identityAssertion: signToken() }), { headers })
+    )
+    expect(verifiedRes.status).toBe(201)
+  })
+
+  it('a valid Bearer also bypasses the rate limit', async () => {
+    const headers = { 'x-forwarded-for': '9.9.9.10', Authorization: 'Bearer good-token' }
+    for (let i = 0; i < RATE_LIMIT_PER_HOUR; i++) {
+      const res = await POST(makeRequest(validPayload(), { headers: { 'x-forwarded-for': '9.9.9.10' } }))
+      expect(res.status).toBe(201)
+    }
+    const res = await POST(makeRequest(validPayload(), { headers }))
+    expect(res.status).toBe(201)
+  })
+
+  it('403s an unverified submission when feedback_requires_identity is true', async () => {
+    mockProjectsGet.mockResolvedValueOnce({
+      empty: false,
+      docs: [
+        {
+          id: 'project-1',
+          data: () => ({ title: 'Sample Cafe', slug: 'sample-cafe', feedback_requires_identity: true }),
+        },
+      ],
+    })
+    const res = await POST(makeRequest(validPayload({ submitterEmail: 'typed@example.com' })))
+    expect(res.status).toBe(403)
+    expect(mockAdd).not.toHaveBeenCalled()
+  })
+
+  it('201s a verified (assertion) submission when feedback_requires_identity is true', async () => {
+    mockProjectsGet.mockResolvedValueOnce({
+      empty: false,
+      docs: [
+        {
+          id: 'project-1',
+          data: () => ({ title: 'Sample Cafe', slug: 'sample-cafe', feedback_requires_identity: true }),
+        },
+      ],
+    })
+    configureSecret()
+    const res = await POST(makeRequest(validPayload({ identityAssertion: signToken() })))
+    expect(res.status).toBe(201)
+  })
+
+  it('a valid Bearer satisfies feedback_requires_identity even without an assertion', async () => {
+    mockProjectsGet.mockResolvedValueOnce({
+      empty: false,
+      docs: [
+        {
+          id: 'project-1',
+          data: () => ({ title: 'Sample Cafe', slug: 'sample-cafe', feedback_requires_identity: true }),
+        },
+      ],
+    })
+    const res = await POST(
+      makeRequest(validPayload(), { headers: { Authorization: 'Bearer good-token' } })
+    )
+    expect(res.status).toBe(201)
+  })
+
+  it('feedback_requires_identity absent (flag off) leaves anonymous submissions unchanged', async () => {
+    const res = await POST(makeRequest(validPayload({ submitterEmail: '' })))
+    expect(res.status).toBe(201)
+    const written = mockAdd.mock.calls[0][0]
+    expect(written.submitter_email).toBeNull()
   })
 })

@@ -26,6 +26,12 @@ interface FeedbackWidgetProps {
   // Optional className applied to the outer container so the embedder can
   // position it (fixed corner, inline, modal, etc.).
   className?: string
+  // #149: opaque token minted by the host app's server (see
+  // lib/feedback/identity.ts) proving who's submitting. When present, the
+  // manual email input is hidden — the host already vouches for the email,
+  // asking the submitter to also type it would be redundant and could
+  // diverge from the verified value.
+  identityAssertion?: string
 }
 
 type Status = 'idle' | 'submitting' | 'sent' | 'error'
@@ -35,6 +41,7 @@ export function FeedbackWidget({
   endpoint = '/api/feedback',
   defaultType = 'bug',
   className = '',
+  identityAssertion,
 }: FeedbackWidgetProps) {
   const [type, setType] = useState<FeedbackType>(defaultType)
   const [body, setBody] = useState('')
@@ -83,7 +90,7 @@ export function FeedbackWidget({
         ? buildPageCapture(document, window.location)
         : null
     const payload = {
-      ...buildFeedbackPayload({ projectId, type, body, submitterEmail }, ctx, capture),
+      ...buildFeedbackPayload({ projectId, type, body, submitterEmail }, ctx, capture, identityAssertion),
       // Honeypot — comes from state so a bot filling the field gets caught.
       website,
     }
@@ -163,16 +170,18 @@ export function FeedbackWidget({
         />
       </label>
 
-      <label className="block">
-        <span className="sr-only">Email (optional)</span>
-        <input
-          type="email"
-          value={submitterEmail}
-          onChange={(e) => setSubmitterEmail(e.target.value)}
-          placeholder="Email (optional, for follow-up)"
-          className="w-full rounded border border-gray-200 px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-brand-navy"
-        />
-      </label>
+      {!identityAssertion && (
+        <label className="block">
+          <span className="sr-only">Email (optional)</span>
+          <input
+            type="email"
+            value={submitterEmail}
+            onChange={(e) => setSubmitterEmail(e.target.value)}
+            placeholder="Email (optional, for follow-up)"
+            className="w-full rounded border border-gray-200 px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-brand-navy"
+          />
+        </label>
+      )}
 
       {/*
         Honeypot — visually hidden, accessibility-hidden. Real users don't

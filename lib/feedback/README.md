@@ -46,9 +46,59 @@ honeypot, render-time check, and rate limit, not in an origin allowlist.
     "route": "/checkout",              //   path only (no host/query), sliced to 300
     "title": "Checkout — Byside",      //   sliced to 200
     "outline": "h1: Checkout\n..."     //   sliced to 4000
-  }
+  },
+  "identityAssertion": "eyJ2Ijox....sig" // OPTIONAL — #149 host-signed identity token
 }
 ```
+
+### The `identityAssertion` field (#149)
+
+An opaque token the **host app's server** mints, proving it vouches for the
+submitter's email. Built by `lib/feedback/identity.ts`
+(`signIdentityAssertion`) — the host runs its own copy of the signing logic
+server-side (see `docs/loop.md` for the recipe) and hands the resulting
+string to the widget to attach; the widget itself never signs anything.
+
+**Token shape.** `payloadB64url + "." + sigB64url`:
+
+- `payloadB64url` = base64url(UTF-8 JSON of `{ v: 1, email, project, ts, kid }`)
+  — `project` must equal the submission's `projectId` (this repo's `projects.slug`);
+  `ts` is unix **seconds**; `kid` names which per-project secret signed it.
+- `sig` = base64url(HMAC-SHA256(UTF-8 bytes of the `payloadB64url` string, secret))
+  — the HMAC is computed over the *string*, not a re-serialization of the
+  parsed JSON. Verifiers must do the same: recompute over the exact received
+  `payloadB64url`, compare in constant time, and only THEN parse the payload.
+
+**Freshness.** Rejected if `ts` is more than **60 seconds** in the future or
+more than **12 hours** old. Sign the token right before the request, don't
+cache it.
+
+**Secrets.** Per-project HMAC secret(s) live in `loop_signing_secrets/{projectDocId}`
+(`{ keys: { k1: "..." }, active_kid: "k1" }`), minted via
+`scripts/loop-secret.mjs <slug> [--rotate] [--prune]`. Never exposed by any
+GET/API response — the mint script is the only reveal path (deliberately no
+admin-UI reveal button). The host app stores its copy of the secret in its
+own secret manager.
+
+**Server behavior on receipt.** A syntactically-present `identityAssertion`
+is verified before any rate-limit check runs (see below); on success the row
+is written with `submitter_email` = the token's (normalized) email and
+`submitter_email_verified: true`, **overriding** any `submitterEmail` also
+present in the body. On failure (bad signature, expired, wrong project,
+unknown kid, malformed) the assertion is silently ignored — the submission
+falls back to whatever `submitterEmail` was typed (or anonymous) and is
+**not** treated as verified. An invalid token never fails the submission by
+itself, EXCEPT when the target project has `feedback_requires_identity: true`
+(#150) — then an unverified submission (typed email or none) is rejected
+with `403`.
+
+**Rate-limit bypass.** A *verified* submission (valid token, or a valid
+ibuild4you Firebase `Authorization: Bearer` — see "Optional auth" below)
+bypasses the per-IP rate limit entirely. A merely-typed email does not.
+
+**Replay.** Not hardened beyond the freshness window — see the comment atop
+`lib/feedback/identity.ts` for the accepted tradeoff and what a hardened
+version would add (nonce + seen-token cache).
 
 ### The `capture` field (#72)
 
@@ -83,7 +133,14 @@ that predate it ignore it.
 5. **Optional auth.** A `Bearer` token in the `Authorization` header is
    accepted but not required. If present and valid, the resulting feedback
    row records `submitter_uid`. Invalid tokens are silently treated as
-   anonymous — they don't fail the submission.
+   anonymous — they don't fail the submission. A valid Bearer counts as
+   "verified" for both the rate-limit bypass and #150's
+   `feedback_requires_identity` gate — same as a valid `identityAssertion`.
+6. **`feedback_requires_identity` (#150).** When the target project has this
+   flag set `true`, a submission that isn't verified (no valid
+   `identityAssertion` and no valid Bearer — a merely-typed
+   `submitterEmail` does not count) is rejected with `403`. Default (flag
+   absent) is unchanged behavior — anonymous submissions allowed.
 
 ## Responses
 
@@ -92,8 +149,9 @@ that predate it ignore it.
 | 201    | `{ "id": "<feedback-id>" }`                       | Created                                    |
 | 200    | `{ "ok": true }`                                  | Honeypot tripped (silently dropped)        |
 | 400    | `{ "error": "<reason>" }`                         | Validation failure, see `<reason>`         |
+| 403    | `{ "error": "<copy.feedback.requiresIdentity>" }` | Project requires identity, submission unverified (#150) |
 | 404    | `{ "error": "Unknown project" }`                  | `projectId` doesn't match any slug         |
-| 429    | `{ "error": "Too many submissions, ..." }`        | Rate limit; respect `Retry-After`          |
+| 429    | `{ "error": "Too many submissions, ..." }`        | Rate limit; respect `Retry-After` (skipped for verified submissions) |
 
 ## Side effects on success
 
