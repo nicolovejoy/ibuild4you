@@ -161,7 +161,10 @@ export async function syncGarmGrantForEmail(rawEmail: string): Promise<void> {
       removed_at: (d.data().removed_at as string | null | undefined) ?? null,
     }))
 
-    const decision = computeGrantDecision({ isAdmin, members, isApproved: approvedDoc.exists })
+    // A revoked approved_emails row still exists (non-destructive flag, #163)
+    // but must not count as approved for grant purposes.
+    const isApproved = approvedDoc.exists && !approvedDoc.data()?.revoked_at
+    const decision = computeGrantDecision({ isAdmin, members, isApproved })
 
     if (decision.action === 'upsert') {
       await postGrant(email, decision.role)

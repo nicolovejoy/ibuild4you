@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildGrantPlan } from './garm-seed-plan.mjs'
+import { buildGrantPlan, selectActiveApprovedEmails } from './garm-seed-plan.mjs'
 
 function member(overrides) {
   return { removed_at: null, ...overrides }
@@ -142,5 +142,29 @@ describe('buildGrantPlan', () => {
   it('returns an empty array for empty inputs', () => {
     const plan = buildGrantPlan({ approvedEmails: [], members: [], adminEmails: [], systemAdminEmails: [] })
     expect(plan).toEqual([])
+  })
+})
+
+// #163 off-boarding: a revoked approved_emails row must never be seeded as
+// an active Garm grant, even though the doc itself still exists.
+describe('selectActiveApprovedEmails', () => {
+  it('excludes rows with a revoked_at timestamp', () => {
+    const emails = selectActiveApprovedEmails([
+      { id: 'sam@x.com', email: 'sam@x.com', revoked_at: null },
+      { id: 'gone@x.com', email: 'gone@x.com', revoked_at: '2026-07-18T00:00:00.000Z' },
+    ])
+    expect(emails).toEqual(['sam@x.com'])
+  })
+
+  it('falls back to the doc id when the email field is missing', () => {
+    const emails = selectActiveApprovedEmails([{ id: 'sam@x.com', revoked_at: null }])
+    expect(emails).toEqual(['sam@x.com'])
+  })
+
+  it('returns an empty array when every row is revoked', () => {
+    const emails = selectActiveApprovedEmails([
+      { id: 'a@x.com', email: 'a@x.com', revoked_at: '2026-01-01T00:00:00.000Z' },
+    ])
+    expect(emails).toEqual([])
   })
 })
