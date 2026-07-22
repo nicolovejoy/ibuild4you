@@ -347,6 +347,11 @@ export const copy = {
     confirmLabel: 'Type "delete" to confirm',
   },
 
+  // --- Loop / feedback (#149, #150) ---
+  feedback: {
+    requiresIdentity: 'This app requires you to be signed in before sending feedback.',
+  },
+
   // --- General ---
   loading: 'Loading...',
 }

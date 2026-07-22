@@ -201,7 +201,7 @@ export async function PATCH(request: Request) {
   }
 
   // Only allow updating specific setup fields
-  const allowed = ['welcome_message', 'nudge_message', 'voice_sample', 'seed_questions', 'context', 'title', 'builder_directives', 'session_mode', 'requester_first_name', 'requester_last_name', 'last_nudged_at', 'last_builder_activity_at', 'layout_mockups', 'identity', 'github_repo', 'auto_reminders_enabled'] as const
+  const allowed = ['welcome_message', 'nudge_message', 'voice_sample', 'seed_questions', 'context', 'title', 'builder_directives', 'session_mode', 'requester_first_name', 'requester_last_name', 'last_nudged_at', 'last_builder_activity_at', 'layout_mockups', 'identity', 'github_repo', 'auto_reminders_enabled', 'feedback_requires_identity'] as const
   const patch: Record<string, unknown> = { updated_at: new Date().toISOString() }
   for (const key of allowed) {
     if (key in updates) {
@@ -362,6 +362,11 @@ export async function POST(request: Request) {
   }
   if (Array.isArray(body.layout_mockups) && body.layout_mockups.length > 0) {
     projectData.layout_mockups = body.layout_mockups
+  }
+  // #150: opt into rejecting fully-anonymous widget feedback. Only set if
+  // explicitly provided — absent stays absent (default off), not `false`.
+  if (typeof body.feedback_requires_identity === 'boolean') {
+    projectData.feedback_requires_identity = body.feedback_requires_identity
   }
 
   // Build the participant roster. A brief can be seeded with any number of

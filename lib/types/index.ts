@@ -81,6 +81,10 @@ export interface Project extends BaseEntity {
   identity?: string // custom agent identity/persona (overrides default)
   layout_mockups?: WireframeMockup[] // wireframe layouts the agent can show in chat
   github_repo?: string // "owner/name" — destination for FeedbackWidget "Convert to GitHub Issue"
+  // #150: reject fully-anonymous widget submissions when true. Default (undefined)
+  // = off, existing behavior. "Verified" = a valid #149 host identityAssertion OR
+  // a valid ibuild4you Firebase Bearer — a merely-typed email never satisfies this.
+  feedback_requires_identity?: boolean
   // Debounced maker-activity notifications — cron at /api/cron/notify reads these
   notify_after?: string | null // ISO timestamp; cron sends email once this passes
   notify_pending_since?: string | null // ISO timestamp of first unnotified maker message
@@ -225,6 +229,10 @@ export interface Feedback extends BaseEntity {
   body: string
   submitter_email: string | null
   submitter_uid: string | null // set only when submitter is signed into ibuild4you
+  // #149: true when submitter_email came from a verified host-app identity
+  // assertion (not just typed into the widget's email field). Absent/false on
+  // rows that predate #149 or are unverified.
+  submitter_email_verified?: boolean
   page_url: string
   user_agent: string
   viewport: string

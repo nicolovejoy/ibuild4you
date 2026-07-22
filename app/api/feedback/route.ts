@@ -5,13 +5,17 @@ import { NOTIFICATION_EMAILS } from '@/lib/constants'
 import { checkRateLimit, getClientIp } from '@/lib/api/rate-limit'
 import { RATE_LIMIT_PER_HOUR } from '@/lib/feedback/limits'
 import { buildFeedbackEmail } from '@/lib/feedback/notify-email'
+import { verifyIdentityAssertion } from '@/lib/feedback/identity'
 import { normalizeEmail } from '@/lib/email/normalize'
+import { copy } from '@/lib/copy'
 import type { FeedbackType } from '@/lib/types'
 
 // Public endpoint: receives submissions from <FeedbackWidget> embedded on
 // ibuild4you-hosted client sites. Anti-abuse via honeypot, render-time check,
 // and per-IP rate limit. projectId must match an existing `projects.slug` —
-// the widget can't write to arbitrary buckets.
+// the widget can't write to arbitrary buckets. #149/#150: an optional
+// host-signed identityAssertion can verify the submitter's email, bypassing
+// the rate limit and satisfying a project's feedback_requires_identity gate.
 
 const ALLOWED_TYPES: FeedbackType[] = ['bug', 'idea', 'other']
 const MAX_BODY_CHARS = 5000
@@ -74,15 +78,13 @@ function json(body: unknown, init: { status?: number; headers?: Record<string, s
 }
 
 export async function POST(request: Request) {
-  // Per-IP rate limit before any work.
+  // Per-IP rate limit — checked first, but NOT returned early: a verified
+  // submission (valid identityAssertion or Bearer) bypasses it, and we can't
+  // know verified-ness until after a couple of DB reads below. Capture the
+  // verdict now (this call still advances the counter) and act on it once we
+  // know whether this submission is verified.
   const ip = getClientIp(request)
   const limit = checkRateLimit(`feedback:${ip}`, RATE_LIMIT_PER_HOUR, ONE_HOUR_MS)
-  if (!limit.ok) {
-    return json(
-      { error: 'Too many submissions, please try again later' },
-      { status: 429, headers: { 'Retry-After': String(limit.retryAfterSeconds) } }
-    )
-  }
 
   let body: Record<string, unknown>
   try {
@@ -126,15 +128,18 @@ export async function POST(request: Request) {
 
   const projectId = projectIdRaw.trim()
   const type = typeRaw as FeedbackType
-  const submitterEmail =
+  let submitterEmail =
     typeof body.submitterEmail === 'string' && body.submitterEmail.trim()
       ? normalizeEmail(body.submitterEmail)
       : null
   const pageUrl = typeof body.pageUrl === 'string' ? body.pageUrl.slice(0, 2000) : ''
   const userAgent = typeof body.userAgent === 'string' ? body.userAgent.slice(0, 500) : ''
   const viewport = typeof body.viewport === 'string' ? body.viewport.slice(0, 50) : ''
+  const identityAssertion = typeof body.identityAssertion === 'string' ? body.identityAssertion : null
 
-  // Optional signed-in user: try the Bearer token, ignore failures.
+  // Optional signed-in user: try the Bearer token, ignore failures. A valid
+  // Bearer counts as "verified" alongside a valid identityAssertion (both the
+  // rate-limit bypass and #150's gate treat them the same).
   let submitterUid: string | null = null
   const authHeader = request.headers.get('Authorization')
   const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null
@@ -145,6 +150,17 @@ export async function POST(request: Request) {
     } catch {
       // Anonymous submission is allowed; swallow the auth error.
     }
+  }
+
+  // Rate-limited with no assertion to even try verifying → reject now, zero
+  // DB reads. (A Bearer-only bypass still needs the assertion-verification
+  // path below to be skipped, which it naturally is — verifiedByBearer is
+  // already known at this point.)
+  if (!limit.ok && !identityAssertion && !submitterUid) {
+    return json(
+      { error: 'Too many submissions, please try again later' },
+      { status: 429, headers: { 'Retry-After': String(limit.retryAfterSeconds) } }
+    )
   }
 
   const db = getAdminDb()
@@ -160,7 +176,55 @@ export async function POST(request: Request) {
     return json({ error: 'Unknown project' }, { status: 404 })
   }
   const project = projectSnap.docs[0]
-  const projectTitle = (project.data().title as string) || projectId
+  const projectData = project.data()
+  const projectTitle = (projectData.title as string) || projectId
+  const requiresIdentity = projectData.feedback_requires_identity === true
+
+  // #149: verify the identity assertion, if present. A failure of any kind
+  // (bad signature, expired, wrong project, unknown kid, malformed) is
+  // treated exactly like an absent assertion — the submission proceeds as
+  // typed-email-or-anonymous, UNLESS the project requires identity, in which
+  // case the #150 check below rejects it for not being verified.
+  let verifiedByAssertion = false
+  if (identityAssertion) {
+    try {
+      const secretDoc = await db.collection('loop_signing_secrets').doc(project.id).get()
+      if (secretDoc.exists) {
+        const secretData = secretDoc.data() as { keys?: Record<string, string>; active_kid?: string }
+        const keys = secretData.keys ?? {}
+        const activeKid = secretData.active_kid ?? ''
+        if (Object.keys(keys).length > 0 && activeKid) {
+          const nowSeconds = Math.floor(Date.now() / 1000)
+          const result = verifyIdentityAssertion(identityAssertion, keys, activeKid, nowSeconds)
+          if (result.ok && result.project === projectId) {
+            submitterEmail = result.email
+            verifiedByAssertion = true
+          }
+        }
+      }
+    } catch (err) {
+      // Verification infra failure never fails the submission — falls back
+      // to unverified, same as a bad token.
+      console.error('[feedback] identity assertion verification failed:', err)
+    }
+  }
+
+  const verified = verifiedByAssertion || submitterUid !== null
+
+  // Now-known-verified submissions bypass the rate limit even if the earlier
+  // presence check let them through only provisionally.
+  if (!limit.ok && !verified) {
+    return json(
+      { error: 'Too many submissions, please try again later' },
+      { status: 429, headers: { 'Retry-After': String(limit.retryAfterSeconds) } }
+    )
+  }
+
+  // #150: reject fully-anonymous (unverified) submissions when the project
+  // opted in. A merely-typed email never satisfies this.
+  if (requiresIdentity && !verified) {
+    return json({ error: copy.feedback.requiresIdentity }, { status: 403 })
+  }
 
   // #143 burst counter: how many notes has this project gotten in the last 15
   // minutes? Single-field query (no composite index), in-memory time filter.
@@ -201,6 +265,7 @@ export async function POST(request: Request) {
     created_at: now,
     updated_at: now,
     ...(capture ? { has_capture: true } : {}),
+    ...(verifiedByAssertion ? { submitter_email_verified: true } : {}),
   })
 
   if (capture) {
