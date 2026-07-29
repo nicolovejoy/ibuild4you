@@ -285,7 +285,14 @@ function FeedbackRow({
       <p className="text-sm text-brand-charcoal whitespace-pre-wrap">{item.body}</p>
 
       <div className="text-xs text-gray-500 flex flex-wrap gap-x-4 gap-y-1">
-        <span>{item.submitter_email || 'anonymous'}</span>
+        <span>
+          {item.submitter_email || 'anonymous'}
+          {item.submitter_email_verified && (
+            <span className="ml-1 text-green-600" title="Submitter email verified via a host-signed identity assertion (#149)">
+              ✓ verified
+            </span>
+          )}
+        </span>
         {item.page_url && (
           <a
             href={item.page_url}

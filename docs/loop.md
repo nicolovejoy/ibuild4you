@@ -60,6 +60,24 @@ a `projects.slug` in iBuild4you. Slugs are kebab-case (e.g.
 `prntd-mobile-flow-rethink`, not `prntd`). Confirm the real slug with
 `node scripts/with-prod-env-ro.mjs node scripts/list-projects.mjs --grep <term>`.
 
+### Verified identity (#149) — host recipe lands in a follow-up PR
+
+By default, `submitterEmail` is self-reported (a submitter can type anything,
+or nothing). If a host app has real login and wants attributed feedback, its
+**server** can sign a short-lived assertion vouching for the logged-in user's
+email and hand it to the widget as the `identityAssertion` prop/field — the
+widget never signs anything itself. Verified submissions bypass the rate
+limit and, if the project turns on `feedback_requires_identity` (#150),
+unverified submissions are rejected outright.
+
+The token format, freshness rules, and verification contract are documented
+in [`lib/feedback/README.md`](../lib/feedback/README.md#the-identityassertion-field-149)
+and implemented in `lib/feedback/identity.ts`. Per-project secrets are minted
+with `scripts/loop-secret.mjs` (CLI-only — no admin-UI reveal). The
+**host-side integration recipe** (a Next.js route handler example the host
+app copies in to mint tokens server-side) is a separate follow-up PR — this
+repo only ships the verification side and the signing primitives.
+
 ## Triage + Convert to GitHub
 
 Submissions appear at `/admin/feedback` (admin-gated) with status, internal

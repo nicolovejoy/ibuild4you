@@ -39,6 +39,11 @@ export interface FeedbackPayload {
   // #72: optional structural page capture (lib/feedback/capture.ts). Additive —
   // servers that predate it ignore it; omitting it is always valid.
   capture?: PageCapture
+  // #149: opaque signed token proving the host app vouches for submitterEmail.
+  // Additive — servers that predate it ignore it. When present and valid,
+  // the server overrides submitterEmail with the verified email and marks
+  // the row submitter_email_verified.
+  identityAssertion?: string
 }
 
 export type ValidationResult =
@@ -74,7 +79,8 @@ export function validateFeedbackInput(input: FeedbackInput): ValidationResult {
 export function buildFeedbackPayload(
   input: FeedbackInput,
   ctx: FeedbackContext,
-  capture?: PageCapture | null
+  capture?: PageCapture | null,
+  identityAssertion?: string | null
 ): FeedbackPayload {
   const submitterEmail = normalizeEmail(input.submitterEmail) || undefined
   return {
@@ -88,5 +94,6 @@ export function buildFeedbackPayload(
     website: '',
     _ts: ctx.renderedAt,
     ...(capture ? { capture } : {}),
+    ...(identityAssertion ? { identityAssertion } : {}),
   }
 }

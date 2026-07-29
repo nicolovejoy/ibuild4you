@@ -126,4 +126,20 @@ describe('buildFeedbackPayload', () => {
     expect('capture' in payload).toBe(false)
     expect(buildFeedbackPayload({ projectId: 'p', type: 'bug', body: 'x' }, ctx, null).capture).toBeUndefined()
   })
+
+  // #149 — identityAssertion rides along additively, mirroring capture.
+  it('includes identityAssertion when provided', () => {
+    const payload = buildFeedbackPayload(
+      { projectId: 'p', type: 'bug', body: 'x' },
+      ctx,
+      null,
+      'header.sig'
+    )
+    expect(payload.identityAssertion).toBe('header.sig')
+  })
+
+  it('omits identityAssertion entirely when not provided', () => {
+    const payload = buildFeedbackPayload({ projectId: 'p', type: 'bug', body: 'x' }, ctx)
+    expect('identityAssertion' in payload).toBe(false)
+  })
 })

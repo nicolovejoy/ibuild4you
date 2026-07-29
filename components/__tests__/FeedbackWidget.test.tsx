@@ -130,4 +130,29 @@ describe('<FeedbackWidget>', () => {
     expect(honeypot).toHaveAttribute('aria-hidden', 'true')
     expect(honeypot).toHaveAttribute('tabindex', '-1')
   })
+
+  // #149 — host-app identity relay.
+  it('includes identityAssertion in the payload when provided', async () => {
+    const fetchMock = mockFetch({ ok: true, status: 201, json: { id: 'fb_1' } })
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+
+    render(<FeedbackWidget projectId="sample-cafe" identityAssertion="header.sig" />)
+    vi.advanceTimersByTime(3000)
+    await user.type(screen.getByPlaceholderText(/what's up/i), 'signed-in feedback')
+    await user.click(screen.getByRole('button', { name: /send feedback/i }))
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string)
+    expect(body.identityAssertion).toBe('header.sig')
+  })
+
+  it('hides the manual email input when identityAssertion is provided', () => {
+    render(<FeedbackWidget projectId="sample-cafe" identityAssertion="header.sig" />)
+    expect(screen.queryByPlaceholderText(/email/i)).not.toBeInTheDocument()
+  })
+
+  it('shows the manual email input when identityAssertion is absent', () => {
+    render(<FeedbackWidget projectId="sample-cafe" />)
+    expect(screen.getByPlaceholderText(/email/i)).toBeInTheDocument()
+  })
 })
