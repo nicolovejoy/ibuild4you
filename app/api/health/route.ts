@@ -58,25 +58,8 @@ export async function GET() {
       .get()
   })
 
-  // Check 7: Projects by requester_id + created_at (non-admin listing)
-  await runCheck(checks, 'projects_by_requester', async () => {
-    await db
-      .collection('projects')
-      .where('requester_id', '==', '__health_check__')
-      .orderBy('created_at', 'desc')
-      .limit(1)
-      .get()
-  })
-
-  // Check 8: Projects by requester_email + created_at (shared listing)
-  await runCheck(checks, 'projects_by_email', async () => {
-    await db
-      .collection('projects')
-      .where('requester_email', '==', '__health_check__')
-      .orderBy('created_at', 'desc')
-      .limit(1)
-      .get()
-  })
+  // (Former checks 7/8 — projects by requester_id / requester_email — removed
+  // with the legacy listing queries they exercised, Garm PR E.)
 
   const allOk = checks.every((c) => c.ok)
 

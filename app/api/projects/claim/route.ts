@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server'
 import { getAuthenticatedUser, getAdminDb, hasSystemRole } from '@/lib/api/firebase-server-helpers'
-import { defaultBriefRole } from '@/lib/roles/brief-role'
 import { normalizeEmail } from '@/lib/email/normalize'
 
 // POST /api/projects/claim — claim a project that was shared with you
@@ -22,10 +21,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Project not found' }, { status: 404 })
   }
 
-  const project = projectDoc.data()
-
-  // Admins and existing owners don't need to claim
-  if (hasSystemRole(auth, 'admin') || project?.requester_id === auth.uid) {
+  // Admins don't need to claim. (The old requester_id short-circuit was an
+  // authz read on a display-only field — gone, Garm PR E. Membership is the
+  // only access source below.)
+  if (hasSystemRole(auth, 'admin')) {
     return NextResponse.json({ claimed: true, project_id })
   }
 
@@ -41,37 +40,17 @@ export async function POST(request: Request) {
     .limit(1)
     .get()
 
-  // Also check legacy requester_email. The email !== '' guard matters:
-  // normalizeEmail(undefined) is '', so without it a token carrying no email
-  // would "match" any project whose requester_email is missing (#155 review catch).
-  const hasLegacyAccess =
-    email !== '' && normalizeEmail(project?.requester_email as string | undefined) === email
-
-  if (memberSnap.empty && !hasLegacyAccess) {
+  if (memberSnap.empty) {
     return NextResponse.json({ error: 'This project was not shared with you' }, { status: 403 })
   }
 
   const now = new Date().toISOString()
 
   // Update membership record with user_id if it exists
-  if (!memberSnap.empty) {
-    const memberDoc = memberSnap.docs[0]
-    if (!memberDoc.data().user_id) {
-      await memberDoc.ref.update({
-        user_id: auth.uid,
-        updated_at: now,
-      })
-    }
-  } else if (hasLegacyAccess) {
-    // Create membership record from legacy access
-    await db.collection('project_members').add({
-      project_id,
+  const memberDoc = memberSnap.docs[0]
+  if (!memberDoc.data().user_id) {
+    await memberDoc.ref.update({
       user_id: auth.uid,
-      email,
-      role: 'maker',
-      brief_role: defaultBriefRole('maker'),
-      added_by: 'system-migration',
-      created_at: now,
       updated_at: now,
     })
   }

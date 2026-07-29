@@ -114,25 +114,11 @@ export async function GET(request: Request) {
     .where('email', '==', auth.email)
     .get()
 
-  // Also check legacy: projects where requester_id or requester_email matches
-  const ownedSnap = await db
-    .collection('projects')
-    .where('requester_id', '==', auth.uid)
-    .orderBy('created_at', 'desc')
-    .get()
-
-  const sharedSnap = await db
-    .collection('projects')
-    .where('requester_email', '==', auth.email)
-    .orderBy('created_at', 'desc')
-    .get()
-
-  // Collect all project IDs
+  // Collect all project IDs. Membership rows are the only access source —
+  // projects.requester_* is display-only denormalization (Garm PR E).
   const projectIds = new Set<string>()
   for (const doc of memberSnap.docs) projectIds.add(doc.data().project_id as string)
   for (const doc of memberByEmail.docs) projectIds.add(doc.data().project_id as string)
-  for (const doc of ownedSnap.docs) projectIds.add(doc.id)
-  for (const doc of sharedSnap.docs) projectIds.add(doc.id)
 
   if (projectIds.size === 0) {
     return NextResponse.json([])

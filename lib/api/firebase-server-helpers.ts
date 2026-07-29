@@ -127,22 +127,8 @@ export async function getProjectRole(
     return role
   }
 
-  // Legacy fallback: check requester_id / requester_email on the project doc
-  const projectDoc = await db.collection('projects').doc(projectId).get()
-  if (projectDoc.exists) {
-    const data = projectDoc.data()!
-    // The email !== '' guard matters: normalizeEmail(undefined) is '', so
-    // without it a token carrying no email would match any project whose
-    // requester_email is missing (#155 review catch).
-    if (
-      data.requester_id === userId ||
-      (email !== '' && normalizeEmail(data.requester_email as string | undefined) === email)
-    ) {
-      ctx?.roleCache.set(projectId, 'maker')
-      return 'maker'
-    }
-  }
-
+  // No fallback beyond project_members (Garm PR E): projects.requester_id /
+  // requester_email are display-only denormalization, never an access grant.
   ctx?.roleCache.set(projectId, null)
   return null
 }
