@@ -377,6 +377,7 @@ describe('getProjectRole / getViewerBriefRole — email fallback normalization',
     storedEmail: string
     memberData: Record<string, unknown>
     requesterEmail?: string
+    requesterId?: string
     emailWhereSpy: (value: string) => void
   }) {
     return {
@@ -386,7 +387,10 @@ describe('getProjectRole / getViewerBriefRole — email fallback normalization',
             doc: () => ({
               get: async () => ({
                 exists: true,
-                data: () => ({ requester_email: opts.requesterEmail ?? null }),
+                data: () => ({
+                  requester_email: opts.requesterEmail ?? null,
+                  requester_id: opts.requesterId ?? null,
+                }),
               }),
             }),
           }
@@ -429,7 +433,9 @@ describe('getProjectRole / getViewerBriefRole — email fallback normalization',
     expect(emailWhereSpy).toHaveBeenCalledWith('sam@example.com')
   })
 
-  it('getProjectRole normalizes the requester_email legacy comparison', async () => {
+  // Garm PR E: projects.requester_* is display-only denormalization — a match
+  // there with no project_members row must NOT grant access.
+  it('getProjectRole returns null for a requester_email-only match with no member row', async () => {
     const db = fakeDbWithEmailMember({
       storedEmail: 'nobody-matches@example.com',
       memberData: {},
@@ -437,18 +443,26 @@ describe('getProjectRole / getViewerBriefRole — email fallback normalization',
       emailWhereSpy: () => {},
     })
 
-    const role = await getProjectRole(db, 'p1', 'uid-no-match', '  Sam@Example.COM  ', [])
-    expect(role).toBe('maker')
+    const role = await getProjectRole(db, 'p1', 'uid-no-match', 'sam@example.com', [])
+    expect(role).toBeNull()
   })
 
-  it('getProjectRole denies an empty email even when requester_email is missing (empty-vs-missing must not match)', async () => {
-    // normalizeEmail(undefined) === '' — without the email !== '' guard an
-    // email-less token would be granted maker on any project lacking a
-    // requester_email.
+  it('getProjectRole returns null for a requester_id-only match with no member row', async () => {
     const db = fakeDbWithEmailMember({
       storedEmail: 'nobody-matches@example.com',
       memberData: {},
-      requesterEmail: undefined,
+      requesterId: 'uid-1',
+      emailWhereSpy: () => {},
+    })
+
+    const role = await getProjectRole(db, 'p1', 'uid-1', 'sam@example.com', [])
+    expect(role).toBeNull()
+  })
+
+  it('getProjectRole denies an empty email with no member row', async () => {
+    const db = fakeDbWithEmailMember({
+      storedEmail: 'nobody-matches@example.com',
+      memberData: {},
       emailWhereSpy: () => {},
     })
 

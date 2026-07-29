@@ -1,13 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { NextResponse } from 'next/server'
 
 // =============================================================================
 // PROJECT CLAIM ROUTE TESTS
 //
 // POST /api/projects/claim
-//   Lets a signed-in user claim a project that was shared with them (by
-//   membership or legacy requester_email). Admins/owners short-circuit. The
-//   access guard (403 when not shared) is the security-relevant path.
+//   Lets a signed-in user claim a project that was shared with them via a
+//   project_members row. Admins short-circuit. The access guard (403 when
+//   not shared) is the security-relevant path — projects.requester_* is
+//   display-only and grants nothing (Garm PR E).
 // =============================================================================
 
 const mockHasSystemRole = vi.fn()
@@ -107,13 +107,22 @@ describe('POST /api/projects/claim', () => {
     )
   })
 
-  it('creates a membership from legacy requester_email access', async () => {
+  // Garm PR E: requester_* on the project doc is display-only — a matching
+  // requester_email/requester_id with no member row must NOT mint access.
+  it('returns 403 for a requester_email-only match with no member row', async () => {
     projectDoc = { exists: true, data: () => ({ requester_email: 'u@ibuild4you.com' }) }
     const res = await POST(makeReq({ project_id: 'p1' }))
-    expect(res.status).toBe(200)
-    expect(mockMemberAdd).toHaveBeenCalledWith(
-      expect.objectContaining({ user_id: 'u1', role: 'maker', brief_role: 'originator' })
-    )
+    expect(res.status).toBe(403)
+    expect(mockMemberAdd).not.toHaveBeenCalled()
+    expect(mockProjectUpdate).not.toHaveBeenCalled()
+  })
+
+  it('returns 403 for a requester_id-only match with no member row', async () => {
+    projectDoc = { exists: true, data: () => ({ requester_id: 'u1' }) }
+    const res = await POST(makeReq({ project_id: 'p1' }))
+    expect(res.status).toBe(403)
+    expect(mockMemberAdd).not.toHaveBeenCalled()
+    expect(mockProjectUpdate).not.toHaveBeenCalled()
   })
 
   // #155: a mixed-case/whitespace-padded auth.email must still resolve
@@ -126,19 +135,7 @@ describe('POST /api/projects/claim', () => {
     expect(mockEmailWhere).toHaveBeenCalledWith('u@ibuild4you.com')
   })
 
-  it('normalizes auth.email before the legacy requester_email match and the new member write', async () => {
-    authResult = { uid: 'u1', email: '  U@IBuild4You.com  ', systemRoles: [], error: null }
-    projectDoc = { exists: true, data: () => ({ requester_email: 'u@ibuild4you.com' }) }
-    const res = await POST(makeReq({ project_id: 'p1' }))
-    expect(res.status).toBe(200)
-    expect(mockMemberAdd).toHaveBeenCalledWith(
-      expect.objectContaining({ email: 'u@ibuild4you.com' })
-    )
-  })
-
-  it('rejects an email-less token even when the project has no requester_email (empty-vs-missing must not match)', async () => {
-    // normalizeEmail(undefined) === '' — without the email !== '' guard this
-    // would fail open: '' === '' grants legacy access and writes a ''-email row.
+  it('rejects an email-less token with no member row', async () => {
     authResult = { uid: 'u1', email: '', systemRoles: [], error: null }
     projectDoc = { exists: true, data: () => ({}) }
     const res = await POST(makeReq({ project_id: 'p1' }))
