@@ -338,7 +338,10 @@ async function computeLocalApprovedAnswer(
 
   const db = getAdminDb()
   const doc = await db.collection('approved_emails').doc(normalizeEmail(email)).get()
-  return doc.exists
+  if (!doc.exists) return false
+  // Off-boarding (#163): a revoked row must not grant sign-in even though
+  // the doc still exists (non-destructive flag, not a delete).
+  return !doc.data()?.revoked_at
 }
 
 export { getAdminDb }

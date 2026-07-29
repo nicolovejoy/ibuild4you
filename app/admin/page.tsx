@@ -4,7 +4,7 @@ import { useAuth } from '@/lib/hooks/useAuth'
 import { useApproval } from '@/lib/hooks/useApproval'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
-import { Check, Save, Inbox, MessageSquare, DollarSign, BellRing, Stethoscope } from 'lucide-react'
+import { Check, Save, Inbox, MessageSquare, DollarSign, BellRing, Stethoscope, ShieldOff } from 'lucide-react'
 import Link from 'next/link'
 import { useCurrentUser } from '@/lib/query/hooks'
 import { apiFetch } from '@/lib/firebase/api-fetch'
@@ -160,6 +160,8 @@ function UserRow({ user, onSaved }: { user: UserDoc; onSaved: (u: UserDoc) => vo
   const [lastName, setLastName] = useState(user.last_name || '')
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [revoking, setRevoking] = useState(false)
+  const [revoked, setRevoked] = useState(false)
 
   const isDirty = firstName !== (user.first_name || '') || lastName !== (user.last_name || '')
   const needsName = !user.first_name
@@ -183,15 +185,36 @@ function UserRow({ user, onSaved }: { user: UserDoc; onSaved: (u: UserDoc) => vo
     }
   }
 
+  const handleRevoke = async () => {
+    if (!window.confirm(`Revoke sign-in approval for ${user.email}? They will no longer be able to sign in.`)) return
+    setRevoking(true)
+    try {
+      const res = await apiFetch('/api/approved-emails', {
+        method: 'DELETE',
+        body: JSON.stringify({ email: user.email }),
+      })
+      if (!res.ok) throw new Error('Revoke failed')
+      setRevoked(true)
+    } catch {
+      // silent — admin can retry
+    } finally {
+      setRevoking(false)
+    }
+  }
+
   return (
     <div className={`flex items-center gap-3 px-4 py-3 ${needsName ? 'bg-amber-50' : ''}`}>
       <div className="flex-1 min-w-0">
         <p className="text-sm text-gray-500 truncate">{user.email}</p>
-        {user.source && user.source !== 'users' && (
+        {(user.source && user.source !== 'users') || revoked ? (
           <p className="text-[10px] text-gray-400">
-            {user.source === 'project_member' ? `${user.role || 'member'} (no user doc)` : 'approved only'}
+            {revoked
+              ? 'sign-in revoked'
+              : user.source === 'project_member'
+                ? `${user.role || 'member'} (no user doc)`
+                : 'approved only'}
           </p>
-        )}
+        ) : null}
       </div>
       <input
         type="text"
@@ -219,6 +242,15 @@ function UserRow({ user, onSaved }: { user: UserDoc; onSaved: (u: UserDoc) => vo
           <Save className="h-4 w-4" />
         </button>
       )}
+      <button
+        onClick={handleRevoke}
+        disabled={revoking || revoked}
+        className="p-1.5 text-gray-400 hover:text-red-600 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+        title={revoked ? 'Sign-in revoked' : 'Revoke sign-in approval'}
+        aria-label="Revoke sign-in approval"
+      >
+        <ShieldOff className="h-4 w-4" />
+      </button>
     </div>
   )
 }

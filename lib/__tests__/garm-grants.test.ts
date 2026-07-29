@@ -100,6 +100,7 @@ afterEach(() => {
 function mockDb({
   members = [] as Array<{ role: string; removed_at?: string | null }>,
   approved = false,
+  revokedAt = null as string | null,
 }) {
   return {
     collection: vi.fn((name: string) => {
@@ -114,7 +115,10 @@ function mockDb({
       if (name === 'approved_emails') {
         return {
           doc: vi.fn(() => ({
-            get: vi.fn(async () => ({ exists: approved })),
+            get: vi.fn(async () => ({
+              exists: approved,
+              data: () => (approved ? { revoked_at: revokedAt } : undefined),
+            })),
           })),
         }
       }
@@ -206,6 +210,21 @@ describe('syncGarmGrantForEmail', () => {
 
     await expect(syncGarmGrantForEmail('sam@example.com')).resolves.toBeUndefined()
     expect(warnSpy).toHaveBeenCalled()
+  })
+
+  it('revokes the grant for a revoked approved_emails row with no active membership (#163)', async () => {
+    const { getAdminDb } = await import('@/lib/api/firebase-server-helpers')
+    vi.mocked(getAdminDb).mockReturnValue(
+      mockDb({ members: [], approved: true, revokedAt: '2026-07-18T00:00:00.000Z' }) as never
+    )
+    const fetchMock = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({}) }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await syncGarmGrantForEmail('sam@example.com')
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [, opts] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(opts.method).toBe('DELETE')
   })
 
   it('logs but never throws when the Firestore read itself fails', async () => {

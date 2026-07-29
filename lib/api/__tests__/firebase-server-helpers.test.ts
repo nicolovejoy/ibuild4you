@@ -93,7 +93,7 @@ describe('isApprovedEmail', () => {
   // normally-approved "sam@example.com" row — silently locking someone out.
   it('normalizes trim+case before the approved_emails doc lookup', async () => {
     const docSpy = vi.fn((id: string) => ({
-      get: async () => ({ exists: id === 'sam@example.com' }),
+      get: async () => ({ exists: id === 'sam@example.com', data: () => ({}) }),
     }))
     vi.mocked(getAdminDb).mockReturnValueOnce({
       collection: () => ({ doc: docSpy }),
@@ -112,6 +112,32 @@ describe('isApprovedEmail', () => {
 
     expect(await isApprovedEmail('nobody@example.com')).toBe(false)
   })
+
+  // #163: off-boarding — a revoked row still exists (non-destructive flag)
+  // but must not grant sign-in.
+  it('is not approved when the doc exists but is revoked', async () => {
+    vi.mocked(getAdminDb).mockReturnValueOnce({
+      collection: () => ({
+        doc: () => ({
+          get: async () => ({ exists: true, data: () => ({ revoked_at: '2026-07-18T00:00:00.000Z' }) }),
+        }),
+      }),
+    } as unknown as FirebaseFirestore.Firestore)
+
+    expect(await isApprovedEmail('sam@example.com')).toBe(false)
+  })
+
+  it('is approved when the doc exists and revoked_at is absent', async () => {
+    vi.mocked(getAdminDb).mockReturnValueOnce({
+      collection: () => ({
+        doc: () => ({
+          get: async () => ({ exists: true, data: () => ({}) }),
+        }),
+      }),
+    } as unknown as FirebaseFirestore.Firestore)
+
+    expect(await isApprovedEmail('sam@example.com')).toBe(true)
+  })
 })
 
 // Garm shadow mode (docs/garm-consumer-plan.md Phase 4): isApprovedEmail also
@@ -129,7 +155,7 @@ describe('isApprovedEmail — Garm shadow never changes the outcome', () => {
   // describe block.
   function mockLocalApprovedOnce(exists: boolean) {
     vi.mocked(getAdminDb).mockReturnValueOnce({
-      collection: () => ({ doc: () => ({ get: async () => ({ exists }) }) }),
+      collection: () => ({ doc: () => ({ get: async () => ({ exists, data: () => ({}) }) }) }),
     } as unknown as FirebaseFirestore.Firestore)
   }
 

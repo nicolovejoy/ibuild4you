@@ -70,12 +70,58 @@ export async function POST(request: Request) {
 
   const db = getAdminDb()
   const normalizedEmail = normalizeEmail(email)
+  // Re-approving (e.g. after a revoke) must clear any prior revoke flag —
+  // otherwise isApprovedEmail() would keep treating this doc as revoked.
   await db.collection('approved_emails').doc(normalizedEmail).set({
     email: normalizedEmail,
     approved_by: auth.email,
     created_at: new Date().toISOString(),
+    revoked_at: null,
+    revoked_by: null,
   })
   scheduleGarmGrantSync(normalizedEmail)
 
   return NextResponse.json({ email: normalizedEmail }, { status: 201 })
+}
+
+// DELETE /api/approved-emails — admin-only: revoke an email's sign-in
+// approval (off-boarding). Non-destructive per house convention: sets
+// revoked_at/revoked_by rather than deleting the doc. isApprovedEmail()
+// treats a revoked row as not-approved; scheduleGarmGrantSync then lets
+// computeGrantDecision emit a clean Garm revoke (no active memberships +
+// not approved → revoke).
+export async function DELETE(request: Request) {
+  const auth = await getAuthenticatedUser(request)
+  if (auth.error) return auth.error
+
+  if (!hasSystemRole(auth, 'admin')) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+
+  const body = await request.json()
+  const { email } = body
+
+  if (!email?.trim()) {
+    return NextResponse.json({ error: 'Email is required' }, { status: 400 })
+  }
+
+  const db = getAdminDb()
+  const normalizedEmail = normalizeEmail(email)
+  const docRef = db.collection('approved_emails').doc(normalizedEmail)
+  const doc = await docRef.get()
+
+  if (!doc.exists) {
+    return NextResponse.json({ error: 'No approved-email record for this address' }, { status: 404 })
+  }
+  if (doc.data()?.revoked_at) {
+    return NextResponse.json({ error: 'This email has already been revoked' }, { status: 400 })
+  }
+
+  await docRef.update({
+    revoked_at: new Date().toISOString(),
+    revoked_by: auth.email,
+  })
+  scheduleGarmGrantSync(normalizedEmail)
+
+  return NextResponse.json({ email: normalizedEmail, revoked: true })
 }
