@@ -133,6 +133,29 @@ describe('POST /api/feedback — validation', () => {
     expect(email.subject).not.toContain('note this session')
   })
 
+  it('FEEDBACK_NOTIFY_SUPPRESS=on skips the notification but still writes the doc', async () => {
+    process.env.FEEDBACK_NOTIFY_SUPPRESS = 'on'
+    try {
+      const res = await POST(makeRequest(validPayload()))
+      expect(res.status).toBe(201)
+      expect(mockAdd).toHaveBeenCalledOnce()
+      expect(mockResendSend).not.toHaveBeenCalled()
+    } finally {
+      delete process.env.FEEDBACK_NOTIFY_SUPPRESS
+    }
+  })
+
+  it('any value other than exactly "on" still notifies', async () => {
+    process.env.FEEDBACK_NOTIFY_SUPPRESS = 'true'
+    try {
+      const res = await POST(makeRequest(validPayload()))
+      expect(res.status).toBe(201)
+      expect(mockResendSend).toHaveBeenCalledOnce()
+    } finally {
+      delete process.env.FEEDBACK_NOTIFY_SUPPRESS
+    }
+  })
+
   it('adds an ordinal burst suffix when prior notes exist in the window', async () => {
     const recent = new Date().toISOString()
     // One prior note in the last 15 min → this is the 2nd.

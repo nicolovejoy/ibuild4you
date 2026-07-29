@@ -292,25 +292,30 @@ export async function POST(request: Request) {
   }
 
   // Notify admins — non-blocking; submission succeeds even if email fails.
+  // FEEDBACK_NOTIFY_SUPPRESS must be exactly 'on' to silence the send — set on
+  // preview while e2e scripts POST real submissions (each POST otherwise emails
+  // NOTIFICATION_EMAILS). Default off; prod behavior unchanged.
   try {
-    const resend = new Resend(process.env.RESEND_API_KEY)
-    const { subject, text } = buildFeedbackEmail({
-      type,
-      projectTitle,
-      body: bodyRaw,
-      submitterEmail,
-      pageUrl,
-      viewport,
-      userAgent,
-      feedbackId: docRef.id,
-      burstIndex,
-    })
-    await resend.emails.send({
-      from: 'iBuild4you <noreply@ibuild4you.com>',
-      to: NOTIFICATION_EMAILS,
-      subject,
-      text,
-    })
+    if (process.env.FEEDBACK_NOTIFY_SUPPRESS !== 'on') {
+      const resend = new Resend(process.env.RESEND_API_KEY)
+      const { subject, text } = buildFeedbackEmail({
+        type,
+        projectTitle,
+        body: bodyRaw,
+        submitterEmail,
+        pageUrl,
+        viewport,
+        userAgent,
+        feedbackId: docRef.id,
+        burstIndex,
+      })
+      await resend.emails.send({
+        from: 'iBuild4you <noreply@ibuild4you.com>',
+        to: NOTIFICATION_EMAILS,
+        subject,
+        text,
+      })
+    }
   } catch (err) {
     console.error('[feedback] admin notification failed:', err)
   }
