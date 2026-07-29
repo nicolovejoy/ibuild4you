@@ -20,6 +20,11 @@ import { normalizeEmail } from '@/lib/email/normalize'
 //      any off-shape response, so a Garm outage shows up in our logs too.
 // =============================================================================
 
+// This app's slug in Garm's project namespace (D1: one Garm project = one app;
+// briefs are never Garm projects). Grants were seeded and dual-write syncs on
+// exactly this grain.
+export const GARM_PROJECT = 'ibuild4you'
+
 const ROLES = ['viewer', 'collaborator', 'owner'] as const
 export type Role = (typeof ROLES)[number]
 export interface CheckResult {

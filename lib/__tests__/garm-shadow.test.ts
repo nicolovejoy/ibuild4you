@@ -1,5 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { shadowCheckApprovedEmail, scheduleGarmShadowCheck, GARM_SHADOW_PROJECT } from '../garm-shadow'
+import {
+  shadowCheckApprovedEmail,
+  shadowCheckLocalAllowlist,
+  scheduleGarmShadowCheck,
+  GARM_SHADOW_PROJECT,
+} from '../garm-shadow'
 
 // =============================================================================
 // Garm shadow mode — observation only, never authoritative (see garm-shadow.ts
@@ -7,7 +12,7 @@ import { shadowCheckApprovedEmail, scheduleGarmShadowCheck, GARM_SHADOW_PROJECT 
 // network, no real Garm.
 // =============================================================================
 
-vi.mock('../garm', () => ({ garmCheck: vi.fn() }))
+vi.mock('../garm', () => ({ garmCheck: vi.fn(), GARM_PROJECT: 'ibuild4you' }))
 import { garmCheck } from '../garm'
 
 const OLD_ENV = { ...process.env }
@@ -71,6 +76,34 @@ describe('shadowCheckApprovedEmail', () => {
     const loggedText = warnSpy.mock.calls.flat().join(' ')
     expect(loggedText).not.toContain('very-identifying-name')
     expect(loggedText).not.toContain('@example.com')
+  })
+})
+
+// PR G reverse shadow: Garm is authoritative, the local allowlist is the one
+// being observed. Same silence/PII rules, opposite direction.
+describe('shadowCheckLocalAllowlist', () => {
+  it('stays silent when local agrees with Garm', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    await shadowCheckLocalAllowlist(true, async () => true)
+    await shadowCheckLocalAllowlist(false, async () => false)
+    expect(warnSpy).not.toHaveBeenCalled()
+  })
+
+  it('logs one PII-free line when local disagrees', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    await shadowCheckLocalAllowlist(false, async () => true)
+    expect(warnSpy).toHaveBeenCalledTimes(1)
+    const line = warnSpy.mock.calls[0][0] as string
+    expect(line).toContain('[garm-shadow] mismatch:')
+    expect(line).toContain('local=true')
+    expect(line).toContain('garm=false')
+    expect(line).toContain('authority=garm')
+  })
+
+  it('computes the local answer lazily via the callback (nothing precomputed)', async () => {
+    const computeLocal = vi.fn(async () => true)
+    await shadowCheckLocalAllowlist(true, computeLocal)
+    expect(computeLocal).toHaveBeenCalledOnce()
   })
 })
 
