@@ -1,15 +1,15 @@
 import { after } from 'next/server'
-import { garmCheck } from '@/lib/garm'
+import { garmCheck, GARM_PROJECT } from '@/lib/garm'
 
 // =============================================================================
-// Garm shadow mode — the remaining piece of consumer-plan Phase 4 (PR F).
-// See docs/garm-consumer-plan.md "Phase 4 — Garm shadow mode".
+// Garm shadow mode — observation-only comparison of the local allowlist answer
+// against Garm's. See docs/garm-consumer-plan.md Phases 4–5.
 //
-// THE ONE RULE: this module changes NO security decision. It fires garmCheck()
-// alongside the app's existing local answer (approved_emails / ADMIN_EMAILS)
-// and logs ONLY on disagreement. The local answer is returned unconditionally
-// by isApprovedEmail() — Garm's answer here is observed, never acted on. That
-// wiring is Phase 5 / PR G, gated on passcode retirement (Phases 1–3).
+// THE ONE RULE: this module changes NO security decision. Which answer is
+// authoritative is decided in isApprovedEmail() (Garm since the PR G cutover;
+// local when GARM_GATING=off) — this module only compares the two and logs on
+// disagreement. Whole module goes away with PR H, together with the local
+// allowlist path it compares against.
 //
 // PII: never log the email. A mismatch line records the fact of a
 // disagreement + role (display-only) — not who. Vercel runtime logs are not a
@@ -22,7 +22,7 @@ import { garmCheck } from '@/lib/garm'
 // live is a deliberate flip, not a side effect of merging this PR.
 // =============================================================================
 
-export const GARM_SHADOW_PROJECT = 'ibuild4you'
+export const GARM_SHADOW_PROJECT = GARM_PROJECT
 
 function shadowEnabled(): boolean {
   return process.env.GARM_SHADOW === 'on'
@@ -43,6 +43,25 @@ export async function shadowCheckApprovedEmail(email: string, localAllowed: bool
 
   console.warn(
     `[garm-shadow] mismatch: local=${localAllowed} garm=${allowed} role=${role ?? 'null'} route=isApprovedEmail`
+  )
+}
+
+/**
+ * The reverse comparison for the post-cutover window (PR G): Garm is
+ * authoritative, and the local allowlist is the one being observed. `local`
+ * is computed lazily — inside the after() callback — so the extra Firestore
+ * read never sits on the sign-in hot path. Same silence-on-agreement and PII
+ * rules as above. Removed by PR H along with the allowlist itself.
+ */
+export async function shadowCheckLocalAllowlist(
+  garmAllowed: boolean,
+  computeLocal: () => Promise<boolean>
+): Promise<void> {
+  const local = await computeLocal()
+  if (local === garmAllowed) return
+
+  console.warn(
+    `[garm-shadow] mismatch: local=${local} garm=${garmAllowed} route=isApprovedEmail authority=garm`
   )
 }
 

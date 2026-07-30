@@ -5,7 +5,12 @@ import type { BriefRole, MemberRole, SystemRole } from '@/lib/types'
 import { getCachedUser, setCachedUser } from './auth-cache'
 import { isActiveMember } from '@/lib/members/lifecycle'
 import { normalizeEmail } from '@/lib/email/normalize'
-import { scheduleGarmShadowCheck, shadowCheckApprovedEmail } from '@/lib/garm-shadow'
+import { garmCheck, GARM_PROJECT } from '@/lib/garm'
+import {
+  scheduleGarmShadowCheck,
+  shadowCheckApprovedEmail,
+  shadowCheckLocalAllowlist,
+} from '@/lib/garm-shadow'
 
 export { ADMIN_EMAILS }
 
@@ -303,25 +308,45 @@ export async function getUserDisplayName(
   return email.split('@')[0]
 }
 
-// Garm shadow mode (docs/garm-consumer-plan.md Phase 4): fires garmCheck()
-// alongside this local answer and logs on disagreement only. It never
-// influences the return value below — the local answer is authoritative and
-// unconditional until the Phase 5 cutover (PR G, blocked on passcode
-// retirement). See lib/garm-shadow.ts for the full contract.
+// Garm cutover (docs/garm-consumer-plan.md Phase 5, PR G): Garm is the
+// authoritative sign-in gate. Fail mode is CLOSED — Nico's ratified Q2 call
+// (2026-07-29, handoff channel): Garm unreachable + cold cache → deny. There
+// is deliberately NO local-fallback branch; a consumer-side fallback authority
+// would quietly become a second authz system and defeat the centralization.
+// The outage escape hatch is the GARM_GATING=off kill switch below — a human
+// flipping an env var, never silent code.
 export async function isApprovedEmail(email: string, systemRoles: SystemRole[] = []): Promise<boolean> {
-  const localAnswer = await computeLocalApprovedAnswer(email, systemRoles)
-
-  scheduleGarmShadowCheck(() => shadowCheckApprovedEmail(email, localAnswer))
-
-  return localAnswer
-}
-
-async function computeLocalApprovedAnswer(
-  email: string,
-  systemRoles: SystemRole[]
-): Promise<boolean> {
+  // Admins never depend on Garm — break-glass so a Garm outage can't lock the
+  // operator out of the app that manages the recovery. ADMIN_EMAILS stays the
+  // constant it always was; migrating admins onto a Garm '*' owner grant is
+  // possible later but this short-circuit should survive that too.
   if (systemRoles.includes('admin') || isAdminEmail(email)) return true
 
+  // Kill switch (one release, then PR H removes it): exactly 'off' restores
+  // the pre-cutover local allowlist path, with the Phase-4 shadow comparison
+  // against Garm. Any other value (including unset) means Garm decides.
+  // Preview runs with GARM_GATING=off — its env has no GARM_URL/GARM_KEY, so
+  // the Garm path there would deny every non-admin and dark the e2e fleet.
+  if (process.env.GARM_GATING === 'off') {
+    const localAnswer = await computeLocalApprovedAnswer(email)
+    scheduleGarmShadowCheck(() => shadowCheckApprovedEmail(email, localAnswer))
+    return localAnswer
+  }
+
+  const { allowed } = await garmCheck(email, GARM_PROJECT, 'viewer')
+
+  // Reverse shadow for the kill-switch window: keep logging disagreements with
+  // the (now non-authoritative) local allowlist so a bad cutover is visible in
+  // the logs, not just in locked-out friends. Off the hot path via after();
+  // gated on GARM_SHADOW like before; PR H deletes it with the allowlist.
+  scheduleGarmShadowCheck(() =>
+    shadowCheckLocalAllowlist(allowed, () => computeLocalApprovedAnswer(email))
+  )
+
+  return allowed
+}
+
+async function computeLocalApprovedAnswer(email: string): Promise<boolean> {
   const db = getAdminDb()
   const doc = await db.collection('approved_emails').doc(normalizeEmail(email)).get()
   if (!doc.exists) return false
