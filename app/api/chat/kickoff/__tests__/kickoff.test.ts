@@ -177,6 +177,46 @@ describe('POST /api/chat/kickoff', () => {
     expect(stored.some((c) => c.data.role === 'user')).toBe(false)
   })
 
+  it('declines when a builder opens the session (#110 — kickoff is maker re-engagement)', async () => {
+    mockGetProjectRole.mockResolvedValue('builder')
+    setup({
+      messages: [msg('user', 3 * HOUR), msg('agent', 3 * HOUR)],
+      lastMakerMessageAt: iso(3 * HOUR),
+    })
+    const res = await POST(makeRequest({ session_id: 'sess-1' }))
+    expect(res.status).toBe(200)
+    const data = await res.json()
+    expect(data.kicked_off).toBe(false)
+    expect(data.reason).toBe('builder_side_opener')
+    // No greeting written, no last_kickoff_at consumed.
+    expect(addCalls.filter((c) => c.collection === 'messages')).toHaveLength(0)
+    expect(updateCalls.some((u) => typeof u.last_kickoff_at === 'string')).toBe(false)
+  })
+
+  it('declines when an owner opens the session (system admins resolve to owner)', async () => {
+    mockGetProjectRole.mockResolvedValue('owner')
+    setup({
+      messages: [msg('user', 3 * HOUR), msg('agent', 3 * HOUR)],
+      lastMakerMessageAt: iso(3 * HOUR),
+    })
+    const res = await POST(makeRequest({ session_id: 'sess-1' }))
+    const data = await res.json()
+    expect(data.kicked_off).toBe(false)
+    expect(data.reason).toBe('builder_side_opener')
+  })
+
+  it('still fires for an apprentice opener', async () => {
+    mockGetProjectRole.mockResolvedValue('apprentice')
+    setup({
+      messages: [msg('user', 3 * HOUR), msg('agent', 3 * HOUR)],
+      lastMakerMessageAt: iso(3 * HOUR),
+    })
+    const res = await POST(makeRequest({ session_id: 'sess-1' }))
+    expect(res.headers.get('Content-Type')).toBe('text/event-stream')
+    await drain(res)
+    expect(addCalls.filter((c) => c.collection === 'messages')).toHaveLength(1)
+  })
+
   it('stamps last_kickoff_at before streaming', async () => {
     setup({
       messages: [msg('user', 3 * HOUR), msg('agent', 3 * HOUR)],

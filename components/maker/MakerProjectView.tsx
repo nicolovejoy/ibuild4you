@@ -42,7 +42,10 @@ import { BriefSwitcher } from '@/components/brief-switcher'
 import { useQueryClient } from '@tanstack/react-query'
 import type { Session, WireframeMockup, ProjectFile } from '@/lib/types'
 
-export function MakerProjectView({ projectId, userEmail }: { projectId: string; userEmail: string }) {
+// participantView (#110): a builder/admin deliberately joined the conversation
+// via ?view=chat — same chat surface, plus a banner with a way back to the
+// builder view. Sender identity is server-derived either way.
+export function MakerProjectView({ projectId, userEmail, participantView }: { projectId: string; userEmail: string; participantView?: boolean }) {
   const router = useRouter()
   const { data: project, isLoading: projectLoading } = useProject(projectId)
   const { data: sessions } = useSessions(projectId)
@@ -161,6 +164,22 @@ export function MakerProjectView({ projectId, userEmail }: { projectId: string; 
         </div>
       </header>
 
+      {participantView && (
+        <div className="bg-blue-50 border-b border-blue-200">
+          <div className="max-w-2xl mx-auto px-4 py-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-sm">
+            <span className="text-blue-900">
+              You&rsquo;ve joined this conversation{displayName ? ` as ${displayName}` : ''} — everyone on this brief sees your messages.
+            </span>
+            <button
+              onClick={() => router.push(`/projects/${project?.slug || projectId}`)}
+              className="text-blue-700 hover:text-blue-900 font-medium underline underline-offset-2 shrink-0"
+            >
+              Back to builder view
+            </button>
+          </div>
+        </div>
+      )}
+
       <main className="max-w-2xl mx-auto px-4 py-6 space-y-4">
         {/* Always-open chat */}
         <MakerChat
@@ -170,6 +189,7 @@ export function MakerProjectView({ projectId, userEmail }: { projectId: string; 
           sessionsLoaded={!!sessions}
           projectFiles={projectFiles || []}
           projectLastMakerMessageAt={project?.last_maker_message_at ?? null}
+          participantView={!!participantView}
         />
 
         {/* Layout mockups from the active session */}
@@ -198,6 +218,7 @@ function MakerChat({
   sessionsLoaded,
   projectFiles,
   projectLastMakerMessageAt,
+  participantView,
 }: {
   projectId: string
   userEmail: string
@@ -205,6 +226,7 @@ function MakerChat({
   sessionsLoaded: boolean
   projectFiles: ProjectFile[]
   projectLastMakerMessageAt: string | null
+  participantView: boolean
 }) {
   const queryClient = useQueryClient()
   const createSession = useCreateSession()
@@ -253,6 +275,9 @@ function MakerChat({
   // on remount within the same tab.
   useEffect(() => {
     if (!sessionId || !savedMessages || messagesLoading || streaming || kickoffAttempted.current) return
+    // A builder-side participant opening the chat isn't maker re-engagement —
+    // the server declines too (#110); skipping here just saves the round-trip.
+    if (participantView) return
     if (!shouldKickoff(savedMessages, Date.now(), { projectLastMakerMessageAt })) return
     const lockKey = `kickoff:${sessionId}`
     try {
@@ -263,7 +288,7 @@ function MakerChat({
     }
     kickoffAttempted.current = true
     kickoff(sessionId)
-  }, [sessionId, savedMessages, messagesLoading, streaming, kickoff, projectLastMakerMessageAt])
+  }, [sessionId, savedMessages, messagesLoading, streaming, kickoff, projectLastMakerMessageAt, participantView])
 
   const addFiles = useCallback((files: FileList | File[]) => {
     const newFiles = Array.from(files)

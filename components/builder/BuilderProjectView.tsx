@@ -947,9 +947,12 @@ function StatusStrip({
   justImported?: { configUpdated: boolean } | null
   onImportedConsumed?: () => void
 }) {
+  const router = useRouter()
   const { data: members } = useProjectMembers(project.id)
   const { data: activeMessages } = useMessages(activeSession?.id)
   const hasUserMessages = activeMessages?.some((m) => m.role === 'user') ?? false
+
+  const joinConversation = () => router.push(`/projects/${project.slug || project.id}?view=chat`)
 
   const roster = makerRoster(members, project)
   const dispatch = getDispatchState({
@@ -982,6 +985,17 @@ function StatusStrip({
             <span className="truncate">{roster.canSend ? roster.names : 'No maker yet'}</span>
           </span>
           <span className="text-xs text-gray-400">{remindersLine}</span>
+          {/* Dual-role (#110): the builder view is read-only, so this is the
+              explicit way in — opens the maker chat as yourself. */}
+          {activeSession && (
+            <button
+              onClick={() => joinConversation()}
+              className="flex items-center gap-1 text-sm text-brand-navy hover:underline underline-offset-2 shrink-0"
+            >
+              <MessageSquare className="h-3.5 w-3.5" />
+              Join the conversation
+            </button>
+          )}
         </div>
         <div className="shrink-0">
           {dispatch.kind === 'invite' && (

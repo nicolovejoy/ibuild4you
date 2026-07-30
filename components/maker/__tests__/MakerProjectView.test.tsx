@@ -114,13 +114,13 @@ vi.mock('@/components/MigrationBanner', () => ({
 
 import { MakerProjectView } from '../MakerProjectView'
 
-function renderView() {
+function renderView(props: { participantView?: boolean } = {}) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
   return render(
     <QueryClientProvider client={client}>
-      <MakerProjectView projectId="p1" userEmail="maker@example.com" />
+      <MakerProjectView projectId="p1" userEmail="maker@example.com" {...props} />
     </QueryClientProvider>,
   )
 }
@@ -154,6 +154,23 @@ describe('MakerProjectView', () => {
     // A textarea exists in the composer
     const textareas = document.querySelectorAll('textarea')
     expect(textareas.length).toBeGreaterThan(0)
+  })
+
+  it('shows the participant banner with a back link when a builder joins (#110)', () => {
+    renderView({ participantView: true })
+    expect(screen.getByText(/you.ve joined this conversation/i)).toBeTruthy()
+    expect(screen.getByRole('button', { name: /back to builder view/i })).toBeTruthy()
+  })
+
+  it('navigates back to the builder view from the banner', () => {
+    renderView({ participantView: true })
+    fireEvent.click(screen.getByRole('button', { name: /back to builder view/i }))
+    expect(mockPush).toHaveBeenCalledWith('/projects/test')
+  })
+
+  it('shows no participant banner for a plain maker', () => {
+    renderView()
+    expect(screen.queryByText(/you.ve joined this conversation/i)).toBeNull()
   })
 
   it('shows the name prompt when the maker has no first name', () => {
