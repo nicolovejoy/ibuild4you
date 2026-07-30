@@ -361,6 +361,50 @@ describe('POST /api/chat', () => {
     expect(typeof args.last_maker_message_at).toBe('string')
   })
 
+  // --- Dual-role participation (#110) ---
+  // Builder-side senders chat without counting as maker activity: their
+  // messages must not silence reminder nudges, move the turn indicator, or
+  // queue the builder-notify digest.
+
+  it('does NOT stamp maker activity when a builder posts (#110)', async () => {
+    mockGetProjectRole.mockResolvedValue('builder')
+    const res = await POST(makeRequest({ session_id: 's1', content: 'Builder here' }))
+    expect(res.status).toBe(200)
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const calls = mockUpdate.mock.calls as any[][]
+    expect(calls.some((c) => c[0] && typeof c[0] === 'object' && 'last_maker_message_at' in c[0])).toBe(false)
+    expect(calls.some((c) => c[0] && typeof c[0] === 'object' && 'notify_after' in c[0])).toBe(false)
+  })
+
+  it('does NOT stamp maker activity when an owner posts (admins resolve to owner)', async () => {
+    mockGetProjectRole.mockResolvedValue('owner')
+    await POST(makeRequest({ session_id: 's1', content: 'Owner here' }))
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const calls = mockUpdate.mock.calls as any[][]
+    expect(calls.some((c) => c[0] && typeof c[0] === 'object' && 'last_maker_message_at' in c[0])).toBe(false)
+  })
+
+  it('still stamps maker activity when an apprentice posts', async () => {
+    mockGetProjectRole.mockResolvedValue('apprentice')
+    await POST(makeRequest({ session_id: 's1', content: 'Apprentice here' }))
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const calls = mockUpdate.mock.calls as any[][]
+    expect(calls.some((c) => c[0] && typeof c[0] === 'object' && 'last_maker_message_at' in c[0])).toBe(true)
+  })
+
+  it('stores sender identity on a builder message like any other', async () => {
+    mockGetProjectRole.mockResolvedValue('builder')
+    await POST(makeRequest({ session_id: 's1', content: 'Builder here' }))
+
+    const stored = addCalls.find((c) => c.collection === 'messages' && c.data.role === 'user')
+    expect(stored).toBeDefined()
+    expect(stored!.data.sender_email).toBe('user@ibuild4you.com')
+    expect(stored!.data.sender_display_name).toBe('Test User')
+  })
+
   // --- Multi-human brief (5b) ---
 
   it('does NOT name-prefix turns when only one human has posted', async () => {

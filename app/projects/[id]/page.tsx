@@ -3,16 +3,18 @@
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useApproval } from '@/lib/hooks/useApproval'
 import { useClaimProject, useResolveProject } from '@/lib/query/hooks'
-import { useRouter, useParams } from 'next/navigation'
+import { useRouter, useParams, useSearchParams } from 'next/navigation'
 import { useEffect } from 'react'
 import { BuilderProjectView } from '@/components/builder/BuilderProjectView'
 import { MakerProjectView } from '@/components/maker/MakerProjectView'
+import { selectProjectView, isBuilderSideRole } from '@/lib/projects/project-view'
 
 export default function ProjectPage() {
   const { user, loading: authLoading, isAuthenticated } = useAuth()
   const { approved, loading: approvalLoading } = useApproval()
   const router = useRouter()
   const params = useParams()
+  const searchParams = useSearchParams()
   const slugOrId = params.id as string
 
   // Resolve slug or Firestore ID to a project. Response includes viewer_role —
@@ -49,13 +51,19 @@ export default function ProjectPage() {
     )
   }
 
-  // builder+ (or admin) gets the builder view, everyone else gets maker view
-  const isBuilder = role === 'owner' || role === 'builder' || role === 'admin'
+  // builder+ (or admin) gets the read-only builder view (#120) by default,
+  // and can explicitly join the conversation via ?view=chat (#110).
+  const view = selectProjectView(role, searchParams.get('view'))
 
-  if (isBuilder) {
-    // Builder view is read-only (#120) — no sender identity needed.
+  if (view === 'builder') {
     return <BuilderProjectView projectId={projectId} />
   }
 
-  return <MakerProjectView projectId={projectId} userEmail={user.email || ''} />
+  return (
+    <MakerProjectView
+      projectId={projectId}
+      userEmail={user.email || ''}
+      participantView={isBuilderSideRole(role)}
+    />
+  )
 }

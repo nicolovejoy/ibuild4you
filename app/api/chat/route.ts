@@ -1,4 +1,5 @@
-import { getAuthenticatedUser, getAdminDb, getProjectRole, getUserDisplayName, hasSystemRole } from '@/lib/api/firebase-server-helpers'
+import { getAuthenticatedUser, getAdminDb, getProjectRole, getUserDisplayName } from '@/lib/api/firebase-server-helpers'
+import { countsAsMakerActivity } from '@/lib/projects/project-view'
 import { buildSystemPrompt } from '@/lib/agent/system-prompt'
 import { fetchPrototypeFeedback } from '@/lib/api/prototype-feedback'
 import { fetchPrototypeContext } from '@/lib/api/prototype-context'
@@ -137,7 +138,9 @@ async function handleChat(
   // notify_after has passed and sends a single digest email; the same cron
   // also auto-regenerates the brief when last_maker_message_at is older than
   // 10 minutes and the brief is stale.
-  if (!hasSystemRole(auth, 'admin')) {
+  // Maker-side senders only (#110): a builder/owner/admin joining the chat
+  // must not silence reminder nudges or move the turn indicator.
+  if (countsAsMakerActivity(role)) {
     const notifyAfter = new Date(Date.now() + NOTIFY_DEBOUNCE_MS).toISOString()
     const existingPending = projectData.notify_pending_since as string | undefined | null
     await db.collection('projects').doc(projectId).update({

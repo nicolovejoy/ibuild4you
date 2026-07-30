@@ -1,4 +1,5 @@
 import { getAuthenticatedUser, getAdminDb, getProjectRole, getUserDisplayName } from '@/lib/api/firebase-server-helpers'
+import { countsAsMakerActivity } from '@/lib/projects/project-view'
 import { buildSystemPrompt } from '@/lib/agent/system-prompt'
 import { fetchPrototypeFeedback } from '@/lib/api/prototype-feedback'
 import { fetchPrototypeContext } from '@/lib/api/prototype-context'
@@ -75,6 +76,11 @@ export async function POST(request: Request) {
       headers: { 'Content-Type': 'application/json' },
     })
   }
+
+  // Kickoff is maker re-engagement (#110): a builder/admin opening the
+  // participant view shouldn't consume it — the solo-maker greeting would name
+  // the absent maker, and last_kickoff_at would block the real greeting later.
+  if (!countsAsMakerActivity(role)) return noop('builder_side_opener')
 
   // Load conversation history for this session
   const messagesSnap = await db
