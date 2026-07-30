@@ -5,7 +5,7 @@ import type { BriefRole, MemberRole, SystemRole } from '@/lib/types'
 import { getCachedUser, setCachedUser } from './auth-cache'
 import { isActiveMember } from '@/lib/members/lifecycle'
 import { normalizeEmail } from '@/lib/email/normalize'
-import { garmCheck, GARM_PROJECT } from '@/lib/garm'
+import { garmCheck, resolveCanonicalEmail, GARM_PROJECT } from '@/lib/garm'
 import {
   scheduleGarmShadowCheck,
   shadowCheckApprovedEmail,
@@ -227,7 +227,11 @@ export async function getAuthenticatedUser(request: Request): Promise<AuthSucces
   // Normalize at the token boundary (#155) — every downstream auth.email
   // consumer (isAdminEmail, getProjectRole, project_members writes, ...)
   // inherits a clean value from here without re-normalizing individually.
-  const email = normalizeEmail(decoded.email)
+  // Then resolve aliases (#169): if Garm maps this address to a canonical
+  // principal, downstream sees the canonical identity — memberships, roles,
+  // and attribution unify across both addresses. Resolution fails open to the
+  // token email and never runs on an empty one.
+  const email = await resolveCanonicalEmail(normalizeEmail(decoded.email))
 
   // Step 2: load user doc (with cache). Firestore errors here are infra failures,
   // NOT auth failures — return 503 so the client doesn't kick the user to the

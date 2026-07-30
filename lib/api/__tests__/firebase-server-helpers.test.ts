@@ -20,8 +20,15 @@ import type { SystemRole } from '@/lib/types'
 // isApprovedEmail's Garm-shadow side effect (docs/garm-consumer-plan.md Phase 4)
 // calls out to garmCheck — mock it so these tests exercise the real
 // shadowCheckApprovedEmail/scheduleGarmShadowCheck wiring without a network call.
-vi.mock('@/lib/garm', () => ({ garmCheck: vi.fn(), GARM_PROJECT: 'ibuild4you' }))
-import { garmCheck } from '@/lib/garm'
+vi.mock('@/lib/garm', () => ({
+  garmCheck: vi.fn(),
+  GARM_PROJECT: 'ibuild4you',
+  // Identity by default — aliasing tests override per-case. Implementation set
+  // at creation so vi.clearAllMocks() (which keeps implementations) can't
+  // strand getAuthenticatedUser on an undefined resolver.
+  resolveCanonicalEmail: vi.fn(async (email: string) => email),
+}))
+import { garmCheck, resolveCanonicalEmail } from '@/lib/garm'
 
 // Mock Firebase Admin SDK — we don't want real Firebase calls in unit tests
 let mockUserDoc: { exists: boolean; data: () => Record<string, unknown> | undefined } = {
@@ -669,6 +676,38 @@ describe('getAuthenticatedUser', () => {
 
     expect(result.error).toBeNull()
     expect(result.email).toBe('nico@example.com')
+  })
+
+  // #169: alias → canonical substitution at the token boundary. The resolver
+  // (Garm-backed) may map the token's email to a canonical principal; every
+  // downstream auth.email consumer then sees one identity for both addresses.
+  it('substitutes the canonical email when the resolver maps an alias', async () => {
+    mockToken({ uid: 'alias-uid', email: 'alias@example.com' })
+    vi.mocked(resolveCanonicalEmail).mockResolvedValueOnce('canon@example.com')
+
+    const result = await getAuthenticatedUser(authedRequest())
+    expect(result.error).toBeNull()
+    expect(result.email).toBe('canon@example.com')
+  })
+
+  it('passes the resolver the already-normalized token email', async () => {
+    mockToken({ uid: 'alias-uid', email: ' Alias@Example.COM ' })
+    await getAuthenticatedUser(authedRequest())
+    expect(resolveCanonicalEmail).toHaveBeenCalledWith('alias@example.com')
+  })
+
+  it('keeps the token email when the resolver is identity (no alias)', async () => {
+    mockToken({ uid: 'user-123', email: 'plain@example.com' })
+    const result = await getAuthenticatedUser(authedRequest())
+    expect(result.error).toBeNull()
+    expect(result.email).toBe('plain@example.com')
+  })
+
+  it('an email-less token stays "" — substitution never invents an identity (#161 edge)', async () => {
+    mockToken({ uid: 'no-email-uid', email: undefined as unknown as string })
+    const result = await getAuthenticatedUser(authedRequest())
+    expect(result.error).toBeNull()
+    expect(result.email).toBe('')
   })
 
   it('reads system_roles from the users doc when present', async () => {
