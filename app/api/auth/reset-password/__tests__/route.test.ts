@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { POST } from '../route'
 import { _resetRateLimit } from '@/lib/api/rate-limit'
+import { copy } from '@/lib/copy'
 
 // Public, unauthenticated endpoint. Three things it must never do:
 //   1. reveal whether an address has an account (enumeration)
@@ -96,14 +97,23 @@ describe('POST /api/auth/reset-password', () => {
   })
 
   it('rate-limits one IP hammering many addresses', async () => {
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 10; i++) {
       const res = await POST(post(`person${i}@example.com`))
       expect(res.status).toBe(200)
     }
 
-    const blocked = await POST(post('person6@example.com'))
+    const blocked = await POST(post('person11@example.com'))
     expect(blocked.status).toBe(429)
-    expect(mockSendMakerEmail).toHaveBeenCalledTimes(5)
+    expect(mockSendMakerEmail).toHaveBeenCalledTimes(10)
+  })
+
+  // The on-screen confirmation is the other half of the spam fix: the email
+  // itself is useless advice if they never find it. Pinned here rather than
+  // only in the e2e, which shares a rate-limit budget and can't always run.
+  it('the on-screen confirmation tells them to check junk and move it to the inbox', () => {
+    const confirmation = copy.auth.resetEmailSent('maker@example.com')
+    expect(confirmation.toLowerCase()).toMatch(/junk|spam/)
+    expect(confirmation.toLowerCase()).toContain('inbox')
   })
 
   it('rate-limits one address being mailbombed from many IPs', async () => {

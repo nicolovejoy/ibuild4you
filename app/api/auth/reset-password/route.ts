@@ -28,9 +28,12 @@ import { copy } from '@/lib/copy'
 //      per address (many IPs, one victim getting mailbombed).
 
 const ONE_HOUR_MS = 60 * 60 * 1000
-// One person legitimately mistyping their address a few times stays under this.
-const MAX_PER_IP_PER_HOUR = 5
-// Tighter: nobody needs their own reset mailed 4× in an hour.
+// Per-IP is the anti-spray control, and it has to share a budget with everyone
+// behind the same NAT — a household or small office is one IP to us. Kept
+// loose enough that co-located makers can't lock each other out.
+const MAX_PER_IP_PER_HOUR = 10
+// Per-address is the anti-mailbomb control and the one that actually protects
+// a person, so it stays tight: nobody needs their own reset mailed 4× an hour.
 const MAX_PER_EMAIL_PER_HOUR = 3
 
 // Identical success envelope for every non-rate-limited outcome. Kept as one
