@@ -136,25 +136,37 @@ try {
     refreshed.providerData.some((p) => p.providerId === 'password')
   )
 
-  // Sign in for real against preview's Firebase project via REST.
-  const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY
-  if (apiKey) {
-    const res = await fetch(
-      `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: THROWAWAY,
-          password: NEW_PASSWORD,
-          returnSecureToken: true,
-        }),
-      }
-    )
-    check('the new password actually signs in', res.status === 200, `status ${res.status}`)
-  } else {
-    console.log('  --  skipped sign-in check (NEXT_PUBLIC_FIREBASE_API_KEY not in env)')
-  }
+  // Sign in through the real UI with the password we just set. The throwaway
+  // isn't on the allowlist, so a SUCCESSFUL credential check lands on
+  // /not-approved — that gate runs after authentication. Reaching it (rather
+  // than a bad-credential error) is the proof the password works.
+  await page.goto(`${BASE}/auth/login?${q}`, { waitUntil: 'domcontentloaded' })
+  const pwToggle = page.getByRole('button', { name: /sign in with password/i })
+  if (await pwToggle.isVisible().catch(() => false)) await pwToggle.click()
+
+  await page.fill('#pw-email', THROWAWAY)
+  await page.fill('#password', NEW_PASSWORD)
+  // #104 gotcha: the password form's submit button and the mode toggle share
+  // the label "Sign in with password", so select the submit inside the form.
+  await page.locator('form button[type="submit"]').first().click()
+
+  const outcome = await Promise.race([
+    page
+      .locator('text=/incorrect/i')
+      .first()
+      .waitFor({ timeout: 20_000 })
+      .then(() => 'rejected'),
+    page
+      .locator("text=/hang tight|isn't approved|approved yet/i")
+      .first()
+      .waitFor({ timeout: 20_000 })
+      .then(() => 'authenticated'),
+    page
+      .waitForURL(/\/dashboard/, { timeout: 20_000 })
+      .then(() => 'authenticated'),
+  ]).catch(() => 'timeout')
+
+  check('the new password actually signs in', outcome === 'authenticated', `outcome: ${outcome}`)
 } finally {
   await browser.close()
   await auth.deleteUser(user.uid)
