@@ -5,10 +5,10 @@ import Link from 'next/link'
 import {
   signInWithPopup,
   signInWithEmailAndPassword,
-  sendPasswordResetEmail,
   GoogleAuthProvider,
   onAuthStateChanged,
 } from 'firebase/auth'
+import { requestPasswordReset } from '@/lib/auth/request-reset'
 import { auth } from '@/lib/firebase/client'
 import { authErrorMessage } from '@/lib/auth/password'
 import { copy } from '@/lib/copy'
@@ -93,20 +93,14 @@ export default function LoginPage() {
       setError('Enter your email above first, then tap “Forgot password?”')
       return
     }
-    try {
-      // continueUrl: Firebase's hosted "Password changed" page shows a
-      // Continue button back to sign-in instead of dead-ending.
-      await sendPasswordResetEmail(auth, email.trim(), {
-        url: `${window.location.origin}/auth/login`,
-      })
-    } catch (err) {
-      // Don't leak whether the email exists — show the same confirmation on
-      // user-not-found as on success. Only surface genuine errors (rate limit, network).
-      const code = err && typeof err === 'object' && 'code' in err ? String((err as { code: unknown }).code) : ''
-      if (code && code !== 'auth/user-not-found' && code !== 'auth/invalid-email') {
-        setError(authErrorMessage(err))
-        return
-      }
+    // Sent by us via Resend, not by Firebase — same sender domain as the rest
+    // of our mail, so it's less likely to land in spam. The route always
+    // answers 200 whether or not the account exists, so there's nothing to
+    // leak here; only a rate limit is worth surfacing.
+    const result = await requestPasswordReset(email)
+    if (!result.ok) {
+      setError(result.message)
+      return
     }
     setInfo(copy.auth.resetEmailSent(email.trim()))
   }

@@ -90,8 +90,32 @@ export const copy = {
       invite: (projectTitle: string) => `Your brief for "${projectTitle}"`,
       nudge: (projectTitle: string) => `New conversation ready for "${projectTitle}"`,
       reminder: (projectTitle: string) => `Your conversation for "${projectTitle}" is ready`,
+      passwordReset: 'Set a new password for iBuild4you',
     },
   },
+
+  // Password-reset email. We send this ourselves via Resend rather than letting
+  // Firebase send it, so it comes from the same noreply@ibuild4you.com sender
+  // as every other email we send — one warmed, DKIM-aligned domain instead of
+  // two. A maker's reset mail landed in spam and sat there until the link
+  // expired, hence the closing line: asking them to move it to the inbox is the
+  // only lever we have on their filter.
+  //
+  // Deliberately states no expiry duration — Firebase's window is a console
+  // setting we don't control, and a wrong number is worse than none.
+  passwordResetEmail: ({ resetLink }: { resetLink: string }) =>
+    [
+      'Someone (probably you) asked to reset the password for your iBuild4you account.',
+      '',
+      'Set a new password here:',
+      resetLink,
+      '',
+      "If the link has expired by the time you get to it, just tap “Forgot password?” on the sign-in page again — it always works.",
+      '',
+      "If you didn't ask for this, you can ignore this email. Nothing changes until you set a new password.",
+      '',
+      'PS — if this landed in your junk folder, please move it to your inbox so our emails reach you next time.',
+    ].join('\n'),
 
   // --- Dashboard ---
   // NOTE: in the UI the umbrella construct is called "brief". The internal data
