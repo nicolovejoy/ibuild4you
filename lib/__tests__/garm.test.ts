@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { garmCheck, _resetGarmCache } from '../garm'
+import { garmCheck, resolveCanonicalEmail, _resetGarmCache } from '../garm'
 
 // =============================================================================
 // Garm authorization client (Garm 1/4). Fail-closed gate over the /gnipahellir
@@ -189,6 +189,93 @@ describe('garmCheck — caching', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+})
+
+describe('garmCheck — canonical_email (aliasing, #169)', () => {
+  it('surfaces a canonical_email from the response, normalized', async () => {
+    vi.stubGlobal(
+      'fetch',
+      mockFetchOnce({ allowed: true, role: 'viewer', canonical_email: '  Canon@Example.COM ' })
+    )
+    const r = await garmCheck('alias@example.com', 'ibuild4you')
+    expect(r.allowed).toBe(true)
+    expect(r.canonicalEmail).toBe('canon@example.com')
+  })
+
+  it('omits canonicalEmail entirely when the response has no canonical_email', async () => {
+    vi.stubGlobal('fetch', mockFetchOnce({ allowed: true, role: 'viewer' }))
+    const r = await garmCheck('sam@example.com', 'ibuild4you')
+    // Omitted, not null/undefined-valued — keeps pre-aliasing toEqual assertions valid.
+    expect('canonicalEmail' in r).toBe(false)
+  })
+
+  it('ignores an off-shape canonical_email (non-string or not an email)', async () => {
+    vi.stubGlobal('fetch', mockFetchOnce({ allowed: true, role: 'viewer', canonical_email: 42 }))
+    const a = await garmCheck('a@example.com', 'ibuild4you')
+    expect('canonicalEmail' in a).toBe(false)
+
+    vi.stubGlobal('fetch', mockFetchOnce({ allowed: true, role: 'viewer', canonical_email: 'not-an-email' }))
+    const b = await garmCheck('b@example.com', 'ibuild4you')
+    expect('canonicalEmail' in b).toBe(false)
+
+    vi.stubGlobal('fetch', mockFetchOnce({ allowed: true, role: 'viewer', canonical_email: '' }))
+    const c = await garmCheck('c@example.com', 'ibuild4you')
+    expect('canonicalEmail' in c).toBe(false)
+  })
+})
+
+describe('resolveCanonicalEmail (#169)', () => {
+  it('returns the canonical email when Garm reports the input is an alias', async () => {
+    vi.stubGlobal(
+      'fetch',
+      mockFetchOnce({ allowed: true, role: 'viewer', canonical_email: 'canon@example.com' })
+    )
+    await expect(resolveCanonicalEmail('alias@example.com')).resolves.toBe('canon@example.com')
+  })
+
+  it('returns the normalized input when Garm sends no canonical_email', async () => {
+    vi.stubGlobal('fetch', mockFetchOnce({ allowed: true, role: 'viewer' }))
+    await expect(resolveCanonicalEmail(' Sam@Example.COM ')).resolves.toBe('sam@example.com')
+  })
+
+  it('returns the normalized input when the check fails (resolution is fail-open)', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('garm down') }))
+    await expect(resolveCanonicalEmail('sam@example.com')).resolves.toBe('sam@example.com')
+  })
+
+  it('returns "" for an empty/missing email without calling Garm (#161 edge)', async () => {
+    const f = vi.fn()
+    vi.stubGlobal('fetch', f)
+    await expect(resolveCanonicalEmail('')).resolves.toBe('')
+    await expect(resolveCanonicalEmail('   ')).resolves.toBe('')
+    expect(f).not.toHaveBeenCalled()
+  })
+
+  it('is a no-op (no fetch) when GARM_GATING=off — preview / kill-switch path', async () => {
+    process.env.GARM_GATING = 'off'
+    const f = vi.fn()
+    vi.stubGlobal('fetch', f)
+    await expect(resolveCanonicalEmail('Sam@Example.com')).resolves.toBe('sam@example.com')
+    expect(f).not.toHaveBeenCalled()
+  })
+
+  it('is a no-op (no fetch, no warn) when GARM_URL/GARM_KEY are unset', async () => {
+    delete process.env.GARM_URL
+    delete process.env.GARM_KEY
+    const f = vi.fn()
+    vi.stubGlobal('fetch', f)
+    await expect(resolveCanonicalEmail('sam@example.com')).resolves.toBe('sam@example.com')
+    expect(f).not.toHaveBeenCalled()
+  })
+
+  it('shares the check cache — a resolve then a check for the same email fetches once', async () => {
+    const f = mockFetchOnce({ allowed: true, role: 'viewer', canonical_email: 'canon@example.com' })
+    vi.stubGlobal('fetch', f)
+    await resolveCanonicalEmail('alias@example.com')
+    const r = await garmCheck('alias@example.com', 'ibuild4you', 'viewer')
+    expect(r.canonicalEmail).toBe('canon@example.com')
+    expect(f).toHaveBeenCalledOnce()
   })
 })
 

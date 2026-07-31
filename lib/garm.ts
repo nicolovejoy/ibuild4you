@@ -30,6 +30,11 @@ export type Role = (typeof ROLES)[number]
 export interface CheckResult {
   allowed: boolean
   role: Role | null
+  // Aliasing (#169): the canonical principal the decision was computed for,
+  // present only when Garm resolved the checked email as an alias. Optional and
+  // OMITTED (not undefined-valued) when absent — pre-aliasing Garm responses
+  // and consumers are unaffected.
+  canonicalEmail?: string
 }
 
 const TTL_MS = 60_000
@@ -56,7 +61,15 @@ function interpret(data: unknown): CheckResult {
   if (typeof d.allowed !== 'boolean' || (d.role != null && role === null)) {
     console.warn('[garm] unexpected response shape:', data)
   }
-  return { allowed, role }
+  const result: CheckResult = { allowed, role }
+  // Same defensive posture as `allowed`/`role`: only a string that still looks
+  // like an email after normalization makes it through; anything else is
+  // silently dropped rather than substituted into the caller's identity.
+  if (typeof d.canonical_email === 'string') {
+    const canonical = normalizeEmail(d.canonical_email)
+    if (canonical.includes('@')) result.canonicalEmail = canonical
+  }
+  return result
 }
 
 /**
@@ -109,5 +122,34 @@ export async function garmCheck(
       err instanceof Error ? err.message : err
     )
     return closed
+  }
+}
+
+/**
+ * Resolve an email to its canonical principal (aliasing, #169). Rides the same
+ * /gnipahellir check (and its 60s cache) as the sign-in gate; Garm answers with
+ * `canonical_email` only when the address is a registered alias.
+ *
+ * This is identity RESOLUTION, not an authz decision — it fails OPEN to the
+ * normalized input. A Garm outage degrades an aliased user to their raw token
+ * identity (they may 403 on member-gated routes until Garm is back); it never
+ * grants anyone anything, and the sign-in gate stays fail-closed independently.
+ *
+ * No-ops (no network) on an empty email, when GARM_GATING=off (preview / kill
+ * switch — no Garm wiring there), or when GARM_URL/GARM_KEY are unset. PR H
+ * removes the kill switch; this guard needs revisiting then.
+ */
+export async function resolveCanonicalEmail(email: string): Promise<string> {
+  const norm = normalizeEmail(email)
+  if (!norm) return norm
+  if (process.env.GARM_GATING === 'off') return norm
+  if (!process.env.GARM_URL || !process.env.GARM_KEY) return norm
+  try {
+    const { canonicalEmail } = await garmCheck(norm, GARM_PROJECT, 'viewer')
+    return canonicalEmail ?? norm
+  } catch {
+    // garmCheck never throws by contract, but this runs on every authenticated
+    // request — belt and suspenders.
+    return norm
   }
 }
