@@ -51,7 +51,8 @@ describe('mintResetLinkForExistingAccount', () => {
     expect(mockGeneratePasswordResetLink).toHaveBeenCalledWith('maker@example.com', {
       url: 'https://ibuild4you.com/auth/login',
     })
-    expect(link).toBe('https://example.com/reset?oobCode=abc')
+    // Re-hosted onto our own handler; the oobCode rides along untouched.
+    expect(link).toBe('https://ibuild4you.com/auth/action?oobCode=abc')
   })
 
   it('attaches a password provider to a provider-less account so the link works', async () => {
@@ -61,7 +62,7 @@ describe('mintResetLinkForExistingAccount', () => {
     const link = await mintResetLinkForExistingAccount('legacy@example.com')
 
     expect(mockUpdateUser).toHaveBeenCalledWith('passcode-era-uid', { password: expect.any(String) })
-    expect(link).toBe('https://example.com/reset?oobCode=def')
+    expect(link).toBe('https://ibuild4you.com/auth/action?oobCode=def')
   })
 
   it('attaches a password to a Google-only account without disturbing Google sign-in', async () => {
@@ -75,7 +76,7 @@ describe('mintResetLinkForExistingAccount', () => {
 
     // updateUser only ADDS a password credential; google.com stays attached.
     expect(mockUpdateUser).toHaveBeenCalledWith('google-uid', { password: expect.any(String) })
-    expect(link).toBe('https://example.com/reset?oobCode=ghi')
+    expect(link).toBe('https://ibuild4you.com/auth/action?oobCode=ghi')
   })
 
   it('normalizes the email before every Auth call', async () => {

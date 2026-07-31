@@ -11,6 +11,12 @@ import { ensureInviteResetLink } from '../ensure-invite-account'
 // optimization (see PR write-up: that optimization was not empirically
 // re-verified and is left for a follow-up, not gambled on here).
 
+// Returned links are re-hosted onto our own /auth/action handler (see
+// lib/auth/rewrite-action-link.ts) so an invitee sets their first password on
+// ibuild4you.com — a password manager keys the credential to that domain, and
+// Firebase's own page is on <project>.firebaseapp.com. Hence the assertions
+// below expect /auth/action rather than whatever the Admin SDK handed back.
+
 const mockGetUserByEmail = vi.fn()
 const mockCreateUser = vi.fn()
 const mockUpdateUser = vi.fn()
@@ -48,7 +54,7 @@ describe('ensureInviteResetLink', () => {
     expect(mockGeneratePasswordResetLink).toHaveBeenCalledWith('new@example.com', {
       url: 'https://ibuild4you.com/auth/login',
     })
-    expect(link).toBe('https://example.com/reset?oobCode=abc')
+    expect(link).toBe('https://ibuild4you.com/auth/action?oobCode=abc')
   })
 
   it('attaches a password provider to an existing provider-less account (e.g. passcode-only)', async () => {
@@ -64,7 +70,7 @@ describe('ensureInviteResetLink', () => {
     expect(mockUpdateUser).toHaveBeenCalledWith('existing-uid', {
       password: expect.any(String),
     })
-    expect(link).toBe('https://example.com/reset?oobCode=def')
+    expect(link).toBe('https://ibuild4you.com/auth/action?oobCode=def')
   })
 
   it('leaves an account alone when it already has the password provider', async () => {
@@ -78,7 +84,7 @@ describe('ensureInviteResetLink', () => {
 
     expect(mockCreateUser).not.toHaveBeenCalled()
     expect(mockUpdateUser).not.toHaveBeenCalled()
-    expect(link).toBe('https://example.com/reset?oobCode=ghi')
+    expect(link).toBe('https://ibuild4you.com/auth/action?oobCode=ghi')
   })
 
   it('leaves a Google-only account alone (still attaches password so reset is guaranteed)', async () => {
@@ -96,7 +102,7 @@ describe('ensureInviteResetLink', () => {
     // no new account is created for an email that wasn't already invited.
     expect(mockCreateUser).not.toHaveBeenCalled()
     expect(mockUpdateUser).toHaveBeenCalledWith('google-uid', { password: expect.any(String) })
-    expect(link).toBe('https://example.com/reset?oobCode=jkl')
+    expect(link).toBe('https://ibuild4you.com/auth/action?oobCode=jkl')
   })
 
   it('normalizes email before every Auth call', async () => {

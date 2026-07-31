@@ -1,6 +1,7 @@
 import crypto from 'crypto'
 import { getAdminAuth } from '@/lib/firebase/admin'
 import { normalizeEmail } from '@/lib/email/normalize'
+import { rewriteActionLink } from '@/lib/auth/rewrite-action-link'
 
 // Garm consumer plan Phase 1 / PR A (docs/garm-consumer-plan.md): invites move
 // from "here's your passcode" to "here's a link to set your password" — and
@@ -49,9 +50,13 @@ export async function ensureInviteResetLink(rawEmail: string): Promise<string | 
     // to sign-in instead of dead-ending. Outbound email always points at prod
     // (same rule as getServerShareLink).
     const base = process.env.NEXT_PUBLIC_APP_URL || 'https://ibuild4you.com'
-    return await adminAuth.generatePasswordResetLink(email, {
+    const link = await adminAuth.generatePasswordResetLink(email, {
       url: `${base}/auth/login`,
     })
+    // Same re-hosting as the reset flow: an invitee sets their first password
+    // on ibuild4you.com, not on <project>.firebaseapp.com, so their password
+    // manager offers it back at sign-in.
+    return rewriteActionLink(link, base)
   } catch (err) {
     console.error(
       JSON.stringify({

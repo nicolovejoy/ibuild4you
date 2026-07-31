@@ -1,6 +1,7 @@
 import crypto from 'crypto'
 import { getAdminAuth } from '@/lib/firebase/admin'
 import { normalizeEmail } from '@/lib/email/normalize'
+import { rewriteActionLink } from '@/lib/auth/rewrite-action-link'
 
 // Mints a Firebase password-reset link for an account that ALREADY EXISTS.
 //
@@ -40,9 +41,12 @@ export async function mintResetLinkForExistingAccount(rawEmail: string): Promise
     // sign-in instead of dead-ending. Always prod (same rule as
     // getServerShareLink) — outbound mail must never point at a preview host.
     const base = process.env.NEXT_PUBLIC_APP_URL || 'https://ibuild4you.com'
-    return await adminAuth.generatePasswordResetLink(email, {
+    const link = await adminAuth.generatePasswordResetLink(email, {
       url: `${base}/auth/login`,
     })
+    // Re-point at our own handler so the password is typed on ibuild4you.com
+    // and password managers file it against the right domain.
+    return rewriteActionLink(link, base)
   } catch (err) {
     const code = (err as { code?: string })?.code
     // An unknown address is the expected case on a public endpoint, not an
