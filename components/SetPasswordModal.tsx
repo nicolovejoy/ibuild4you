@@ -6,14 +6,13 @@ import {
   GoogleAuthProvider,
   linkWithCredential,
   reauthenticateWithPopup,
-  sendPasswordResetEmail,
 } from 'firebase/auth'
 import type { User } from 'firebase/auth'
 import { Modal } from '@/components/ui/Modal'
 import { StatusMessage } from '@/components/ui/StatusMessage'
 import { LoadingButton } from '@/components/ui/LoadingButton'
 import { authErrorMessage, validatePassword } from '@/lib/auth/password'
-import { auth } from '@/lib/firebase/client'
+import { requestPasswordReset } from '@/lib/auth/request-reset'
 import { copy } from '@/lib/copy'
 
 interface SetPasswordModalProps {
@@ -82,9 +81,10 @@ export function SetPasswordModal({ isOpen, onClose, user }: SetPasswordModalProp
             await reauthenticateWithPopup(user, new GoogleAuthProvider())
             await linkWithCredential(user, credential)
           } else {
-            await sendPasswordResetEmail(auth, user.email, {
-              url: `${window.location.origin}/auth/login`,
-            })
+            // Via our own Resend sender rather than Firebase's — see
+            // lib/auth/request-reset.ts. Result is intentionally ignored
+            // beyond the rate-limit case: the copy is non-committal.
+            await requestPasswordReset(user.email)
             setSuccess(true)
             setResetLinkSent(true)
             return
