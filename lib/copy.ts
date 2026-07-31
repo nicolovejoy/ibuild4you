@@ -29,7 +29,7 @@ export const copy = {
         `Sign in with Google, or set a password:`,
         resetLink || `Use "Forgot password?" on the sign-in page to set one.`,
         '',
-        `(Link expired? "Forgot password?" on the sign-in page always works.)`,
+        `(Link expired? "Forgot password?" on the sign-in page always works — that email often lands in junk, so check there and move it to your inbox.)`,
       ].join('\n'),
     emailLabel: 'Invite message',
   },
@@ -204,8 +204,10 @@ export const copy = {
     passwordDivider: 'or sign in with a password',
     passwordLabel: 'Password',
     forgotPassword: 'Forgot password?',
+    // Reset mail lands in junk often enough that a maker missed it until the
+    // link expired. Asking them to move it to the inbox also trains the filter.
     resetEmailSent: (email: string) =>
-      `If an account exists for ${email}, a password reset link is on its way. Check your inbox.`,
+      `If an account exists for ${email}, a password reset link is on its way. Check your junk/spam folder too — if it's there, move it to your inbox so our emails stop getting filtered.`,
     // Set-password flow in the account menu (links email/password to the signed-in account)
     setPassword: 'Set a password',
     setPasswordHelp:
@@ -219,7 +221,8 @@ export const copy = {
       setPassword: 'Set a password',
       connectGoogle: 'Connect Google',
       dismiss: 'Dismiss',
-      resetLinkSent: 'Check your email — we sent a link to set your password.',
+      resetLinkSent:
+        "Check your email — we sent a link to set your password. Not there? Check junk/spam and move it to your inbox.",
     },
     notApprovedTitle: 'Hang tight!',
     notApprovedMessage: (email: string) =>
