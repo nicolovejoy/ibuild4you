@@ -248,6 +248,22 @@ export const copy = {
       resetLinkSent:
         "Check your email — we sent a link to set your password. Not there? Check junk/spam and move it to your inbox.",
     },
+    // Custom Firebase email-action handler at /auth/action. Hosted by us so the
+    // set-password form lives on ibuild4you.com — password managers key the
+    // saved credential to the domain, and Firebase's own page is on
+    // <project>.firebaseapp.com.
+    actionResetTitle: 'Set a new password',
+    actionResetSuccess: 'Password set. You can sign in with it now.',
+    actionRedirecting: (seconds: number) =>
+      `Taking you to sign in in ${seconds} second${seconds === 1 ? '' : 's'}…`,
+    actionExpiredTitle: 'This link has expired',
+    actionExpiredBody:
+      'Password links are single-use and time-limited. Tap "Forgot password?" on the sign-in page to get a fresh one.',
+    actionInvalidTitle: "This link isn't complete",
+    actionInvalidBody:
+      'Some email apps trim long links. Try opening it again from the original email, or request a new one from the sign-in page.',
+    actionUnsupportedTitle: 'Nothing to do here',
+    actionUnsupportedBody: 'That link is for an action this app does not use.',
     notApprovedTitle: 'Hang tight!',
     notApprovedMessage: (email: string) =>
       `Thanks for signing up. Your account (${email}) isn't approved yet. We'll let you know when you're in.`,
