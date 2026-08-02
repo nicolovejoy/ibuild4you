@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Verify (and optionally fix) that stored email fields are normalized
 // (trim + lowercase) across the collections #155 cares about. Prod data was
-// confirmed 100% clean on 2026-07-16 (see docs/155-email-normalization-plan.md
+// confirmed 100% clean on 2026-07-16 (see docs/archive/155-email-normalization-plan.md
 // §3) — this script exists to keep it that way and to close the race window
 // between that audit and the #155 deploy (a mixed-case row could only land
 // via the three raw-write sites the PR fixes).

@@ -5,7 +5,7 @@
 // Reads Firestore (approved_emails, project_members, users) READ-ONLY via the
 // with-prod-env-ro wrapper. Writes only to Garm, never to Firestore.
 //
-// Role-collapse rule (confirmed with Nico, docs/garm-2-seed-plan.md): a person
+// Role-collapse rule (confirmed with Nico, docs/archive/garm-2-seed-plan.md): a person
 // can hold different MemberRoles across briefs; Garm's project is app-level,
 // so the highest active brief role wins, mapped down to Garm's 3 tiers.
 // System admins always resolve to owner. See scripts/lib/garm-seed-plan.mjs.

@@ -327,7 +327,7 @@ Phase 5 is gated on *need*, not cost.
 ## 4. Phased implementation plan (thin, shippable, e2e-testable slices)
 
 Existing harness: preview deploy at `preview.ibuild4you.com` against the sandboxed
-`ibuild4you-preview` Firebase project (`docs/preview-firestore-split.md`), driven by
+`ibuild4you-preview` Firebase project (`docs/archive/preview-firestore-split.md`), driven by
 `scripts/e2e-*.mjs` Playwright scripts with seeded fixtures
 (`scripts/e2e-72-feedback-chat.mjs`, `scripts/seed-72-feedback.mjs` pattern,
 `with-preview-env.mjs` wrapper).
