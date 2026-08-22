@@ -31,6 +31,10 @@ yarn-error.log*
 # env files
 .env*
 !.env.local.example
+# 1Password reference files hold op:// refs, never secret values — safe to commit,
+# and committing them is the point: they make the local credential set reproducible
+# on a new machine instead of hand-assembled (see .env.ops.tpl).
+!.env.ops.tpl
 
 # vercel
 .vercel
