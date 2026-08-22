@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { getAdminDb } from '@/lib/api/firebase-server-helpers'
 import { regenerateBriefForProject } from '@/lib/api/briefs'
 import { normalizeRegenStreak, isCircuitBroken, streakAfterFailure } from '@/lib/api/brief-regen-gate'
+import { isAuthorizedCron } from '@/lib/api/cron-auth'
 
 const BRIEF_IDLE_MS = 10 * 60 * 1000 // 10 min — brief regen fires once a session has been idle this long
 
@@ -13,9 +14,7 @@ const BRIEF_IDLE_MS = 10 * 60 * 1000 // 10 min — brief regen fires once a sess
 // /api/chat still sets notify_after/notify_pending_since; this cron no longer
 // reads them.
 export async function GET(request: Request) {
-  const authHeader = request.headers.get('Authorization')
-  const secret = process.env.CRON_SECRET
-  if (secret && authHeader !== `Bearer ${secret}`) {
+  if (!isAuthorizedCron(request)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 

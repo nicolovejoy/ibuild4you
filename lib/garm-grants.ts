@@ -86,7 +86,14 @@ export function computeGrantDecision({
   return { action: 'revoke' }
 }
 
-function dualWriteEnabled(): boolean {
+/**
+ * The GARM_DUAL_WRITE kill switch. Exported because the reconcile cron
+ * (app/api/cron/garm-reconcile) is gated on the SAME switch — when dual-write
+ * is paused, Firestore and Garm are diverging by operator intent, and a
+ * reconcile that healed that divergence would defeat the pause. One predicate,
+ * so the write path and its backstop can't drift apart.
+ */
+export function isGarmDualWriteEnabled(): boolean {
   return process.env.GARM_DUAL_WRITE === 'on'
 }
 
@@ -142,7 +149,7 @@ async function revokeGrant(email: string): Promise<void> {
  * remains the source of truth regardless of what happens here.
  */
 export async function syncGarmGrantForEmail(rawEmail: string): Promise<void> {
-  if (!dualWriteEnabled()) return
+  if (!isGarmDualWriteEnabled()) return
 
   const email = normalizeEmail(rawEmail)
   if (!email) return
@@ -185,7 +192,7 @@ export async function syncGarmGrantForEmail(rawEmail: string): Promise<void> {
  * scheduleGarmShadowCheck). No-ops entirely when the kill switch is off.
  */
 export function scheduleGarmGrantSync(email: string): void {
-  if (!dualWriteEnabled()) return
+  if (!isGarmDualWriteEnabled()) return
   try {
     after(() => syncGarmGrantForEmail(email))
   } catch {

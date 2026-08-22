@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { garmCheck, resolveCanonicalEmail, _resetGarmCache } from '../garm'
+import { garmCheck, garmProbe, resolveCanonicalEmail, _resetGarmCache } from '../garm'
 
 // =============================================================================
 // Garm authorization client (Garm 1/4). Fail-closed gate over the /gnipahellir
@@ -293,5 +293,94 @@ describe('garmCheck — email normalization', () => {
     await garmCheck('sam@example.com', 'ibuild4you')
     await garmCheck('  SAM@EXAMPLE.com', 'ibuild4you')
     expect(f).toHaveBeenCalledOnce()
+  })
+})
+
+describe('garmProbe — liveness check for /api/health', () => {
+  // Unlike garmCheck, a deny (`allowed:false`) is a HEALTHY answer here — it
+  // proves URL, key, scope, and Garm's DB are all working. Only "Garm didn't
+  // answer well-formed 200" is unhealthy.
+
+  it('reports ok:false naming GARM_URL when it is unset', async () => {
+    delete process.env.GARM_URL
+    const f = vi.fn()
+    vi.stubGlobal('fetch', f)
+    const r = await garmProbe()
+    expect(r.ok).toBe(false)
+    expect(r.error).toMatch(/GARM_URL/)
+    expect(f).not.toHaveBeenCalled()
+  })
+
+  it('reports ok:false naming GARM_KEY when it is unset', async () => {
+    delete process.env.GARM_KEY
+    const f = vi.fn()
+    vi.stubGlobal('fetch', f)
+    const r = await garmProbe()
+    expect(r.ok).toBe(false)
+    expect(r.error).toMatch(/GARM_KEY/)
+    expect(f).not.toHaveBeenCalled()
+  })
+
+  it('reports ok:true on a 200 grant', async () => {
+    vi.stubGlobal('fetch', mockFetchOnce({ allowed: true, role: 'viewer' }))
+    const r = await garmProbe()
+    expect(r.ok).toBe(true)
+    expect(r.status).toBe(200)
+  })
+
+  it('reports ok:true on a 200 deny — a deny is a healthy answer', async () => {
+    vi.stubGlobal('fetch', mockFetchOnce({ allowed: false, role: null }))
+    const r = await garmProbe()
+    expect(r.ok).toBe(true)
+    expect(r.status).toBe(200)
+  })
+
+  it('reports ok:false with the status on a 401 (revoked/mis-scoped key)', async () => {
+    vi.stubGlobal('fetch', mockFetchOnce({ error: 'bad key' }, { ok: false, status: 401 }))
+    const r = await garmProbe()
+    expect(r.ok).toBe(false)
+    expect(r.status).toBe(401)
+  })
+
+  it('reports ok:false when fetch throws (network error)', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('network down') }))
+    const r = await garmProbe()
+    expect(r.ok).toBe(false)
+    expect(r.error).toMatch(/network down/)
+  })
+
+  it('reports ok:false when fetch aborts (timeout)', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => { throw new DOMException('The operation timed out.', 'TimeoutError') })
+    )
+    const r = await garmProbe()
+    expect(r.ok).toBe(false)
+  })
+
+  it('reports ok:false on an off-shape 200 body (missing boolean allowed)', async () => {
+    vi.stubGlobal('fetch', mockFetchOnce({ role: 'viewer' }))
+    const r = await garmProbe()
+    expect(r.ok).toBe(false)
+  })
+
+  it('never reads or writes garmCheck cache — a subsequent garmCheck still fetches', async () => {
+    const f = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ allowed: true, role: 'viewer' }) }))
+    vi.stubGlobal('fetch', f)
+
+    await garmProbe()
+    expect(f).toHaveBeenCalledTimes(1)
+
+    // If garmProbe had seeded garmCheck's cache for this address, this would
+    // serve from cache and fetch would NOT be called a second time.
+    const r = await garmCheck('health-probe@example.com', 'ibuild4you')
+    expect(f).toHaveBeenCalledTimes(2)
+    expect(r).toEqual({ allowed: true, role: 'viewer' })
+  })
+
+  it('does not include the consumer key in the result', async () => {
+    vi.stubGlobal('fetch', mockFetchOnce({ allowed: true, role: 'viewer' }))
+    const r = await garmProbe()
+    expect(JSON.stringify(r)).not.toContain('garm_testkey')
   })
 })

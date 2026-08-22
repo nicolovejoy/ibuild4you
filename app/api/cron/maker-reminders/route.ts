@@ -3,6 +3,7 @@ import { getAdminDb } from '@/lib/api/firebase-server-helpers'
 import { decideReminder } from '@/lib/api/reminder-cadence'
 import { sendReminderDigest } from '@/lib/email/send-reminder'
 import { groupReminderSends, type PendingReminder } from '@/lib/email/reminder-digest'
+import { isAuthorizedCron } from '@/lib/api/cron-auth'
 
 // Daily cron (see vercel.json — "0 16 * * *" = 09:00 PT in summer).
 // For each project that's opted in to auto-reminders, check the cadence
@@ -31,9 +32,7 @@ import { groupReminderSends, type PendingReminder } from '@/lib/email/reminder-d
 //   block the rest of the batch (lesson learned from the brief-regen loop).
 
 export async function GET(request: Request) {
-  const authHeader = request.headers.get('Authorization')
-  const secret = process.env.CRON_SECRET
-  if (secret && authHeader !== `Bearer ${secret}`) {
+  if (!isAuthorizedCron(request)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
