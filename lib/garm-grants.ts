@@ -56,6 +56,8 @@ export interface MemberRowForSync {
 
 export type GrantDecision = { action: 'upsert'; role: GarmGrantRole } | { action: 'revoke' }
 
+export type GarmSyncOutcome = 'synced' | 'skipped' | 'failed'
+
 /**
  * Pure role-collapse + upsert/revoke decision — no I/O. `members` should
  * already be filtered to this one (normalized) email; only active rows
@@ -147,12 +149,15 @@ async function revokeGrant(email: string): Promise<void> {
  * Never throws: a Firestore read failure or a Garm request failure both log
  * one line (booleans/role only, never the email) and return. Local Firestore
  * remains the source of truth regardless of what happens here.
+ *
+ * Resolves with an outcome instead of void so a caller that *wants* to know
+ * (the invite path, #174) can warn; fire-and-forget callers ignore it.
  */
-export async function syncGarmGrantForEmail(rawEmail: string): Promise<void> {
-  if (!isGarmDualWriteEnabled()) return
+export async function syncGarmGrantForEmail(rawEmail: string): Promise<GarmSyncOutcome> {
+  if (!isGarmDualWriteEnabled()) return 'skipped'
 
   const email = normalizeEmail(rawEmail)
-  if (!email) return
+  if (!email) return 'skipped'
 
   try {
     const isAdmin = ADMIN_EMAILS.includes(email)
@@ -178,10 +183,12 @@ export async function syncGarmGrantForEmail(rawEmail: string): Promise<void> {
     } else {
       await revokeGrant(email)
     }
+    return 'synced'
   } catch (err) {
     console.warn(
       `[garm-dual-write] sync failed: ${err instanceof Error ? err.message : String(err)}`
     )
+    return 'failed'
   }
 }
 
