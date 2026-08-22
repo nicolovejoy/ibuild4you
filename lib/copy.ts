@@ -165,6 +165,8 @@ export const copy = {
     emailHelp: "They'll be approved automatically. You'll get a link to send them.",
     successMessage: (email: string) => `${email} has been approved and linked to this brief.`,
     sendLinkPrompt: 'Send them this link:',
+    garmSyncFailed:
+      "Invited, but the sign-in permission didn't register. They may not be able to sign in yet — it will self-heal within the hour, or re-share to retry now.",
   },
 
   // --- Setup tab ---

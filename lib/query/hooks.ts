@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiFetch } from '@/lib/firebase/api-fetch'
 import { queryKeys } from './keys'
 import type { Project, Session, Message, Brief, SystemRole, ProjectFile, FileFolder, ProjectMemberSummary } from '@/lib/types'
+import type { GarmSyncOutcome } from '@/lib/garm-grants'
 
 // --- Current user ---
 
@@ -101,6 +102,7 @@ export function useShareProject() {
         email: string
         project_id: string
         reset_link: string | null
+        garm_sync: GarmSyncOutcome
       }>
     },
     onSuccess: (_data, variables) => {
