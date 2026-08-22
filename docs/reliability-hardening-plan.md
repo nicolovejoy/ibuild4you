@@ -1,11 +1,22 @@
 # Reliability hardening — fail-closed crons, Garm liveness, grant reconcile
 
-**Status:** ready to execute
-**Origin:** 2026-08-22. A real maker was locked out of prod for 3 days. `syncGarmGrantForEmail`
-never created their Garm grant; Garm has been the fail-closed sign-in authority since PR G
-(`59505eb`), so the swallowed dual-write failure became a permanent lockout with no detector.
-Repaired by hand with one grant upsert. Full write-up in the handoff channel
-(`~/src/.handoff/ibuild4you-prompt-lab.md`, entry dated 2026-08-22).
+**Status:** built on branch `reliability-hardening`, awaiting merge. All three tasks below are
+implemented and green; see the PR for the verification gate.
+**Origin:** 2026-08-22. A real maker was locked out of prod for 3 days. The first diagnosis —
+that `syncGarmGrantForEmail` had silently dropped their Garm grant — was **wrong**. A full
+reconcile diff later showed zero missing grants: the brief and the grant were both under the
+maker's ISP address, and they were signing in with a Google address that had no membership at
+all. That is an identity-aliasing case (#169, the second one), not a dual-write failure.
+Full write-up and correction in the handoff channel (`~/src/.handoff/ibuild4you-prompt-lab.md`,
+entries dated 2026-08-22).
+
+**What this plan does and does not fix.** The three tasks below are real hardening that stands on
+its own: cron routes that failed *open* without `CRON_SECRET`, a health check blind to the
+sign-in authority, and no reconciliation at all for a fail-closed authz mirror. But the reconcile
+is **prophylactic, not remedial** — it would not have caught the actual lockout, because nothing
+was missing. The signal that would have is a denial for an address holding no membership anywhere
+in our store ("wrong key", not "drift"); that detector and the invite-path fix (#174) are
+follow-on work, not part of this plan.
 
 ## The pattern
 
