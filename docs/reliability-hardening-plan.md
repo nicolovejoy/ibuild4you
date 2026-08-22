@@ -246,9 +246,14 @@ behind exactly such a flag since May 2026 — a dry-run flag here would most lik
 detector never actually protects anyone. Every run is logged, so the first run is auditable after
 the fact.
 
-*Cost if wrong:* an incorrect diff could grant up to 10 unintended `viewer` grants before the cap
-stops it. `viewer` is the lowest tier and confers only sign-in, grants are individually revocable,
-and every heal is recorded in the log — so the blast radius is small, visible, and reversible.
+*Cost if wrong:* an incorrect diff could write up to 10 unintended grants before the cap stops it.
+Note what the cap does and doesn't bound: it bounds the **count**, not the **tier**. Each grant
+takes whatever role `computeGrantDecision` returns — `owner` for anyone in `ADMIN_EMAILS`,
+`collaborator` for a builder-role member — so "worst case is ten viewers" is false and nobody should
+plan against it. What keeps the blast radius acceptable is that the count is capped, every heal is
+recorded in the log, grants are individually revocable, and the roles written are the same ones the
+dual-write would have written from the same Firestore state — a wrong grant here means the diff was
+wrong, not that the route invented a privilege of its own.
 
 ### Tests
 

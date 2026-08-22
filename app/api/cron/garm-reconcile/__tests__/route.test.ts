@@ -15,9 +15,12 @@ type Doc = { id: string; data: () => Record<string, unknown> }
 
 let mockMembers: Doc[] = []
 let mockApproved: Doc[] = []
+/** Most-recent-first prior run rows, as the repeat-missing lookup reads them. */
+let mockPriorLog: Doc[] = []
 const mockLogAdd = vi.fn<(doc: Record<string, unknown>) => Promise<{ id: string }>>(async () => ({
   id: 'log-1',
 }))
+let priorLogReadFails = false
 
 const mockCollection = vi.fn((name: string) => {
   if (name === 'project_members') {
@@ -27,7 +30,17 @@ const mockCollection = vi.fn((name: string) => {
     return { get: async () => ({ docs: mockApproved, size: mockApproved.length }) }
   }
   if (name === 'garm_reconcile_log') {
-    return { add: mockLogAdd }
+    return {
+      add: mockLogAdd,
+      orderBy: () => ({
+        limit: () => ({
+          get: async () => {
+            if (priorLogReadFails) throw new Error('firestore unavailable')
+            return { docs: mockPriorLog }
+          },
+        }),
+      }),
+    }
   }
   return { get: async () => ({ docs: [], size: 0 }) }
 })
@@ -58,6 +71,11 @@ function member(email: string, role: string, removedAt: string | null = null): D
 
 function approved(email: string, revokedAt: string | null = null): Doc {
   return { id: email, data: () => ({ revoked_at: revokedAt }) }
+}
+
+/** A previous run's log row, as far as the repeat-missing lookup cares. */
+function priorRun(missingCount: number): Doc {
+  return { id: 'prev-run', data: () => ({ missing_count: missingCount }) }
 }
 
 type Grant = { email: string; role: string }
@@ -117,6 +135,8 @@ describe('GET /api/cron/garm-reconcile', () => {
     garmFetchFails = false
     garmListingBody = undefined
     failPostFor = {}
+    mockPriorLog = []
+    priorLogReadFails = false
     mockLogAdd.mockClear()
     mockCollection.mockClear()
     fetchMock.mockClear()
@@ -124,6 +144,9 @@ describe('GET /api/cron/garm-reconcile', () => {
     process.env.CRON_SECRET = 'test-secret'
     process.env.GARM_URL = 'https://garm.example.com'
     process.env.GARM_ADMIN_KEY = 'test-admin-key'
+    // The reconcile is gated on the same kill switch as the dual-write it
+    // backstops; every case below except the kill-switch ones runs with it on.
+    process.env.GARM_DUAL_WRITE = 'on'
   })
 
   afterEach(() => {
@@ -368,6 +391,121 @@ describe('GET /api/cron/garm-reconcile', () => {
     expect(fetchMock).not.toHaveBeenCalled()
     expect(body.error).toBeTruthy()
     expect(body.healed_count).toBe(0)
+  })
+
+  // A paused dual-write means Firestore and Garm are diverging by operator
+  // intent. Healing that divergence would defeat the pause — but going silent
+  // would hide a forgotten flag, so the run still logs that it stood down.
+  describe('GARM_DUAL_WRITE kill switch', () => {
+    it.each([
+      ['off', 'off'],
+      ['ON (must be exactly "on")', 'ON'],
+      ['true', 'true'],
+      ['empty', ''],
+    ])('stands down, touching nothing, when the switch is %s', async (_label, value) => {
+      process.env.GARM_DUAL_WRITE = value
+      mockMembers = [member('maker@example.com', 'maker')]
+      mockApproved = [approved('maker@example.com')]
+      garmGrants = []
+
+      const res = await GET(makeReq())
+      const body = await res.json()
+
+      expect(res.status).toBe(200)
+      // Not one Garm call of any kind — not even the read-only listing.
+      expect(fetchMock).not.toHaveBeenCalled()
+      expect(body).toMatchObject({
+        skipped_dual_write_off: true,
+        checked_count: 0,
+        missing_count: 0,
+        healed_count: 0,
+        capped: false,
+        error: null,
+      })
+      // Still visible: a paused reconciler logs every hour rather than the
+      // safety net quietly ceasing to exist.
+      expect(lastLogDoc()).toMatchObject({ skipped_dual_write_off: true, missing_count: 0 })
+    })
+
+    it('stands down when the switch is unset entirely', async () => {
+      delete process.env.GARM_DUAL_WRITE
+      mockMembers = [member('maker@example.com', 'maker')]
+
+      const res = await GET(makeReq())
+
+      expect(fetchMock).not.toHaveBeenCalled()
+      expect((await res.json()).skipped_dual_write_off).toBe(true)
+      expect(lastLogDoc()).toMatchObject({ skipped_dual_write_off: true })
+    })
+
+    it('records skipped_dual_write_off:false on a normal run', async () => {
+      garmGrants = [{ email: 'admin@example.com', role: 'owner' }]
+
+      const res = await GET(makeReq())
+
+      expect((await res.json()).skipped_dual_write_off).toBe(false)
+      expect(lastLogDoc()).toMatchObject({ skipped_dual_write_off: false })
+    })
+  })
+
+  // No memory across runs means a heal that POSTs 200 but never lands would be
+  // re-healed hourly forever, logging missing:1/healed:1 — identical to healthy
+  // operation. This boolean is the difference.
+  describe('repeat_missing', () => {
+    // One member with no grant → missing_count 1 on every run.
+    function oneMissing() {
+      mockMembers = [member('maker@example.com', 'maker')]
+      mockApproved = [approved('maker@example.com')]
+      garmGrants = [{ email: 'admin@example.com', role: 'owner' }]
+    }
+
+    it('flags a shortfall unchanged from the previous run', async () => {
+      oneMissing()
+      mockPriorLog = [priorRun(1)]
+
+      const res = await GET(makeReq())
+      const body = await res.json()
+
+      expect(body).toMatchObject({ missing_count: 1, healed_count: 1, repeat_missing: true })
+      expect(lastLogDoc()).toMatchObject({ repeat_missing: true })
+    })
+
+    it('does not flag when the previous run had a different shortfall', async () => {
+      oneMissing()
+      mockPriorLog = [priorRun(2)]
+
+      const body = await (await GET(makeReq())).json()
+
+      expect(body).toMatchObject({ missing_count: 1, repeat_missing: false })
+    })
+
+    it('does not flag on the first ever run, when no prior row exists', async () => {
+      oneMissing()
+      mockPriorLog = []
+
+      const body = await (await GET(makeReq())).json()
+
+      expect(body).toMatchObject({ missing_count: 1, repeat_missing: false })
+    })
+
+    it('does not flag a healthy run, and does not read the prior row at all', async () => {
+      garmGrants = [{ email: 'admin@example.com', role: 'owner' }]
+
+      const body = await (await GET(makeReq())).json()
+
+      expect(body).toMatchObject({ missing_count: 0, repeat_missing: false })
+    })
+
+    // The signal is diagnostic; losing it must never cost anyone their heal.
+    it('still heals when the prior-row read fails', async () => {
+      oneMissing()
+      priorLogReadFails = true
+
+      const body = await (await GET(makeReq())).json()
+
+      expect(postedGrants().map((g) => g.email)).toEqual(['maker@example.com'])
+      expect(body).toMatchObject({ healed_count: 1, repeat_missing: false, error: null })
+    })
   })
 
   it('never puts an email address in the log document', async () => {

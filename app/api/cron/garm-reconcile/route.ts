@@ -2,16 +2,17 @@ import { NextResponse } from 'next/server'
 import { getAdminDb } from '@/lib/api/firebase-server-helpers'
 import { isAuthorizedCron } from '@/lib/api/cron-auth'
 import { normalizeEmail } from '@/lib/email/normalize'
-import { ADMIN_EMAILS } from '@/lib/constants'
+import { ADMIN_EMAILS, isAdminEmail } from '@/lib/constants'
 import {
   computeGrantDecision,
+  isGarmDualWriteEnabled,
   GARM_DUAL_WRITE_PROJECT,
   type GarmGrantRole,
   type MemberRowForSync,
 } from '@/lib/garm-grants'
 
 // =============================================================================
-// Garm ↔ Firestore grant reconcile (daily cron — see vercel.json "0 17 * * *").
+// Garm ↔ Firestore grant reconcile (hourly cron — see vercel.json "0 * * * *").
 //
 // WHY: the membership dual-write in lib/garm-grants.ts is fire-and-forget with
 // a swallowed catch. A dropped after(), a 2s timeout, or a 409 leaves Firestore
@@ -41,13 +42,25 @@ import {
 // FAIL CLOSED: absent CRON_SECRET (in isAuthorizedCron) or absent Garm config
 // both deny — no reads acted on, no writes issued.
 //
+// KILL SWITCH: gated on the same GARM_DUAL_WRITE switch as the write path it
+// backstops. When the operator pauses dual-write, Firestore and Garm are
+// diverging BY INTENT, and a reconcile that heals that divergence would quietly
+// defeat the pause. The run still writes its log row (skipped_dual_write_off:
+// true) so a paused reconciler stays visible every hour instead of the safety
+// net silently disappearing behind a forgotten flag.
+//
 // PII: the garm_reconcile_log doc and every console line carry counts and
 // booleans ONLY — never an email address. Same rule as lib/garm-grants.ts and
 // lib/garm-shadow.ts.
 // =============================================================================
 
-export const RECONCILE_MAX_HEALS = 10
+// Not exported: Next validates that a route.ts exports only recognized Route
+// fields, so an extra `export const` here fails `next build`.
+const RECONCILE_MAX_HEALS = 10
 const RECONCILE_ACTOR = 'ibuild4you-reconcile'
+// Deliberately longer than lib/garm-grants.ts's 2s. That timeout sits on a
+// request path where a person is waiting; this one is a background cron
+// fetching the whole roster, which is a heavier call with nobody blocked on it.
 const TIMEOUT_MS = 5_000
 
 type GarmGrant = { email: string; role: string }
@@ -126,6 +139,30 @@ async function upsertGrant(
   if (!res.ok) throw new Error(`POST /api/grants ${res.status}`)
 }
 
+/**
+ * `missing_count` from the most recent prior run, or null when there is none
+ * (first ever run) or the read fails.
+ *
+ * Feeds the `repeat_missing` signal: this route has no memory across runs, so a
+ * heal that POSTs 200 but doesn't show up in the next listing would be re-healed
+ * every hour forever while the log read `missing_count: 1, healed_count: 1` —
+ * indistinguishable from healthy operation, which is exactly the
+ * detector-looks-alive-while-doing-nothing failure this route exists to prevent.
+ *
+ * Never throws: this is a diagnostic signal, not the job. A failure here must
+ * not cost anyone their heal.
+ */
+async function readPriorMissingCount(db: ReturnType<typeof getAdminDb>): Promise<number | null> {
+  try {
+    const snap = await db.collection('garm_reconcile_log').orderBy('ran_at', 'desc').limit(1).get()
+    const prior = snap.docs[0]?.data()?.missing_count
+    return typeof prior === 'number' ? prior : null
+  } catch (err) {
+    console.warn(`[cron/garm-reconcile] could not read prior log row: ${describeError(err)}`)
+    return null
+  }
+}
+
 export async function GET(request: Request) {
   if (!isAuthorizedCron(request)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -140,107 +177,133 @@ export async function GET(request: Request) {
   let extraCount = 0
   let healedCount = 0
   let capped = false
+  let repeatMissing = false
+  let skippedDualWriteOff = false
   let error: string | null = null
 
-  try {
-    const garmUrl = process.env.GARM_URL
-    const garmKey = process.env.GARM_ADMIN_KEY
-    // Fail closed: without config there is no authority to compare against, so
-    // the run reports an error rather than pretending everything is in sync.
-    if (!garmUrl || !garmKey) throw new Error('GARM_URL/GARM_ADMIN_KEY not set')
+  // Same switch that governs the dual-write this route backstops. Off means the
+  // operator is deliberately holding Garm apart from Firestore; healing would
+  // undo that. Checked before any read or fetch — a paused run touches nothing
+  // but its own log row.
+  if (!isGarmDualWriteEnabled()) {
+    skippedDualWriteOff = true
+    console.warn(
+      '[cron/garm-reconcile] GARM_DUAL_WRITE is not "on" — reconcile paused, no grants read or written'
+    )
+  } else {
+    try {
+      const garmUrl = process.env.GARM_URL
+      const garmKey = process.env.GARM_ADMIN_KEY
+      // Fail closed: without config there is no authority to compare against, so
+      // the run reports an error rather than pretending everything is in sync.
+      if (!garmUrl || !garmKey) throw new Error('GARM_URL/GARM_ADMIN_KEY not set')
 
-    const [memberSnap, approvedSnap] = await Promise.all([
-      db.collection('project_members').get(),
-      db.collection('approved_emails').get(),
-    ])
+      const [memberSnap, approvedSnap] = await Promise.all([
+        db.collection('project_members').get(),
+        db.collection('approved_emails').get(),
+      ])
 
-    // Assemble the same three inputs syncGarmGrantForEmail assembles, in bulk.
-    const membersByEmail = new Map<string, MemberRowForSync[]>()
-    for (const doc of memberSnap.docs) {
-      const data = doc.data()
-      const email = normalizeEmail(data.email as string | undefined)
-      if (!email) continue
-      const rows = membersByEmail.get(email) ?? []
-      rows.push({
-        role: data.role as string,
-        removed_at: (data.removed_at as string | null | undefined) ?? null,
-      })
-      membersByEmail.set(email, rows)
-    }
-
-    // A revoked approved_emails row still exists (non-destructive flag, #163)
-    // but must not count as approved — same rule as the dual-write.
-    const approvedEmails = new Set<string>()
-    const approvedDocIds = new Set<string>()
-    for (const doc of approvedSnap.docs) {
-      const email = normalizeEmail(doc.id)
-      if (!email) continue
-      approvedDocIds.add(email)
-      if (!doc.data()?.revoked_at) approvedEmails.add(email)
-    }
-
-    // Candidate set = project_members ∪ approved_emails ∪ ADMIN_EMAILS. Admins
-    // are unioned in because one can legitimately hold an owner grant while
-    // appearing in neither collection; without them they'd land in `extra`.
-    const candidates = new Set<string>([
-      ...membersByEmail.keys(),
-      ...approvedDocIds,
-      ...ADMIN_EMAILS.map((e) => normalizeEmail(e)).filter(Boolean),
-    ])
-    checkedCount = candidates.size
-
-    const actual = await fetchActiveGrants(garmUrl, garmKey)
-
-    // Diff expected vs actual.
-    const expectedUpserts = new Set<string>()
-    const heals: Array<{ email: string; role: GarmGrantRole }> = []
-
-    for (const email of candidates) {
-      const decision = computeGrantDecision({
-        isAdmin: ADMIN_EMAILS.includes(email),
-        members: membersByEmail.get(email) ?? [],
-        isApproved: approvedEmails.has(email),
-      })
-      if (decision.action !== 'upsert') continue
-
-      expectedUpserts.add(email)
-      const current = actual.get(email)
-      if (current === undefined) {
-        missingCount++
-        heals.push({ email, role: decision.role })
-      } else if (current !== decision.role) {
-        mismatchCount++
-        heals.push({ email, role: decision.role })
+      // Assemble the same three inputs syncGarmGrantForEmail assembles, in bulk.
+      const membersByEmail = new Map<string, MemberRowForSync[]>()
+      for (const doc of memberSnap.docs) {
+        const data = doc.data()
+        const email = normalizeEmail(data.email as string | undefined)
+        if (!email) continue
+        const rows = membersByEmail.get(email) ?? []
+        rows.push({
+          role: data.role as string,
+          removed_at: (data.removed_at as string | null | undefined) ?? null,
+        })
+        membersByEmail.set(email, rows)
       }
-    }
 
-    // Anything Garm still grants that we have no expectation for. Reported,
-    // never revoked — see the healing-policy note at the top of this file.
-    for (const email of actual.keys()) {
-      if (!expectedUpserts.has(email)) extraCount++
-    }
+      // A revoked approved_emails row still exists (non-destructive flag, #163)
+      // but must not count as approved — same rule as the dual-write.
+      const approvedEmails = new Set<string>()
+      const approvedDocIds = new Set<string>()
+      for (const doc of approvedSnap.docs) {
+        const email = normalizeEmail(doc.id)
+        if (!email) continue
+        approvedDocIds.add(email)
+        if (!doc.data()?.revoked_at) approvedEmails.add(email)
+      }
 
-    if (heals.length > RECONCILE_MAX_HEALS) {
-      capped = true
-      console.error(
-        `[cron/garm-reconcile] CAPPED: ${heals.length} pending heals exceeds ${RECONCILE_MAX_HEALS} — wrote nothing. Suspect a bad Firestore read or a bad diff, not 10+ simultaneous lockouts.`
-      )
-    } else {
-      for (const heal of heals) {
-        try {
-          await upsertGrant(garmUrl, garmKey, heal.email, heal.role)
-          healedCount++
-        } catch (err) {
-          // One failed heal must not abort the rest of the batch.
-          const message = describeError(err)
-          console.error(`[cron/garm-reconcile] heal failed (role=${heal.role}): ${message}`)
-          error = error ? `${error}; ${message}` : message
+      // Candidate set = project_members ∪ approved_emails ∪ ADMIN_EMAILS. Admins
+      // are unioned in because one can legitimately hold an owner grant while
+      // appearing in neither collection; without them they'd land in `extra`.
+      const candidates = new Set<string>([
+        ...membersByEmail.keys(),
+        ...approvedDocIds,
+        ...ADMIN_EMAILS.map((e) => normalizeEmail(e)).filter(Boolean),
+      ])
+      checkedCount = candidates.size
+
+      const actual = await fetchActiveGrants(garmUrl, garmKey)
+
+      // Diff expected vs actual.
+      const expectedUpserts = new Set<string>()
+      const heals: Array<{ email: string; role: GarmGrantRole }> = []
+
+      for (const email of candidates) {
+        const decision = computeGrantDecision({
+          isAdmin: isAdminEmail(email),
+          members: membersByEmail.get(email) ?? [],
+          isApproved: approvedEmails.has(email),
+        })
+        if (decision.action !== 'upsert') continue
+
+        expectedUpserts.add(email)
+        const current = actual.get(email)
+        if (current === undefined) {
+          missingCount++
+          heals.push({ email, role: decision.role })
+        } else if (current !== decision.role) {
+          mismatchCount++
+          heals.push({ email, role: decision.role })
         }
       }
+
+      // Anything Garm still grants that we have no expectation for. Reported,
+      // never revoked — see the healing-policy note at the top of this file.
+      for (const email of actual.keys()) {
+        if (!expectedUpserts.has(email)) extraCount++
+      }
+
+      if (heals.length > RECONCILE_MAX_HEALS) {
+        capped = true
+        console.error(
+          `[cron/garm-reconcile] CAPPED: ${heals.length} pending heals exceeds ${RECONCILE_MAX_HEALS} — wrote nothing. Suspect a bad Firestore read or a bad diff, not 10+ simultaneous lockouts.`
+        )
+      } else {
+        for (const heal of heals) {
+          try {
+            await upsertGrant(garmUrl, garmKey, heal.email, heal.role)
+            healedCount++
+          } catch (err) {
+            // One failed heal must not abort the rest of the batch.
+            const message = describeError(err)
+            console.error(`[cron/garm-reconcile] heal failed (role=${heal.role}): ${message}`)
+            error = error ? `${error}; ${message}` : message
+          }
+        }
+      }
+    } catch (err) {
+      error = describeError(err)
+      console.error(`[cron/garm-reconcile] run failed: ${error}`)
     }
-  } catch (err) {
-    error = describeError(err)
-    console.error(`[cron/garm-reconcile] run failed: ${error}`)
+
+    // Same shortfall as last hour = a heal that isn't sticking. Cheap signal, no
+    // memory needed beyond the previous row. Only meaningful when we're actually
+    // still short after healing.
+    if (missingCount > 0) {
+      const prior = await readPriorMissingCount(db)
+      repeatMissing = prior === missingCount
+      if (repeatMissing) {
+        console.warn(
+          `[cron/garm-reconcile] repeat_missing: still ${missingCount} missing after last run healed the same count — heals may not be sticking`
+        )
+      }
+    }
   }
 
   const summary = {
@@ -250,6 +313,8 @@ export async function GET(request: Request) {
     extra_count: extraCount,
     healed_count: healedCount,
     capped,
+    repeat_missing: repeatMissing,
+    skipped_dual_write_off: skippedDualWriteOff,
     error,
   }
 
