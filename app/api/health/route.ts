@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getAdminDb } from '@/lib/firebase/admin'
+import { garmProbe } from '@/lib/garm'
 
 // GET /api/health — unauthenticated health check that verifies critical Firestore queries
 // This catches missing indexes, connectivity issues, and query shape problems
@@ -60,6 +61,18 @@ export async function GET() {
 
   // (Former checks 7/8 — projects by requester_id / requester_email — removed
   // with the legacy listing queries they exercised, Garm PR E.)
+
+  // Check 7: Garm liveness. Sign-in is gated on Garm fail-closed, so Garm being
+  // unreachable means nobody can sign in — this must not go unnoticed. A deny
+  // from Garm is healthy (proves URL/key/scope/DB all work); only "Garm didn't
+  // answer well-formed 200" fails this check. See lib/garm.ts's garmProbe for
+  // why garmCheck itself can't be reused here.
+  await runCheck(checks, 'garm_reachable', async () => {
+    const result = await garmProbe()
+    if (!result.ok) {
+      throw new Error(result.error ?? `garm probe failed (status ${result.status ?? 'unknown'})`)
+    }
+  })
 
   const allOk = checks.every((c) => c.ok)
 
