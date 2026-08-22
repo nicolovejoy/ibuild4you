@@ -222,9 +222,31 @@ invent a second opinion.
 write **no** grants, log loudly, and record the run as `capped`. Healing 10+ accounts at once means
 the Firestore read or the diff is wrong, not that 10 people were simultaneously locked out.
 
+**Kill switch:** the route is gated on `GARM_DUAL_WRITE` via the shared `isGarmDualWriteEnabled()`
+exported from `lib/garm-grants.ts` — deliberately the *same* predicate the dual-write uses, not a
+second copy of the rule, since two copies of a security kill switch free to drift is the defect
+class this plan exists to close. When the switch is off the route issues **zero** Garm calls and
+performs no Firestore membership reads.
+
+It still writes its log row, carrying `skipped_dual_write_off: true`. A paused reconciler must stay
+visible: a flag someone forgot to flip back should show up hourly in the log, not silently disable
+the safety net. "Switched off" and "misconfigured" stay distinguishable — off gives
+`skipped_dual_write_off: true, error: null`, while on-but-missing-config gives
+`skipped_dual_write_off: false` and a non-null `error`.
+
 **Logging:** write one `garm_reconcile_log` Firestore doc per run — `{ ran_at, checked_count,
-missing_count, mismatch_count, extra_count, healed_count, capped, error }`. Mirrors the existing
-`reminder_log` precedent. **Counts and booleans only — no email addresses** (Global Constraint 2).
+missing_count, mismatch_count, extra_count, healed_count, capped, repeat_missing,
+skipped_dual_write_off, error }`. Mirrors the existing `reminder_log` precedent. **Counts and
+booleans only — no email addresses** (Global Constraint 2); the `error` string is passed through a
+redactor that strips address-shaped text, since it is the row's only free-text field.
+
+**`repeat_missing`:** read the prior run's log row and set this boolean when `missing_count` is
+non-zero and unchanged from that run. Guards the one way this detector could look alive while doing
+nothing: a heal that is POSTed 200 every hour but never appears in the next listing would otherwise
+log `missing_count: 1, healed_count: 1` forever, indistinguishable from healthy operation. Absent or
+unreadable prior row → `null`, never a false positive. It compares counts rather than identities —
+identities would mean addresses, which Constraint 2 forbids — so a one-in-one-out hour can read as a
+repeat. That is acceptable for a hint whose only job is to make a human look.
 
 **Response:** JSON with the same counts, so a manual trigger is inspectable.
 
