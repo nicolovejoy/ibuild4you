@@ -11,8 +11,10 @@ import { POST, PATCH } from '../share/route'
 // =============================================================================
 
 const scheduleGarmGrantSyncMock = vi.fn()
+const syncGarmGrantForEmailMock = vi.fn(async () => 'synced' as const)
 vi.mock('@/lib/garm-grants', () => ({
   scheduleGarmGrantSync: (...args: unknown[]) => scheduleGarmGrantSyncMock(...args),
+  syncGarmGrantForEmail: (...args: unknown[]) => syncGarmGrantForEmailMock(...args),
 }))
 
 const memberAdds: Record<string, unknown>[] = []
@@ -94,18 +96,34 @@ function makeReq(method: string, body: Record<string, unknown>) {
 describe('POST/PATCH /api/projects/share → scheduleGarmGrantSync', () => {
   beforeEach(() => {
     scheduleGarmGrantSyncMock.mockClear()
+    syncGarmGrantForEmailMock.mockClear()
+    syncGarmGrantForEmailMock.mockImplementation(async () => 'synced' as const)
     memberAdds.length = 0
     projectDocData = {}
     existingMemberEmpty = true
     mockGetProjectRole.mockResolvedValue('builder')
   })
 
-  it('syncs the invited email on POST (invite)', async () => {
-    projectDocData = { title: 'Cafe App' }
-    const res = await POST(makeReq('POST', { project_id: 'p1', email: 'invitee@example.com', brief_role: 'originator' }))
+  it('POST awaits the Garm sync for the invitee and returns garm_sync: synced', async () => {
+    const res = await POST(makeReq('POST', { project_id: 'p1', email: 'Sam@Example.com' }))
     expect(res.status).toBe(200)
-    expect(scheduleGarmGrantSyncMock).toHaveBeenCalledWith('invitee@example.com')
-    expect(scheduleGarmGrantSyncMock).toHaveBeenCalledTimes(1)
+    expect(syncGarmGrantForEmailMock).toHaveBeenCalledWith('sam@example.com')
+    expect(scheduleGarmGrantSyncMock).not.toHaveBeenCalled()
+    await expect(res.json()).resolves.toMatchObject({ email: 'sam@example.com', garm_sync: 'synced' })
+  })
+
+  it('POST still creates membership and returns 200 with garm_sync: failed when Garm fails', async () => {
+    syncGarmGrantForEmailMock.mockResolvedValueOnce('failed')
+    const res = await POST(makeReq('POST', { project_id: 'p1', email: 'sam@example.com' }))
+    expect(res.status).toBe(200)
+    expect(memberAdds).toHaveLength(1)
+    await expect(res.json()).resolves.toMatchObject({ garm_sync: 'failed' })
+  })
+
+  it('POST returns garm_sync: skipped when the dual-write is off (no warning case)', async () => {
+    syncGarmGrantForEmailMock.mockResolvedValueOnce('skipped')
+    const res = await POST(makeReq('POST', { project_id: 'p1', email: 'sam@example.com' }))
+    await expect(res.json()).resolves.toMatchObject({ garm_sync: 'skipped' })
   })
 
   it('syncs both the new AND old email on PATCH (rekey)', async () => {
