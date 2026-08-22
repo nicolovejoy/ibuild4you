@@ -1,0 +1,303 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+
+// =============================================================================
+// Garm ↔ Firestore grant reconcile cron.
+//
+// The load-bearing case here is the `extra` bucket: an active Garm grant with
+// no Firestore expectation must be REPORTED and never revoked. A Firestore read
+// that fails or comes back empty would otherwise compute "revoke" for every
+// user and lock out the whole userbase in one cron tick.
+//
+// Mocks must be declared before the route import.
+// =============================================================================
+
+type Doc = { id: string; data: () => Record<string, unknown> }
+
+let mockMembers: Doc[] = []
+let mockApproved: Doc[] = []
+const mockLogAdd = vi.fn<(doc: Record<string, unknown>) => Promise<{ id: string }>>(async () => ({
+  id: 'log-1',
+}))
+
+const mockCollection = vi.fn((name: string) => {
+  if (name === 'project_members') {
+    return { get: async () => ({ docs: mockMembers, size: mockMembers.length }) }
+  }
+  if (name === 'approved_emails') {
+    return { get: async () => ({ docs: mockApproved, size: mockApproved.length }) }
+  }
+  if (name === 'garm_reconcile_log') {
+    return { add: mockLogAdd }
+  }
+  return { get: async () => ({ docs: [], size: 0 }) }
+})
+
+vi.mock('@/lib/api/firebase-server-helpers', () => ({
+  getAdminDb: () => ({ collection: mockCollection }),
+}))
+
+// The real ADMIN_EMAILS holds live addresses; the candidate set unions them in
+// (an admin can hold an owner grant while appearing in neither collection), so
+// the suite substitutes a placeholder admin instead.
+vi.mock('@/lib/constants', () => ({
+  ADMIN_EMAILS: ['admin@example.com'],
+  NOTIFICATION_EMAILS: ['admin@example.com'],
+  isAdminEmail: (email: string | null) => email === 'admin@example.com',
+}))
+
+import { GET } from '../route'
+
+// --- fixtures ---------------------------------------------------------------
+
+function member(email: string, role: string, removedAt: string | null = null): Doc {
+  return {
+    id: `m-${email}-${role}`,
+    data: () => ({ email, role, removed_at: removedAt }),
+  }
+}
+
+function approved(email: string, revokedAt: string | null = null): Doc {
+  return { id: email, data: () => ({ revoked_at: revokedAt }) }
+}
+
+type Grant = { email: string; role: string }
+
+let garmGrants: Grant[] = []
+let garmFetchFails = false
+const fetchMock = vi.fn(async (input: unknown, init?: RequestInit) => {
+  const url = String(input)
+  if (init?.method === 'POST') {
+    return new Response(JSON.stringify({ ok: true }), { status: 200 })
+  }
+  // Default (no method) is the GET of active grants.
+  if (url.includes('/api/grants')) {
+    if (garmFetchFails) return new Response('boom', { status: 500 })
+    return new Response(JSON.stringify({ grants: garmGrants }), { status: 200 })
+  }
+  throw new Error(`unexpected fetch: ${url}`)
+})
+
+function makeReq() {
+  return new Request('http://localhost/api/cron/garm-reconcile', {
+    headers: { Authorization: 'Bearer test-secret' },
+  })
+}
+
+/** Bodies of every POST /api/grants the run issued. */
+function postedGrants(): Array<{ email: string; role: string; project: string; actor: string }> {
+  return fetchMock.mock.calls
+    .filter(([, init]) => (init as RequestInit | undefined)?.method === 'POST')
+    .map(([, init]) => JSON.parse(String((init as RequestInit).body)))
+}
+
+function lastLogDoc(): Record<string, unknown> {
+  expect(mockLogAdd).toHaveBeenCalled()
+  return mockLogAdd.mock.calls[mockLogAdd.mock.calls.length - 1][0]
+}
+
+describe('GET /api/cron/garm-reconcile', () => {
+  beforeEach(() => {
+    mockMembers = []
+    mockApproved = []
+    garmGrants = []
+    garmFetchFails = false
+    mockLogAdd.mockClear()
+    mockCollection.mockClear()
+    fetchMock.mockClear()
+    vi.stubGlobal('fetch', fetchMock)
+    process.env.CRON_SECRET = 'test-secret'
+    process.env.GARM_URL = 'https://garm.example.com'
+    process.env.GARM_ADMIN_KEY = 'test-admin-key'
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('rejects a request without the cron secret', async () => {
+    const res = await GET(new Request('http://localhost/api/cron/garm-reconcile'))
+    expect(res.status).toBe(401)
+    expect(await res.json()).toEqual({ error: 'Unauthorized' })
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(mockLogAdd).not.toHaveBeenCalled()
+  })
+
+  it('rejects a request with the wrong bearer token', async () => {
+    const res = await GET(
+      new Request('http://localhost/api/cron/garm-reconcile', {
+        headers: { Authorization: 'Bearer nope' },
+      })
+    )
+    expect(res.status).toBe(401)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('writes no grants and logs all-zero counts when there is no drift', async () => {
+    mockMembers = [member('maker@example.com', 'maker')]
+    mockApproved = [approved('maker@example.com')]
+    garmGrants = [
+      { email: 'admin@example.com', role: 'owner' },
+      { email: 'maker@example.com', role: 'viewer' },
+    ]
+
+    const res = await GET(makeReq())
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(postedGrants()).toEqual([])
+    expect(body).toMatchObject({
+      checked_count: 2,
+      missing_count: 0,
+      mismatch_count: 0,
+      extra_count: 0,
+      healed_count: 0,
+      capped: false,
+      error: null,
+    })
+    expect(lastLogDoc()).toMatchObject({
+      checked_count: 2,
+      missing_count: 0,
+      mismatch_count: 0,
+      extra_count: 0,
+      healed_count: 0,
+      capped: false,
+      error: null,
+    })
+  })
+
+  it('heals exactly one missing grant at the expected role', async () => {
+    mockMembers = [member('maker@example.com', 'maker')]
+    mockApproved = [approved('maker@example.com')]
+    garmGrants = [{ email: 'admin@example.com', role: 'owner' }]
+
+    const res = await GET(makeReq())
+    const body = await res.json()
+
+    expect(postedGrants()).toEqual([
+      {
+        email: 'maker@example.com',
+        project: 'ibuild4you',
+        role: 'viewer',
+        actor: 'ibuild4you-reconcile',
+      },
+    ])
+    expect(body).toMatchObject({ missing_count: 1, mismatch_count: 0, healed_count: 1 })
+  })
+
+  it('heals a role mismatch by upserting the corrected role', async () => {
+    mockMembers = [member('builder@example.com', 'builder')]
+    mockApproved = [approved('builder@example.com')]
+    garmGrants = [
+      { email: 'admin@example.com', role: 'owner' },
+      { email: 'builder@example.com', role: 'viewer' },
+    ]
+
+    const res = await GET(makeReq())
+    const body = await res.json()
+
+    expect(postedGrants()).toEqual([
+      {
+        email: 'builder@example.com',
+        project: 'ibuild4you',
+        role: 'collaborator',
+        actor: 'ibuild4you-reconcile',
+      },
+    ])
+    expect(body).toMatchObject({ missing_count: 0, mismatch_count: 1, healed_count: 1 })
+  })
+
+  it('counts an extra grant but NEVER issues a DELETE', async () => {
+    // Someone Garm still grants who has no Firestore standing at all.
+    garmGrants = [
+      { email: 'admin@example.com', role: 'owner' },
+      { email: 'stale@example.com', role: 'viewer' },
+    ]
+
+    const res = await GET(makeReq())
+    const body = await res.json()
+
+    expect(body).toMatchObject({ extra_count: 1, healed_count: 0 })
+    expect(postedGrants()).toEqual([])
+
+    // THE safety assertion: additive-only healing. A DELETE here would mean a
+    // failed/empty Firestore read could mass-revoke the entire userbase.
+    for (const [, init] of fetchMock.mock.calls) {
+      expect((init as RequestInit | undefined)?.method).not.toBe('DELETE')
+    }
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ method: 'DELETE' })
+    )
+  })
+
+  it('counts a revoked member with a lingering grant as extra, not as a revoke', async () => {
+    mockMembers = [member('former@example.com', 'maker', '2026-08-01T00:00:00.000Z')]
+    mockApproved = [approved('former@example.com', '2026-08-01T00:00:00.000Z')]
+    garmGrants = [
+      { email: 'admin@example.com', role: 'owner' },
+      { email: 'former@example.com', role: 'viewer' },
+    ]
+
+    const res = await GET(makeReq())
+    const body = await res.json()
+
+    expect(body).toMatchObject({ extra_count: 1, healed_count: 0 })
+    for (const [, init] of fetchMock.mock.calls) {
+      expect((init as RequestInit | undefined)?.method).not.toBe('DELETE')
+    }
+  })
+
+  it('writes nothing and records capped:true when drift exceeds RECONCILE_MAX_HEALS', async () => {
+    mockMembers = Array.from({ length: 11 }, (_, i) => member(`m${i}@example.com`, 'maker'))
+    mockApproved = mockMembers.map((_, i) => approved(`m${i}@example.com`))
+    garmGrants = [{ email: 'admin@example.com', role: 'owner' }]
+
+    const res = await GET(makeReq())
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(postedGrants()).toEqual([])
+    expect(body).toMatchObject({ missing_count: 11, healed_count: 0, capped: true })
+    expect(lastLogDoc()).toMatchObject({ healed_count: 0, capped: true })
+  })
+
+  it('records an error and does not 500 when the Garm grant fetch fails', async () => {
+    garmFetchFails = true
+    mockMembers = [member('maker@example.com', 'maker')]
+
+    const res = await GET(makeReq())
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(postedGrants()).toEqual([])
+    expect(body.error).toBeTruthy()
+    expect(body).toMatchObject({ healed_count: 0, missing_count: 0 })
+    expect(lastLogDoc().error).toBeTruthy()
+  })
+
+  it('fails closed with an error when Garm config is absent', async () => {
+    delete process.env.GARM_URL
+    delete process.env.GARM_ADMIN_KEY
+    mockMembers = [member('maker@example.com', 'maker')]
+
+    const res = await GET(makeReq())
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(body.error).toBeTruthy()
+    expect(body.healed_count).toBe(0)
+  })
+
+  it('never puts an email address in the log document', async () => {
+    mockMembers = [member('maker@example.com', 'maker')]
+    mockApproved = [approved('maker@example.com')]
+    garmGrants = [{ email: 'stale@example.com', role: 'viewer' }]
+
+    await GET(makeReq())
+
+    const serialized = JSON.stringify(lastLogDoc())
+    expect(serialized).not.toContain('@')
+    expect(serialized).not.toContain('example.com')
+  })
+})
