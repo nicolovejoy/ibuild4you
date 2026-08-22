@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getAdminDb } from '@/lib/api/firebase-server-helpers'
 import { captureExpiryCutoffIso, selectExpirable } from '@/lib/api/capture-retention'
+import { isAuthorizedCron } from '@/lib/api/cron-auth'
 
 // #72 slice B6 — daily cron (see vercel.json). Flags prototype_context rows
 // older than the retention window with status: 'expired'. A flag, not a delete
@@ -11,9 +12,7 @@ import { captureExpiryCutoffIso, selectExpirable } from '@/lib/api/capture-reten
 // filter happens in code via selectExpirable, which keeps us off a second
 // composite index for a collection this small.
 export async function GET(request: Request) {
-  const authHeader = request.headers.get('Authorization')
-  const secret = process.env.CRON_SECRET
-  if (secret && authHeader !== `Bearer ${secret}`) {
+  if (!isAuthorizedCron(request)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 

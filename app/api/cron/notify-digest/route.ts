@@ -4,6 +4,7 @@ import { buildDigest, type DigestItem } from '@/lib/api/notify-digest'
 import { getServerShareLink } from '@/lib/url'
 import { NOTIFICATION_EMAILS } from '@/lib/constants'
 import { getMakerShortName } from '@/lib/copy'
+import { isAuthorizedCron } from '@/lib/api/cron-auth'
 import { Resend } from 'resend'
 
 function getResend() {
@@ -20,9 +21,7 @@ function getResend() {
 // We query on that rather than the old notify_after debounce window so a daily
 // run catches everything, including messages from the last few minutes.
 export async function GET(request: Request) {
-  const authHeader = request.headers.get('Authorization')
-  const secret = process.env.CRON_SECRET
-  if (secret && authHeader !== `Bearer ${secret}`) {
+  if (!isAuthorizedCron(request)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
