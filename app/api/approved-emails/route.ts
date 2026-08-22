@@ -8,6 +8,7 @@ import {
 import { isAdminEmail } from '@/lib/constants'
 import { normalizeEmail } from '@/lib/email/normalize'
 import { scheduleGarmGrantSync } from '@/lib/garm-grants'
+import { scheduleGarmDenialRecord } from '@/lib/garm-denials'
 
 // GET /api/approved-emails — check if the current user's email is approved
 // Also upserts the user doc with names from the auth token (Google sign-in)
@@ -16,6 +17,10 @@ export async function GET(request: Request) {
   if (auth.error) return auth.error
 
   const approved = await isApprovedEmail(auth.email, auth.systemRoles)
+
+  // Denial detector (see lib/garm-denials.ts): a "no" here is the only place a
+  // locked-out person surfaces. Off the hot path; never changes the answer.
+  if (!approved) scheduleGarmDenialRecord(auth.email)
 
   // Upsert user doc with name from auth provider and system_roles for admins
   if (approved) {
