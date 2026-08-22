@@ -52,6 +52,23 @@ const TIMEOUT_MS = 5_000
 
 type GarmGrant = { email: string; role: string }
 
+/**
+ * Every error string this route records — into the log doc's one free-text
+ * field and into its console lines — goes through here first.
+ *
+ * The messages we throw ourselves are already address-free (`POST /api/grants
+ * 500` and friends). This is the boundary guarantee for the ones we don't
+ * author: a transport error, a Firestore error, or a future maintainer folding
+ * a response body into a message. `error` is the only dynamic field in
+ * garm_reconcile_log, and that doc is required to carry counts and booleans
+ * only — so the constraint is enforced here rather than resting on every error
+ * string that might ever reach it being well-behaved.
+ */
+function describeError(err: unknown): string {
+  const message = err instanceof Error ? err.message : String(err)
+  return message.replace(/[^\s<>"']+@[^\s<>"']+/g, '[redacted]')
+}
+
 /** One active grant per normalized email, as Garm currently has it. */
 async function fetchActiveGrants(url: string, key: string): Promise<Map<string, string>> {
   // No include_revoked → Garm returns ACTIVE grants only, which is the set we
@@ -67,10 +84,21 @@ async function fetchActiveGrants(url: string, key: string): Promise<Map<string, 
   if (!res.ok) throw new Error(`GET /api/grants ${res.status}`)
 
   const body = (await res.json()) as { grants?: GarmGrant[] }
-  const grants = Array.isArray(body?.grants) ? body.grants : []
+  // THROW, never degrade to an empty list. Garm's listing contract is known and
+  // verified — its handler ends `return json({ grants: rows })`, and the select
+  // carries no limit/offset so there is no pagination to miss. An unrecognized
+  // body therefore means something is genuinely wrong, and treating it as "zero
+  // active grants" would report every expected grant as `missing`, trip the
+  // safety cap at the current roster size, and heal nobody — forever, while the
+  // log cheerfully reads `capped: true`. A loud error is the honest outcome.
+  // (scripts/garm-seed-grants.mjs hedges with a bare-array fallback; that hedge
+  // predates knowing the contract. Do not copy it here.)
+  if (!Array.isArray(body?.grants)) {
+    throw new Error('GET /api/grants: unrecognized response shape')
+  }
 
   const active = new Map<string, string>()
-  for (const g of grants) {
+  for (const g of body.grants) {
     const email = normalizeEmail(g?.email)
     if (!email) continue
     active.set(email, String(g?.role ?? ''))
@@ -204,14 +232,14 @@ export async function GET(request: Request) {
           healedCount++
         } catch (err) {
           // One failed heal must not abort the rest of the batch.
-          const message = err instanceof Error ? err.message : String(err)
+          const message = describeError(err)
           console.error(`[cron/garm-reconcile] heal failed (role=${heal.role}): ${message}`)
           error = error ? `${error}; ${message}` : message
         }
       }
     }
   } catch (err) {
-    error = err instanceof Error ? err.message : String(err)
+    error = describeError(err)
     console.error(`[cron/garm-reconcile] run failed: ${error}`)
   }
 
@@ -230,9 +258,7 @@ export async function GET(request: Request) {
   try {
     await db.collection('garm_reconcile_log').add({ ran_at: ranAt, ...summary })
   } catch (logErr) {
-    console.error(
-      `[cron/garm-reconcile] failed to write log doc: ${logErr instanceof Error ? logErr.message : String(logErr)}`
-    )
+    console.error(`[cron/garm-reconcile] failed to write log doc: ${describeError(logErr)}`)
   }
 
   console.log(JSON.stringify({ event: 'garm_reconcile_cron', ...summary, ts: ranAt }))

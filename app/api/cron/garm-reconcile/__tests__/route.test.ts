@@ -64,15 +64,29 @@ type Grant = { email: string; role: string }
 
 let garmGrants: Grant[] = []
 let garmFetchFails = false
+/** When set, the listing returns this body instead of a well-formed `{ grants }`. */
+let garmListingBody: unknown = undefined
+/** Emails whose upsert POST should fail, and how. */
+let failPostFor: Record<string, 'status' | 'reject'> = {}
+
 const fetchMock = vi.fn(async (input: unknown, init?: RequestInit) => {
   const url = String(input)
   if (init?.method === 'POST') {
+    const email = JSON.parse(String(init.body)).email as string
+    const failure = failPostFor[email]
+    if (failure === 'reject') {
+      // Transport-level failure whose message echoes the address back — the
+      // shape that would leak PII into the log doc if it went in unfiltered.
+      throw new Error(`connect ECONNREFUSED while granting ${email}`)
+    }
+    if (failure === 'status') return new Response('nope', { status: 500 })
     return new Response(JSON.stringify({ ok: true }), { status: 200 })
   }
   // Default (no method) is the GET of active grants.
   if (url.includes('/api/grants')) {
     if (garmFetchFails) return new Response('boom', { status: 500 })
-    return new Response(JSON.stringify({ grants: garmGrants }), { status: 200 })
+    const body = garmListingBody === undefined ? { grants: garmGrants } : garmListingBody
+    return new Response(JSON.stringify(body), { status: 200 })
   }
   throw new Error(`unexpected fetch: ${url}`)
 })
@@ -101,6 +115,8 @@ describe('GET /api/cron/garm-reconcile', () => {
     mockApproved = []
     garmGrants = []
     garmFetchFails = false
+    garmListingBody = undefined
+    failPostFor = {}
     mockLogAdd.mockClear()
     mockCollection.mockClear()
     fetchMock.mockClear()
@@ -273,6 +289,71 @@ describe('GET /api/cron/garm-reconcile', () => {
     expect(body.error).toBeTruthy()
     expect(body).toMatchObject({ healed_count: 0, missing_count: 0 })
     expect(lastLogDoc().error).toBeTruthy()
+  })
+
+  // An unrecognized listing body must NOT degrade to "zero active grants":
+  // that would report every expected grant as missing, trip the safety cap at
+  // real roster size, and heal nobody — forever — while logging capped:true.
+  // Garm's contract is `{ grants: [...] }`, verified against the service and
+  // its handler, so anything else is a genuine fault and must be loud.
+  it.each([
+    ['a body with no grants key', { ok: true }],
+    ['a bare array (the hedge we deliberately do not support)', [{ email: 'x@example.com' }]],
+    ['a null body', null],
+    ['a non-array grants value', { grants: 'nope' }],
+  ])('records an error and writes nothing given %s', async (_label, body) => {
+    garmListingBody = body
+    mockMembers = [member('maker@example.com', 'maker')]
+    mockApproved = [approved('maker@example.com')]
+
+    const res = await GET(makeReq())
+    const responseBody = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(postedGrants()).toEqual([])
+    expect(responseBody.error).toBeTruthy()
+    expect(responseBody).toMatchObject({ healed_count: 0, missing_count: 0, capped: false })
+    expect(lastLogDoc().error).toBeTruthy()
+  })
+
+  it('keeps healing after one upsert fails, and records the failure', async () => {
+    mockMembers = [member('a@example.com', 'maker'), member('b@example.com', 'maker')]
+    mockApproved = [approved('a@example.com'), approved('b@example.com')]
+    garmGrants = [{ email: 'admin@example.com', role: 'owner' }]
+    failPostFor = { 'a@example.com': 'status' }
+
+    const res = await GET(makeReq())
+    const body = await res.json()
+
+    // Both heals attempted — one failure must not abort the batch, or a person
+    // locked out behind a flaky one stays locked out.
+    expect(postedGrants().map((g) => g.email)).toEqual(['a@example.com', 'b@example.com'])
+    expect(body).toMatchObject({ missing_count: 2, healed_count: 1 })
+    expect(body.error).toBeTruthy()
+
+    // The failure path is the ONLY route by which free text reaches the log
+    // doc, so this is where the counts-and-booleans-only rule actually gets
+    // tested rather than passing trivially against a null error.
+    expect(JSON.stringify(lastLogDoc())).not.toContain('@')
+  })
+
+  it('redacts an address out of a heal failure before it reaches the log', async () => {
+    mockMembers = [member('a@example.com', 'maker'), member('b@example.com', 'maker')]
+    mockApproved = [approved('a@example.com'), approved('b@example.com')]
+    garmGrants = [{ email: 'admin@example.com', role: 'owner' }]
+    // A transport error whose message quotes the address back at us.
+    failPostFor = { 'a@example.com': 'reject' }
+
+    const res = await GET(makeReq())
+    const body = await res.json()
+
+    expect(body).toMatchObject({ healed_count: 1 })
+    expect(body.error).toBeTruthy()
+    expect(String(body.error)).not.toContain('@')
+
+    const serialized = JSON.stringify(lastLogDoc())
+    expect(serialized).not.toContain('@')
+    expect(serialized).not.toContain('example.com')
   })
 
   it('fails closed with an error when Garm config is absent', async () => {
