@@ -18,7 +18,7 @@
     },
     {
       "path": "/api/cron/garm-reconcile",
-      "schedule": "0 17 * * *"
+      "schedule": "0 * * * *"
     }
   ]
 }

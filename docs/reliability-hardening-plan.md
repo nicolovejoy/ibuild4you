@@ -228,8 +228,15 @@ missing_count, mismatch_count, extra_count, healed_count, capped, error }`. Mirr
 
 **Response:** JSON with the same counts, so a manual trigger is inspectable.
 
-**Schedule:** add to `vercel.json`, daily, at a time that does not collide with the four existing
-crons (which occupy `*/5 * * * *`, `0 15`, `30 15`, `0 16`). Use `0 17 * * *`.
+**Schedule:** add to `vercel.json` as `0 * * * *` — hourly, on the hour. The four existing crons
+occupy `*/5 * * * *`, `0 15`, `30 15`, and `0 16`; the `*/5` one already runs on the hour, so
+sharing that minute is not a new condition.
+
+Hourly rather than daily because the reconcile is the only thing standing between a dropped
+dual-write and a permanently locked-out person. Daily bounds that at ~24h; hourly bounds it at
+~1h, for a handful of Firestore reads and one Garm listing per run — negligible at invite-only
+scale. The real fix is making the invite path await its grant so the window is zero and the
+builder learns immediately (issue #174); this schedule just narrows the gap until then.
 
 ### Ruling: ships healing, not dry-run
 
