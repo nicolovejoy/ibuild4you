@@ -166,7 +166,7 @@ export const copy = {
     successMessage: (email: string) => `${email} has been approved and linked to this brief.`,
     sendLinkPrompt: 'Send them this link:',
     garmSyncFailed:
-      "Invited, but the sign-in permission didn't register. They may not be able to sign in yet — it will self-heal within the hour, or re-share to retry now.",
+      "Invited, but the sign-in permission didn't register. They may not be able to sign in yet — it should self-heal within the hour, or re-share to retry now. If they still can't sign in after that, check the reconcile log.",
   },
 
   // --- Setup tab ---
