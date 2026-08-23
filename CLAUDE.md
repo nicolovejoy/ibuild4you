@@ -68,6 +68,7 @@ Key pattern: clients call `apiFetch()` which attaches the Firebase Bearer token.
 - **files** — uploaded files (metadata in Firestore, bytes in S3 at `ibuild4you-files` bucket), scoped to project
 - **briefs** — living brief for a project, structured and versioned, updated after each session
 - **reviews** — builder annotations on a brief, feed back into agent context for next session
+- **garm_denials** — counts-only record of sign-in denials keyed by sha256(email); kind unknown-principal | known-member (lib/garm-denials.ts). No addresses stored. The hourly garm_reconcile_log row carries 24h counts of each.
 
 ## Project Setup JSON
 

@@ -15,8 +15,7 @@ its own: cron routes that failed *open* without `CRON_SECRET`, a health check bl
 sign-in authority, and no reconciliation at all for a fail-closed authz mirror. But the reconcile
 is **prophylactic, not remedial** — it would not have caught the actual lockout, because nothing
 was missing. The signal that would have is a denial for an address holding no membership anywhere
-in our store ("wrong key", not "drift"); that detector and the invite-path fix (#174) are
-follow-on work, not part of this plan.
+in our store ("wrong key", not "drift"); both shipped in the follow-on plan `docs/superpowers/plans/2026-08-22-garm-denial-detector-and-await-invite-grant.md`.
 
 ## The pattern
 
