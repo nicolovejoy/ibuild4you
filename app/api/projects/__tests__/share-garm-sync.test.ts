@@ -11,10 +11,12 @@ import { POST, PATCH } from '../share/route'
 // =============================================================================
 
 const scheduleGarmGrantSyncMock = vi.fn()
-const syncGarmGrantForEmailMock = vi.fn(async () => 'synced' as const)
+const syncGarmGrantForEmailMock = vi.fn(
+  async (_email: string): Promise<'synced' | 'skipped' | 'failed'> => 'synced'
+)
 vi.mock('@/lib/garm-grants', () => ({
   scheduleGarmGrantSync: (...args: unknown[]) => scheduleGarmGrantSyncMock(...args),
-  syncGarmGrantForEmail: (...args: unknown[]) => syncGarmGrantForEmailMock(...args),
+  syncGarmGrantForEmail: (email: string) => syncGarmGrantForEmailMock(email),
 }))
 
 const memberAdds: Record<string, unknown>[] = []
