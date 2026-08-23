@@ -4,7 +4,7 @@ import { useAuth } from '@/lib/hooks/useAuth'
 import { useApproval } from '@/lib/hooks/useApproval'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
-import { ExternalLink, Save, Check, Github, MessageCircle } from 'lucide-react'
+import { ExternalLink, Save, Check, Github, MessageCircle, X } from 'lucide-react'
 import { useCurrentUser } from '@/lib/query/hooks'
 import { apiFetch } from '@/lib/firebase/api-fetch'
 import { useEscapeBack } from '@/lib/hooks/useEscapeBack'
@@ -198,6 +198,7 @@ function FeedbackRow({
   const [saved, setSaved] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [convertingGh, setConvertingGh] = useState(false)
+  const [clearingGh, setClearingGh] = useState(false)
   const [ghErr, setGhErr] = useState<string | null>(null)
 
   // #143: on arrival via ?focus=, scroll this card into view and flash a ring.
@@ -229,6 +230,29 @@ function FeedbackRow({
       setGhErr(e instanceof Error ? e.message : 'GitHub conversion failed')
     } finally {
       setConvertingGh(false)
+    }
+  }
+
+  // Clears a stale link (e.g. the GitHub issue was deleted) so "Convert to
+  // GitHub issue" is offered again instead of pointing at a 404.
+  const handleClearGithub = async () => {
+    setClearingGh(true)
+    setGhErr(null)
+    try {
+      const res = await apiFetch(`/api/admin/feedback/${item.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ github_issue_url: null }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error || 'Clear failed')
+      }
+      const updated = (await res.json()) as Feedback
+      onUpdated(updated)
+    } catch (e) {
+      setGhErr(e instanceof Error ? e.message : 'Clear failed')
+    } finally {
+      setClearingGh(false)
     }
   }
 
@@ -344,15 +368,27 @@ function FeedbackRow({
       </div>
       <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
         {item.github_issue_url ? (
-          <a
-            href={item.github_issue_url}
-            target="_blank"
-            rel="noreferrer noopener"
-            className="inline-flex items-center gap-1 text-xs text-brand-navy hover:underline"
-          >
-            <Github className="h-3 w-3" />
-            Open GitHub issue
-          </a>
+          <>
+            <a
+              href={item.github_issue_url}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="inline-flex items-center gap-1 text-xs text-brand-navy hover:underline"
+            >
+              <Github className="h-3 w-3" />
+              Open GitHub issue
+            </a>
+            <button
+              type="button"
+              onClick={handleClearGithub}
+              disabled={clearingGh}
+              className="inline-flex items-center gap-1 text-xs text-gray-400 hover:text-red-500 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              title="Clear this link (e.g. the GitHub issue was deleted) — does not touch the issue itself"
+            >
+              <X className="h-3 w-3" />
+              {clearingGh ? 'Clearing…' : 'Clear linked issue'}
+            </button>
+          </>
         ) : (
           <button
             type="button"
