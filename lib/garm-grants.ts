@@ -104,7 +104,9 @@ async function postGrant(email: string, role: GarmGrantRole): Promise<void> {
   const key = process.env.GARM_ADMIN_KEY
   if (!url || !key) {
     console.warn('[garm-dual-write] GARM_URL/GARM_ADMIN_KEY not set — skipping sync')
-    return
+    // Absent config must never read as success (fail-closed, #174): throw so the
+    // caller's catch turns this into a 'failed' outcome instead of 'synced'.
+    throw new Error('GARM_URL/GARM_ADMIN_KEY not set')
   }
   const res = await fetch(`${url}/api/grants`, {
     method: 'POST',
@@ -125,7 +127,9 @@ async function revokeGrant(email: string): Promise<void> {
   const key = process.env.GARM_ADMIN_KEY
   if (!url || !key) {
     console.warn('[garm-dual-write] GARM_URL/GARM_ADMIN_KEY not set — skipping sync')
-    return
+    // Absent config must never read as success (fail-closed, #174): throw so the
+    // caller's catch turns this into a 'failed' outcome instead of 'synced'.
+    throw new Error('GARM_URL/GARM_ADMIN_KEY not set')
   }
   const res = await fetch(`${url}/api/grants`, {
     method: 'DELETE',

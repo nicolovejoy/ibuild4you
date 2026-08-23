@@ -184,7 +184,7 @@ describe('syncGarmGrantForEmail', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('does nothing when GARM_ADMIN_KEY is unset (no fetch, no throw)', async () => {
+  it('resolves "failed" (not "synced", no fetch, no throw) when GARM_ADMIN_KEY is unset', async () => {
     delete process.env.GARM_ADMIN_KEY
     const { getAdminDb } = await import('@/lib/api/firebase-server-helpers')
     vi.mocked(getAdminDb).mockReturnValue(
@@ -192,8 +192,9 @@ describe('syncGarmGrantForEmail', () => {
     )
     const fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
 
-    await expect(syncGarmGrantForEmail('sam@example.com')).resolves.toBe('synced')
+    await expect(syncGarmGrantForEmail('sam@example.com')).resolves.toBe('failed')
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
