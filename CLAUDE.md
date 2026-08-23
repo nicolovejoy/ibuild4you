@@ -174,7 +174,6 @@ Keep the code approachable — clarity over cleverness. Code should be:
 **🔴 `npm run type-check` is NOT equivalent to `npm run build` in a worktree.** `type-check` is `tsc --noEmit`, and tsconfig includes `.next/types/**/*.ts` — absent in a fresh worktree, so Next's route-signature validation silently checks **nothing**. Three implementers, three reviews and the controller all reported "type-check clean" on a branch that did not compile (`export const` in a `route.ts` is not a permitted Route export). **In a worktree, run BOTH `npm run build` AND `npm run type-check` before claiming clean** — they cover different things: `build` skips test files, so a badly typed test mock passes `build` and fails CI's `tsc` (seen on PR #176); `type-check` skips Next's route-export validation without `.next/types`. Either alone is a false green.
 
 **Key open threads** (full backlog: `gh issue list --state open`):
-- **#174** — invite/share should await the Garm grant rather than fire-and-forget (the real fix for the lockout class above)
 - **#84** — JSON-blob/chat authoring pivot (north star; also carries #133's deferred write path)
 - **#122** — `inherits_from` + round-timeline view, gated on the next new-brief-with-predecessor moment
 - **#72 B3/B5** — watch the byside pilot before building the capture-button/screenshot slices
@@ -229,7 +228,7 @@ Production (Vercel):
 - `FEEDBACK_INBOX_HOST` (optional) — domain used for the plus-addressed reply address. Defaults to `inbox.ibuild4you.com`. MX for this subdomain must point at Resend's inbound servers; the apex domain keeps its existing iCloud MX.
 - `RESEND_INBOUND_FETCH_URL` (optional) — URL template for fetching the body of an inbound email by id, e.g. `https://api.resend.com/emails/{id}`. Defaults to `https://api.resend.com/emails/{id}`. The webhook ships metadata only; the body must be retrieved separately. Override only if the default 404s against your Resend account.
 
-<!-- SHARED-CONVENTIONS:BEGIN v=d5e16e653242 — auto-managed, do not edit here; source: prompt-lab/workflow/claude-md-shared.md (edit + re-sync) -->
+<!-- SHARED-CONVENTIONS:BEGIN v=e5fb79b2ef4d — auto-managed, do not edit here; source: prompt-lab/workflow/claude-md-shared.md (edit + re-sync) -->
 ## Shared conventions
 
 <!-- These are Nico's cross-repo output rules. They're materialized into each repo's
@@ -241,6 +240,8 @@ of truth: prompt-lab/workflow/claude-md-shared.md — edit there and re-sync, ne
 - **Number your questions.** Any time you ask Nico more than one question, present them as a numbered list (1., 2., 3.) so he can answer by number with no ambiguity. A single standalone question needs no number.
 
 - **Self-contained smoke-test instructions.** When you ask Nico to manually test or verify an app or website, assume zero carried-over context — he should never scroll back or recall a URL/path/credential from earlier. Always include: the exact URL (full `https://…` or `http://localhost:…`, restated even if mentioned above), the precise steps in order, and what a pass vs. fail looks like. Repetition here is a feature, not clutter.
+
+- **UTC at rest, Pacific on display.** Timestamps are stored in UTC, always. A *calendar day* shown to a human is `America/Los_Angeles` — Nico's day, and the clock the work actually happened on. The two rules that follow are the ones that get broken: never form a date bucket with `new Date(…).toISOString().slice(0,10)` (that is UTC, so every chart axis and "today" silently rolls over at 5pm Pacific — it put a phantom tomorrow bar on the Prompt Lab dashboard), and never bucket UTC-stamped rows with a bare `date(col)` in SQL. Use `Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles' })` in JS and an explicit zone in SQL/Python. Storage in local time is also wrong — it can't be migrated across a DST boundary without loss.
 
 - **No marker before a copy-paste command block.** Nico's terminal renders markdown bullets (`-`, `*`, `•`) as `●`, which breaks paste into zsh. The line directly above a fenced command block must be a plain-text label ending in a colon — never a bullet, dash, asterisk, or number. For loud copy targets, lead the label with `📋` + bold `COPY THE BELOW`, then a colon, then the block.
 <!-- SHARED-CONVENTIONS:END -->
