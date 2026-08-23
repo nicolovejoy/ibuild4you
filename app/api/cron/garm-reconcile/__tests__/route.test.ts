@@ -17,6 +17,8 @@ let mockMembers: Doc[] = []
 let mockApproved: Doc[] = []
 /** Most-recent-first prior run rows, as the repeat-missing lookup reads them. */
 let mockPriorLog: Doc[] = []
+/** garm_denials docs the 24h-counts read returns. */
+let mockDenials: Doc[] = []
 const mockLogAdd = vi.fn<(doc: Record<string, unknown>) => Promise<{ id: string }>>(async () => ({
   id: 'log-1',
 }))
@@ -41,6 +43,9 @@ const mockCollection = vi.fn((name: string) => {
         }),
       }),
     }
+  }
+  if (name === 'garm_denials') {
+    return { where: () => ({ get: async () => ({ docs: mockDenials }) }) }
   }
   return { get: async () => ({ docs: [], size: 0 }) }
 })
@@ -137,6 +142,7 @@ describe('GET /api/cron/garm-reconcile', () => {
     failPostFor = {}
     mockPriorLog = []
     priorLogReadFails = false
+    mockDenials = []
     mockLogAdd.mockClear()
     mockCollection.mockClear()
     fetchMock.mockClear()
@@ -202,6 +208,20 @@ describe('GET /api/cron/garm-reconcile', () => {
       capped: false,
       error: null,
     })
+  })
+
+  it('reports 24h denial counts by kind in the log row and response', async () => {
+    mockDenials = [
+      { id: 'd1', data: () => ({ kind: 'unknown-principal' }) },
+      { id: 'd2', data: () => ({ kind: 'known-member' }) },
+      { id: 'd3', data: () => ({ kind: 'known-member' }) },
+    ]
+
+    const res = await GET(makeReq())
+    const body = await res.json()
+
+    expect(body).toMatchObject({ denials_24h_unknown_principal: 1, denials_24h_known_member: 2 })
+    expect(lastLogDoc()).toMatchObject({ denials_24h_unknown_principal: 1, denials_24h_known_member: 2 })
   })
 
   it('heals exactly one missing grant at the expected role', async () => {
@@ -421,10 +441,19 @@ describe('GET /api/cron/garm-reconcile', () => {
         healed_count: 0,
         capped: false,
         error: null,
+        // A paused reconciler is exactly when a human most needs this number —
+        // denial counting runs outside the dual-write gate.
+        denials_24h_unknown_principal: 0,
+        denials_24h_known_member: 0,
       })
       // Still visible: a paused reconciler logs every hour rather than the
       // safety net quietly ceasing to exist.
-      expect(lastLogDoc()).toMatchObject({ skipped_dual_write_off: true, missing_count: 0 })
+      expect(lastLogDoc()).toMatchObject({
+        skipped_dual_write_off: true,
+        missing_count: 0,
+        denials_24h_unknown_principal: 0,
+        denials_24h_known_member: 0,
+      })
     })
 
     it('stands down when the switch is unset entirely', async () => {

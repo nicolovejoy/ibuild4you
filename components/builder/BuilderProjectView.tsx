@@ -1120,12 +1120,14 @@ function ShareModal({ project, onClose, mode = 'maker' }: { project: Project; on
   const sharedEmail = justInvited ? email : project.requester_email || email
 
   const resetLink = shareProject.data?.reset_link ?? null
+  const garmSyncFailed = shareProject.data?.garm_sync === 'failed'
   const inviteEmailBody = copy.invite.body({ projectTitle: project.title, shareLink, resetLink })
 
   return (
     <Modal isOpen onClose={onClose} title={isAdd ? 'Invite someone to this brief' : justInvited ? 'Share with maker' : alreadyShared ? 'Maker access' : 'Share with maker'}>
       {showConfirmation ? (
         <div className="space-y-3">
+          {garmSyncFailed && <StatusMessage type="warning" message={copy.shareModal.garmSyncFailed} />}
           <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
             <div className="flex items-center justify-between">
               <div className="min-w-0 flex-1">

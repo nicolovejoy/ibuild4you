@@ -184,7 +184,7 @@ describe('syncGarmGrantForEmail', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('does nothing when GARM_ADMIN_KEY is unset (no fetch, no throw)', async () => {
+  it('resolves "failed" (not "synced", no fetch, no throw) when GARM_ADMIN_KEY is unset', async () => {
     delete process.env.GARM_ADMIN_KEY
     const { getAdminDb } = await import('@/lib/api/firebase-server-helpers')
     vi.mocked(getAdminDb).mockReturnValue(
@@ -192,8 +192,9 @@ describe('syncGarmGrantForEmail', () => {
     )
     const fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
 
-    await expect(syncGarmGrantForEmail('sam@example.com')).resolves.toBeUndefined()
+    await expect(syncGarmGrantForEmail('sam@example.com')).resolves.toBe('failed')
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
@@ -208,8 +209,50 @@ describe('syncGarmGrantForEmail', () => {
     )
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
-    await expect(syncGarmGrantForEmail('sam@example.com')).resolves.toBeUndefined()
+    await expect(syncGarmGrantForEmail('sam@example.com')).resolves.toBe('failed')
     expect(warnSpy).toHaveBeenCalled()
+  })
+
+  it('resolves "synced" when Garm accepts the upsert', async () => {
+    const { getAdminDb } = await import('@/lib/api/firebase-server-helpers')
+    vi.mocked(getAdminDb).mockReturnValue(
+      mockDb({ members: [{ role: 'maker' }], approved: true }) as never
+    )
+    const fetchMock = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({}) }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(syncGarmGrantForEmail('sam@example.com')).resolves.toBe('synced')
+  })
+
+  it('resolves "failed" (and does not throw) when Garm returns 500', async () => {
+    const { getAdminDb } = await import('@/lib/api/firebase-server-helpers')
+    vi.mocked(getAdminDb).mockReturnValue(
+      mockDb({ members: [{ role: 'maker' }], approved: true }) as never
+    )
+    const fetchMock = vi.fn(async () => ({ ok: false, status: 500 }))
+    vi.stubGlobal('fetch', fetchMock)
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    await expect(syncGarmGrantForEmail('sam@example.com')).resolves.toBe('failed')
+  })
+
+  it('resolves "failed" when the Firestore read throws', async () => {
+    const { getAdminDb } = await import('@/lib/api/firebase-server-helpers')
+    vi.mocked(getAdminDb).mockImplementation(() => {
+      throw new Error('firestore unavailable')
+    })
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    await expect(syncGarmGrantForEmail('sam@example.com')).resolves.toBe('failed')
+  })
+
+  it('resolves "skipped" when GARM_DUAL_WRITE is off', async () => {
+    delete process.env.GARM_DUAL_WRITE
+    await expect(syncGarmGrantForEmail('sam@example.com')).resolves.toBe('skipped')
+  })
+
+  it('resolves "skipped" for a blank email', async () => {
+    await expect(syncGarmGrantForEmail('   ')).resolves.toBe('skipped')
   })
 
   it('revokes the grant for a revoked approved_emails row with no active membership (#163)', async () => {
@@ -234,7 +277,7 @@ describe('syncGarmGrantForEmail', () => {
     })
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
-    await expect(syncGarmGrantForEmail('sam@example.com')).resolves.toBeUndefined()
+    await expect(syncGarmGrantForEmail('sam@example.com')).resolves.toBe('failed')
     expect(warnSpy).toHaveBeenCalled()
   })
 })

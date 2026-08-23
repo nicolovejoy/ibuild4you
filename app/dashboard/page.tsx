@@ -613,6 +613,9 @@ function ShareModal({ project, onClose }: { project: Project; onClose: () => voi
       {shareProject.isSuccess ? (
         <div className="space-y-4">
           <StatusMessage type="success" message={copy.shareModal.successMessage(email)} />
+          {shareProject.data?.garm_sync === 'failed' && (
+            <StatusMessage type="warning" message={copy.shareModal.garmSyncFailed} />
+          )}
           <div>
             <p className="text-sm text-gray-700 mb-2">Send them this link:</p>
             <div className="flex items-center gap-2">

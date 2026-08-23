@@ -10,7 +10,7 @@ import { resolveBriefRole } from '@/lib/roles/brief-role'
 import { copy } from '@/lib/copy'
 import { normalizeEmail } from '@/lib/email/normalize'
 import { ensureInviteResetLink } from '@/lib/auth/ensure-invite-account'
-import { scheduleGarmGrantSync } from '@/lib/garm-grants'
+import { scheduleGarmGrantSync, syncGarmGrantForEmail } from '@/lib/garm-grants'
 
 // POST /api/projects/share — share a project with a maker (builder+)
 export async function POST(request: Request) {
@@ -162,14 +162,17 @@ export async function POST(request: Request) {
   // (PR D) this link + Google are how the invitee signs in.
   const resetLink = await ensureInviteResetLink(normalizedEmail)
 
-  // Garm dual-write (Phase 4): this invite/re-share just created or updated a
-  // project_members row for normalizedEmail — recompute + upsert their grant.
-  scheduleGarmGrantSync(normalizedEmail)
+  // #174: the invite is builder-initiated, not a hot path — AWAIT the Garm grant
+  // so a failure is visible to the person who can act on it, instead of the
+  // invitee discovering it days later. The Firestore membership above is already
+  // committed and is never unwound by this; a failure is a warning, not an error.
+  const garmSync = await syncGarmGrantForEmail(normalizedEmail)
 
   return NextResponse.json({
     email: normalizedEmail,
     project_id,
     reset_link: resetLink,
+    garm_sync: garmSync,
   })
 }
 

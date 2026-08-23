@@ -68,6 +68,7 @@ Key pattern: clients call `apiFetch()` which attaches the Firebase Bearer token.
 - **files** — uploaded files (metadata in Firestore, bytes in S3 at `ibuild4you-files` bucket), scoped to project
 - **briefs** — living brief for a project, structured and versioned, updated after each session
 - **reviews** — builder annotations on a brief, feed back into agent context for next session
+- **garm_denials** — counts-only record of sign-in denials keyed by sha256(email); kind unknown-principal | known-member (lib/garm-denials.ts). No addresses stored. The hourly garm_reconcile_log row carries 24h counts of each.
 
 ## Project Setup JSON
 
@@ -178,7 +179,7 @@ This is the case aliasing (#169) exists for — one person, two addresses, one i
 
 **What the branch above is and isn't.** The reconcile would NOT have caught this — nothing was missing. It is prophylactic, not remedial: a fail-closed authority with no reconciler is a latent lockout generator, and #174 (await the grant on invite) is still right, but neither was the cause here. The fail-closed cron auth and the Garm health check were independently real problems.
 
-**🔴 `npm run type-check` is NOT equivalent to `npm run build` in a worktree.** `type-check` is `tsc --noEmit`, and tsconfig includes `.next/types/**/*.ts` — absent in a fresh worktree, so Next's route-signature validation silently checks **nothing**. Three implementers, three reviews and the controller all reported "type-check clean" on a branch that did not compile (`export const` in a `route.ts` is not a permitted Route export). **In a worktree, run `npm run build` before claiming clean** — otherwise CI is the first thing that tells you.
+**🔴 `npm run type-check` is NOT equivalent to `npm run build` in a worktree.** `type-check` is `tsc --noEmit`, and tsconfig includes `.next/types/**/*.ts` — absent in a fresh worktree, so Next's route-signature validation silently checks **nothing**. Three implementers, three reviews and the controller all reported "type-check clean" on a branch that did not compile (`export const` in a `route.ts` is not a permitted Route export). **In a worktree, run BOTH `npm run build` AND `npm run type-check` before claiming clean** — they cover different things: `build` skips test files, so a badly typed test mock passes `build` and fails CI's `tsc` (seen on PR #176); `type-check` skips Next's route-export validation without `.next/types`. Either alone is a false green.
 
 **Key open threads** (full backlog: `gh issue list --state open`):
 - **#174** — invite/share should await the Garm grant rather than fire-and-forget (the real fix for the lockout class above)

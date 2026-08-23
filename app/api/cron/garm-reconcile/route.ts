@@ -10,6 +10,7 @@ import {
   type GarmGrantRole,
   type MemberRowForSync,
 } from '@/lib/garm-grants'
+import { countRecentGarmDenials } from '@/lib/garm-denials'
 
 // =============================================================================
 // Garm ↔ Firestore grant reconcile (hourly cron — see vercel.json "0 * * * *").
@@ -306,6 +307,14 @@ export async function GET(request: Request) {
     }
   }
 
+  // Denial counts (lib/garm-denials.ts): the reconcile log is where a human
+  // looks after an incident, so the "wrong key" signal the diff cannot see
+  // rides along here. Runs outside the dual-write gate above on purpose — a
+  // paused run is exactly when a human most needs this number.
+  // These count DISTINCT principals whose last_seen is inside the window, not denial attempts — one address denied 50 times reads as 1.
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+  const denials = await countRecentGarmDenials(db, since)
+
   const summary = {
     checked_count: checkedCount,
     missing_count: missingCount,
@@ -315,6 +324,8 @@ export async function GET(request: Request) {
     capped,
     repeat_missing: repeatMissing,
     skipped_dual_write_off: skippedDualWriteOff,
+    denials_24h_unknown_principal: denials.unknownPrincipal,
+    denials_24h_known_member: denials.knownMember,
     error,
   }
 
