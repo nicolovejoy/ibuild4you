@@ -95,7 +95,7 @@ export default function DashboardPage() {
 
 function NewProjectButton() {
   const [showForm, setShowForm] = useState(false)
-  const [mode, setMode] = useState<'form' | 'import'>('form')
+  const [mode, setMode] = useState<'form' | 'import'>('import')
   const [title, setTitle] = useState('')
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName] = useState('')
@@ -122,7 +122,7 @@ function NewProjectButton() {
     setJsonInput('')
     setJsonError(null)
     setPrepCopied(false)
-    setMode('form')
+    setMode('import')
     setShowForm(false)
   }
 
