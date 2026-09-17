@@ -35,6 +35,7 @@ yarn-error.log*
 # and committing them is the point: they make the local credential set reproducible
 # on a new machine instead of hand-assembled (see .env.ops.tpl).
 !.env.ops.tpl
+!.env.preview.tpl
 
 # vercel
 .vercel
