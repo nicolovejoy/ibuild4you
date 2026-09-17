@@ -61,9 +61,20 @@ describe('shouldKickoff', () => {
     expect(shouldKickoff([], NOW, { projectLastMakerMessageAt: null })).toBe(false)
   })
 
-  it('does not fire when project history is under the gap threshold', () => {
+  // 2026-09-17: a builder created session 2 five minutes after session 1. No
+  // welcome (#70) and no kickoff (gap < 1hr) left the maker facing a blank chat
+  // with no cue to start. An EMPTY return session has no conversation to
+  // interrupt, so the gap doesn't apply — always greet.
+  it('fires on an empty return session even when project history is under the gap', () => {
     expect(
-      shouldKickoff([], NOW, { projectLastMakerMessageAt: ago(KICKOFF_GAP_MS - 1000) }),
+      shouldKickoff([], NOW, { projectLastMakerMessageAt: ago(5 * 60 * 1000) }),
+    ).toBe(true)
+  })
+
+  it('still applies the gap to a non-empty session with recent project history', () => {
+    const messages = [{ role: 'agent' as const, created_at: ago(60 * 1000) }]
+    expect(
+      shouldKickoff(messages, NOW, { projectLastMakerMessageAt: ago(5 * 60 * 1000) }),
     ).toBe(false)
   })
 

@@ -47,5 +47,13 @@ export function shouldKickoff(
   const lastMakerAtMs = Math.max(lastMakerInSessionMs, projectMakerMs)
   if (!lastMakerAtMs) return false
 
+  // An empty return session always earns a greeting, whatever the gap. The gap
+  // exists so we don't re-greet someone mid-conversation; an empty session has
+  // no conversation to interrupt, and since #70 it has no canned welcome either
+  // — so without this the maker faces a blank chat with no cue to start (seen
+  // 2026-09-17: session 2 created five minutes after session 1). The server's
+  // last_kickoff_at guard still prevents a double greeting.
+  if (messages.length === 0) return true
+
   return nowMs - lastMakerAtMs >= KICKOFF_GAP_MS
 }
