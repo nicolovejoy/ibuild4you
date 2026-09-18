@@ -15,6 +15,18 @@ const CACHE_CONTROL = { type: 'ephemeral' as const }
 // Anthropic 400s a request carrying more than 4 cache_control markers.
 const MAX_CACHE_MARKERS = 4
 
+// Wraps a system prompt string into the single cache-marked text block
+// Anthropic's `system` param expects. Shared by applyPromptCaching (chat)
+// and kickoff (app/api/chat/kickoff/route.ts), which caches only its system
+// block: kickoff never advances last_maker_message_at, so its system prompt
+// (including the "returning after a gap" block) is very likely
+// byte-identical to the maker's very next /api/chat turn — a real cache
+// read. Kickoff's messages end in a synthetic turn that's never sent again,
+// so marking them would only pay the cache-write premium for no read.
+export function cacheSystemPrompt(system: string): Anthropic.TextBlockParam[] {
+  return [{ type: 'text', text: system, cache_control: CACHE_CONTROL }]
+}
+
 // Marks the chat prefix for Anthropic prompt caching: one marker on the
 // system block and one on the last block of the last message. Turns in a
 // live conversation arrive well inside the 5-minute cache TTL, so this makes
@@ -28,9 +40,7 @@ export function applyPromptCaching<M extends CacheableMessage>(
   system: string,
   messages: M[]
 ): { system: Anthropic.TextBlockParam[]; messages: M[] } {
-  const systemBlocks: Anthropic.TextBlockParam[] = [
-    { type: 'text', text: system, cache_control: CACHE_CONTROL },
-  ]
+  const systemBlocks = cacheSystemPrompt(system)
 
   if (messages.length === 0) {
     return { system: systemBlocks, messages }

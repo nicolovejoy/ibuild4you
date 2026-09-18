@@ -195,8 +195,9 @@ async function handleChat(
 
   // For user messages with attachments, fetch each file from S3 and inline it
   // into the Claude content array as a document/image block. Files attached
-  // to earlier turns stay in context on every subsequent turn (Anthropic
-  // prompt caching, set per-block in the helper, keeps this affordable).
+  // to earlier turns stay in context on every subsequent turn (the
+  // attachment-marker loop below and applyPromptCaching, called just before
+  // streaming, mark it for Anthropic prompt caching, keeping this affordable).
   type TextBlock = { type: 'text'; text: string; cache_control?: { type: 'ephemeral' } }
   type ContentBlock = AttachmentBlock | TextBlock
   type ClaudeMessage = {

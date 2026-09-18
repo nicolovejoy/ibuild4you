@@ -16,7 +16,7 @@ const mockGetUserDisplayName = vi.fn()
 const mockHasSystemRole = vi.fn()
 const mockS3Send = vi.fn()
 
-const streamCalls: Array<{ messages: unknown[] }> = []
+const streamCalls: Array<{ system: { type: string; cache_control?: unknown }[]; messages: unknown[] }> = []
 
 let docData: Record<string, { exists: boolean; data: () => Record<string, unknown> }>
 let queryResults: Record<string, { id: string; data: () => Record<string, unknown> }[]>
@@ -66,8 +66,8 @@ vi.mock('@aws-sdk/client-s3', () => ({
 vi.mock('@anthropic-ai/sdk', () => ({
   default: vi.fn(() => ({
     messages: {
-      stream: vi.fn((args: { messages: unknown[] }) => {
-        streamCalls.push({ messages: args.messages })
+      stream: vi.fn((args: { system: { type: string; cache_control?: unknown }[]; messages: unknown[] }) => {
+        streamCalls.push({ system: args.system, messages: args.messages })
         return {
           [Symbol.asyncIterator]: () => ({
             next: async () => ({ done: true, value: undefined }),
@@ -207,6 +207,39 @@ describe('POST /api/chat with attachments', () => {
     expect(userMsg.content[userMsg.content.length - 1].cache_control).toEqual({ type: 'ephemeral' })
   })
 
+  it('caps the whole request at 3 markers when the attachment message is not the last message', async () => {
+    // Attachment message is followed by an agent reply, so the attachment
+    // marker (route's loop) and the last-message marker (applyPromptCaching)
+    // land on two different messages — plus the system marker, that's 3
+    // total, still well under Anthropic's 4-marker cap.
+    queryResults.messages = [
+      {
+        id: 'old-1',
+        data: () => ({
+          role: 'user',
+          content: 'here is the file',
+          file_ids: ['file-1'],
+          created_at: '2026-01-01T00:00:00Z',
+        }),
+      },
+      {
+        id: 'old-2',
+        data: () => ({ role: 'agent', content: 'got it, thanks', created_at: '2026-01-01T00:01:00Z' }),
+      },
+    ]
+    const res = await POST(makeRequest({ session_id: 's1', content: 'anything else?' }))
+    await drain(res)
+
+    const { system, messages } = streamCalls[0]
+    let markerCount = system.filter((b) => b.cache_control).length
+    for (const m of messages as { content: string | { cache_control?: unknown }[] }[]) {
+      if (typeof m.content === 'string') continue
+      markerCount += m.content.filter((b) => b.cache_control).length
+    }
+    expect(markerCount).toBe(3)
+    expect(markerCount).toBeLessThanOrEqual(4)
+  })
+
   it('puts the cache_control marker on the most recent attachment-bearing message', async () => {
     queryResults.messages = [
       {
@@ -251,7 +284,7 @@ describe('POST /api/chat with attachments', () => {
     expect(third[third.length - 1].cache_control).toEqual({ type: 'ephemeral' })
   })
 
-  it('keeps text-only messages as plain string content', async () => {
+  it('wraps the last text-only message in a cache-marked block', async () => {
     queryResults.messages = [
       {
         id: 'old-1',

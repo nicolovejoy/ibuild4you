@@ -24,13 +24,19 @@ read it at ~0.1x.
   top-level `cache_control` field, so use explicit block-level markers (do
   not bump the SDK in this change).
 
-**Out of scope (Ruling, controller).** `/api/chat/kickoff` is NOT cached.
-Kickoff only fires after a ≥1hr gap or on an empty return session, so its
-system prompt carries the "coming back after a gap" block
-(`lib/agent/system-prompt.ts` ~L218) that the maker's very next chat turn
-will not — the prefix never matches, so a marker there would pay the 1.25x
-cache-write premium for no read. Cost if wrong: kickoff stays uncached, a
-single call per session.
+**Kickoff (Ruling, controller — corrected).** `/api/chat/kickoff`'s system
+block IS cached, its messages are NOT. Kickoff never advances
+`last_maker_message_at` (that field only moves on a maker `/api/chat` turn),
+so the "coming back after a gap" block it feeds `buildSystemPrompt`
+(`lib/agent/system-prompt.ts` ~L218) is computed from the same timestamp the
+maker's very next `/api/chat` turn will also read — the system prompt is
+very likely byte-identical between the two calls, making it a real cache
+read, not a wasted write. Its messages end in a synthetic final user turn
+("...just opened the session...") that is never stored and never resent, so
+marking them would only pay the cache-write premium for no read.
+`lib/agent/prompt-cache.ts` exports `cacheSystemPrompt(system)` — the single
+cache-marked system block, shared by both `applyPromptCaching` (chat) and
+kickoff — so this isn't duplicated logic.
 
 **Global constraints.**
 - TDD: failing test first, then implementation.
