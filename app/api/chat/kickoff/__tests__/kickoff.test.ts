@@ -65,7 +65,10 @@ vi.mock('@/lib/api/firebase-server-helpers', () => ({
   getUserDisplayName: vi.fn(async () => 'Tomas'),
 }))
 
-let capturedStreamArgs: { messages?: { role: string; content: unknown }[] } | null = null
+let capturedStreamArgs: {
+  system?: { type: string; text: string; cache_control?: unknown }[]
+  messages?: { role: string; content: unknown }[]
+} | null = null
 const mockStreamEvents = [
   { type: 'content_block_delta', delta: { type: 'text_delta', text: 'Welcome back!' } },
 ]
@@ -73,19 +76,24 @@ const mockStreamEvents = [
 vi.mock('@anthropic-ai/sdk', () => ({
   default: vi.fn(() => ({
     messages: {
-      stream: vi.fn((args: { messages?: { role: string; content: unknown }[] }) => {
-        capturedStreamArgs = args
-        let index = 0
-        return {
-          [Symbol.asyncIterator]: () => ({
-            next: async () => {
-              if (index < mockStreamEvents.length) return { value: mockStreamEvents[index++], done: false }
-              return { done: true, value: undefined }
-            },
-          }),
-          finalMessage: vi.fn(async () => ({ usage: { input_tokens: 100, output_tokens: 50 } })),
+      stream: vi.fn(
+        (args: {
+          system?: { type: string; text: string; cache_control?: unknown }[]
+          messages?: { role: string; content: unknown }[]
+        }) => {
+          capturedStreamArgs = args
+          let index = 0
+          return {
+            [Symbol.asyncIterator]: () => ({
+              next: async () => {
+                if (index < mockStreamEvents.length) return { value: mockStreamEvents[index++], done: false }
+                return { done: true, value: undefined }
+              },
+            }),
+            finalMessage: vi.fn(async () => ({ usage: { input_tokens: 100, output_tokens: 50 } })),
+          }
         }
-      }),
+      ),
     },
   })),
 }))
@@ -175,6 +183,21 @@ describe('POST /api/chat/kickoff', () => {
     expect(stored[0].data.content).toBe('Welcome back!')
     // No user/maker message was written.
     expect(stored.some((c) => c.data.role === 'user')).toBe(false)
+  })
+
+  it('caches the system prompt but not the synthetic messages (kickoff never advances last_maker_message_at, so its system prompt is very likely byte-identical to the next /api/chat turn)', async () => {
+    setup({
+      messages: [msg('agent', 5 * HOUR), msg('user', 3 * HOUR), msg('agent', 3 * HOUR)],
+      lastMakerMessageAt: iso(3 * HOUR),
+    })
+    await drain(await POST(makeRequest({ session_id: 'sess-1' })))
+
+    expect(capturedStreamArgs?.system).toEqual([
+      { type: 'text', text: 'You are a helpful assistant', cache_control: { type: 'ephemeral' } },
+    ])
+    // The synthetic final turn never recurs — no message marker.
+    const sent = capturedStreamArgs?.messages || []
+    expect(sent.every((m) => typeof m.content === 'string')).toBe(true)
   })
 
   it('declines when a builder opens the session (#110 — kickoff is maker re-engagement)', async () => {

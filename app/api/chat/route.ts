@@ -6,6 +6,7 @@ import { fetchPrototypeContext } from '@/lib/api/prototype-context'
 import { fetchPinnedArtifacts } from '@/lib/api/artifact-context'
 import { fetchSiblingDecisions } from '@/lib/api/sibling-decisions'
 import { loadAttachmentBlocks, type AttachmentBlock, type DroppedAttachment } from '@/lib/agent/attachments'
+import { applyPromptCaching } from '@/lib/agent/prompt-cache'
 import { AGENT_MODEL, AGENT_MAX_TOKENS, AGENT_TEMPERATURE } from '@/lib/agent/constants'
 import { logAnthropicCall } from '@/lib/observability/anthropic'
 import { accumulateSessionUsage } from '@/lib/observability/session-cost'
@@ -194,8 +195,9 @@ async function handleChat(
 
   // For user messages with attachments, fetch each file from S3 and inline it
   // into the Claude content array as a document/image block. Files attached
-  // to earlier turns stay in context on every subsequent turn (Anthropic
-  // prompt caching, set per-block in the helper, keeps this affordable).
+  // to earlier turns stay in context on every subsequent turn (the
+  // attachment-marker loop below and applyPromptCaching, called just before
+  // streaming, mark it for Anthropic prompt caching, keeping this affordable).
   type TextBlock = { type: 'text'; text: string; cache_control?: { type: 'ephemeral' } }
   type ContentBlock = AttachmentBlock | TextBlock
   type ClaudeMessage = {
@@ -254,8 +256,9 @@ async function handleChat(
 
   // Anthropic caps cache_control markers at 4 per request. Place ONE marker
   // on the last block of the most recent user message that has attachments.
-  // The cache then covers the entire prefix (history + all attachments) and
-  // is reused on subsequent turns. With 16+ attachments, tagging each block
+  // This coexists with the system + last-message markers applyPromptCaching
+  // adds below (that call also drops markers here first if the combined
+  // count would ever exceed 4). With 16+ attachments, tagging each block
   // 400s the request — see attachments.ts.
   for (let i = claudeMessages.length - 1; i >= 0; i--) {
     const m = claudeMessages[i]
@@ -355,11 +358,16 @@ async function handleChat(
     siblingDecisions,
   })
 
+  // Mark the prefix (system prompt + last message) for prompt caching so the
+  // next turn in this conversation reads it from cache instead of paying
+  // full input price — see lib/agent/prompt-cache.ts.
+  const cached = applyPromptCaching(systemPrompt, claudeMessages)
+
   // Stream response from Claude
   const stream = getAnthropic().messages.stream({
     model: AGENT_MODEL,
-    system: systemPrompt,
-    messages: claudeMessages,
+    system: cached.system,
+    messages: cached.messages,
     max_tokens: AGENT_MAX_TOKENS,
     temperature: AGENT_TEMPERATURE,
   })

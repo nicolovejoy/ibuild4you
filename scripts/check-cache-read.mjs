@@ -35,6 +35,14 @@ console.log(`chat api_usage for session ${sessionId} (oldest→newest):`)
 rows.forEach((r, i) => {
   console.log(`  turn ${i + 1}: input=${r.input_tokens} cache_read=${r.cache_read_input_tokens} cache_create=${r.cache_creation_input_tokens} out=${r.output_tokens}`)
 })
-const laterHit = rows.slice(1).some((r) => (r.cache_read_input_tokens ?? 0) > 0)
-console.log(laterHit ? '\n✅ cache_read > 0 on a turn 2+' : '\n⚠️ no cache_read hit on later turns (review)')
-process.exit(laterHit ? 0 : 1)
+// Judge the NEWEST turn only: a long-lived test session accumulates rows from
+// earlier runs, so "any turn 2+ hit" can pass on stale history while the run
+// you just did missed.
+const last = rows[rows.length - 1]
+const lastHit = rows.length > 1 && (last.cache_read_input_tokens ?? 0) > 0
+console.log(
+  lastHit
+    ? `\n✅ newest turn read ${last.cache_read_input_tokens} cached tokens`
+    : '\n⚠️ newest turn had no cache_read (review — a first turn after a ≥1hr gap is expected to miss)'
+)
+process.exit(lastHit ? 0 : 1)
