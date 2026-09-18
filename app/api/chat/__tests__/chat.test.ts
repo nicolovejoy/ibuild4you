@@ -84,12 +84,18 @@ vi.mock('@/lib/api/firebase-server-helpers', () => ({
 let mockStreamEvents: { type: string; delta: { type: string; text: string } }[] = []
 // Capture the args passed to messages.stream so tests can assert on the
 // conversation history actually sent to Claude (e.g. name-prefixed turns).
-let capturedStreamArgs: { messages?: { role: string; content: unknown }[] } | null = null
+let capturedStreamArgs: {
+  system?: { type: string; text: string; cache_control?: unknown }[]
+  messages?: { role: string; content: unknown }[]
+} | null = null
 
 vi.mock('@anthropic-ai/sdk', () => ({
   default: vi.fn(() => ({
     messages: {
-      stream: vi.fn((args: { messages?: { role: string; content: unknown }[] }) => {
+      stream: vi.fn((args: {
+        system?: { type: string; text: string; cache_control?: unknown }[]
+        messages?: { role: string; content: unknown }[]
+      }) => {
         capturedStreamArgs = args
         let index = 0
         return {
@@ -306,6 +312,26 @@ describe('POST /api/chat', () => {
     expect(chunks[chunks.length - 1]).toBe('[DONE]')
   })
 
+  it('marks the system prompt and the last message for prompt caching', async () => {
+    const res = await POST(makeRequest({ session_id: 's1', content: 'Hello' }))
+    await readSSE(res)
+
+    expect(capturedStreamArgs?.system).toEqual([
+      { type: 'text', text: 'You are a helpful assistant', cache_control: { type: 'ephemeral' } },
+    ])
+    const msgs = capturedStreamArgs?.messages ?? []
+    const last = msgs[msgs.length - 1].content as { cache_control?: unknown }[]
+    expect(last[last.length - 1].cache_control).toEqual({ type: 'ephemeral' })
+
+    // Never exceed Anthropic's 4-marker cap.
+    let markerCount = 1 // system
+    for (const m of msgs) {
+      if (typeof m.content === 'string') continue
+      markerCount += (m.content as { cache_control?: unknown }[]).filter((b) => b.cache_control).length
+    }
+    expect(markerCount).toBeLessThanOrEqual(4)
+  })
+
   it('stores the complete agent response after streaming', async () => {
     const res = await POST(makeRequest({ session_id: 's1', content: 'Hello' }))
     await readSSE(res)
@@ -425,7 +451,12 @@ describe('POST /api/chat', () => {
     const res = await POST(makeRequest({ session_id: 's1', content: 'more' }))
     await readSSE(res)
 
-    const userTurn = capturedStreamArgs!.messages!.find((m) => m.content === 'My idea is a cafe app')
+    // This is the last message, so applyPromptCaching wraps it into a single
+    // cache-marked text block — check the text, not raw string equality.
+    const userTurn = capturedStreamArgs!.messages!.find((m) => {
+      const text = typeof m.content === 'string' ? m.content : (m.content as { text?: string }[])[0]?.text
+      return text === 'My idea is a cafe app'
+    })
     expect(userTurn).toBeDefined() // unprefixed, byte-identical to single-maker behavior
     expect(buildSystemPrompt).toHaveBeenCalledWith(
       expect.objectContaining({ participants: undefined })
@@ -464,7 +495,13 @@ describe('POST /api/chat', () => {
     const res = await POST(makeRequest({ session_id: 's1', content: 'more' }))
     await readSSE(res)
 
-    const contents = capturedStreamArgs!.messages!.map((m) => m.content)
+    // Tom's turn is the last message, so applyPromptCaching wraps it into a
+    // cache-marked text block rather than leaving it a plain string.
+    const contents = capturedStreamArgs!.messages!.map((m) =>
+      typeof m.content === 'string'
+        ? m.content
+        : (m.content as { text?: string }[]).map((b) => b.text).join('')
+    )
     expect(contents).toContain('Maria: I want a cafe app')
     expect(contents).toContain('Tom: and online ordering')
   })

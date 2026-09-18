@@ -265,9 +265,13 @@ describe('POST /api/chat with attachments', () => {
     const res = await POST(makeRequest({ session_id: 's1', content: 'follow up' }))
     await drain(res)
 
+    // This is also the last message, so applyPromptCaching (Task 1) wraps its
+    // string content into a single cache-marked text block rather than
+    // leaving it a plain string — that wrapping is separate from the
+    // attachment loop this test otherwise exercises.
     expect(streamCalls[0].messages[0]).toMatchObject({
       role: 'user',
-      content: 'Plain text only',
+      content: [{ type: 'text', text: 'Plain text only', cache_control: { type: 'ephemeral' } }],
     })
   })
 
