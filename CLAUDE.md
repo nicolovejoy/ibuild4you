@@ -53,6 +53,7 @@ npm run test:watch   # Run tests in watch mode
 - `components/builder/` — Builder project view (sessions, brief, setup tabs)
 - `components/maker/` — Maker project view (chat, brief card)
 - `components/` — App-level components (ErrorBoundary, UserMenu)
+- `lib/integration/` + `app/api/integrations/` — stars-demo round-two integration (see Data Model).
 - **Loop** — the feedback mechanism: a widget embedded on host apps → `/api/feedback` → admin inbox at `/admin/feedback` → optional GitHub issue. Overview + how to embed: `docs/loop.md`. Wire contract: `lib/feedback/README.md`.
 
 Key pattern: clients call `apiFetch()` which attaches the Firebase Bearer token. API routes call `getAuthenticatedUser(request)` to verify the token server-side before accessing Firestore via `getAdminDb()`.
@@ -69,6 +70,7 @@ Key pattern: clients call `apiFetch()` which attaches the Firebase Bearer token.
 - **briefs** — living brief for a project, structured and versioned, updated after each session
 - **reviews** — builder annotations on a brief, feed back into agent context for next session
 - **garm_denials** — counts-only record of sign-in denials keyed by sha256(email); kind unknown-principal | known-member (lib/garm-denials.ts). No addresses stored. The hourly garm_reconcile_log row carries 24h counts of each.
+- **integration_groups / integration_participants / integration_messages / integration_ops** — stars-demo round-two group conversations, server-to-server only (contract `/Users/nico/src/stars-demo/docs/specs/08a-ibuild4you-contract.md`; plan `docs/superpowers/plans/2026-09-22-stars-demo-round-two-integration.md`). Separate top-level collections on purpose: the client-readable `messages` rule, admin implicit-owner, brief regen, dashboard enrichment and the notify cron never see them. Messages carry an opaque `author_id` + `author_label`, never email or name. Routes under `app/api/integrations/stars-demo/*`, auth in `lib/api/integration-auth.ts`, store in `lib/integration/`.
 
 ## Project Setup JSON
 
@@ -220,6 +222,7 @@ Dated history moved to `docs/changelog.md`.
 
 Production (Vercel):
 - `CRON_SECRET` — required. Vercel auto-sends this as `Authorization: Bearer <CRON_SECRET>` to cron routes. `/api/cron/notify` rejects without it.
+- `STARS_INTEGRATION_SECRET` — shared secret for stars-demo's server-to-server calls to `/api/integrations/stars-demo/*` (header `X-Integration-Secret` + `X-Integration-Namespace: stars-demo`). Fail-closed: unset denies every request. Constant-time compare over SHA-256 digests. One value at a time, rotation is a coordinated cutover (08a §8). Value in 1Password `op://dev-secrets/ibuild4you-stars-integration/password` (same value in stars-demo's `IBUILD4YOU_INTEGRATION_SECRET`). Never logged.
 - `RESEND_API_KEY` — for transactional email (interest form, notify cron).
 - `ANTHROPIC_API_KEY` — for the agent.
 - `GARM_URL` — Garm authz service base URL. Canonical: `https://garm.prompt-labs.org` (custom domain, cert live; `/api/health?db=1` → `{"ok":true,"db":true}`). The `https://garm-seven.vercel.app` alias still resolves but don't wire it into anything new. Read by `lib/garm.ts` (`garmCheck`). Unset → the client denies by default (fail-closed). **Since PR G (2026-07-29) `isApprovedEmail()` gates sign-in on Garm** — see `GARM_GATING`.

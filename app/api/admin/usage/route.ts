@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getAuthenticatedUser, getAdminDb, hasSystemRole } from '@/lib/api/firebase-server-helpers'
-import { rollUpUsage, type ApiUsageRow } from '@/lib/api/usage-rollup'
+import { rollUpUsage, integrationUsageLabel, type ApiUsageRow } from '@/lib/api/usage-rollup'
 
 // GET /api/admin/usage?days=14 — admin-only Anthropic API usage rollup.
 // Returns shape matching lib/api/usage-rollup.ts UsageRollup.
@@ -50,6 +50,11 @@ export async function GET(request: Request) {
   const titles: Record<string, string> = {}
   await Promise.all(
     [...projectIds].map(async (id) => {
+      const integration = integrationUsageLabel(id)
+      if (integration) {
+        titles[id] = integration
+        return
+      }
       try {
         const doc = await db.collection('projects').doc(id).get()
         titles[id] = (doc.data()?.title as string) || '(no title)'

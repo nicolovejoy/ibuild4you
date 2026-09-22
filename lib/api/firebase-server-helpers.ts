@@ -360,3 +360,13 @@ async function computeLocalApprovedAnswer(email: string): Promise<boolean> {
 }
 
 export { getAdminDb }
+
+// Integration auth (contract 08a, stars-demo). Lives in its own module so the
+// Firebase-token path above stays untouched; re-exported here because this
+// file is the app's auth boundary and reviewers look for auth here.
+export {
+  authorizeIntegration,
+  integrationError,
+  type IntegrationContext,
+  type IntegrationErrorCode,
+} from './integration-auth'

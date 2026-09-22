@@ -7,6 +7,7 @@ export type AnthropicRoute =
   | 'brief.generate'
   | 'welcome'
   | 'prep.generate'
+  | 'integration.chat'
 
 export interface LogAnthropicCallParams {
   project_id: string
