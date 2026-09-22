@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { rollUpUsage, type ApiUsageRow } from '../usage-rollup'
+import { rollUpUsage, integrationUsageLabel, type ApiUsageRow } from '../usage-rollup'
 
 function row(overrides: Partial<ApiUsageRow> = {}): ApiUsageRow {
   return {
@@ -95,5 +95,13 @@ describe('rollUpUsage', () => {
     const r = rollUpUsage(rows, 7, '2026-05-16T00:00:00Z')
     expect(r.by_route[0].cache_read).toBe(300)
     expect(r.by_route[0].cache_create).toBe(125)
+  })
+})
+
+describe('integrationUsageLabel', () => {
+  it('labels stars-demo group ids and leaves product project ids alone', () => {
+    expect(integrationUsageLabel('stars-demo:r2:star-data')).toBe('stars-demo integration (r2:star-data)')
+    expect(integrationUsageLabel('5Gd1lNXkRwJtJUIbpwlO')).toBeNull()
+    expect(integrationUsageLabel('')).toBeNull()
   })
 })

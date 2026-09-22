@@ -10,6 +10,9 @@ export const NAMESPACE = 'stars-demo' as const
 export const SECRET_HEADER = 'x-integration-secret'
 export const NAMESPACE_HEADER = 'x-integration-namespace'
 const SECRET_ENV = 'STARS_INTEGRATION_SECRET'
+// Largest body any integration route accepts. Message bodies are capped far
+// lower by validation; this stops request.json() buffering something huge.
+export const MAX_BODY_BYTES = 64 * 1024
 
 export type IntegrationErrorCode =
   | 'unauthorized'
@@ -52,13 +55,16 @@ export function authorizeIntegration(request: Request): IntegrationContext | Int
     response: integrationError(requestId, code),
   })
 
-  // Vercel's edge already redirects http→https before we run; in production
-  // this is belt and braces for any proxy that forwards plain http. Outside
-  // production it is skipped so local smoke scripts work (08a §1).
+  // Vercel's edge already redirects http→https before we run and always sets
+  // x-forwarded-proto; in production anything but an explicit https (including
+  // no header at all) is refused. Outside production it is skipped so local
+  // smoke scripts work (08a §1).
   if (process.env.NODE_ENV === 'production') {
-    const proto = request.headers.get('x-forwarded-proto')
-    if (proto && proto !== 'https') return refuse('invalid_request')
+    if (request.headers.get('x-forwarded-proto') !== 'https') return refuse('invalid_request')
   }
+
+  const contentLength = Number(request.headers.get('content-length') ?? 0)
+  if (Number.isFinite(contentLength) && contentLength > MAX_BODY_BYTES) return refuse('invalid_request')
 
   if (request.headers.get(NAMESPACE_HEADER) !== NAMESPACE) return refuse('unauthorized')
 

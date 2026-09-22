@@ -158,6 +158,8 @@ describe('POST messages (send)', () => {
     expect(await errorCode(failed)).toBe('reply_pending')
     expect(fake.all('integration_messages')).toHaveLength(1)
     expect((fake.all('integration_messages')[0] as unknown as { reply_claim_token: string | null }).reply_claim_token).toBeNull()
+    // The message is a write, so the group version moved even though no reply exists yet.
+    expect((fake.get('integration_groups', G) as unknown as { version: string }).version).not.toBe('v1')
 
     const retry = await postJson(POST, PATH, send)
     expect(retry.status).toBe(200)

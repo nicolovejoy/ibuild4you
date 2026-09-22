@@ -127,6 +127,9 @@ describe('messages', () => {
       group_id: g.id,
     })
     expect(first.message.id).toBe(messageDocId(NS, 'k1'))
+    // Contract §2: the version changes on every write, including the
+    // participant message itself, so a reply_pending client still sees change.
+    expect((await getGroup(fake.db, NS, 'r2', 'star-data'))!.version).not.toBe(g.version)
 
     const busy = await claimSend(fake.db, { ...input(g), body: 'ignored', now: at(1000) })
     expect(busy.outcome).toBe('busy')

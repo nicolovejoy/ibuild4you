@@ -4,6 +4,18 @@
 // Mirror the shape with the script so a future contributor can read one and
 // understand the other.
 
+// stars-demo round-two facilitator calls log to api_usage too (route
+// 'integration.chat') so the cost runbook and rollups see them, but their
+// project_id is a group document ID ('stars-demo:r2:<topic>'), not a
+// projects doc. The dashboard labels those rows here instead of looking up
+// a project title that does not exist.
+const INTEGRATION_PROJECT_PREFIX = 'stars-demo:'
+
+export function integrationUsageLabel(projectId: string): string | null {
+  if (!projectId.startsWith(INTEGRATION_PROJECT_PREFIX)) return null
+  return `stars-demo integration (${projectId.slice(INTEGRATION_PROJECT_PREFIX.length)})`
+}
+
 export interface ApiUsageRow {
   project_id: string
   route: string

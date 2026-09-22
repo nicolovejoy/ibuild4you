@@ -143,6 +143,9 @@ export async function claimSend(
         created_at: input.now,
       }
       tx.create(ref, doc)
+      // The participant message is itself a write, so the group version moves
+      // now — a client that gets reply_pending still sees the change (08a §2).
+      tx.update(db.collection(GROUPS).doc(input.group.id), { version: randomUUID(), updated_at: input.now })
       return { outcome: 'created', message: { id, ...doc }, token }
     }
     const existing = snap.data() as ParticipantMessageDoc

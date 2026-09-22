@@ -67,6 +67,23 @@ describe('authorizeIntegration', () => {
     expect(authorizeIntegration(req({ ...ok, 'x-forwarded-proto': 'https' })).ok).toBe(true)
   })
 
+  it('in production, 400s invalid_request when x-forwarded-proto is absent', async () => {
+    vi.stubEnv('NODE_ENV', 'production')
+    const r = authorizeIntegration(req(ok))
+    expect(r.ok).toBe(false)
+    if (r.ok) return
+    expect(r.response.status).toBe(400)
+  })
+
+  it('400s invalid_request when content-length exceeds the body cap, before the secret is checked', async () => {
+    const r = authorizeIntegration(req({ ...ok, 'content-length': String(64 * 1024 + 1) }))
+    expect(r.ok).toBe(false)
+    if (r.ok) return
+    expect(r.response.status).toBe(400)
+    expect((await r.response.json()).error.code).toBe('invalid_request')
+    expect(authorizeIntegration(req({ ...ok, 'content-length': String(64 * 1024) })).ok).toBe(true)
+  })
+
   it('outside production, ignores x-forwarded-proto so local smoke scripts work', () => {
     expect(authorizeIntegration(req({ ...ok, 'x-forwarded-proto': 'http' })).ok).toBe(true)
   })
