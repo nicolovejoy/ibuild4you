@@ -38,11 +38,22 @@ const NAMESPACE_ERASE_FLAG = args.includes('--namespace-erase')
 const BASE = process.env.E2E_BASE || 'https://preview.ibuild4you.com'
 const SECRET = process.env.STARS_INTEGRATION_SECRET
 
+// --- bypass token (optional) ---
+
+let BYPASS_TOKEN = null
+try {
+  BYPASS_TOKEN = readFileSync(`${ROOT}.ibuild4you-bypass`, 'utf8').trim()
+} catch {
+  BYPASS_TOKEN = null // fine — most local/CI runs won't have this file
+}
+
 // --- redaction: every printed line goes through this ---
 
 function redact(value) {
-  const str = typeof value === 'string' ? value : JSON.stringify(value)
-  return SECRET ? str.split(SECRET).join('[secret]') : str
+  let str = typeof value === 'string' ? value : JSON.stringify(value)
+  if (SECRET) str = str.split(SECRET).join('[secret]')
+  if (BYPASS_TOKEN) str = str.split(BYPASS_TOKEN).join('[bypass]')
+  return str
 }
 function log(value) {
   console.log(redact(value))
@@ -67,15 +78,6 @@ const IS_PROD_HOST = PROD_HOSTS.has(hostname)
 if (IS_PROD_HOST && !ALLOW_PROD) {
   log(`Refusing to run against production host "${hostname}" without --allow-prod. Aborting before any request.`)
   process.exit(1)
-}
-
-// --- bypass token (optional) ---
-
-let BYPASS_TOKEN = null
-try {
-  BYPASS_TOKEN = readFileSync(`${ROOT}.ibuild4you-bypass`, 'utf8').trim()
-} catch {
-  BYPASS_TOKEN = null // fine — most local/CI runs won't have this file
 }
 
 // --- constants (contract 08a) ---
@@ -230,6 +232,7 @@ async function checkEnsure() {
 // --- 3. Two members, one topic ---
 
 async function checkTwoMembersOneTopic() {
+  // Three topics are fixed and shared, so the checks assume the topic starts empty; a run killed before cleanup leaves orphans that a completed run's erase-person calls clear.
   const before = await call('GET', `${MESSAGES_PATH}?round=${ROUND}&topic_id=star-data`)
   check('list star-data before sends -> 200', before.status === 200, detail(before))
   const versionBefore = before.json?.version
