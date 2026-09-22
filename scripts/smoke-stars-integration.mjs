@@ -416,7 +416,8 @@ async function checkErasePerson() {
     const messages = list.json?.messages ?? []
     const noAuthoredByP1 = !messages.some((m) => m.kind === 'participant' && m.author_id === P1)
     const noReplyDependedOnP1 = !messages.some((m) => m.kind === 'facilitator' && m.depends_on_participant_ids?.includes(P1))
-    check(`${topic}: no message authored by p1 and no reply that depended on p1`, noAuthoredByP1 && noReplyDependedOnP1, detail(list))
+    // A failed list must not pass this check by returning no messages.
+    check(`${topic}: no message authored by p1 and no reply that depended on p1`, list.status === 200 && noAuthoredByP1 && noReplyDependedOnP1, detail(list))
   }
 
   const erase2 = await call('POST', ERASE_PATH, { body: { round: ROUND, participant_id: P1, operation_key: eraseKey(P1) } })
