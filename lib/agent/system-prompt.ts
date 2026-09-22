@@ -1,4 +1,4 @@
-import { AGENT_BEHAVIOR_RULES, CONVERGE_BEHAVIOR_RULES, DEFAULT_IDENTITY } from './constants'
+import { AGENT_BEHAVIOR_RULES, CONVERGE_BEHAVIOR_RULES, DEFAULT_IDENTITY, FACILITATOR_IDENTITY, FACILITATOR_RULES } from './constants'
 import { briefRoleLabel } from '@/lib/roles/display'
 import { renderPrototypeFeedbackBlock, type PrototypeFeedbackItem } from './prototype-feedback'
 import { renderPrototypeContextBlock, type PrototypeContextItem } from './prototype-context'
@@ -264,4 +264,17 @@ function formatBrief(brief: BriefContent): string {
   if (brief.additional_context) sections.push(`**Additional context:** ${brief.additional_context}`)
 
   return sections.join('\n\n')
+}
+
+// Round-two facilitator (spec 08 / contract 08a §6). Deliberately NOT a mode
+// of buildSystemPrompt: that function's inputs are all product-brief context
+// the facilitator must never see. Title and prompt arrive on every send from
+// stars-demo's lib/copy.ts and are never stored here; the output is a fixed
+// string per topic so Anthropic prompt caching hits on every turn in a group.
+export function buildFacilitatorSystemPrompt({ topicTitle, topicPrompt }: { topicTitle: string; topicPrompt: string }): string {
+  return [
+    FACILITATOR_IDENTITY,
+    `## Topic\n\n**${topicTitle}**\n\n${topicPrompt}`,
+    FACILITATOR_RULES,
+  ].join('\n\n')
 }
