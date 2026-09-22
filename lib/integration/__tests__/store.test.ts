@@ -151,7 +151,7 @@ describe('messages', () => {
     const g = await seedGroup()
     const { message } = await claimSend(fake.db, { ...input(g), now: T0 })
     await releaseClaim(fake.db, message.id)
-    const stored = fake.get(MESSAGES, message.id) as { reply_claimed_at: string | null; reply_claim_token: string | null }
+    const stored = fake.get(MESSAGES, message.id) as unknown as { reply_claimed_at: string | null; reply_claim_token: string | null }
     expect(stored.reply_claimed_at).toBeNull()
     expect(stored.reply_claim_token).toBeNull()
     expect((await claimSend(fake.db, { ...input(g), now: at(1) })).outcome).toBe('claimed')
@@ -182,7 +182,7 @@ describe('messages', () => {
     })
     expect(r.version).not.toBe(g.version)
     expect((await findReplyTo(fake.db, g.id, message.id))!.id).toBe(r.reply.id)
-    const stored = fake.get(MESSAGES, message.id) as { reply_claim_token: string | null }
+    const stored = fake.get(MESSAGES, message.id) as unknown as { reply_claim_token: string | null }
     expect(stored.reply_claim_token).toBeNull()
   })
 

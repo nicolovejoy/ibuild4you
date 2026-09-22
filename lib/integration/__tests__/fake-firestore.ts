@@ -148,8 +148,8 @@ export function createFakeFirestore() {
     seed: (name: string, id: string, doc: Doc) => {
       table(name).set(id, { ...doc })
     },
-    all: (name: string) => [...table(name).entries()].map(([id, d]) => ({ id, ...d })),
-    get: (name: string, id: string) => {
+    all: (name: string): Array<Doc & { id: string }> => [...table(name).entries()].map(([id, d]) => ({ id, ...d })),
+    get: (name: string, id: string): (Doc & { id: string }) | null => {
       const d = table(name).get(id)
       return d ? { id, ...d } : null
     },

@@ -157,7 +157,7 @@ describe('POST messages (send)', () => {
     expect(failed.status).toBe(202)
     expect(await errorCode(failed)).toBe('reply_pending')
     expect(fake.all('integration_messages')).toHaveLength(1)
-    expect((fake.all('integration_messages')[0] as { reply_claim_token: string | null }).reply_claim_token).toBeNull()
+    expect((fake.all('integration_messages')[0] as unknown as { reply_claim_token: string | null }).reply_claim_token).toBeNull()
 
     const retry = await postJson(POST, PATH, send)
     expect(retry.status).toBe(200)

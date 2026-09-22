@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { buildFacilitatorTurns, generateFacilitatorReply } from '../facilitator'
 import type { MessageRow } from '../types'
 
-const logAnthropicCall = vi.fn(async () => {})
+const logAnthropicCall = vi.fn(async (..._args: unknown[]) => {})
 vi.mock('@/lib/observability/anthropic', () => ({
   logAnthropicCall: (...a: unknown[]) => logAnthropicCall(...a),
 }))
