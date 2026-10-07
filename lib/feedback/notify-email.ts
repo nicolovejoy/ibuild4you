@@ -1,4 +1,5 @@
 import type { FeedbackType } from '@/lib/types'
+import { textToEmailHtml } from '@/lib/email/html'
 
 // =============================================================================
 // Pure builder for the admin feedback-notification email (#143).
@@ -38,7 +39,7 @@ function ordinal(n: number): string {
   }
 }
 
-export function buildFeedbackEmail(input: FeedbackEmailInput): { subject: string; text: string } {
+export function buildFeedbackEmail(input: FeedbackEmailInput): { subject: string; text: string; html: string } {
   const { type, projectTitle, body, submitterEmail, pageUrl, viewport, userAgent, feedbackId } =
     input
 
@@ -69,5 +70,6 @@ export function buildFeedbackEmail(input: FeedbackEmailInput): { subject: string
     `feedback id: ${feedbackId}`,
   ].join('\n')
 
-  return { subject, text }
+  // html is derived from text so the two bodies can never drift apart.
+  return { subject, text, html: textToEmailHtml(text) }
 }

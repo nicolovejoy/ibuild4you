@@ -298,7 +298,7 @@ export async function POST(request: Request) {
   try {
     if (process.env.FEEDBACK_NOTIFY_SUPPRESS !== 'on') {
       const resend = new Resend(process.env.RESEND_API_KEY)
-      const { subject, text } = buildFeedbackEmail({
+      const { subject, text, html } = buildFeedbackEmail({
         type,
         projectTitle,
         body: bodyRaw,
@@ -314,6 +314,7 @@ export async function POST(request: Request) {
         to: NOTIFICATION_EMAILS,
         subject,
         text,
+        html,
       })
     }
   } catch (err) {

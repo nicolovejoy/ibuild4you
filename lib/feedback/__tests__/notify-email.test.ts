@@ -111,3 +111,14 @@ describe('buildFeedbackEmail — text body', () => {
     expect(text).toContain('viewport: n/a · ua: n/a')
   })
 })
+
+describe('buildFeedbackEmail — html body', () => {
+  it('links the review URL and the page URL, and escapes the body', () => {
+    const { html } = buildFeedbackEmail(
+      baseInput({ body: 'Button <b>broken</b> & ugly', pageUrl: 'https://byside.app/settings' })
+    )
+    expect(html).toContain('<a href="https://ibuild4you.com/admin/feedback?focus=')
+    expect(html).toContain('<a href="https://byside.app/settings"')
+    expect(html).toContain('Button &lt;b&gt;broken&lt;/b&gt; &amp; ugly')
+  })
+})
