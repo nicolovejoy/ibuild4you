@@ -1,4 +1,5 @@
 import { Resend } from 'resend'
+import { textToEmailHtml } from '@/lib/email/html'
 
 // Generic builder-initiated outbound email to a maker, sent via Resend.
 // Kept separate from send-reminder.ts (the cron path) so changes here can't
@@ -13,6 +14,10 @@ export interface SendMakerEmailInput {
   replyTo?: string
   subject: string
   text: string
+  // Optional HTML body. When omitted we derive it from `text` so every email
+  // we send has clickable links (#181). Pass your own only if you have a
+  // reason to diverge from the text.
+  html?: string
 }
 
 export interface SendMakerEmailResult {
@@ -34,6 +39,7 @@ export async function sendMakerEmail(input: SendMakerEmailInput): Promise<SendMa
     replyTo: input.replyTo,
     subject: input.subject,
     text: input.text,
+    html: input.html ?? textToEmailHtml(input.text),
   })
 
   if (error) {

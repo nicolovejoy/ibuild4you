@@ -43,6 +43,13 @@ describe('sendMakerEmail', () => {
     expect(call.replyTo).toBe('builder@example.com')
     expect(call.subject).toBe('Hello')
     expect(call.text).toBe('Body text')
+    expect(call.html).toMatch(/^<!doctype html>/i)
+  })
+
+  it('uses caller-supplied html when given', async () => {
+    sendMock.mockResolvedValue({ data: { id: 'em_h' }, error: null })
+    await sendMakerEmail({ ...baseInput, html: '<p>custom</p>' })
+    expect(sendMock.mock.calls[0][0].html).toBe('<p>custom</p>')
   })
 
   it('throws when RESEND_API_KEY is missing', async () => {
