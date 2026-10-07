@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, fireEvent, act, cleanup } from '@testing-library/react'
+import { render, screen, fireEvent, act, cleanup, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import React from 'react'
 
@@ -65,6 +65,8 @@ vi.mock('@/lib/query/hooks', () => ({
   useProjects: () => ({ data: [] }),
 }))
 
+const mockStreamMessage = vi.fn()
+
 vi.mock('@/lib/hooks/useStreamingChat', () => ({
   useStreamingChat: () => ({
     messages: [],
@@ -72,7 +74,7 @@ vi.mock('@/lib/hooks/useStreamingChat', () => ({
     streaming: false,
     error: null,
     setError: vi.fn(),
-    streamMessage: vi.fn(),
+    streamMessage: mockStreamMessage,
   }),
 }))
 
@@ -251,5 +253,70 @@ describe('MakerProjectView', () => {
       expect.arrayContaining([expect.objectContaining({ filename: 'big.pdf' })]),
     )
     consoleWarn.mockRestore()
+  })
+})
+
+// Stub (pointer: coarse) so useCoarsePointer reports touch or desktop.
+function stubPointer(coarse: boolean) {
+  Object.defineProperty(window, 'matchMedia', {
+    configurable: true,
+    writable: true,
+    value: vi.fn(() => ({
+      matches: coarse,
+      media: '(pointer: coarse)',
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    })),
+  })
+}
+
+describe('composer on a touch screen (#183)', () => {
+  it('Enter inserts a newline instead of sending', async () => {
+    stubPointer(true)
+    renderView()
+    const box = (await screen.findByPlaceholderText('Type a message...')) as HTMLTextAreaElement
+    fireEvent.change(box, { target: { value: 'hello' } })
+    fireEvent.keyDown(box, { key: 'Enter' })
+    // Give an (unwanted) async send a chance to run before asserting.
+    await act(async () => {})
+    expect(mockStreamMessage).not.toHaveBeenCalled()
+    expect(box.value).toBe('hello')
+  })
+
+  it('gets a two-line minimum height from CSS only on touch screens', async () => {
+    renderView()
+    const box = await screen.findByPlaceholderText('Type a message...')
+    expect(box.className).toMatch(/pointer-coarse:min-h-\[4\.5rem\]/)
+  })
+})
+
+describe('composer on desktop (#183)', () => {
+  it('Enter sends and the box height resets after the text clears', async () => {
+    stubPointer(false)
+    renderView()
+    const box = (await screen.findByPlaceholderText('Type a message...')) as HTMLTextAreaElement
+    fireEvent.change(box, { target: { value: 'line 1\nline 2\nline 3' } })
+    // Typing set an explicit pixel height (jsdom scrollHeight is 0 -> floor).
+    expect(box.style.height).toMatch(/px$/)
+    fireEvent.keyDown(box, { key: 'Enter' })
+    await waitFor(() => expect(mockStreamMessage).toHaveBeenCalled())
+    await waitFor(() => expect(box.value).toBe(''))
+    expect(box.style.height).toBe('auto')
+  })
+
+  it('Shift+Enter does not send', async () => {
+    stubPointer(false)
+    renderView()
+    const box = (await screen.findByPlaceholderText('Type a message...')) as HTMLTextAreaElement
+    fireEvent.change(box, { target: { value: 'hi' } })
+    fireEvent.keyDown(box, { key: 'Enter', shiftKey: true })
+    await act(async () => {})
+    expect(mockStreamMessage).not.toHaveBeenCalled()
+  })
+
+  it('has a 16px+ font so iOS does not zoom on focus', async () => {
+    renderView()
+    const box = await screen.findByPlaceholderText('Type a message...')
+    expect(box.className).toMatch(/\btext-base\b/)
   })
 })

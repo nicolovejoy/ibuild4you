@@ -35,6 +35,8 @@ import { useEscapeBack } from '@/lib/hooks/useEscapeBack'
 import { copy } from '@/lib/copy'
 import { formatCostUsd } from '@/lib/observability/session-cost'
 import { shouldKickoff } from '@/lib/agent/kickoff'
+import { shouldSendOnEnter, composerHeightPx } from '@/lib/chat/composer'
+import { useCoarsePointer } from '@/lib/hooks/useCoarsePointer'
 import { UserMenu } from '@/components/user-menu'
 import { MigrationBanner } from '@/components/MigrationBanner'
 import { briefRoleLabel, briefRoleShort, viewerBriefRole } from '@/lib/roles/display'
@@ -246,6 +248,18 @@ function MakerChat({
   const [dragOver, setDragOver] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const coarsePointer = useCoarsePointer()
+
+  // Auto-grow the composer with its content, up to a cap (#183). Height is
+  // derived from `input` so it shrinks back to one line when a send clears
+  // the text. 'auto' first so scrollHeight reflects the new content, not the
+  // previous height.
+  useEffect(() => {
+    const el = textareaRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    if (input) el.style.height = `${composerHeightPx(el.scrollHeight)}px`
+  }, [input])
 
   useEffect(() => {
     if (savedMessages && !streaming) {
@@ -456,10 +470,17 @@ function MakerChat({
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    const send = shouldSendOnEnter({
+      key: e.key,
+      shiftKey: e.shiftKey,
+      isComposing: e.nativeEvent.isComposing,
+      coarsePointer,
+    })
+    if (send) {
       e.preventDefault()
       handleSend()
     }
+    // Otherwise let the browser insert the newline.
   }
 
   const isLoading = !sessionsLoaded || messagesLoading
@@ -527,9 +548,12 @@ function MakerChat({
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
             placeholder="Type a message..."
+            // The two-line touch minimum comes from CSS (pointer-coarse), not
+            // from `rows`, so there is no first-paint jump while the
+            // useCoarsePointer hook settles after mount (#183).
             rows={1}
             disabled={streaming || isLoading || creatingSession || uploading}
-            className="flex-1 resize-none px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy disabled:bg-gray-50 disabled:text-gray-400"
+            className="flex-1 resize-none text-base leading-6 max-h-[200px] pointer-coarse:min-h-[4.5rem] overflow-y-auto px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy disabled:bg-gray-50 disabled:text-gray-400"
           />
           <button
             onClick={() => handleSend()}
