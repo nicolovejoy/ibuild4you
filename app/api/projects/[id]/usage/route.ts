@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getAuthenticatedUser, getAdminDb, hasSystemRole } from '@/lib/api/firebase-server-helpers'
 import { rollUpProjectUsage, type ApiUsageRow } from '@/lib/api/usage-rollup'
+import { isArchivedSession } from '@/lib/sessions/active'
 import { labelSessions, type ProjectUsageResponse } from '@/lib/api/project-usage'
 
 // GET /api/projects/[id]/usage — admin-only Anthropic spend for ONE brief:
@@ -37,6 +38,8 @@ export async function GET(
   const sessions = sessionsSnap.docs.map((d) => ({
     id: d.id,
     created_at: (d.data().created_at as string) || '',
+    // Same predicate /api/sessions uses (status === 'archived').
+    archived: isArchivedSession(d.data() as { status?: string }),
   }))
 
   const rollup = rollUpProjectUsage(rows)

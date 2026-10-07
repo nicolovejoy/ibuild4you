@@ -15,10 +15,15 @@ export interface ProjectUsageResponse extends Omit<ProjectUsageRollup, 'by_sessi
 
 export function labelSessions(
   by_session: SessionTotals[],
-  sessions: { id: string; created_at: string }[],
+  sessions: { id: string; created_at: string; archived: boolean }[],
 ): LabelledSessionTotals[] {
-  const ordered = [...sessions].sort((a, b) => a.created_at.localeCompare(b.created_at))
+  // Number only non-archived sessions, oldest first, so "Conversation N" matches
+  // the builder transcript picker (which is fed by /api/sessions, archived hidden).
+  const ordered = sessions
+    .filter((s) => !s.archived)
+    .sort((a, b) => a.created_at.localeCompare(b.created_at))
   const byId = new Map(ordered.map((s, i) => [s.id, { number: i + 1, created_at: s.created_at }]))
+  const archivedById = new Map(sessions.filter((s) => s.archived).map((s) => [s.id, s.created_at]))
 
   return by_session.map((s) => {
     if (s.key === NO_SESSION_KEY) {
@@ -26,6 +31,11 @@ export function labelSessions(
     }
     const hit = byId.get(s.key)
     if (!hit) {
+      const archivedAt = archivedById.get(s.key)
+      if (archivedAt !== undefined) {
+        // Hidden from the picker but its spend is real.
+        return { ...s, label: 'Conversation (archived)', number: null, session_created_at: archivedAt }
+      }
       // Session doc gone (archived + purged, or a fixture reset). Keep the
       // cost visible rather than dropping it on the floor.
       return { ...s, label: 'Conversation (removed)', number: null, session_created_at: null }
