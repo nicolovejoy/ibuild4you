@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, Send, ChevronDown, ChevronUp, MessageSquare, HelpCircle, Paperclip, Pencil, ThumbsUp, ThumbsDown } from 'lucide-react'
@@ -254,7 +254,7 @@ function MakerChat({
   // derived from `input` so it shrinks back to one line when a send clears
   // the text. 'auto' first so scrollHeight reflects the new content, not the
   // previous height.
-  useEffect(() => {
+  useLayoutEffect(() => {
     const el = textareaRef.current
     if (!el) return
     el.style.height = 'auto'
@@ -478,7 +478,9 @@ function MakerChat({
     const send = shouldSendOnEnter({
       key: e.key,
       shiftKey: e.shiftKey,
-      isComposing: e.nativeEvent.isComposing,
+      // WebKit fires the IME-committing Enter after compositionend, so
+      // isComposing is already false; keyCode 229 marks IME processing.
+      isComposing: e.nativeEvent.isComposing || e.keyCode === 229,
       coarsePointer,
     })
     if (send) {
@@ -527,7 +529,7 @@ function MakerChat({
     >
       {/* Input area */}
       <div className="space-y-2">
-        <div className="flex gap-2">
+        <div className="flex items-end gap-2">
           <button
             onClick={() => fileInputRef.current?.click()}
             disabled={streaming || isLoading || uploading}
@@ -546,6 +548,8 @@ function MakerChat({
               e.target.value = '' // reset so same file can be re-selected
             }}
           />
+          {/* max-h-[200px] below must equal COMPOSER_MAX_PX (lib/chat/composer.ts):
+              the CSS cap is a belt for the JS braces. */}
           <textarea
             ref={textareaRef}
             value={input}

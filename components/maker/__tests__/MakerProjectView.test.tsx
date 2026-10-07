@@ -293,17 +293,18 @@ describe('composer on a touch screen (#183)', () => {
     renderView()
     const box = (await screen.findByPlaceholderText('Type a message...')) as HTMLTextAreaElement
     fireEvent.change(box, { target: { value: 'hello' } })
-    fireEvent.keyDown(box, { key: 'Enter' })
+    // true = default not prevented, so the browser inserts the newline.
+    expect(fireEvent.keyDown(box, { key: 'Enter' })).toBe(true)
     // Give an (unwanted) async send a chance to run before asserting.
     await act(async () => {})
     expect(mockStreamMessage).not.toHaveBeenCalled()
-    expect(box.value).toBe('hello')
   })
 
-  it('gets a two-line minimum height from CSS only on touch screens', async () => {
+  it('carries the pointer-coarse two-line minimum class and starts at one row', async () => {
     renderView()
     const box = await screen.findByPlaceholderText('Type a message...')
     expect(box.className).toMatch(/pointer-coarse:min-h-\[4\.5rem\]/)
+    expect((box as HTMLTextAreaElement).rows).toBe(1)
   })
 })
 
@@ -334,6 +335,17 @@ describe('composer on desktop (#183)', () => {
     fireEvent.keyDown(box, { key: 'Enter', shiftKey: true })
     await act(async () => {})
     expect(mockStreamMessage).not.toHaveBeenCalled()
+  })
+
+  it('Enter with keyCode 229 (IME commit) does not send', async () => {
+    stubPointer(false)
+    renderView()
+    const box = (await screen.findByPlaceholderText('Type a message...')) as HTMLTextAreaElement
+    fireEvent.change(box, { target: { value: 'nihon' } })
+    fireEvent.keyDown(box, { key: 'Enter', keyCode: 229 })
+    await act(async () => {})
+    expect(mockStreamMessage).not.toHaveBeenCalled()
+    expect(box.value).toBe('nihon')
   })
 
   it('has a 16px+ font so iOS does not zoom on focus', async () => {

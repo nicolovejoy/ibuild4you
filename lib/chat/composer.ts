@@ -30,7 +30,8 @@ export function shouldSendOnEnter({
   return !shiftKey
 }
 
-// Auto-grow: the textarea's scrollHeight (content height) clamped to the cap.
-export function composerHeightPx(scrollHeight: number): number {
-  return Math.max(0, Math.min(scrollHeight, COMPOSER_MAX_PX))
+// Auto-grow: the textarea's would-be border-box height (scrollHeight plus its
+// borders) clamped to the cap.
+export function composerHeightPx(borderBoxPx: number): number {
+  return Math.max(0, Math.min(borderBoxPx, COMPOSER_MAX_PX))
 }

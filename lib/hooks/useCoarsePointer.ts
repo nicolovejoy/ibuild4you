@@ -17,8 +17,8 @@ export function useCoarsePointer(): boolean {
     const mql = window.matchMedia(QUERY)
     setCoarse(mql.matches)
     const onChange = (e: { matches: boolean }) => setCoarse(e.matches)
-    mql.addEventListener('change', onChange)
-    return () => mql.removeEventListener('change', onChange)
+    mql.addEventListener?.('change', onChange)
+    return () => mql.removeEventListener?.('change', onChange)
   }, [])
 
   return coarse
