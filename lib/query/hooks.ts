@@ -554,8 +554,6 @@ export function useSessions(projectId: string | undefined) {
   })
 }
 
-// --- Messages ---
-
 // Admin-only per-brief Anthropic spend (#185). `enabled` lets the caller gate
 // on isAdmin so non-admins never fire a request that would 403.
 export function useProjectUsage(projectId: string | undefined, enabled: boolean) {
@@ -570,6 +568,8 @@ export function useProjectUsage(projectId: string | undefined, enabled: boolean)
     staleTime: 60 * 1000,
   })
 }
+
+// --- Messages ---
 
 export function useDeleteMessage() {
   const queryClient = useQueryClient()

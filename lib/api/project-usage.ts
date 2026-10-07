@@ -2,6 +2,11 @@
 // the "Conversation N" ordinals the builder view already uses (1 = oldest).
 import { NO_SESSION_KEY, type ProjectUsageRollup, type SessionTotals } from './usage-rollup'
 
+// Most api_usage rows the per-brief usage route will read. The query has no
+// orderBy, so past this cap the sample is arbitrary (document-id order) and
+// every figure is an undercount. Shared so the card's note can quote it.
+export const PROJECT_USAGE_MAX_ROWS = 5000
+
 export interface LabelledSessionTotals extends SessionTotals {
   label: string
   number: number | null

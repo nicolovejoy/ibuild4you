@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { getAuthenticatedUser, getAdminDb, hasSystemRole } from '@/lib/api/firebase-server-helpers'
 import { rollUpProjectUsage, type ApiUsageRow } from '@/lib/api/usage-rollup'
 import { isArchivedSession } from '@/lib/sessions/active'
-import { labelSessions, type ProjectUsageResponse } from '@/lib/api/project-usage'
+import { labelSessions, PROJECT_USAGE_MAX_ROWS, type ProjectUsageResponse } from '@/lib/api/project-usage'
 
 // GET /api/projects/[id]/usage — admin-only Anthropic spend for ONE brief:
 // total, by route, and one row per conversation (#185). Cost is operator
@@ -10,9 +10,8 @@ import { labelSessions, type ProjectUsageResponse } from '@/lib/api/project-usag
 // project membership.
 //
 // Query is a single-field equality + limit so it needs no composite index;
-// grouping and ordering happen in memory (rollUpProjectUsage).
-const MAX_ROWS = 5000
-
+// grouping and ordering happen in memory (rollUpProjectUsage). We ask for one
+// row more than the cap so exactly-cap briefs are not flagged as truncated.
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
@@ -30,11 +29,12 @@ export async function GET(
 
   const db = getAdminDb()
   const [usageSnap, sessionsSnap] = await Promise.all([
-    db.collection('api_usage').where('project_id', '==', projectId).limit(MAX_ROWS).get(),
+    db.collection('api_usage').where('project_id', '==', projectId).limit(PROJECT_USAGE_MAX_ROWS + 1).get(),
     db.collection('sessions').where('project_id', '==', projectId).get(),
   ])
 
-  const rows = usageSnap.docs.map((d) => d.data() as ApiUsageRow)
+  const truncated = usageSnap.size > PROJECT_USAGE_MAX_ROWS
+  const rows = usageSnap.docs.slice(0, PROJECT_USAGE_MAX_ROWS).map((d) => d.data() as ApiUsageRow)
   const sessions = sessionsSnap.docs.map((d) => ({
     id: d.id,
     created_at: (d.data().created_at as string) || '',
@@ -46,7 +46,7 @@ export async function GET(
   const body: ProjectUsageResponse = {
     ...rollup,
     by_session: labelSessions(rollup.by_session, sessions),
-    truncated: usageSnap.size === MAX_ROWS,
+    truncated,
   }
   return NextResponse.json(body)
 }

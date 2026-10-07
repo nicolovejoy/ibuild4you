@@ -59,6 +59,6 @@ describe('ProjectCostsCard', () => {
     useProjectUsageMock.mockReturnValue({ data: { ...data, truncated: true }, isLoading: false, error: null })
     render(<ProjectCostsCard projectId="p1" />)
     fireEvent.click(screen.getByRole('button', { name: /api costs/i }))
-    expect(screen.getByText(/first 5,?000 calls/i)).toBeTruthy()
+    expect(screen.getByText(/Only 5,000 of this brief's calls were read, so every figure here is an undercount/)).toBeTruthy()
   })
 })
