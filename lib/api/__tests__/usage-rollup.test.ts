@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { rollUpUsage, integrationUsageLabel, type ApiUsageRow } from '../usage-rollup'
+import { rollUpUsage, rollUpProjectUsage, integrationUsageLabel, NO_SESSION_KEY, type ApiUsageRow } from '../usage-rollup'
 
 function row(overrides: Partial<ApiUsageRow> = {}): ApiUsageRow {
   return {
@@ -103,5 +103,50 @@ describe('integrationUsageLabel', () => {
     expect(integrationUsageLabel('stars-demo:r2:star-data')).toBe('stars-demo integration (r2:star-data)')
     expect(integrationUsageLabel('5Gd1lNXkRwJtJUIbpwlO')).toBeNull()
     expect(integrationUsageLabel('')).toBeNull()
+  })
+})
+
+describe('rollUpProjectUsage', () => {
+  it('returns zero totals and empty groups for no rows', () => {
+    const r = rollUpProjectUsage([])
+    expect(r).toEqual({ total_calls: 0, total_cost: 0, by_route: [], by_session: [] })
+  })
+
+  it('groups by session in chronological order of first call, with per-session totals', () => {
+    const rows = [
+      row({ session_id: 's2', cost_usd: 0.05, created_at: '2026-10-02T10:00:00.000Z' }),
+      row({ session_id: 's1', cost_usd: 0.01, created_at: '2026-10-01T10:00:00.000Z' }),
+      row({ session_id: 's1', cost_usd: 0.02, created_at: '2026-10-01T10:05:00.000Z' }),
+    ]
+    const r = rollUpProjectUsage(rows)
+    expect(r.by_session.map((s) => s.key)).toEqual(['s1', 's2'])
+    expect(r.by_session[0].calls).toBe(2)
+    expect(r.by_session[0].cost).toBeCloseTo(0.03)
+    expect(r.by_session[0].first_call_at).toBe('2026-10-01T10:00:00.000Z')
+    expect(r.by_session[0].last_call_at).toBe('2026-10-01T10:05:00.000Z')
+    expect(r.total_calls).toBe(3)
+    expect(r.total_cost).toBeCloseTo(0.08)
+  })
+
+  it('buckets calls without a session (brief regen, welcome) under NO_SESSION_KEY, listed last', () => {
+    const rows = [
+      row({ session_id: null, route: 'brief.generate', cost_usd: 0.2, created_at: '2026-09-30T00:00:00.000Z' }),
+      row({ session_id: 's1', route: 'chat', cost_usd: 0.01, created_at: '2026-10-01T10:00:00.000Z' }),
+    ]
+    const r = rollUpProjectUsage(rows)
+    expect(r.by_session.map((s) => s.key)).toEqual(['s1', NO_SESSION_KEY])
+    expect(r.by_session[1].cost).toBeCloseTo(0.2)
+    expect(r.total_cost).toBeCloseTo(0.21)
+  })
+
+  it('splits by route, most expensive first', () => {
+    const rows = [
+      row({ route: 'chat', cost_usd: 0.01 }),
+      row({ route: 'brief.generate', cost_usd: 0.3 }),
+      row({ route: 'chat', cost_usd: 0.02 }),
+    ]
+    const r = rollUpProjectUsage(rows)
+    expect(r.by_route.map((g) => g.key)).toEqual(['brief.generate', 'chat'])
+    expect(r.by_route[1].calls).toBe(2)
   })
 })
