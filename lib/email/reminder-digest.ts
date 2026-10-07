@@ -75,11 +75,19 @@ function multiBriefBody(batch: MakerBatch): string {
 // Build the subject + text + html for one maker's batch. 1 brief → today's
 // exact copy (so single-brief behavior is unchanged); 2+ → a digest with one
 // line per brief. The html is derived from the text so links are clickable.
-export function buildReminderEmail(batch: MakerBatch): { subject: string; text: string; html: string } {
+export function buildReminderEmail(batch: MakerBatch): {
+  subject: string
+  text: string
+  html: string
+} {
   if (batch.items.length === 1) {
     const item = batch.items[0]
     const text = singleBriefBody(item)
-    return { subject: copy.email.subject.reminder(item.projectTitle), text, html: textToEmailHtml(text) }
+    return {
+      subject: copy.email.subject.reminder(item.projectTitle),
+      text,
+      html: textToEmailHtml(text),
+    }
   }
 
   const text = multiBriefBody(batch)

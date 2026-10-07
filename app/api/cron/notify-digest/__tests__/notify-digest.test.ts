@@ -95,7 +95,8 @@ describe('GET /api/cron/notify-digest', () => {
     // Exactly one email, listing both briefs.
     expect(mockSend).toHaveBeenCalledOnce()
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const call = (mockSend.mock.calls as any[][])[0][0] as { subject: string; text: string }
+    const call = (mockSend.mock.calls as any[][])[0][0] as { subject: string; text: string; html: string }
+    expect(call.html).toContain('<a href=')
     expect(call.subject).toBe('2 briefs have new messages')
     expect(call.text).toContain('Cafe App')
     expect(call.text).toContain('Music App')

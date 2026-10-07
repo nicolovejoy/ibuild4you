@@ -129,6 +129,7 @@ describe('POST /api/feedback — validation', () => {
     expect(email.subject).toBe('[bug] Sample Cafe: Header is broken on mobile')
     expect(email.text).toContain('Review: https://ibuild4you.com/admin/feedback?focus=feedback-1')
     expect(email.text).toContain('From: sam@example.com')
+    expect(email.html).toContain('<a href=')
     // Lone note → no burst suffix.
     expect(email.subject).not.toContain('note this session')
   })

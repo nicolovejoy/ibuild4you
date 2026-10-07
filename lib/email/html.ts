@@ -8,7 +8,7 @@
 //     an indented continuation line (e.g. the URL under a digest bullet)
 //     belongs to the bullet above it
 //   - bare http(s) URLs become anchors; trailing .,;:!?) stays outside
-//   - everything is HTML-escaped first, URLs included (attribute-safe)
+//   - linkified on the raw text, then every piece is HTML-escaped once
 
 export function escapeHtml(s: string): string {
   return s
@@ -19,12 +19,24 @@ export function escapeHtml(s: string): string {
     .replace(/'/g, '&#39;')
 }
 
-// Match a URL, but let trailing sentence punctuation fall out of the match.
-const URL_RE = /https?:\/\/[^\s<]+?(?=[.,;:!?)]*(?:\s|$))/g
+// Match a URL in RAW text. URL characters exclude whitespace and <>"' so a
+// quote or bracket ends the link; trailing sentence punctuation falls out.
+const URL_RE = /https?:\/\/[^\s<>"']+?(?=[.,;:!?)]*(?:[\s<>"']|$))/g
 
-// Takes already-escaped text, so the URL is attribute-safe as matched.
-function linkify(escaped: string): string {
-  return escaped.replace(URL_RE, (url) => `<a href="${url}" style="color:#1f3a5f">${url}</a>`)
+// Linkify raw text, escaping each piece exactly once. The URL is escaped once
+// and used for both the href and the visible text. word-break:break-all keeps
+// long links (e.g. Firebase reset links) from overflowing a phone screen.
+function renderInline(raw: string): string {
+  let out = ''
+  let last = 0
+  for (const m of raw.matchAll(URL_RE)) {
+    const start = m.index ?? 0
+    out += escapeHtml(raw.slice(last, start))
+    const url = escapeHtml(m[0])
+    out += `<a href="${url}" style="color:#1f3a5f;word-break:break-all">${url}</a>`
+    last = start + m[0].length
+  }
+  return out + escapeHtml(raw.slice(last))
 }
 
 const BULLET_RE = /^(?:•|-)\s+/
@@ -36,31 +48,36 @@ function renderParagraph(block: string): string {
 
   if (isList) {
     // Each bullet is a list of lines: the bullet text plus any indented
-    // continuation lines. Escape + linkify per line, then join with <br>.
+    // continuation lines. Linkify + escape per line, then join with <br>.
     const items: string[][] = []
     for (const line of lines) {
       if (BULLET_RE.test(line)) items.push([line.replace(BULLET_RE, '')])
       else items[items.length - 1].push(line.trim())
     }
     const lis = items.map(
-      (parts) =>
-        `<li style="margin:0 0 8px 0">${parts.map((p) => linkify(escapeHtml(p))).join('<br>')}</li>`,
+      (parts) => `<li style="margin:0 0 8px 0">${parts.map(renderInline).join('<br>')}</li>`
     )
     return `<ul style="padding-left:20px;margin:0 0 16px 0">${lis.join('')}</ul>`
   }
 
-  const withBreaks = lines.map((l) => linkify(escapeHtml(l))).join('<br>')
+  const withBreaks = lines.map(renderInline).join('<br>')
   return `<p style="margin:0 0 16px 0">${withBreaks}</p>`
 }
 
 export function textToEmailHtml(text: string): string {
-  const blocks = text.replace(/\r\n/g, '\n').trim().split(/\n\s*\n/)
+  const blocks = text
+    .replace(/\r\n/g, '\n')
+    .trim()
+    .split(/\n\s*\n/)
   const body = blocks.map(renderParagraph).join('')
   return [
     '<!doctype html>',
-    '<html><body style="margin:0;padding:24px;background:#faf8f3">',
-    '<div style="max-width:560px;margin:0 auto;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;font-size:16px;line-height:1.5;color:#1f2933">',
+    '<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>',
+    '<body style="margin:0">',
+    // Gmail drops <body> styles, so background + padding live on a wrapper.
+    '<div style="padding:24px;background:#faf8f3">',
+    '<div style="overflow-wrap:break-word;max-width:560px;margin:0 auto;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;font-size:16px;line-height:1.5;color:#1f2933">',
     body,
-    '</div></body></html>',
+    '</div></div></body></html>',
   ].join('')
 }
