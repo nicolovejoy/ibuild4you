@@ -258,7 +258,12 @@ function MakerChat({
     const el = textareaRef.current
     if (!el) return
     el.style.height = 'auto'
-    if (input) el.style.height = `${composerHeightPx(el.scrollHeight)}px`
+    if (input) {
+      // scrollHeight excludes the 1px borders but the box is border-box, so
+      // add them back or one line shows a 2px internal scroll.
+      const border = el.offsetHeight - el.clientHeight
+      el.style.height = `${composerHeightPx(el.scrollHeight + border)}px`
+    }
   }, [input])
 
   useEffect(() => {

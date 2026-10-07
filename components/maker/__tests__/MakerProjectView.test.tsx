@@ -256,6 +256,23 @@ describe('MakerProjectView', () => {
   })
 })
 
+// Restore matchMedia after each test so stubs never leak between tests.
+const originalMatchMedia = window.matchMedia
+afterEach(() => {
+  Object.defineProperty(window, 'matchMedia', {
+    configurable: true,
+    writable: true,
+    value: originalMatchMedia,
+  })
+})
+
+// Stub layout metrics jsdom doesn't compute.
+function stubLayout(el: HTMLElement, m: { scrollHeight: number; offsetHeight: number; clientHeight: number }) {
+  for (const [k, v] of Object.entries(m)) {
+    Object.defineProperty(el, k, { configurable: true, value: v })
+  }
+}
+
 // Stub (pointer: coarse) so useCoarsePointer reports touch or desktop.
 function stubPointer(coarse: boolean) {
   Object.defineProperty(window, 'matchMedia', {
@@ -296,8 +313,13 @@ describe('composer on desktop (#183)', () => {
     renderView()
     const box = (await screen.findByPlaceholderText('Type a message...')) as HTMLTextAreaElement
     fireEvent.change(box, { target: { value: 'line 1\nline 2\nline 3' } })
-    // Typing set an explicit pixel height (jsdom scrollHeight is 0 -> floor).
-    expect(box.style.height).toMatch(/px$/)
+    // Content 40px + 2px of border = 42px; a huge paste caps at 200px.
+    stubLayout(box, { scrollHeight: 40, offsetHeight: 42, clientHeight: 40 })
+    fireEvent.change(box, { target: { value: 'line 1\nline 2\nline 3 ' } })
+    expect(box.style.height).toBe('42px')
+    stubLayout(box, { scrollHeight: 900, offsetHeight: 902, clientHeight: 900 })
+    fireEvent.change(box, { target: { value: 'line 1\nline 2\nline 3 x' } })
+    expect(box.style.height).toBe('200px')
     fireEvent.keyDown(box, { key: 'Enter' })
     await waitFor(() => expect(mockStreamMessage).toHaveBeenCalled())
     await waitFor(() => expect(box.value).toBe(''))
