@@ -256,16 +256,6 @@ describe('MakerProjectView', () => {
   })
 })
 
-// Restore matchMedia after each test so stubs never leak between tests.
-const originalMatchMedia = window.matchMedia
-afterEach(() => {
-  Object.defineProperty(window, 'matchMedia', {
-    configurable: true,
-    writable: true,
-    value: originalMatchMedia,
-  })
-})
-
 // Stub layout metrics jsdom doesn't compute.
 function stubLayout(el: HTMLElement, m: { scrollHeight: number; offsetHeight: number; clientHeight: number }) {
   for (const [k, v] of Object.entries(m)) {
@@ -273,44 +263,20 @@ function stubLayout(el: HTMLElement, m: { scrollHeight: number; offsetHeight: nu
   }
 }
 
-// Stub (pointer: coarse) so useCoarsePointer reports touch or desktop.
-function stubPointer(coarse: boolean) {
-  Object.defineProperty(window, 'matchMedia', {
-    configurable: true,
-    writable: true,
-    value: vi.fn(() => ({
-      matches: coarse,
-      media: '(pointer: coarse)',
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-    })),
-  })
-}
-
-describe('composer on a touch screen (#183)', () => {
-  it('Enter inserts a newline instead of sending', async () => {
-    stubPointer(true)
+describe('composer Enter handling (#183)', () => {
+  it('plain Enter inserts a newline instead of sending, on every device', async () => {
     renderView()
     const box = (await screen.findByPlaceholderText('Type a message...')) as HTMLTextAreaElement
     fireEvent.change(box, { target: { value: 'hello' } })
     // true = default not prevented, so the browser inserts the newline.
     expect(fireEvent.keyDown(box, { key: 'Enter' })).toBe(true)
+    expect(fireEvent.keyDown(box, { key: 'Enter', shiftKey: true })).toBe(true)
     // Give an (unwanted) async send a chance to run before asserting.
     await act(async () => {})
     expect(mockStreamMessage).not.toHaveBeenCalled()
   })
 
-  it('carries the pointer-coarse two-line minimum class and starts at one row', async () => {
-    renderView()
-    const box = await screen.findByPlaceholderText('Type a message...')
-    expect(box.className).toMatch(/pointer-coarse:min-h-\[4\.5rem\]/)
-    expect((box as HTMLTextAreaElement).rows).toBe(1)
-  })
-})
-
-describe('composer on desktop (#183)', () => {
-  it('Enter sends and the box height resets after the text clears', async () => {
-    stubPointer(false)
+  it('Cmd+Enter sends and the box height resets after the text clears', async () => {
     renderView()
     const box = (await screen.findByPlaceholderText('Type a message...')) as HTMLTextAreaElement
     fireEvent.change(box, { target: { value: 'line 1\nline 2\nline 3' } })
@@ -321,31 +287,44 @@ describe('composer on desktop (#183)', () => {
     stubLayout(box, { scrollHeight: 900, offsetHeight: 902, clientHeight: 900 })
     fireEvent.change(box, { target: { value: 'line 1\nline 2\nline 3 x' } })
     expect(box.style.height).toBe('200px')
-    fireEvent.keyDown(box, { key: 'Enter' })
+    fireEvent.keyDown(box, { key: 'Enter', metaKey: true })
     await waitFor(() => expect(mockStreamMessage).toHaveBeenCalled())
     await waitFor(() => expect(box.value).toBe(''))
     expect(box.style.height).toBe('auto')
   })
 
-  it('Shift+Enter does not send', async () => {
-    stubPointer(false)
+  it('Ctrl+Enter sends too', async () => {
     renderView()
     const box = (await screen.findByPlaceholderText('Type a message...')) as HTMLTextAreaElement
     fireEvent.change(box, { target: { value: 'hi' } })
-    fireEvent.keyDown(box, { key: 'Enter', shiftKey: true })
-    await act(async () => {})
-    expect(mockStreamMessage).not.toHaveBeenCalled()
+    fireEvent.keyDown(box, { key: 'Enter', ctrlKey: true })
+    await waitFor(() => expect(mockStreamMessage).toHaveBeenCalled())
   })
 
-  it('Enter with keyCode 229 (IME commit) does not send', async () => {
-    stubPointer(false)
+  it('Cmd+Enter with keyCode 229 (IME commit) does not send', async () => {
     renderView()
     const box = (await screen.findByPlaceholderText('Type a message...')) as HTMLTextAreaElement
     fireEvent.change(box, { target: { value: 'nihon' } })
-    fireEvent.keyDown(box, { key: 'Enter', keyCode: 229 })
+    fireEvent.keyDown(box, { key: 'Enter', metaKey: true, keyCode: 229 })
     await act(async () => {})
     expect(mockStreamMessage).not.toHaveBeenCalled()
     expect(box.value).toBe('nihon')
+  })
+
+  it('shows the keyboard hint, hidden on touch screens by CSS', async () => {
+    renderView()
+    await screen.findByPlaceholderText('Type a message...')
+    const hint = screen.getByText(/Cmd\/Ctrl\+Enter sends/)
+    expect(hint.className).toMatch(/pointer-coarse:hidden/)
+  })
+})
+
+describe('composer layout (#183)', () => {
+  it('carries the pointer-coarse two-line minimum class and starts at one row', async () => {
+    renderView()
+    const box = await screen.findByPlaceholderText('Type a message...')
+    expect(box.className).toMatch(/pointer-coarse:min-h-\[4\.5rem\]/)
+    expect((box as HTMLTextAreaElement).rows).toBe(1)
   })
 
   it('has a 16px+ font so iOS does not zoom on focus', async () => {

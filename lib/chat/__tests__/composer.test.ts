@@ -2,24 +2,24 @@
 import { describe, it, expect } from 'vitest'
 import { shouldSendOnEnter, composerHeightPx, COMPOSER_MAX_PX } from '../composer'
 
-const base = { key: 'Enter', shiftKey: false, isComposing: false, coarsePointer: false }
+const base = { key: 'Enter', metaKey: false, ctrlKey: false, isComposing: false }
 
 describe('shouldSendOnEnter', () => {
-  it('sends on plain Enter with a fine pointer (desktop)', () => {
-    expect(shouldSendOnEnter(base)).toBe(true)
+  it('does not send on plain Enter (newline on every device)', () => {
+    expect(shouldSendOnEnter(base)).toBe(false)
   })
-  it('does not send on Shift+Enter (desktop newline)', () => {
-    expect(shouldSendOnEnter({ ...base, shiftKey: true })).toBe(false)
+  it('sends on Cmd+Enter (Mac)', () => {
+    expect(shouldSendOnEnter({ ...base, metaKey: true })).toBe(true)
   })
-  it('does not send on Enter with a coarse pointer (phone newline)', () => {
-    expect(shouldSendOnEnter({ ...base, coarsePointer: true })).toBe(false)
+  it('sends on Ctrl+Enter (Windows, Linux, Chromebook)', () => {
+    expect(shouldSendOnEnter({ ...base, ctrlKey: true })).toBe(true)
   })
-  it('does not send while an IME composition is in progress', () => {
-    expect(shouldSendOnEnter({ ...base, isComposing: true })).toBe(false)
+  it('does not send while an IME composition is in progress, even with a modifier', () => {
+    expect(shouldSendOnEnter({ ...base, metaKey: true, isComposing: true })).toBe(false)
   })
   it('ignores every other key', () => {
-    expect(shouldSendOnEnter({ ...base, key: 'a' })).toBe(false)
-    expect(shouldSendOnEnter({ ...base, key: 'Tab' })).toBe(false)
+    expect(shouldSendOnEnter({ ...base, key: 'a', metaKey: true })).toBe(false)
+    expect(shouldSendOnEnter({ ...base, key: 'Tab', ctrlKey: true })).toBe(false)
   })
 })
 

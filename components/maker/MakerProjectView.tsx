@@ -36,7 +36,6 @@ import { copy } from '@/lib/copy'
 import { formatCostUsd } from '@/lib/observability/session-cost'
 import { shouldKickoff } from '@/lib/agent/kickoff'
 import { shouldSendOnEnter, composerHeightPx } from '@/lib/chat/composer'
-import { useCoarsePointer } from '@/lib/hooks/useCoarsePointer'
 import { UserMenu } from '@/components/user-menu'
 import { MigrationBanner } from '@/components/MigrationBanner'
 import { briefRoleLabel, briefRoleShort, viewerBriefRole } from '@/lib/roles/display'
@@ -248,7 +247,6 @@ function MakerChat({
   const [dragOver, setDragOver] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const coarsePointer = useCoarsePointer()
 
   // Auto-grow the composer with its content, up to a cap (#183). Height is
   // derived from `input` so it shrinks back to one line when a send clears
@@ -477,11 +475,11 @@ function MakerChat({
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     const send = shouldSendOnEnter({
       key: e.key,
-      shiftKey: e.shiftKey,
+      metaKey: e.metaKey,
+      ctrlKey: e.ctrlKey,
       // WebKit fires the IME-committing Enter after compositionend, so
       // isComposing is already false; keyCode 229 marks IME processing.
       isComposing: e.nativeEvent.isComposing || e.keyCode === 229,
-      coarsePointer,
     })
     if (send) {
       e.preventDefault()
@@ -557,9 +555,8 @@ function MakerChat({
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
             placeholder="Type a message..."
-            // The two-line touch minimum comes from CSS (pointer-coarse), not
-            // from `rows`, so there is no first-paint jump while the
-            // useCoarsePointer hook settles after mount (#183).
+            // The two-line touch minimum comes from CSS (pointer-coarse) so
+            // there is no first-paint jump (#183).
             rows={1}
             disabled={streaming || isLoading || creatingSession || uploading}
             className="flex-1 resize-none text-base leading-6 max-h-[200px] pointer-coarse:min-h-[4.5rem] overflow-y-auto px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy disabled:bg-gray-50 disabled:text-gray-400"
@@ -567,11 +564,17 @@ function MakerChat({
           <button
             onClick={() => handleSend()}
             disabled={!canSend}
+            title="Send (Cmd/Ctrl+Enter)"
             className="p-2.5 bg-brand-navy text-white rounded-lg hover:bg-brand-navy-light disabled:bg-brand-slate disabled:cursor-not-allowed transition-colors"
           >
             <Send className="h-5 w-5" />
           </button>
         </div>
+        {/* Keyboard hint for people with a physical keyboard; a touch screen
+            has no modifier keys worth mentioning, so it is hidden there. */}
+        <p className="pl-12 text-xs text-gray-400 pointer-coarse:hidden">
+          Enter adds a line · Cmd/Ctrl+Enter sends
+        </p>
 
         {/* Pending files preview */}
         {pendingFiles.length > 0 && (
