@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, fireEvent, act, cleanup } from '@testing-library/react'
+import { render, screen, fireEvent, act, cleanup, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import React from 'react'
 
@@ -65,6 +65,8 @@ vi.mock('@/lib/query/hooks', () => ({
   useProjects: () => ({ data: [] }),
 }))
 
+const mockStreamMessage = vi.fn()
+
 vi.mock('@/lib/hooks/useStreamingChat', () => ({
   useStreamingChat: () => ({
     messages: [],
@@ -72,7 +74,7 @@ vi.mock('@/lib/hooks/useStreamingChat', () => ({
     streaming: false,
     error: null,
     setError: vi.fn(),
-    streamMessage: vi.fn(),
+    streamMessage: mockStreamMessage,
   }),
 }))
 
@@ -251,5 +253,83 @@ describe('MakerProjectView', () => {
       expect.arrayContaining([expect.objectContaining({ filename: 'big.pdf' })]),
     )
     consoleWarn.mockRestore()
+  })
+})
+
+// Stub layout metrics jsdom doesn't compute.
+function stubLayout(el: HTMLElement, m: { scrollHeight: number; offsetHeight: number; clientHeight: number }) {
+  for (const [k, v] of Object.entries(m)) {
+    Object.defineProperty(el, k, { configurable: true, value: v })
+  }
+}
+
+describe('composer Enter handling (#183)', () => {
+  it('plain Enter inserts a newline instead of sending, on every device', async () => {
+    renderView()
+    const box = (await screen.findByPlaceholderText('Type a message...')) as HTMLTextAreaElement
+    fireEvent.change(box, { target: { value: 'hello' } })
+    // true = default not prevented, so the browser inserts the newline.
+    expect(fireEvent.keyDown(box, { key: 'Enter' })).toBe(true)
+    expect(fireEvent.keyDown(box, { key: 'Enter', shiftKey: true })).toBe(true)
+    // Give an (unwanted) async send a chance to run before asserting.
+    await act(async () => {})
+    expect(mockStreamMessage).not.toHaveBeenCalled()
+  })
+
+  it('Cmd+Enter sends and the box height resets after the text clears', async () => {
+    renderView()
+    const box = (await screen.findByPlaceholderText('Type a message...')) as HTMLTextAreaElement
+    fireEvent.change(box, { target: { value: 'line 1\nline 2\nline 3' } })
+    // Content 40px + 2px of border = 42px; a huge paste caps at 200px.
+    stubLayout(box, { scrollHeight: 40, offsetHeight: 42, clientHeight: 40 })
+    fireEvent.change(box, { target: { value: 'line 1\nline 2\nline 3 ' } })
+    expect(box.style.height).toBe('42px')
+    stubLayout(box, { scrollHeight: 900, offsetHeight: 902, clientHeight: 900 })
+    fireEvent.change(box, { target: { value: 'line 1\nline 2\nline 3 x' } })
+    expect(box.style.height).toBe('200px')
+    fireEvent.keyDown(box, { key: 'Enter', metaKey: true })
+    await waitFor(() => expect(mockStreamMessage).toHaveBeenCalled())
+    await waitFor(() => expect(box.value).toBe(''))
+    expect(box.style.height).toBe('auto')
+  })
+
+  it('Ctrl+Enter sends too', async () => {
+    renderView()
+    const box = (await screen.findByPlaceholderText('Type a message...')) as HTMLTextAreaElement
+    fireEvent.change(box, { target: { value: 'hi' } })
+    fireEvent.keyDown(box, { key: 'Enter', ctrlKey: true })
+    await waitFor(() => expect(mockStreamMessage).toHaveBeenCalled())
+  })
+
+  it('Cmd+Enter with keyCode 229 (IME commit) does not send', async () => {
+    renderView()
+    const box = (await screen.findByPlaceholderText('Type a message...')) as HTMLTextAreaElement
+    fireEvent.change(box, { target: { value: 'nihon' } })
+    fireEvent.keyDown(box, { key: 'Enter', metaKey: true, keyCode: 229 })
+    await act(async () => {})
+    expect(mockStreamMessage).not.toHaveBeenCalled()
+    expect(box.value).toBe('nihon')
+  })
+
+  it('shows the keyboard hint, hidden on touch screens by CSS', async () => {
+    renderView()
+    await screen.findByPlaceholderText('Type a message...')
+    const hint = screen.getByText(/Cmd\/Ctrl\+Enter sends/)
+    expect(hint.className).toMatch(/pointer-coarse:hidden/)
+  })
+})
+
+describe('composer layout (#183)', () => {
+  it('carries the pointer-coarse two-line minimum class and starts at one row', async () => {
+    renderView()
+    const box = await screen.findByPlaceholderText('Type a message...')
+    expect(box.className).toMatch(/pointer-coarse:min-h-\[4\.5rem\]/)
+    expect((box as HTMLTextAreaElement).rows).toBe(1)
+  })
+
+  it('has a 16px+ font so iOS does not zoom on focus', async () => {
+    renderView()
+    const box = await screen.findByPlaceholderText('Type a message...')
+    expect(box.className).toMatch(/\btext-base\b/)
   })
 })

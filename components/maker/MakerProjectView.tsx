@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, Send, ChevronDown, ChevronUp, MessageSquare, HelpCircle, Paperclip, Pencil, ThumbsUp, ThumbsDown } from 'lucide-react'
@@ -35,6 +35,7 @@ import { useEscapeBack } from '@/lib/hooks/useEscapeBack'
 import { copy } from '@/lib/copy'
 import { formatCostUsd } from '@/lib/observability/session-cost'
 import { shouldKickoff } from '@/lib/agent/kickoff'
+import { shouldSendOnEnter, composerHeightPx } from '@/lib/chat/composer'
 import { UserMenu } from '@/components/user-menu'
 import { MigrationBanner } from '@/components/MigrationBanner'
 import { briefRoleLabel, briefRoleShort, viewerBriefRole } from '@/lib/roles/display'
@@ -247,6 +248,22 @@ function MakerChat({
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  // Auto-grow the composer with its content, up to a cap (#183). Height is
+  // derived from `input` so it shrinks back to one line when a send clears
+  // the text. 'auto' first so scrollHeight reflects the new content, not the
+  // previous height.
+  useLayoutEffect(() => {
+    const el = textareaRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    if (input) {
+      // scrollHeight excludes the 1px borders but the box is border-box, so
+      // add them back or one line shows a 2px internal scroll.
+      const border = el.offsetHeight - el.clientHeight
+      el.style.height = `${composerHeightPx(el.scrollHeight + border)}px`
+    }
+  }, [input])
+
   useEffect(() => {
     if (savedMessages && !streaming) {
       setMessages(savedMessages.map((m) => ({
@@ -456,10 +473,19 @@ function MakerChat({
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    const send = shouldSendOnEnter({
+      key: e.key,
+      metaKey: e.metaKey,
+      ctrlKey: e.ctrlKey,
+      // WebKit fires the IME-committing Enter after compositionend, so
+      // isComposing is already false; keyCode 229 marks IME processing.
+      isComposing: e.nativeEvent.isComposing || e.keyCode === 229,
+    })
+    if (send) {
       e.preventDefault()
       handleSend()
     }
+    // Otherwise let the browser insert the newline.
   }
 
   const isLoading = !sessionsLoaded || messagesLoading
@@ -501,7 +527,7 @@ function MakerChat({
     >
       {/* Input area */}
       <div className="space-y-2">
-        <div className="flex gap-2">
+        <div className="flex items-end gap-2">
           <button
             onClick={() => fileInputRef.current?.click()}
             disabled={streaming || isLoading || uploading}
@@ -520,6 +546,8 @@ function MakerChat({
               e.target.value = '' // reset so same file can be re-selected
             }}
           />
+          {/* max-h-[200px] below must equal COMPOSER_MAX_PX (lib/chat/composer.ts):
+              the CSS cap is a belt for the JS braces. */}
           <textarea
             ref={textareaRef}
             value={input}
@@ -527,18 +555,26 @@ function MakerChat({
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
             placeholder="Type a message..."
+            // The two-line touch minimum comes from CSS (pointer-coarse) so
+            // there is no first-paint jump (#183).
             rows={1}
             disabled={streaming || isLoading || creatingSession || uploading}
-            className="flex-1 resize-none px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy disabled:bg-gray-50 disabled:text-gray-400"
+            className="flex-1 resize-none text-base leading-6 max-h-[200px] pointer-coarse:min-h-[4.5rem] overflow-y-auto px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy disabled:bg-gray-50 disabled:text-gray-400"
           />
           <button
             onClick={() => handleSend()}
             disabled={!canSend}
+            title="Send (Cmd/Ctrl+Enter)"
             className="p-2.5 bg-brand-navy text-white rounded-lg hover:bg-brand-navy-light disabled:bg-brand-slate disabled:cursor-not-allowed transition-colors"
           >
             <Send className="h-5 w-5" />
           </button>
         </div>
+        {/* Keyboard hint for people with a physical keyboard; a touch screen
+            has no modifier keys worth mentioning, so it is hidden there. */}
+        <p className="pl-12 text-xs text-gray-400 pointer-coarse:hidden">
+          Enter adds a line · Cmd/Ctrl+Enter sends
+        </p>
 
         {/* Pending files preview */}
         {pendingFiles.length > 0 && (
