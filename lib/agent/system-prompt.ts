@@ -110,6 +110,9 @@ ${builderDirectives.map((d, i) => `${i + 1}. ${d}`).join('\n')}
 `.trim())
   }
 
+  // #195: wireframes are only mentioned when a builder explicitly prepared
+  // layout_mockups. The old always-on "Layout visualization" block invited Sam
+  // to volunteer wireframes in every session; nobody used them.
   if (layoutMockups && layoutMockups.length > 0) {
     parts.push(`
 ## Layout mockups
@@ -131,20 +134,6 @@ When presenting layouts:
 Here are the mockups the builder prepared:
 
 ${layoutMockups.map((m) => '```wireframe\n' + JSON.stringify(m) + '\n```').join('\n\n')}
-`.trim())
-  } else {
-    parts.push(`
-## Layout visualization
-
-When discussing page layout or site structure with the user, you can show a visual wireframe by emitting a fenced code block:
-
-\`\`\`wireframe
-{"title": "Page Layout", "sections": [{"type": "hero", "label": "Welcome", "description": "Main hero image and tagline"}]}
-\`\`\`
-
-The user will see a visual preview with labeled, colored blocks — not raw JSON. Available section types: hero, text, cta, gallery, form, signup, nav, footer, map, video.
-
-Only use this when it would genuinely help the conversation — don't force it. When the user asks to change something in a layout, respond with an updated wireframe block.
 `.trim())
   }
 

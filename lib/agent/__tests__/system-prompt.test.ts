@@ -128,10 +128,16 @@ describe('buildSystemPrompt', () => {
     expect(result).toContain('```wireframe')
   })
 
-  it('includes generic layout visualization section when no mockups', () => {
+  it('says nothing about wireframes when the builder set no mockups (#195)', () => {
     const result = buildSystemPrompt(minimalInput)
-    expect(result).toContain('## Layout visualization')
+    expect(result).not.toContain('## Layout visualization')
     expect(result).not.toContain('## Layout mockups')
+    expect(result).not.toContain('```wireframe')
+  })
+
+  it('omits the wireframe section for an empty mockups array (#195)', () => {
+    const result = buildSystemPrompt({ ...minimalInput, layoutMockups: [] })
+    expect(result).not.toContain('```wireframe')
   })
 
   it('includes decisions when brief has them', () => {

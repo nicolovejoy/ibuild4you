@@ -17,14 +17,6 @@ const NEW_PROJECT_PAYLOAD = `{
   "session_mode": "discover (broad exploration) or converge (narrow toward decisions). Defaults to discover.",
   "seed_questions": ["Questions the agent should weave into the first session"],
   "builder_directives": ["Instructions injected into the agent's system prompt — e.g. 'do not suggest technologies'"],
-  "layout_mockups": [
-    {
-      "title": "Strategy name — shown to the maker as a visual wireframe layout",
-      "sections": [
-        { "type": "hero|text|cta|gallery|form|signup|nav|footer|map|video", "label": "Section label", "description": "What this section does" }
-      ]
-    }
-  ],
   "brief": {
     "problem": "What problem the maker is trying to solve. Omit the whole brief if not enough is known yet.",
     "target_users": "Who the intended users are",
