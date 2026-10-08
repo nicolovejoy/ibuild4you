@@ -6,7 +6,8 @@ import { fetchPrototypeContext } from '@/lib/api/prototype-context'
 import { fetchPinnedArtifacts } from '@/lib/api/artifact-context'
 import { fetchSiblingDecisions } from '@/lib/api/sibling-decisions'
 import { cacheSystemPrompt } from '@/lib/agent/prompt-cache'
-import { AGENT_MODEL, AGENT_MAX_TOKENS, AGENT_TEMPERATURE } from '@/lib/agent/constants'
+import { AGENT_MAX_TOKENS } from '@/lib/agent/constants'
+import { resolveChatModel, chatSampling } from '@/lib/agent/model-config'
 import { logAnthropicCall } from '@/lib/observability/anthropic'
 import { accumulateSessionUsage } from '@/lib/observability/session-cost'
 import Anthropic from '@anthropic-ai/sdk'
@@ -265,12 +266,13 @@ export async function POST(request: Request) {
   const cachedSystem = cacheSystemPrompt(systemPrompt)
 
   // --- Stream + store the agent greeting ---
+  const chatModel = resolveChatModel() // same override as /api/chat (#184)
   const stream = getAnthropic().messages.stream({
-    model: AGENT_MODEL,
+    model: chatModel,
     system: cachedSystem,
     messages: claudeMessages,
     max_tokens: AGENT_MAX_TOKENS,
-    temperature: AGENT_TEMPERATURE,
+    ...chatSampling(chatModel),
   })
 
   const encoder = new TextEncoder()
@@ -307,15 +309,15 @@ export async function POST(request: Request) {
             cache_creation_input_tokens: finalMessage.usage.cache_creation_input_tokens ?? 0,
           }
           await sessionRef.update({
-            ...accumulateSessionUsage(currentSession, usage, AGENT_MODEL),
-            model: AGENT_MODEL,
+            ...accumulateSessionUsage(currentSession, usage, chatModel),
+            model: chatModel,
             updated_at: responseTime,
           })
 
           void logAnthropicCall({
             project_id: projectId,
             route: 'chat/kickoff',
-            model: AGENT_MODEL,
+            model: chatModel,
             usage,
             duration_ms: Date.now() - streamStart,
             session_id,

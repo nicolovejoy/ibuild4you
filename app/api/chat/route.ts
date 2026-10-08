@@ -7,7 +7,8 @@ import { fetchPinnedArtifacts } from '@/lib/api/artifact-context'
 import { fetchSiblingDecisions } from '@/lib/api/sibling-decisions'
 import { loadAttachmentBlocks, type AttachmentBlock, type DroppedAttachment } from '@/lib/agent/attachments'
 import { applyPromptCaching } from '@/lib/agent/prompt-cache'
-import { AGENT_MODEL, AGENT_MAX_TOKENS, AGENT_TEMPERATURE } from '@/lib/agent/constants'
+import { AGENT_MAX_TOKENS, AGENT_REFUSAL_FALLBACK } from '@/lib/agent/constants'
+import { resolveChatModel, chatSampling } from '@/lib/agent/model-config'
 import { logAnthropicCall } from '@/lib/observability/anthropic'
 import { accumulateSessionUsage } from '@/lib/observability/session-cost'
 import Anthropic from '@anthropic-ai/sdk'
@@ -363,13 +364,15 @@ async function handleChat(
   // full input price — see lib/agent/prompt-cache.ts.
   const cached = applyPromptCaching(systemPrompt, claudeMessages)
 
-  // Stream response from Claude
+  // Stream response from Claude. The model (and so the sampling shape) can be
+  // overridden per deployment via CHAT_MODEL (#184).
+  const chatModel = resolveChatModel()
   const stream = getAnthropic().messages.stream({
-    model: AGENT_MODEL,
+    model: chatModel,
     system: cached.system,
     messages: cached.messages,
     max_tokens: AGENT_MAX_TOKENS,
-    temperature: AGENT_TEMPERATURE,
+    ...chatSampling(chatModel),
   })
 
   const encoder = new TextEncoder()
@@ -387,6 +390,21 @@ async function handleChat(
           }
         }
 
+        // A safety decline (5.x models) ends the turn with stop_reason
+        // 'refusal' and, usually, no text. Log it and post a short fallback
+        // so the maker never sees an empty bubble.
+        const finalMessage = await stream.finalMessage()
+        if (finalMessage.stop_reason === 'refusal') {
+          console.warn('chat_refusal', {
+            session_id,
+            category: finalMessage.stop_details?.category ?? null,
+          })
+          if (!fullResponse.trim()) {
+            fullResponse = AGENT_REFUSAL_FALLBACK
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: fullResponse })}\n\n`))
+          }
+        }
+
         // Store the complete agent response
         const responseTime = new Date().toISOString()
         await db.collection('messages').add({
@@ -398,7 +416,6 @@ async function handleChat(
         })
 
         // Track token usage + model on the session
-        const finalMessage = await stream.finalMessage()
         if (finalMessage.usage) {
           const sessionRef = db.collection('sessions').doc(session_id)
           const currentSession = (await sessionRef.get()).data() || {}
@@ -409,15 +426,15 @@ async function handleChat(
             cache_creation_input_tokens: finalMessage.usage.cache_creation_input_tokens ?? 0,
           }
           await sessionRef.update({
-            ...accumulateSessionUsage(currentSession, usage, AGENT_MODEL),
-            model: AGENT_MODEL,
+            ...accumulateSessionUsage(currentSession, usage, chatModel),
+            model: chatModel,
             updated_at: responseTime,
           })
 
           void logAnthropicCall({
             project_id: projectId,
             route: 'chat',
-            model: AGENT_MODEL,
+            model: chatModel,
             usage,
             duration_ms: Date.now() - streamStart,
             session_id,

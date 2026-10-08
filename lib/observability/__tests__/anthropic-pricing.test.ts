@@ -66,4 +66,19 @@ describe('calculateCostUsd', () => {
     // 1000*3 + 100*15 = 3000 + 1500 = 4500 / 1M = 0.0045
     expect(cost).toBeCloseTo(0.0045, 6)
   })
+
+  it('prices Sonnet 5.5 at $2 in / $10 out with $0.20 cache reads (#184)', () => {
+    expect(
+      calculateCostUsd('claude-sonnet-5-5', { input_tokens: 1_000_000, output_tokens: 1_000_000 }),
+    ).toBeCloseTo(12, 6)
+    expect(
+      calculateCostUsd('claude-sonnet-5-5', { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 1_000_000 }),
+    ).toBeCloseTo(0.2, 6)
+  })
+
+  it('knows every 5.x id the model review lists, so a switch never shows $0', () => {
+    for (const m of ['claude-sonnet-5-5', 'claude-sonnet-5', 'claude-haiku-5-5', 'claude-opus-5-5', 'claude-opus-5', 'claude-fable-5-1']) {
+      expect(calculateCostUsd(m, { input_tokens: 1_000_000, output_tokens: 0 })).toBeGreaterThan(0)
+    }
+  })
 })
