@@ -4,6 +4,7 @@ For each rule: what the code does, where (file:line), and a checkbox row for Nic
 Mark [ ] keep · [ ] change · [ ] drop. Changes become follow-up issues.
 
 ## 1. What the agent is told (system prompt)
+
 - **Persona is "Sam", intake only** — Default identity says Sam sits in the middle of a living brief, surfaces gaps, does not decide, and is not the developer. A per-project `identity` replaces it. `lib/agent/constants.ts:17`, `lib/agent/system-prompt.ts:54`.
   - [ ] keep · [ ] change · [ ] drop
 - **Mode picks the rule set** — `converge` gets the converge rules; anything else gets discover. `lib/agent/system-prompt.ts:55`.
@@ -60,6 +61,7 @@ Mark [ ] keep · [ ] change · [ ] drop. Changes become follow-up issues.
   - [ ] keep · [ ] change · [ ] drop
 
 ## 2. How the brief is regenerated and merged
+
 - **Input is everything** — Regen reads all messages from all sessions of the project, archived sessions included, plus the latest brief. Throws if there are no messages. `lib/api/briefs.ts:71-102`.
   - [ ] keep · [ ] change · [ ] drop
 - **Forced tool call** — The model must call `update_brief`; output is bounded by 8192 tokens at temperature 0.3. `lib/api/briefs.ts:23-60`, `lib/api/briefs.ts:158`, `lib/agent/constants.ts:14-15`.
@@ -92,6 +94,7 @@ Mark [ ] keep · [ ] change · [ ] drop. Changes become follow-up issues.
   - [ ] keep · [ ] change · [ ] drop
 
 ## 3. When regen runs (gate)
+
 - **Cron cadence** — `/api/cron/notify` runs every 5 minutes. `vercel.json:4-5`.
   - [ ] keep · [ ] change · [ ] drop
 - **Idle trigger** — A project is a candidate once its last maker message is over 10 minutes old. `app/api/cron/notify/route.ts:7`, `app/api/cron/notify/route.ts:26-30`.
@@ -108,6 +111,7 @@ Mark [ ] keep · [ ] change · [ ] drop. Changes become follow-up issues.
   - [ ] keep · [ ] change · [ ] drop
 
 ## 4. Who speaks first / return sessions
+
 - **Only session 1 gets the canned welcome** — Later sessions get no stored welcome even if `welcome_message` is set; archived sessions do not count. `app/api/sessions/route.ts:64-76`, `app/api/sessions/route.ts:122-131`.
   - [ ] keep · [ ] change · [ ] drop
 - **Kickoff fires on an empty return session, any gap** — Requires prior maker history anywhere on the project. `lib/agent/kickoff.ts:56`.
@@ -126,6 +130,7 @@ Mark [ ] keep · [ ] change · [ ] drop. Changes become follow-up issues.
   - [ ] keep · [ ] change · [ ] drop
 
 ## 5. Other context injected
+
 - **Models and limits** — Chat and brief both use `claude-sonnet-4-6`; chat max 2048 tokens at temperature 0.7. `lib/agent/constants.ts:1-3`, `lib/agent/constants.ts:6`.
   - [ ] keep · [ ] change · [ ] drop
 - **Config is read from the session snapshot** — Mode, seed questions, directives, identity, mockups are snapshotted at session creation with fallback to project. Maker name and time gap are read live. `lib/agent/system-prompt.ts:9-11`, `app/api/sessions/route.ts:102`.
@@ -142,6 +147,7 @@ Mark [ ] keep · [ ] change · [ ] drop. Changes become follow-up issues.
   - [ ] keep · [ ] change · [ ] drop
 
 ## 6. Doc vs code drift
+
 - **`docs/mode-system.md` is not about session modes** — Its title and body cover viewer role glyphs and Conversation/Console chrome (header says "design agreed, not built"). Discover/converge session mode is not described there; the code is `lib/agent/system-prompt.ts:55` and `docs/iteration-architecture.md`.
 - **Decisions are "AI-extracted only; builder cannot add/edit"** (`docs/iteration-architecture.md`, Brief decisions) vs code: pasted JSON can set decisions and `locked` (`app/api/briefs/route.ts:42-113`), and the create payload accepts `brief.decisions` with `locked` (`CLAUDE.md`, Project Setup JSON).
 - **Locked decisions change only via "an explicit maker confirm (a separate, deliberate flow)"** (`lib/api/brief-merge.ts:10-12`) vs code: no such flow exists; regen never unlocks, and the only unlock path is the unguarded paste (`app/api/briefs/route.ts:42-113`).
@@ -155,9 +161,10 @@ Mark [ ] keep · [ ] change · [ ] drop. Changes become follow-up issues.
 - **CLAUDE.md PATCH field list** omits `github_repo`, `auto_reminders_enabled`, `feedback_requires_identity`, which the route accepts (`app/api/projects/route.ts:190`).
 
 ## 7. Open questions for Nico
-1. Should a pasted brief (PUT) be allowed to drop or unlock a locked decision, or should it run the same lock merge as regen?
-2. Should a model-created `locked: true` in regen output be honoured, or may only builders set locks?
-3. Should seed questions and directives be mode-scoped as the docs say, or stay injected in both modes?
-4. Should a builder-set `welcome_message` ever post on session 2+, given it is silently unused today?
-5. Is the 10-minute idle plus 5-minute cron cadence right, and is overwrite-in-place (no brief history) acceptable?
-6. Should the banned-jargon list exclude "wireframes" while Sam is also told to emit wireframe blocks?
+
+1. Should a pasted brief (PUT) be allowed to drop or unlock a locked decision, or should it run the same lock merge as regen? Yes, for sure
+2. Should a model-created `locked: true` in regen output be honoured, or may only builders set locks? Just me I think.
+3. Should seed questions and directives be mode-scoped as the docs say, or stay injected in both modes? explain
+4. Should a builder-set `welcome_message` ever post on session 2+, given it is silently unused today? discuss
+5. Is the 10-minute idle plus 5-minute cron cadence right, and is overwrite-in-place (no brief history) acceptable? I think so, don't you?
+6. Should the banned-jargon list exclude "wireframes" while Sam is also told to emit wireframe blocks? uh? probably not this.
