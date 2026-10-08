@@ -87,6 +87,7 @@ let mockStreamEvents: { type: string; delta: { type: string; text: string } }[] 
 let capturedStreamArgs: {
   model?: string
   temperature?: number
+  max_tokens?: number
   output_config?: { effort?: string }
   system?: { type: string; text: string; cache_control?: unknown }[]
   messages?: { role: string; content: unknown }[]
@@ -100,6 +101,7 @@ vi.mock('@anthropic-ai/sdk', () => ({
       stream: vi.fn((args: {
         model?: string
         temperature?: number
+        max_tokens?: number
         output_config?: { effort?: string }
         system?: { type: string; text: string; cache_control?: unknown }[]
         messages?: { role: string; content: unknown }[]
@@ -359,6 +361,7 @@ describe('POST /api/chat', () => {
     await readSSE(res)
     expect(capturedStreamArgs?.model).toBe('claude-sonnet-4-6')
     expect(capturedStreamArgs?.temperature).toBe(0.7)
+    expect(capturedStreamArgs?.max_tokens).toBe(2048)
     expect(capturedStreamArgs?.output_config).toBeUndefined()
   })
 
@@ -369,6 +372,7 @@ describe('POST /api/chat', () => {
     expect(capturedStreamArgs?.model).toBe('claude-sonnet-5-5')
     expect(capturedStreamArgs?.temperature).toBeUndefined()
     expect(capturedStreamArgs?.output_config).toEqual({ effort: 'low' })
+    expect(capturedStreamArgs?.max_tokens).toBe(8192) // thinking bills against it
     // The session records the model that actually answered.
     expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({ model: 'claude-sonnet-5-5' }))
   })
@@ -390,14 +394,40 @@ describe('POST /api/chat', () => {
     warn.mockRestore()
   })
 
-  it('keeps the model text when a refusal arrives after some output', async () => {
+  it('discards partial text on a mid-stream refusal and stores only the refusal line', async () => {
     mockFinalMessage = { usage: { input_tokens: 1, output_tokens: 1 }, stop_reason: 'refusal' }
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const res = await POST(makeRequest({ session_id: 's1', content: 'Hello' }))
     await readSSE(res)
     const agentMsgAdd = addCalls.find((c) => c.collection === 'messages' && c.data.role === 'agent')
-    expect(agentMsgAdd?.data.content).toBe('Hello world')
+    expect(agentMsgAdd?.data.content).toMatch(/back to the brief/)
+    expect(agentMsgAdd?.data.content).not.toContain('Hello world')
     warn.mockRestore()
+  })
+
+  it('posts a "say that again" line when the turn ends with no text for a non-refusal reason', async () => {
+    mockStreamEvents = []
+    mockFinalMessage = { usage: { input_tokens: 1, output_tokens: 2048 }, stop_reason: 'max_tokens' }
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const res = await POST(makeRequest({ session_id: 's1', content: 'Hello' }))
+    await readSSE(res)
+    const agentMsgAdd = addCalls.find((c) => c.collection === 'messages' && c.data.role === 'agent')
+    expect(agentMsgAdd?.data.content).toMatch(/say that again/)
+    expect(warn).toHaveBeenCalledWith('chat_empty_response', expect.objectContaining({ stop_reason: 'max_tokens' }))
+    warn.mockRestore()
+  })
+
+  it('drops an empty agent turn from the history it sends (an empty turn is a 400 upstream)', async () => {
+    queryResults.messages = [
+      { id: 'm1', data: () => ({ role: 'agent', content: 'Welcome!', created_at: '2026-01-01T00:00:00Z' }) },
+      { id: 'm2', data: () => ({ role: 'user', content: 'hi', created_at: '2026-01-01T00:00:01Z' }) },
+      { id: 'm3', data: () => ({ role: 'agent', content: '', created_at: '2026-01-01T00:00:02Z' }) },
+    ]
+    const res = await POST(makeRequest({ session_id: 's1', content: 'Hello' }))
+    await readSSE(res)
+    const sent = capturedStreamArgs?.messages ?? []
+    expect(sent.some((m) => m.role === 'assistant' && m.content === '')).toBe(false)
+    expect(sent.filter((m) => m.role === 'assistant')).toHaveLength(1)
   })
 
   it('updates token usage on the session after streaming', async () => {

@@ -6,8 +6,7 @@ import { fetchPrototypeContext } from '@/lib/api/prototype-context'
 import { fetchPinnedArtifacts } from '@/lib/api/artifact-context'
 import { fetchSiblingDecisions } from '@/lib/api/sibling-decisions'
 import { cacheSystemPrompt } from '@/lib/agent/prompt-cache'
-import { AGENT_MAX_TOKENS } from '@/lib/agent/constants'
-import { resolveChatModel, chatSampling } from '@/lib/agent/model-config'
+import { resolveChatModel, chatModelOptions } from '@/lib/agent/model-config'
 import { logAnthropicCall } from '@/lib/observability/anthropic'
 import { accumulateSessionUsage } from '@/lib/observability/session-cost'
 import Anthropic from '@anthropic-ai/sdk'
@@ -271,8 +270,7 @@ export async function POST(request: Request) {
     model: chatModel,
     system: cachedSystem,
     messages: claudeMessages,
-    max_tokens: AGENT_MAX_TOKENS,
-    ...chatSampling(chatModel),
+    ...chatModelOptions(chatModel),
   })
 
   const encoder = new TextEncoder()
@@ -290,15 +288,23 @@ export async function POST(request: Request) {
         }
 
         const responseTime = new Date().toISOString()
-        await db.collection('messages').add({
-          session_id,
-          role: 'agent',
-          content: fullResponse,
-          created_at: responseTime,
-          updated_at: responseTime,
-        })
-
         const finalMessage = await stream.finalMessage()
+        // A greeting with no text (refusal, or the output budget spent on
+        // thinking) is not stored: an empty agent turn in history is a 400
+        // on every later /api/chat request. last_kickoff_at stays stamped, so
+        // the maker simply starts the conversation themselves.
+        if (!fullResponse.trim()) {
+          console.warn('kickoff_empty_response', { session_id, stop_reason: finalMessage.stop_reason })
+        } else {
+          await db.collection('messages').add({
+            session_id,
+            role: 'agent',
+            content: fullResponse,
+            created_at: responseTime,
+            updated_at: responseTime,
+          })
+        }
+
         if (finalMessage.usage) {
           const sessionRef = db.collection('sessions').doc(session_id)
           const currentSession = (await sessionRef.get()).data() || {}

@@ -7,8 +7,8 @@ import { fetchPinnedArtifacts } from '@/lib/api/artifact-context'
 import { fetchSiblingDecisions } from '@/lib/api/sibling-decisions'
 import { loadAttachmentBlocks, type AttachmentBlock, type DroppedAttachment } from '@/lib/agent/attachments'
 import { applyPromptCaching } from '@/lib/agent/prompt-cache'
-import { AGENT_MAX_TOKENS, AGENT_REFUSAL_FALLBACK } from '@/lib/agent/constants'
-import { resolveChatModel, chatSampling } from '@/lib/agent/model-config'
+import { AGENT_REFUSAL_FALLBACK, AGENT_EMPTY_FALLBACK } from '@/lib/agent/constants'
+import { resolveChatModel, chatModelOptions } from '@/lib/agent/model-config'
 import { logAnthropicCall } from '@/lib/observability/anthropic'
 import { accumulateSessionUsage } from '@/lib/observability/session-cost'
 import Anthropic from '@anthropic-ai/sdk'
@@ -164,16 +164,22 @@ async function handleChat(
     .orderBy('created_at', 'asc')
     .get()
 
-  const storedMessages = messagesSnap.docs.map((doc) => {
-    const data = doc.data()
-    return {
-      role: data.role as 'user' | 'agent',
-      content: (data.content as string) || '',
-      file_ids: (data.file_ids as string[] | undefined) || [],
-      sender_email: (data.sender_email as string | undefined) || '',
-      sender_display_name: (data.sender_display_name as string | undefined) || '',
-    }
-  })
+  const storedMessages = messagesSnap.docs
+    .map((doc) => {
+      const data = doc.data()
+      return {
+        role: data.role as 'user' | 'agent',
+        content: (data.content as string) || '',
+        file_ids: (data.file_ids as string[] | undefined) || [],
+        sender_email: (data.sender_email as string | undefined) || '',
+        sender_display_name: (data.sender_display_name as string | undefined) || '',
+      }
+    })
+    // An empty turn in history is a 400 from Anthropic ("all messages must
+    // have non-empty content") on every later request, which kills the
+    // session. Skip empty agent turns and user turns with neither text nor
+    // files (kickoff does the same).
+    .filter((m) => m.content.trim().length > 0 || (m.role === 'user' && m.file_ids.length > 0))
 
   // Multi-human brief: when more than one distinct person has posted in this
   // session, Claude needs to tell the speakers apart. We prefix each user turn
@@ -371,8 +377,7 @@ async function handleChat(
     model: chatModel,
     system: cached.system,
     messages: cached.messages,
-    max_tokens: AGENT_MAX_TOKENS,
-    ...chatSampling(chatModel),
+    ...chatModelOptions(chatModel),
   })
 
   const encoder = new TextEncoder()
@@ -390,19 +395,27 @@ async function handleChat(
           }
         }
 
-        // A safety decline (5.x models) ends the turn with stop_reason
-        // 'refusal' and, usually, no text. Log it and post a short fallback
-        // so the maker never sees an empty bubble.
+        // Never persist an empty agent turn — replayed as history it is a
+        // 400 on every later request. Two cases:
+        //  - a safety decline (stop_reason 'refusal', 5.x models): Anthropic's
+        //    guidance is to discard any partial text of a refused turn, so the
+        //    stored turn is the refusal line only;
+        //  - no text for any other reason (e.g. the output budget went to
+        //    thinking): a generic "say that again" line.
         const finalMessage = await stream.finalMessage()
         if (finalMessage.stop_reason === 'refusal') {
           console.warn('chat_refusal', {
             session_id,
             category: finalMessage.stop_details?.category ?? null,
+            partial_chars: fullResponse.length,
           })
-          if (!fullResponse.trim()) {
-            fullResponse = AGENT_REFUSAL_FALLBACK
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: fullResponse })}\n\n`))
-          }
+          const sep = fullResponse.trim() ? '\n\n' : ''
+          fullResponse = AGENT_REFUSAL_FALLBACK
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: sep + fullResponse })}\n\n`))
+        } else if (!fullResponse.trim()) {
+          console.warn('chat_empty_response', { session_id, stop_reason: finalMessage.stop_reason })
+          fullResponse = AGENT_EMPTY_FALLBACK
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: fullResponse })}\n\n`))
         }
 
         // Store the complete agent response
