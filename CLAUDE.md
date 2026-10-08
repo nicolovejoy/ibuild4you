@@ -103,15 +103,6 @@ Only `title` is required. All other fields are optional.
     "Focus on the ordering workflow",
     "Do not suggest technologies"
   ],
-  "layout_mockups": [
-    {
-      "title": "Homepage",
-      "sections": [
-        { "type": "hero", "label": "Welcome", "description": "Hero with cafe photos" },
-        { "type": "gallery", "label": "Menu", "description": "Drinks and pastries with prices" }
-      ]
-    }
-  ],
   "brief": {
     "problem": "Customers can't order online",
     "target_users": "Local cafe customers",
@@ -127,6 +118,8 @@ Only `title` is required. All other fields are optional.
 Side effects on create: generates slug, creates owner membership, creates a membership + approves email **for each participant** (see below; sign-in is via Google or the invite flow's password-setup link), creates first session (snapshots config), adds welcome message as first agent message, creates initial brief (if `brief` provided).
 
 **Participants.** `participants[]` seeds any number of people on a brief in one payload — each `{ email (required), first_name?, last_name?, role?, brief_role? }`. `role` is a `MemberRole` (`maker` | `apprentice` | `builder` | `owner`; default `maker`); `brief_role` defaults from role (maker→originator, apprentice→contributor, builder→reviewer). The legacy `requester_email`/`requester_first_name`/`requester_last_name` (+ `brief_role`) still work and are folded in as the first participant. Rules: dedup by lowercased email; the creator's own email is skipped (already the owner); the project doc's displayed requester is the first `maker` participant (else the first overall); **soft cap 20** (more → 400). No hard limit elsewhere — the chat roster name-tags arbitrarily many distinct senders. The response includes a `members: [{ email, role, brief_role }]` array (passcodes no longer minted or returned, PR D).
+
+`layout_mockups` (legacy, optional): an array of `{ title, sections: [{ type, label, description }] }` wireframes the agent may show in chat. De-prioritized 2026-10-08 (#195): the agent no longer brings up wireframes unless a builder set this field; full removal is phase 2 of that issue.
 
 A decision may carry `"locked": true` — a durable constraint (locked convention / do-not-use rule). Locked decisions survive brief regen verbatim (code-side merge in `regenerateBriefForProject`, never dropped by the model) and the agent must reconcile new intake against them: a maker statement contradicting a locked decision triggers an explicit confirm instead of a silent overwrite (#71). Set via the create payload or the Brief-tab JSON paste (`PUT /api/briefs`).
 
