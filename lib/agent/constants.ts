@@ -1,6 +1,15 @@
 export const AGENT_MODEL = 'claude-sonnet-4-6'
 export const AGENT_MAX_TOKENS = 2048
 export const AGENT_TEMPERATURE = 0.7
+// Posted as the agent's turn when the model declines a request outright
+// (stop_reason 'refusal', possible on the 5.x models) and produced no text,
+// so the maker never sees an empty bubble.
+export const AGENT_REFUSAL_FALLBACK =
+  "I can't help with that part here. Let's get back to the brief — what would you like to work on next?"
+// Posted when a turn ends with no text for any other reason (e.g. the model
+// spent its whole output budget thinking). An empty agent message would
+// otherwise be replayed as empty history and 400 every later turn.
+export const AGENT_EMPTY_FALLBACK = 'I lost my train of thought there — could you say that again?'
 
 // Used for brief generation too
 export const BRIEF_MODEL = 'claude-sonnet-4-6'

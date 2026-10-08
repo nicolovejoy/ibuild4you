@@ -85,14 +85,24 @@ let mockStreamEvents: { type: string; delta: { type: string; text: string } }[] 
 // Capture the args passed to messages.stream so tests can assert on the
 // conversation history actually sent to Claude (e.g. name-prefixed turns).
 let capturedStreamArgs: {
+  model?: string
+  temperature?: number
+  max_tokens?: number
+  output_config?: { effort?: string }
   system?: { type: string; text: string; cache_control?: unknown }[]
   messages?: { role: string; content: unknown }[]
 } | null = null
+// What stream.finalMessage() resolves to; tests override for refusal cases.
+let mockFinalMessage: Record<string, unknown> = { usage: { input_tokens: 100, output_tokens: 50 } }
 
 vi.mock('@anthropic-ai/sdk', () => ({
   default: vi.fn(() => ({
     messages: {
       stream: vi.fn((args: {
+        model?: string
+        temperature?: number
+        max_tokens?: number
+        output_config?: { effort?: string }
         system?: { type: string; text: string; cache_control?: unknown }[]
         messages?: { role: string; content: unknown }[]
       }) => {
@@ -107,9 +117,7 @@ vi.mock('@anthropic-ai/sdk', () => ({
               return { done: true, value: undefined }
             },
           }),
-          finalMessage: vi.fn(async () => ({
-            usage: { input_tokens: 100, output_tokens: 50 },
-          })),
+          finalMessage: vi.fn(async () => mockFinalMessage),
         }
       }),
     },
@@ -163,6 +171,8 @@ describe('POST /api/chat', () => {
     vi.clearAllMocks()
     addCalls.length = 0
     capturedStreamArgs = null
+    mockFinalMessage = { usage: { input_tokens: 100, output_tokens: 50 } }
+    vi.unstubAllEnvs()
     mockGetProjectRole.mockResolvedValue('maker')
     mockGetUserDisplayName.mockResolvedValue('Test User')
     mockHasSystemRole.mockReturnValue(false)
@@ -342,6 +352,82 @@ describe('POST /api/chat', () => {
     expect(agentMsgAdd).toBeDefined()
     expect(agentMsgAdd!.data.content).toBe('Hello world')
     expect(agentMsgAdd!.data.session_id).toBe('s1')
+  })
+
+  // --- Model override + per-model sampling (#184) ---
+
+  it('sends the default model with the tuned temperature when CHAT_MODEL is unset', async () => {
+    const res = await POST(makeRequest({ session_id: 's1', content: 'Hello' }))
+    await readSSE(res)
+    expect(capturedStreamArgs?.model).toBe('claude-sonnet-4-6')
+    expect(capturedStreamArgs?.temperature).toBe(0.7)
+    expect(capturedStreamArgs?.max_tokens).toBe(2048)
+    expect(capturedStreamArgs?.output_config).toBeUndefined()
+  })
+
+  it('on a 5.x CHAT_MODEL drops temperature and sends low effort (temperature would 400)', async () => {
+    vi.stubEnv('CHAT_MODEL', 'claude-sonnet-5-5')
+    const res = await POST(makeRequest({ session_id: 's1', content: 'Hello' }))
+    await readSSE(res)
+    expect(capturedStreamArgs?.model).toBe('claude-sonnet-5-5')
+    expect(capturedStreamArgs?.temperature).toBeUndefined()
+    expect(capturedStreamArgs?.output_config).toEqual({ effort: 'low' })
+    expect(capturedStreamArgs?.max_tokens).toBe(8192) // thinking bills against it
+    // The session records the model that actually answered.
+    expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({ model: 'claude-sonnet-5-5' }))
+  })
+
+  it('posts a short fallback when the model refuses with no text, instead of an empty bubble', async () => {
+    mockStreamEvents = []
+    mockFinalMessage = {
+      usage: { input_tokens: 100, output_tokens: 0 },
+      stop_reason: 'refusal',
+      stop_details: { type: 'refusal', category: 'cyber' },
+    }
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const res = await POST(makeRequest({ session_id: 's1', content: 'Hello' }))
+    const body = await readSSE(res)
+    const agentMsgAdd = addCalls.find((c) => c.collection === 'messages' && c.data.role === 'agent')
+    expect(agentMsgAdd?.data.content).toMatch(/back to the brief/)
+    expect(body.join('')).toContain('back to the brief')
+    expect(warn).toHaveBeenCalledWith('chat_refusal', expect.objectContaining({ category: 'cyber' }))
+    warn.mockRestore()
+  })
+
+  it('discards partial text on a mid-stream refusal and stores only the refusal line', async () => {
+    mockFinalMessage = { usage: { input_tokens: 1, output_tokens: 1 }, stop_reason: 'refusal' }
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const res = await POST(makeRequest({ session_id: 's1', content: 'Hello' }))
+    await readSSE(res)
+    const agentMsgAdd = addCalls.find((c) => c.collection === 'messages' && c.data.role === 'agent')
+    expect(agentMsgAdd?.data.content).toMatch(/back to the brief/)
+    expect(agentMsgAdd?.data.content).not.toContain('Hello world')
+    warn.mockRestore()
+  })
+
+  it('posts a "say that again" line when the turn ends with no text for a non-refusal reason', async () => {
+    mockStreamEvents = []
+    mockFinalMessage = { usage: { input_tokens: 1, output_tokens: 2048 }, stop_reason: 'max_tokens' }
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const res = await POST(makeRequest({ session_id: 's1', content: 'Hello' }))
+    await readSSE(res)
+    const agentMsgAdd = addCalls.find((c) => c.collection === 'messages' && c.data.role === 'agent')
+    expect(agentMsgAdd?.data.content).toMatch(/say that again/)
+    expect(warn).toHaveBeenCalledWith('chat_empty_response', expect.objectContaining({ stop_reason: 'max_tokens' }))
+    warn.mockRestore()
+  })
+
+  it('drops an empty agent turn from the history it sends (an empty turn is a 400 upstream)', async () => {
+    queryResults.messages = [
+      { id: 'm1', data: () => ({ role: 'agent', content: 'Welcome!', created_at: '2026-01-01T00:00:00Z' }) },
+      { id: 'm2', data: () => ({ role: 'user', content: 'hi', created_at: '2026-01-01T00:00:01Z' }) },
+      { id: 'm3', data: () => ({ role: 'agent', content: '', created_at: '2026-01-01T00:00:02Z' }) },
+    ]
+    const res = await POST(makeRequest({ session_id: 's1', content: 'Hello' }))
+    await readSSE(res)
+    const sent = capturedStreamArgs?.messages ?? []
+    expect(sent.some((m) => m.role === 'assistant' && m.content === '')).toBe(false)
+    expect(sent.filter((m) => m.role === 'assistant')).toHaveLength(1)
   })
 
   it('updates token usage on the session after streaming', async () => {

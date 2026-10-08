@@ -66,18 +66,28 @@ vi.mock('@/lib/api/firebase-server-helpers', () => ({
 }))
 
 let capturedStreamArgs: {
+  model?: string
+  temperature?: number
+  max_tokens?: number
+  output_config?: { effort?: string }
   system?: { type: string; text: string; cache_control?: unknown }[]
   messages?: { role: string; content: unknown }[]
 } | null = null
-const mockStreamEvents = [
+const defaultStreamEvents = [
   { type: 'content_block_delta', delta: { type: 'text_delta', text: 'Welcome back!' } },
 ]
+let mockStreamEvents = defaultStreamEvents
+let mockFinalMessage: Record<string, unknown> = { usage: { input_tokens: 100, output_tokens: 50 } }
 
 vi.mock('@anthropic-ai/sdk', () => ({
   default: vi.fn(() => ({
     messages: {
       stream: vi.fn(
         (args: {
+          model?: string
+          temperature?: number
+          max_tokens?: number
+          output_config?: { effort?: string }
           system?: { type: string; text: string; cache_control?: unknown }[]
           messages?: { role: string; content: unknown }[]
         }) => {
@@ -90,7 +100,7 @@ vi.mock('@anthropic-ai/sdk', () => ({
                 return { done: true, value: undefined }
               },
             }),
-            finalMessage: vi.fn(async () => ({ usage: { input_tokens: 100, output_tokens: 50 } })),
+            finalMessage: vi.fn(async () => mockFinalMessage),
           }
         }
       ),
@@ -163,9 +173,41 @@ describe('POST /api/chat/kickoff', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     addCalls.length = 0
+    mockStreamEvents = defaultStreamEvents
+    mockFinalMessage = { usage: { input_tokens: 100, output_tokens: 50 } }
+    vi.unstubAllEnvs()
     updateCalls.length = 0
     capturedStreamArgs = null
     mockGetProjectRole.mockResolvedValue('maker')
+  })
+
+  it('uses CHAT_MODEL with the 5.x request shape, like /api/chat (#184)', async () => {
+    vi.stubEnv('CHAT_MODEL', 'claude-sonnet-5-5')
+    setup({
+      messages: [msg('agent', 5 * HOUR), msg('user', 3 * HOUR), msg('agent', 3 * HOUR)],
+      lastMakerMessageAt: iso(3 * HOUR),
+    })
+    const res = await POST(makeRequest({ session_id: 'sess-1' }))
+    await drain(res)
+    expect(capturedStreamArgs?.model).toBe('claude-sonnet-5-5')
+    expect(capturedStreamArgs?.temperature).toBeUndefined()
+    expect(capturedStreamArgs?.output_config).toEqual({ effort: 'low' })
+    expect(capturedStreamArgs?.max_tokens).toBe(8192)
+  })
+
+  it('does not store a greeting that came back empty (an empty agent turn 400s every later chat turn)', async () => {
+    mockStreamEvents = []
+    mockFinalMessage = { usage: { input_tokens: 100, output_tokens: 0 }, stop_reason: 'refusal' }
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    setup({
+      messages: [msg('agent', 5 * HOUR), msg('user', 3 * HOUR), msg('agent', 3 * HOUR)],
+      lastMakerMessageAt: iso(3 * HOUR),
+    })
+    const res = await POST(makeRequest({ session_id: 'sess-1' }))
+    await drain(res)
+    expect(addCalls.filter((c) => c.collection === 'messages')).toHaveLength(0)
+    expect(warn).toHaveBeenCalledWith('kickoff_empty_response', expect.objectContaining({ stop_reason: 'refusal' }))
+    warn.mockRestore()
   })
 
   it('fires on returning-after-a-break: streams + stores an agent message, no maker message', async () => {
