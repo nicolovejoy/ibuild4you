@@ -60,6 +60,7 @@ import {
 } from '@/lib/builder/conversations-view'
 import { useQueryClient } from '@tanstack/react-query'
 import { BuilderFilesTab } from './BuilderFilesTab'
+import { ProjectCostsCard } from './ProjectCostsCard'
 import { BriefEditor } from './BriefEditor'
 import { serializeBriefContent } from '@/lib/api/brief-json'
 import { getTurnIndicator } from '@/lib/turn-indicator'
@@ -840,6 +841,9 @@ function ConversationsTab({
         justImported={justImported}
         onImportedConsumed={onImportedConsumed}
       />
+
+      {/* Operator telemetry, admin-only (#120, #185). */}
+      {isAdmin && <ProjectCostsCard projectId={projectId} />}
 
       {sessions.length === 0 ? (
         <EmptyState
