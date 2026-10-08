@@ -309,6 +309,44 @@ describe('regenerateBriefForProject', () => {
     ])
   })
 
+  it('ignores a lock the model invents — only builders set locks (#182)', async () => {
+    sessionsByProject.p1 = [{ id: 's1', data: () => ({}) }]
+    messagesBySession.s1 = [{ id: 'm1', data: () => ({ role: 'user', content: 'hi' }) }]
+    projectDocs.p1 = { exists: true, data: () => ({ title: 'X' }) }
+    briefsByProject.p1 = [
+      {
+        id: 'brief-1',
+        data: () => ({
+          version: 2,
+          content: {
+            ...validBrief,
+            decisions: [{ topic: 'Stack', decision: 'Next.js, no Vue', locked: true }],
+          },
+        }),
+        ref: { update: mockBriefUpdate },
+      },
+    ]
+    // Model echoes the real lock and also locks a decision of its own.
+    mockMessagesCreate.mockResolvedValue(
+      toolUseResponse({
+        ...validBrief,
+        decisions: [
+          { topic: 'Stack', decision: 'Next.js, no Vue', locked: true },
+          { topic: 'Payment', decision: 'Stripe', locked: true },
+        ],
+      }),
+    )
+
+    await regenerateBriefForProject(makeDb(), 'p1')
+
+    const updateArgs = mockBriefUpdate.mock.calls[0] as unknown as [
+      { content: { decisions: Array<{ topic: string; locked?: boolean }> } },
+    ]
+    const byTopic = Object.fromEntries(updateArgs[0].content.decisions.map((d) => [d.topic, d]))
+    expect(byTopic.Stack.locked).toBe(true) // builder's lock survives, via prev
+    expect(byTopic.Payment.locked).toBeUndefined() // model's lock is dropped
+  })
+
   // #121 — provenance is stamped by code on regen: a decision new this round
   // gets the latest non-archived session that has messages; unchanged decisions
   // keep their prior stamps; model-echoed decided_* fields are stripped.

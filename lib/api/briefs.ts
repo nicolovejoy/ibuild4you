@@ -41,7 +41,7 @@ const UPDATE_BRIEF_TOOL = {
             locked: {
               type: 'boolean',
               description:
-                'A locked decision is a durable constraint. Carry it forward verbatim — never drop or reword it.',
+                'A locked decision is a durable constraint set by the builder. Carry it forward verbatim — never drop or reword it, and never lock a decision yourself.',
             },
           },
           required: ['topic', 'decision'],
@@ -201,14 +201,13 @@ export async function regenerateBriefForProject(
     decisions: Array.isArray(raw.decisions)
       ? raw.decisions
           .filter(
-            (d): d is { topic: string; decision: string; locked?: boolean } =>
+            (d): d is { topic: string; decision: string } =>
               !!d && typeof d.topic === 'string' && typeof d.decision === 'string',
           )
-          .map((d) => ({
-            topic: d.topic,
-            decision: d.decision,
-            ...(d.locked === true && { locked: true }),
-          }))
+          // Only builders set locks (#182). A `locked` flag the model emits is
+          // dropped here; the locks that exist come back verbatim from the
+          // previous brief in reconcileBrief below.
+          .map((d) => ({ topic: d.topic, decision: d.decision }))
       : [],
     open_risks: Array.isArray(raw.open_risks)
       ? raw.open_risks.filter(
