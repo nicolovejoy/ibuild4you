@@ -1,6 +1,7 @@
 import { Resend } from 'resend'
 import { NOTIFICATION_EMAILS } from '@/lib/constants'
 import { copy } from '@/lib/copy'
+import { textToEmailHtml } from '@/lib/email/html'
 import { buildReminderEmail, type MakerBatch } from '@/lib/email/reminder-digest'
 
 // Sends the auto-reminder email for a project. Used by the daily cron at
@@ -53,6 +54,7 @@ function buildBody(input: SendReminderInput): string {
 export async function sendReminderEmail(input: SendReminderInput): Promise<SendReminderResult> {
   const subject = buildSubject(input.projectTitle)
   const text = buildBody(input)
+  const html = textToEmailHtml(text)
   const dryRun = process.env.REMINDER_DRY_RUN === 'true'
 
   if (dryRun) {
@@ -82,6 +84,7 @@ export async function sendReminderEmail(input: SendReminderInput): Promise<SendR
     replyTo: REPLY_TO,
     subject,
     text,
+    html,
   })
 
   if (error) {
@@ -96,7 +99,7 @@ export async function sendReminderEmail(input: SendReminderInput): Promise<SendR
 // batches collapse into one digest so a maker on N briefs gets 1 email, not N.
 // Same FROM/REPLY_TO/BCC + REMINDER_DRY_RUN handling as sendReminderEmail.
 export async function sendReminderDigest(batch: MakerBatch): Promise<SendReminderResult> {
-  const { subject, text } = buildReminderEmail(batch)
+  const { subject, text, html } = buildReminderEmail(batch)
   const dryRun = process.env.REMINDER_DRY_RUN === 'true'
   const projectIds = batch.items.map((i) => i.projectId)
 
@@ -127,6 +130,7 @@ export async function sendReminderDigest(batch: MakerBatch): Promise<SendReminde
     replyTo: REPLY_TO,
     subject,
     text,
+    html,
   })
 
   if (error) {

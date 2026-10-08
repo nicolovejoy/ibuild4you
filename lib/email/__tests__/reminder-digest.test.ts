@@ -97,4 +97,18 @@ describe('buildReminderEmail', () => {
     const { text } = buildReminderEmail(batch)
     expect(text).toMatch(/^Your conversations are waiting:/)
   })
+
+  it('returns an HTML body whose share links are anchors (single and multi)', () => {
+    const single = buildReminderEmail(groupReminderSends([pending()])[0])
+    expect(single.html).toContain('<a href="https://ibuild4you.com/projects/sams-cafe"')
+
+    const multi = buildReminderEmail(
+      groupReminderSends([
+        pending({ projectId: 'a', projectTitle: 'Alpha', shareLink: 'https://ibuild4you.com/projects/alpha' }),
+        pending({ projectId: 'b', projectTitle: 'Beta', shareLink: 'https://ibuild4you.com/projects/beta' }),
+      ])[0],
+    )
+    expect(multi.html).toContain('<a href="https://ibuild4you.com/projects/alpha"')
+    expect(multi.html).toContain('<a href="https://ibuild4you.com/projects/beta"')
+  })
 })

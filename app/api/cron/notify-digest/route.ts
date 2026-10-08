@@ -64,6 +64,7 @@ export async function GET(request: Request) {
       to: NOTIFICATION_EMAILS,
       subject: digest.subject,
       text: digest.text,
+      html: digest.html,
     })
   } catch (err) {
     console.error('[cron/notify-digest] send failed:', err)
