@@ -68,4 +68,15 @@ describe('buildNewProjectPrompt', () => {
     const regex = new RegExp(`"${field}"\\s*:`)
     expect(result).toMatch(regex)
   })
+
+  it('tells the prep Claude to write maker-facing text in the maker\'s language', () => {
+    const prompt = buildNewProjectPrompt()
+    expect(prompt).toMatch(/language other than English/)
+    expect(prompt).toContain('builder_directives')
+  })
+
+  it('keeps the brief itself in English even when the conversation is not', () => {
+    const result = buildNewProjectPrompt()
+    expect(result).toMatch(/brief.*in English/i)
+  })
 })
