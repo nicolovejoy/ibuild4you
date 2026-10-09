@@ -93,4 +93,9 @@ describe('buildNextConvoPrompt', () => {
     const result = buildNextConvoPrompt(emptyInput)
     expect(result).toMatch(/language other than English/)
   })
+
+  it('keeps the brief itself in English even when the conversation is not', () => {
+    const result = buildNextConvoPrompt(emptyInput)
+    expect(result).toMatch(/brief.*in English/i)
+  })
 })
