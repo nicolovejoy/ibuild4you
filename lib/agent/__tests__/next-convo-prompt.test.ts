@@ -88,4 +88,9 @@ describe('buildNextConvoPrompt', () => {
     expect(result).toContain('no online ordering')
     expect(result).toContain('catalog')
   })
+
+  it('tells the prep Claude to write maker-facing text in the maker\'s language', () => {
+    const result = buildNextConvoPrompt(emptyInput)
+    expect(result).toMatch(/language other than English/)
+  })
 })
