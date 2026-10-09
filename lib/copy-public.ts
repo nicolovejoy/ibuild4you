@@ -89,7 +89,7 @@ const fr: PublicCopy = {
   loading: 'Chargement…',
   landing: {
     tagline:
-      'Vous avez une idée d’application ou de site web, sans savoir par où commencer ? Notre IA vous guide à travers les détails et transforme votre idée en un brief clair — aucune connaissance technique requise.',
+      'Vous avez une idée d’application ou de site web, sans savoir par où commencer ? Notre IA vous aide à préciser chaque détail et transforme votre idée en un brief clair — aucune connaissance technique requise.',
     signIn: 'Se connecter',
     learnMore: 'En savoir plus sur le fonctionnement',
     howItWorks: 'Comment ça marche',
@@ -107,21 +107,21 @@ const fr: PublicCopy = {
         desc: 'Revenez quand vous voulez pour ajouter des détails. Votre brief évolue avec votre réflexion.',
       },
     ],
-    interestTitle: 'Intéressé·e ?',
+    interestTitle: 'Intéressé·e ?',
     interestSubtitle:
       'Pour l’instant, l’accès se fait sur invitation. Dites-nous que cela vous intéresse et nous reviendrons vers vous.',
-    interestSuccess: 'Merci de votre intérêt !',
-    interestSuccessDetail: 'Nous vous recontacterons dès qu’une place se libère.',
+    interestSuccess: 'Merci de votre intérêt !',
+    interestSuccessDetail: 'Nous vous recontacterons dès qu’une place se libérera.',
     form: {
       name: 'Nom *',
       namePlaceholder: 'Votre nom',
       email: 'E-mail *',
       emailPlaceholder: 'vous@exemple.com',
-      howFound: 'Comment nous avez-vous connus ?',
+      howFound: 'Comment nous avez-vous connus ?',
       howFoundPlaceholder: 'Un ami, les réseaux sociaux, une recherche…',
-      wantToTry: 'J’ai une idée de projet avec laquelle j’aimerais essayer',
+      wantToTry: 'J’ai une idée de projet que j’aimerais tester ici',
       whatFor: 'Dites-nous en quelques mots ce que vous aimeriez construire',
-      whatForPlaceholder: 'Une application qui…, Un site web pour…',
+      whatForPlaceholder: 'Une application qui…, un site web pour…',
       submitting: 'Envoi…',
       submit: 'Je suis intéressé·e',
       failed: 'L’envoi a échoué',
@@ -129,26 +129,26 @@ const fr: PublicCopy = {
     },
   },
   about: {
-    title: 'Qu’est-ce qu’iBuild4you ?',
+    title: 'Qu’est-ce qu’iBuild4you ?',
     intro:
       'une expérience de RAAC — Rapid Asynchronous Assisted Communication (communication asynchrone, rapide et assistée)',
     whatItIs:
-      'Conçu au départ comme une étape d’accueil pour des amis qui voulaient mon aide pour coder divers projets, je le vois aujourd’hui comme une plateforme de conversation plus générale, qui permet à des personnes d’échanger entre elles avec l’aide d’un agent pour faciliter le processus. « Je », c’est Nico, l’humain derrière iBuild4you. Je vous présente maintenant notre assistant, Sam :',
+      'Au départ, je l’ai conçu pour recueillir les besoins d’amis qui voulaient mon aide pour coder divers projets ; je le vois aujourd’hui comme une plateforme de conversation plus générale, qui permet à des personnes d’échanger entre elles avec l’aide d’un agent pour faciliter le processus. « Je », c’est Nico, l’humain derrière iBuild4you. Je vous présente maintenant notre assistant, Sam :',
     whoIsRoanHeading: 'Voici Sam Scribe',
     whoIsRoan:
-      'Sam est l’assistant au milieu de la conversation — là pour aider chacun à penser plus clairement et à mieux se comprendre. Nico (et vous !) aidez à régler Sam au fil de son évolution.',
-    briefHeading: 'Le brief (projet ?)',
+      'Sam est l’assistant au milieu de la conversation — là pour aider chacun à penser plus clairement et à mieux se comprendre. Nico, et vous aussi, contribuez à affiner Sam à mesure que le projet évolue.',
+    briefHeading: 'Le brief (projet ?)',
     briefIntro:
-      'Ce qu’on appelait d’abord un projet (le mot pourrait être meilleur) s’appelle désormais un brief. Il porte sur un sujet donné et évolue au fil d’une série de conversations assistées, avec parfois quelques documents (l’un de nous dépose des fichiers, par exemple). Sam travaille au sein du brief pour faire avancer les conversations et les aider à couvrir le périmètre prévu.',
+      'Ce qu’on appelait d’abord un projet (le nom n’est pas idéal) s’appelle désormais un brief. Il porte sur un sujet donné et évolue au fil d’une série de conversations assistées, avec parfois quelques documents (l’un de nous dépose des fichiers, par exemple). Sam travaille au sein du brief pour faire avancer les conversations et les aider à couvrir le périmètre prévu.',
     rolesIntroHeading: 'Les rôles dans un brief',
     rolesIntro:
-      'Je cherche encore la bonne façon de décrire les différents participants d’une conversation. Pour l’instant, nous parlons d’initiateur, de contributeur et de relecteur. Au départ, on parlait d’un « Maker » et d’un « Builder ». Vos retours sont toujours les bienvenus.',
+      'Je cherche encore la bonne façon de décrire les différents participants d’une conversation. Pour l’instant, nous parlons d’initiateur, de contributeur et de relecteur. Au départ, on parlait d’un « Maker » et d’un « Builder ». Vos retours sont toujours les bienvenus.',
     privacyIntroHeading: 'Confidentialité — en chantier',
     privacy:
-      'Votre brief ne devrait être visible que par les personnes invitées, mais comme il s’agit d’un projet à ses débuts, avec un seul développeur qui mène une douzaine de projets ou plus, merci de ne rien partager de trop personnel ici !',
-    cta: 'Prêt·e à commencer ?',
+      'Votre brief ne devrait être visible que par les personnes invitées, mais comme il s’agit d’un projet à ses débuts, avec un seul développeur qui mène une douzaine de projets ou plus, merci de ne rien partager de trop personnel ici !',
+    cta: 'Prêt·e à commencer ?',
     voiceNote:
-      'Cette page a été écrite par Nico avec l’aide de Sam, puis retouchée à la main. Traduction française : Claude.',
+      'Cette page a été écrite par Nico avec l’aide de Sam, puis retouchée à la main. Traduction française : Claude.',
     roles: {
       originator: {
         term: 'Initiateur',
@@ -165,7 +165,7 @@ const fr: PublicCopy = {
           'Annote et valide — signale ce qui manque ou reste flou, et oriente la session suivante.',
       },
     },
-    payloadHeading: 'Pour les développeurs : référence des payloads',
+    payloadHeading: 'Pour les développeurs : référence des payloads',
     payloadIntro:
       'Les briefs peuvent être créés et mis à jour en JSON. Ces pages présentent les payloads à copier-coller, annotés champ par champ.',
     payloadStart: {
