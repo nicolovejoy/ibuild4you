@@ -414,6 +414,15 @@ describe('buildSystemPrompt', () => {
     expect(converge).toContain('Their direction wins')
   })
 
+  it('GUARDRAILS tells the agent to converse in the user\'s language in both modes', () => {
+    const discover = buildSystemPrompt(minimalInput)
+    const converge = buildSystemPrompt({ ...minimalInput, sessionMode: 'converge' })
+    for (const prompt of [discover, converge]) {
+      expect(prompt).toContain('Match their language')
+      expect(prompt).toMatch(/French/)
+    }
+  })
+
   // ---------------------------------------------------------------------------
   // Multi-human brief (5b)
   // ---------------------------------------------------------------------------

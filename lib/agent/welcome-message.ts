@@ -2,7 +2,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { AGENT_MODEL, AGENT_TEMPERATURE, DEFAULT_IDENTITY } from './constants'
 import { logAnthropicCall } from '@/lib/observability/anthropic'
 
-function buildWelcomeSystemPrompt(identity?: string | null): string {
+export function buildWelcomeSystemPrompt(identity?: string | null): string {
   const who = identity || DEFAULT_IDENTITY
   return `${who}
 
@@ -14,7 +14,8 @@ Rules:
 - Plain language only — no jargon like "user journeys", "microservices", "tech stack", "MVP", etc.
 - Be friendly and approachable, not corporate
 - In one light sentence, make clear you're here to capture their idea into a brief their developer builds from — you're not the one building it. Don't belabor it.
-- Don't over-explain the process — just welcome them and get things rolling`
+- Don't over-explain the process — just welcome them and get things rolling
+- Write in English unless the background context says the person prefers another language (e.g. "speaks French", "write to her in French") — then write the whole message in that language.`
 }
 
 export async function generateWelcomeMessage(
