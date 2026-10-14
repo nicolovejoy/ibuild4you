@@ -1,3 +1,4 @@
+import { toLocale } from '@/lib/locale'
 import { NextResponse } from 'next/server'
 import {
   getAuthenticatedUser,
@@ -89,6 +90,7 @@ export async function POST(
     builderDirectives: (project.builder_directives as string[] | undefined) ?? [],
     welcomeMessage: (project.welcome_message as string | undefined) ?? null,
     voiceSample: (project.voice_sample as string | undefined) ?? null,
+    language: toLocale(project.language),
   }
 
   const hash = prepConfigHash({ ...input, briefSignal })

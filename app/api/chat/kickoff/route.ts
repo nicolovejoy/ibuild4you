@@ -1,3 +1,4 @@
+import { toLocale } from '@/lib/locale'
 import { getAuthenticatedUser, getAdminDb, getProjectRole, getUserDisplayName } from '@/lib/api/firebase-server-helpers'
 import { countsAsMakerActivity } from '@/lib/projects/project-view'
 import { buildSystemPrompt } from '@/lib/agent/system-prompt'
@@ -254,6 +255,9 @@ export async function POST(request: Request) {
     prototypeContext,
     pinnedArtifacts,
     siblingDecisions,
+    // Read from the project (not the session snapshot) so a language set
+    // after a session started still applies.
+    language: toLocale(projectData.language),
   })
 
   // Cache the system block only. Kickoff never advances

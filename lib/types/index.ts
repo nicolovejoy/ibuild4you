@@ -1,3 +1,4 @@
+import type { Locale } from '@/lib/locale'
 // Base entity type — all Firestore documents extend this
 export interface BaseEntity {
   id: string
@@ -85,6 +86,12 @@ export interface Project extends BaseEntity {
   // = off, existing behavior. "Verified" = a valid #149 host identityAssertion OR
   // a valid ibuild4you Firebase Bearer — a merely-typed email never satisfies this.
   feedback_requires_identity?: boolean
+  // Language the maker is addressed in (agent replies, outbound copy, link
+  // previews). Absent = English. The brief content itself stays English.
+  language?: Locale
+  // Link previews show the brief title unless this is true (then the anonymous
+  // colour/glyph/code card). Previews are public to anyone holding the link.
+  hide_title_in_previews?: boolean
   // Debounced maker-activity notifications — cron at /api/cron/notify reads these
   notify_after?: string | null // ISO timestamp; cron sends email once this passes
   notify_pending_since?: string | null // ISO timestamp of first unnotified maker message

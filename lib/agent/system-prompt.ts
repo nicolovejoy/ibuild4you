@@ -5,6 +5,7 @@ import { renderPrototypeContextBlock, type PrototypeContextItem } from './protot
 import { renderArtifactContextBlock, type ArtifactContextItem } from './artifact-context'
 import { renderSiblingDecisionsBlock, type SiblingDecision } from './sibling-decisions'
 import type { BriefContent, BriefRole, WireframeMockup } from '@/lib/types'
+import { LOCALE_NAMES, type Locale } from '@/lib/locale'
 
 // Maker name and gap-since-last-message are read live per request (not
 // snapshotted into the session like seed_questions / directives) so that
@@ -36,6 +37,9 @@ interface SystemPromptInput {
   // #142: locked decisions settled in sibling briefs (same product/github_repo)
   // so Sam doesn't re-ask about things already decided in a related conversation.
   siblingDecisions?: SiblingDecision[]
+  // The brief's language (projects.language). Non-English adds a block telling
+  // Sam to use it from the very first message, before the maker has written.
+  language?: Locale
 }
 
 const ONE_HOUR_MS = 60 * 60 * 1000
@@ -48,7 +52,7 @@ function humanizeGap(ms: number): string {
   return 'over a week'
 }
 
-export function buildSystemPrompt({ briefContent, projectContext, sessionNumber, seedQuestions, builderDirectives, sessionMode, layoutMockups, identity, makerFirstName, makerLastName, gapSinceLastMakerMessageMs, participants, prototypeFeedback, prototypeContext, pinnedArtifacts, siblingDecisions }: SystemPromptInput): string {
+export function buildSystemPrompt({ briefContent, projectContext, sessionNumber, seedQuestions, builderDirectives, sessionMode, layoutMockups, identity, makerFirstName, makerLastName, gapSinceLastMakerMessageMs, participants, prototypeFeedback, prototypeContext, pinnedArtifacts, siblingDecisions, language }: SystemPromptInput): string {
   const parts: string[] = []
 
   parts.push(identity || DEFAULT_IDENTITY)
@@ -97,6 +101,15 @@ Address them by their first name (${makerFirstName}). A trailing last initial, i
 Here are some specific questions to weave into the conversation naturally. Don't ask them all at once — work them in when they fit. You don't need to ask them verbatim; adapt the phrasing to the flow of conversation.
 
 ${seedQuestions.map((q, i) => `${i + 1}. ${q}`).join('\n')}
+`.trim())
+  }
+
+  if (language && language !== 'en') {
+    const name = LOCALE_NAMES[language]
+    parts.push(`
+## Language
+
+Converse in ${name} from your very first message, even before the user has written anything. If they switch to another language, follow them.
 `.trim())
   }
 

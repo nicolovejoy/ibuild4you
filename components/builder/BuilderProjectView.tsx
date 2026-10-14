@@ -66,6 +66,7 @@ import { serializeBriefContent } from '@/lib/api/brief-json'
 import { getTurnIndicator } from '@/lib/turn-indicator'
 import { TurnBadge } from '@/components/ui/TurnBadge'
 import { BriefSwitcher } from '@/components/brief-switcher'
+import { toLocale, type Locale } from '@/lib/locale'
 import type { Project, Session, BriefContent, ProjectFile } from '@/lib/types'
 
 // Builder nav is Brief · Conversations · People · Agent setup. #120 made
@@ -565,6 +566,7 @@ function BriefTab({
         conversationHistory: allMessages,
         projectTitle: project?.title || 'Untitled',
         sessionCount: sessions?.length || 0,
+        language: project?.language,
       })
 
       await navigator.clipboard.writeText(prompt)
@@ -1551,6 +1553,8 @@ function AgentConfigCard({ project, defaultExpanded = false }: { project: Projec
   const [feedbackRequiresIdentity, setFeedbackRequiresIdentity] = useState(
     project.feedback_requires_identity === true
   )
+  const [language, setLanguage] = useState<Locale>(toLocale(project.language))
+  const [hideTitleInPreviews, setHideTitleInPreviews] = useState(project.hide_title_in_previews === true)
   const [saved, setSaved] = useState(false)
   const [deleting, setDeleting] = useState(false)
 
@@ -1573,7 +1577,9 @@ function AgentConfigCard({ project, defaultExpanded = false }: { project: Projec
     setAutoReminders(project.auto_reminders_enabled === true)
     setGithubRepo(project.github_repo || '')
     setFeedbackRequiresIdentity(project.feedback_requires_identity === true)
-  }, [project.welcome_message, project.seed_questions, project.session_mode, project.builder_directives, project.identity, project.nudge_message, project.voice_sample, project.auto_reminders_enabled, project.github_repo, project.feedback_requires_identity])
+    setLanguage(toLocale(project.language))
+    setHideTitleInPreviews(project.hide_title_in_previews === true)
+  }, [project.welcome_message, project.seed_questions, project.session_mode, project.builder_directives, project.identity, project.nudge_message, project.voice_sample, project.auto_reminders_enabled, project.github_repo, project.feedback_requires_identity, project.language, project.hide_title_in_previews])
 
   const handleSave = async () => {
     await updateProject.mutateAsync({
@@ -1588,6 +1594,8 @@ function AgentConfigCard({ project, defaultExpanded = false }: { project: Projec
       auto_reminders_enabled: autoReminders,
       github_repo: githubRepo.trim() || undefined,
       feedback_requires_identity: feedbackRequiresIdentity,
+      language,
+      hide_title_in_previews: hideTitleInPreviews,
       last_builder_activity_at: new Date().toISOString(),
     })
     setSaved(true)
@@ -1658,6 +1666,21 @@ function AgentConfigCard({ project, defaultExpanded = false }: { project: Projec
             <textarea value={welcomeMessage} onChange={(e) => setWelcomeMessage(e.target.value)} placeholder="The message the agent sends when the maker opens this conversation." rows={4} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy" />
           </div>
 
+          {/* Maker's language — agent replies, outbound copy, link previews */}
+          <div>
+            <label htmlFor="maker-language" className="text-sm font-medium text-gray-700 block mb-1.5">Maker&apos;s language</label>
+            <select
+              id="maker-language"
+              value={language}
+              onChange={(e) => setLanguage(toLocale(e.target.value))}
+              className="px-3 py-2 border border-gray-300 rounded-md text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
+            >
+              <option value="en">English</option>
+              <option value="fr">French</option>
+            </select>
+            <p className="text-xs text-gray-400 mt-1">The agent talks to the maker in this language from the first message, and link previews use it. The brief itself stays in English.</p>
+          </div>
+
           {/* Mode */}
           <SessionModeToggle mode={sessionMode} onChange={setSessionMode} />
 
@@ -1686,6 +1709,20 @@ function AgentConfigCard({ project, defaultExpanded = false }: { project: Projec
             <div>
               <div className="text-sm font-medium text-gray-700">Auto-remind the maker if they don&apos;t respond</div>
               <p className="text-xs text-gray-400">Sends up to 3 reminder emails on a 2 / 5 / 10 day cadence after a new conversation is ready. Stops the moment the maker replies.</p>
+            </div>
+          </label>
+
+          {/* Link previews are public to anyone holding the link */}
+          <label className="flex items-start gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={hideTitleInPreviews}
+              onChange={(e) => setHideTitleInPreviews(e.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-gray-300 text-brand-navy focus:ring-brand-navy"
+            />
+            <div>
+              <div className="text-sm font-medium text-gray-700">Don&apos;t show the brief title in link previews</div>
+              <p className="text-xs text-gray-400">When a link to this brief is pasted into a message, the preview card shows its title. Anyone holding the link can see that card, and messaging apps keep old previews.</p>
             </div>
           </label>
 

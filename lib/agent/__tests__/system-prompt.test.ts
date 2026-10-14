@@ -423,6 +423,17 @@ describe('buildSystemPrompt', () => {
     }
   })
 
+  it('tells the agent to converse in French from the first message when the brief language is fr', () => {
+    const prompt = buildSystemPrompt({ ...minimalInput, language: 'fr' })
+    expect(prompt).toContain('## Language')
+    expect(prompt).toMatch(/Converse in French/)
+  })
+
+  it('adds no language block for English or an unset language', () => {
+    expect(buildSystemPrompt(minimalInput)).not.toContain('## Language')
+    expect(buildSystemPrompt({ ...minimalInput, language: 'en' })).not.toContain('## Language')
+  })
+
   // ---------------------------------------------------------------------------
   // Multi-human brief (5b)
   // ---------------------------------------------------------------------------

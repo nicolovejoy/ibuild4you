@@ -72,7 +72,12 @@ describe('buildNewProjectPrompt', () => {
   it('tells the prep Claude to write maker-facing text in the maker\'s language', () => {
     const prompt = buildNewProjectPrompt()
     expect(prompt).toMatch(/language other than English/)
-    expect(prompt).toContain('builder_directives')
+  })
+
+  it('sets the language field instead of adding a "Converse in" directive', () => {
+    const prompt = buildNewProjectPrompt()
+    expect(prompt).toMatch(/"language"\s*:/)
+    expect(prompt).not.toMatch(/Converse in French/)
   })
 
   it('keeps the brief itself in English even when the conversation is not', () => {
