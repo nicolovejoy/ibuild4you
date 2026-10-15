@@ -28,7 +28,6 @@ seed_questions: string[]                 (for discover mode)
 builder_directives: string[]             (for converge mode)
 welcome_message: string                  (greeting when session opens)
 identity: string                         (optional — overrides the default agent identity)
-layout_mockups: WireframeMockup[]        (inline wireframes; see mockup-system.md)
 ```
 
 These are the "staging area" — the builder edits them while prepping the next session. When the session is created, they get snapshotted onto the session document.
@@ -37,7 +36,7 @@ These are the "staging area" — the builder edits them while prepping the next 
 
 ```
 session_mode, seed_questions, builder_directives, welcome_message,
-layout_mockups, identity
+identity
   — copied from project at session creation time
 model: string                            (e.g. "claude-sonnet-4-20250514")
 token_usage_input: number                (accumulated input tokens)

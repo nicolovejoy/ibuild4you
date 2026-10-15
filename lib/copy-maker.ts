@@ -139,7 +139,6 @@ const en = {
     uploadFailedOne: (n: number, error: string) => `Failed to upload ${n === 1 ? 'file' : 'files'}: ${error}`,
     uploadFailedSome: (failed: number, total: number) => `${failed} of ${total} files failed to upload — try those again.`,
     uploadFailed: 'Failed to upload files',
-    layoutIdeas: (n: number) => `Layout ideas (${n})`,
     files: (n: number) => `Files (${n})`,
     previousConversations: 'Previous conversations',
     conversationN: (n: number, date: string) => `Conversation ${n} · ${date}`,
@@ -151,7 +150,6 @@ const en = {
     continue: 'Continue',
     switchBrief: 'Switch brief',
     yourBriefs: copy.dashboard.title,
-    drawingLayout: 'Drawing layout...',
   },
   files: {
     empty: 'No files shared yet.',
@@ -327,7 +325,6 @@ const fr: MakerCopy = {
     uploadFailedSome: (failed: number, total: number) =>
       `${failed} fichier${failed > 1 ? 's' : ''} sur ${total} n’${failed > 1 ? 'ont' : 'a'} pas pu être envoyé${failed > 1 ? 's' : ''} : réessayez.`,
     uploadFailed: 'Échec de l’envoi des fichiers',
-    layoutIdeas: (n: number) => `Idées de mise en page (${n})`,
     files: (n: number) => `Fichiers (${n})`,
     previousConversations: 'Conversations précédentes',
     conversationN: (n: number, date: string) => `Conversation ${n} · ${date}`,
@@ -339,7 +336,6 @@ const fr: MakerCopy = {
     continue: 'Continuer',
     switchBrief: 'Changer de brief',
     yourBriefs: 'Vos briefs',
-    drawingLayout: 'Dessin de la mise en page…',
   },
   files: {
     empty: 'Aucun fichier partagé pour l’instant.',

@@ -4,7 +4,7 @@ import { renderPrototypeFeedbackBlock, type PrototypeFeedbackItem } from './prot
 import { renderPrototypeContextBlock, type PrototypeContextItem } from './prototype-context'
 import { renderArtifactContextBlock, type ArtifactContextItem } from './artifact-context'
 import { renderSiblingDecisionsBlock, type SiblingDecision } from './sibling-decisions'
-import type { BriefContent, BriefRole, WireframeMockup } from '@/lib/types'
+import type { BriefContent, BriefRole } from '@/lib/types'
 import { LOCALE_NAMES, type Locale } from '@/lib/locale'
 
 // Maker name and gap-since-last-message are read live per request (not
@@ -19,7 +19,6 @@ interface SystemPromptInput {
   seedQuestions?: string[]
   builderDirectives?: string[]
   sessionMode?: 'discover' | 'converge'
-  layoutMockups?: WireframeMockup[]
   identity?: string
   makerFirstName?: string
   makerLastName?: string
@@ -63,7 +62,7 @@ function humanizeGap(ms: number): string {
 // cached prefix is what makes turn 2 a cache read instead of a second write.
 export type SystemPromptParts = { stable: string; volatile: string | null }
 
-export function buildSystemPromptParts({ briefContent, projectContext, sessionNumber, seedQuestions, builderDirectives, sessionMode, layoutMockups, identity, makerFirstName, makerLastName, gapSinceLastMakerMessageMs, participants, prototypeFeedback, prototypeContext, pinnedArtifacts, siblingDecisions, language }: SystemPromptInput): SystemPromptParts {
+export function buildSystemPromptParts({ briefContent, projectContext, sessionNumber, seedQuestions, builderDirectives, sessionMode, identity, makerFirstName, makerLastName, gapSinceLastMakerMessageMs, participants, prototypeFeedback, prototypeContext, pinnedArtifacts, siblingDecisions, language }: SystemPromptInput): SystemPromptParts {
   const parts: string[] = []
   const volatileParts: string[] = []
 
@@ -149,33 +148,6 @@ The builder has identified specific things to drive toward this session. Work th
 ${aboutTheMaker}
 
 ${builderDirectives.map((d, i) => `${i + 1}. ${d}`).join('\n')}
-`.trim())
-  }
-
-  // #195: wireframes are only mentioned when a builder explicitly prepared
-  // layout_mockups. The old always-on "Layout visualization" block invited Sam
-  // to volunteer wireframes in every session; nobody used them.
-  if (layoutMockups && layoutMockups.length > 0) {
-    parts.push(`
-## Layout mockups
-
-The builder has prepared layout ideas for this project. You can present these to the user using wireframe blocks. To show a wireframe, emit a fenced code block like this:
-
-\`\`\`wireframe
-{"title": "Page Layout", "sections": [{"type": "hero", "label": "Welcome", "description": "Main hero image and tagline"}]}
-\`\`\`
-
-The user will see a visual preview with labeled, colored blocks — not raw JSON. Available section types: hero, text, cta, gallery, form, signup, nav, footer, map, video.
-
-When presenting layouts:
-- Show the wireframe block, then explain it in plain language
-- Use labels the user would understand (no jargon)
-- If comparing options, show multiple wireframes with different titles
-- When the user asks to change something ("move X above Y", "remove the signup"), respond with an updated wireframe block
-
-Here are the mockups the builder prepared:
-
-${layoutMockups.map((m) => '```wireframe\n' + JSON.stringify(m) + '\n```').join('\n\n')}
 `.trim())
   }
 

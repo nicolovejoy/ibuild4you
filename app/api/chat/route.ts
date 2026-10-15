@@ -306,7 +306,6 @@ async function handleChat(
   const seedQuestions = (sessionData.seed_questions ?? projectData.seed_questions) as string[] | undefined
   const builderDirectives = (sessionData.builder_directives ?? projectData.builder_directives) as string[] | undefined
   const sessionMode = (sessionData.session_mode ?? projectData.session_mode) as 'discover' | 'converge' | undefined
-  const layoutMockups = (sessionData.layout_mockups ?? projectData.layout_mockups) as import('@/lib/types').WireframeMockup[] | undefined
   const identity = (sessionData.identity ?? projectData.identity) as string | undefined
   // Maker name + time-gap are read live (not snapshotted into the session)
   // so name edits and real elapsed time reflect on every turn.
@@ -354,7 +353,6 @@ async function handleChat(
     seedQuestions,
     builderDirectives,
     sessionMode,
-    layoutMockups,
     identity,
     makerFirstName,
     makerLastName,

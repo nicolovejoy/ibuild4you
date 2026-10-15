@@ -11,7 +11,6 @@ import { Card, CardBody } from '@/components/ui/Card'
 import { MessageContent } from '@/components/ui/MessageContent'
 import { UploadedFilePreview, LocalFilePreview } from '@/components/ui/FilePreview'
 import { FilesGrid } from '@/components/ui/FilesGrid'
-import { WireframePreview } from '@/components/ui/WireframePreview'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { StatusMessage } from '@/components/ui/StatusMessage'
 import {
@@ -42,7 +41,7 @@ import { MigrationBanner } from '@/components/MigrationBanner'
 import { briefRoleLabel, briefRoleShort, viewerBriefRole } from '@/lib/roles/display'
 import { BriefSwitcher } from '@/components/brief-switcher'
 import { useQueryClient } from '@tanstack/react-query'
-import type { Session, WireframeMockup, ProjectFile } from '@/lib/types'
+import type { Session, ProjectFile } from '@/lib/types'
 
 // participantView (#110): a builder/admin deliberately joined the conversation
 // via ?view=chat — same chat surface, plus a banner with a way back to the
@@ -195,11 +194,6 @@ export function MakerProjectView({ projectId, userEmail, participantView }: { pr
           projectLastMakerMessageAt={project?.last_maker_message_at ?? null}
           participantView={!!participantView}
         />
-
-        {/* Layout mockups from the active session */}
-        {activeSession?.layout_mockups && activeSession.layout_mockups.length > 0 && (
-          <MockupsPanel mockups={activeSession.layout_mockups} />
-        )}
 
         {/* Project files */}
         {projectFiles && projectFiles.length > 0 && (
@@ -671,38 +665,6 @@ function MakerChat({
         </div>
       )}
     </div>
-  )
-}
-
-export function MockupsPanel({ mockups }: { mockups: WireframeMockup[] }) {
-  const [expanded, setExpanded] = useState(false)
-  const c = useMakerCopy().chat
-
-  return (
-    <Card hover={false}>
-      <CardBody>
-        <button
-          onClick={() => setExpanded(!expanded)}
-          className="w-full flex items-center justify-between text-left"
-        >
-          <h3 className="text-sm font-semibold text-brand-slate uppercase tracking-wide">
-            {c.layoutIdeas(mockups.length)}
-          </h3>
-          {expanded ? (
-            <ChevronUp className="h-4 w-4 text-gray-400" />
-          ) : (
-            <ChevronDown className="h-4 w-4 text-gray-400" />
-          )}
-        </button>
-        {expanded && (
-          <div className="mt-3 space-y-3">
-            {mockups.map((m, i) => (
-              <WireframePreview key={i} mockup={m} />
-            ))}
-          </div>
-        )}
-      </CardBody>
-    </Card>
   )
 }
 

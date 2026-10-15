@@ -33,7 +33,6 @@ export const NEXT_CONVO_IMPORT_FIELDS = [
   'session_mode',
   'seed_questions',
   'builder_directives',
-  'layout_mockups',
 ] as const
 
 function parseJsonObject(raw: string): ParseResult<Record<string, unknown>> {

@@ -8,7 +8,7 @@ import React from 'react'
 // MAKER PROJECT VIEW — smoke + interaction tests
 //
 // The component is the maker's entire surface area: project header, name
-// prompt, chat composer, file picker, message history, mockups panel,
+// prompt, chat composer, file picker, message history,
 // files panel, prior-session list. Full flow tests would need to mock 8+
 // hooks; this test focuses on the highest-leverage interactions:
 //
@@ -31,7 +31,6 @@ const sampleProject = {
   session_mode: 'discover',
   seed_questions: [],
   builder_directives: [],
-  layout_mockups: [],
   requester_first_name: null,
   requester_last_name: null,
   requester_email: 'maker@example.com',
