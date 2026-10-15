@@ -687,7 +687,10 @@ describe('buildSystemPromptParts', () => {
     const parts = buildSystemPromptParts(input)
     expect(buildSystemPrompt(input)).toBe(`${parts.stable}\n\n${parts.volatile}`)
     expect(buildSystemPrompt(minimalInput)).toBe(buildSystemPromptParts(minimalInput).stable)
+  })
+})
 
+// =============================================================================
 // Mode scoping (#192): seed questions are a discover-mode tool, directives a
 // converge-mode tool. The dashboard shows one or the other per mode; the
 // prompt now matches instead of injecting both every session.
