@@ -654,6 +654,23 @@ describe('buildSystemPromptParts', () => {
     expect(parts.stable).not.toContain("## What the maker's screen looked like (structure)")
   })
 
+  it('keeps stable byte-identical when only prototype blocks differ', () => {
+    const withProto = buildSystemPromptParts({
+      ...minimalInput,
+      prototypeFeedback: [
+        { type: 'bug', body: 'Checkout button does nothing', path: '/checkout', ageLabel: 'today', resolved: false },
+      ],
+      prototypeContext: [
+        { route: '/checkout', title: 'Checkout', outline: '# Checkout\n- Pay', ageLabel: '2 days ago' },
+      ],
+    })
+    const without = buildSystemPromptParts(minimalInput)
+    expect(withProto.stable).toBe(without.stable)
+    expect(withProto.volatile).toContain('## What the maker has reported from the prototype')
+    expect(withProto.volatile).toContain("## What the maker's screen looked like (structure)")
+    expect(without.volatile).toBeNull()
+  })
+
   it('keeps pinned artifacts and sibling decisions in stable (they carry no age labels)', () => {
     const parts = buildSystemPromptParts({
       ...minimalInput,
