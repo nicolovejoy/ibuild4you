@@ -81,7 +81,6 @@ export interface Project extends BaseEntity {
   session_mode?: 'discover' | 'converge' // current operating mode (default: discover)
   slug?: string // URL-friendly identifier derived from title
   identity?: string // custom agent identity/persona (overrides default)
-  layout_mockups?: WireframeMockup[] // wireframe layouts the agent can show in chat
   github_repo?: string // "owner/name" — destination for FeedbackWidget "Convert to GitHub Issue"
   // #150: reject fully-anonymous widget submissions when true. Default (undefined)
   // = off, existing behavior. "Verified" = a valid #149 host identityAssertion OR
@@ -131,7 +130,6 @@ export interface Session extends BaseEntity {
   builder_directives?: string[]
   welcome_message?: string
   identity?: string
-  layout_mockups?: WireframeMockup[]
   // Usage tracking — accumulated across all exchanges in the session
   model?: string
   token_usage_input?: number
@@ -299,17 +297,4 @@ export interface BriefDecision {
   // stamps stay unstamped — no backfill.
   decided_in_session?: string | null
   decided_at?: string // ISO timestamp
-}
-
-// Wireframe mockup — visual layout the agent can show inline in chat
-export interface WireframeSection {
-  type: string // hero, text, cta, gallery, form, signup, nav, footer, map, video
-  label: string // what the maker sees ("Custom Cakes")
-  description: string // brief explanation ("Photo portfolio with sizes")
-  page?: string // groups sections under page headings for multi-page layouts
-}
-
-export interface WireframeMockup {
-  title: string // "Strategy A: Single Page"
-  sections: WireframeSection[]
 }

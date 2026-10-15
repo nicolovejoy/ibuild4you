@@ -176,7 +176,6 @@ function NewProjectButton() {
         builder_directives?: unknown
         welcome_message?: string
         session_opener?: string
-        layout_mockups?: unknown
         brief?: unknown
       }
       if (!obj?.title) return null
@@ -186,7 +185,6 @@ function NewProjectButton() {
       if (Array.isArray(obj.seed_questions)) fields.push(`${obj.seed_questions.length} seed questions${obj.seed_questions.length > 0 && obj.session_mode === 'converge' ? ' (not sent in converge mode)' : ''}`)
       if (Array.isArray(obj.builder_directives)) fields.push(`${obj.builder_directives.length} directives${obj.builder_directives.length > 0 && (obj.session_mode ?? 'discover') === 'discover' ? ' (not sent in discover mode)' : ''}`)
       if (obj.welcome_message || obj.session_opener) fields.push('welcome message')
-      if (Array.isArray(obj.layout_mockups)) fields.push(`${obj.layout_mockups.length} mockup${obj.layout_mockups.length === 1 ? '' : 's'}`)
       if (obj.brief && typeof obj.brief === 'object') fields.push('brief seeded')
       return { title: obj.title, fields }
     } catch { return null }

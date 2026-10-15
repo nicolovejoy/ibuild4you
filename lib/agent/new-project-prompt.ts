@@ -28,14 +28,6 @@ When I say "give me the output", produce ONLY valid JSON matching this schema (n
   "session_mode": "discover (broad exploration) or converge (narrow toward decisions). Defaults to discover when omitted.",
   "seed_questions": ["Questions the agent should weave into the first session. Used only in discover mode."],
   "builder_directives": ["Instructions injected into the agent's system prompt — e.g. 'focus on the ordering workflow'. Used only in converge mode; ignored in discover mode. Guardrails that must hold in every session (e.g. 'do not suggest technologies') belong in context, not builder_directives."],
-  "layout_mockups": [
-    {
-      "title": "Strategy name — shown to the maker as a visual wireframe layout",
-      "sections": [
-        { "type": "hero|text|cta|gallery|form|signup|nav|footer|map|video", "label": "Section label", "description": "What this section does" }
-      ]
-    }
-  ],
   "brief": {
     "problem": "What problem the maker is trying to solve. Omit the brief entirely if not enough is known yet.",
     "target_users": "Who the intended users are",

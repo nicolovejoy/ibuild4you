@@ -327,7 +327,6 @@ export function useUpdateProject() {
       last_nudged_at?: string
       last_builder_activity_at?: string
       identity?: string
-      layout_mockups?: import('@/lib/types').WireframeMockup[]
       auto_reminders_enabled?: boolean
       github_repo?: string
       feedback_requires_identity?: boolean

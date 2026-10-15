@@ -114,29 +114,10 @@ describe('buildSystemPrompt', () => {
     expect(result).not.toContain('## Directives')
   })
 
-  it('includes layout mockups when provided', () => {
-    const mockup = {
-      title: 'Homepage',
-      sections: [{ type: 'hero', label: 'Welcome', description: 'Hero section' }],
-    }
-    const result = buildSystemPrompt({
-      ...minimalInput,
-      layoutMockups: [mockup],
-    })
-    expect(result).toContain('## Layout mockups')
-    expect(result).toContain('Homepage')
-    expect(result).toContain('```wireframe')
-  })
-
-  it('says nothing about wireframes when the builder set no mockups (#195)', () => {
+  it('never mentions wireframes or layout mockups (#195 phase 2)', () => {
     const result = buildSystemPrompt(minimalInput)
     expect(result).not.toContain('## Layout visualization')
     expect(result).not.toContain('## Layout mockups')
-    expect(result).not.toContain('```wireframe')
-  })
-
-  it('omits the wireframe section for an empty mockups array (#195)', () => {
-    const result = buildSystemPrompt({ ...minimalInput, layoutMockups: [] })
     expect(result).not.toContain('```wireframe')
   })
 

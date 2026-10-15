@@ -97,7 +97,7 @@ describe('parseNextConvoPayload', () => {
   it('forwards all known fields into projectUpdate when brief is present', () => {
     const payload: Record<string, unknown> = { brief: { problem: 'p' } }
     for (const field of NEXT_CONVO_IMPORT_FIELDS) {
-      payload[field] = field === 'seed_questions' || field === 'builder_directives' || field === 'layout_mockups'
+      payload[field] = field === 'seed_questions' || field === 'builder_directives'
         ? []
         : `value-for-${field}`
     }

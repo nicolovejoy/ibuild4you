@@ -23,7 +23,6 @@ const NEW_PROJECT_FIELDS = [
   'session_mode',
   'seed_questions',
   'builder_directives',
-  'layout_mockups',
   'brief',
 ]
 
