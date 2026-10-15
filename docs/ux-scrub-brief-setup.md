@@ -278,9 +278,7 @@ worth silently converting free builder reasoning into metered API spend.
    Advanced since Phase 1**; final "Brief settings" home still TBD). The roster +
    per-member access already moved to the People tab in Phase 2, so what's left
    here is mostly the share-modal's *first-invite* form vs the People panel.
-5. **Cleanup:** ~~remove dead layout-mockups path~~ (**not safe solo** — mockups
-   are still wired through the maker view, WireframePreview, and the system
-   prompt; not a dead path. Needs its own scoped removal.); ~~hide empty
+5. **Cleanup:** ~~remove dead layout-mockups path~~ (**done in #195 phase 2, 2026-10-15** — the mockup path was removed end to end in its own branch.); ~~hide empty
    "additional context"~~ (**already done** — `BriefView` skips falsy sections).
 
 ---
