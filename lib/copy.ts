@@ -200,6 +200,19 @@ export const copy = {
     emptyTitle: 'No brief yet',
     emptyDescription:
       'Copy the prep context for Claude and paste the response above, or use Generate via API.',
+    // #194 — version history on the Brief tab
+    history: 'History',
+    historyEmpty: 'No earlier versions yet — the first regen or save will create one.',
+    historyLoading: 'Loading history…',
+    restore: 'Restore',
+    confirmRestore: (version: number) =>
+      `Restore v${version}? The current brief is kept in history.`,
+    confirmRestoreButton: 'Yes, restore',
+    cancelRestore: 'Cancel',
+    sourceLabel: (source: string | null) =>
+      ({ create: 'created', paste: 'saved by hand', regen: 'regenerated', restore: 'restored' } as Record<string, string>)[
+        source ?? ''
+      ] ?? 'unknown source',
   },
 
   // --- Chat ---

@@ -7,6 +7,7 @@ export const queryKeys = {
   project: (idOrSlug: string | undefined) => ['project', idOrSlug] as const,
   resolveProject: (slugOrId: string | undefined) => ['resolveProject', slugOrId] as const,
   brief: (projectId: string | undefined) => ['brief', projectId] as const,
+  briefVersions: (projectId: string | undefined) => ['briefVersions', projectId] as const,
   sessions: (projectId: string | undefined) => ['sessions', projectId] as const,
   projectUsage: (projectId: string | undefined) => ['project-usage', projectId] as const,
   members: (projectId: string | undefined) => ['members', projectId] as const,

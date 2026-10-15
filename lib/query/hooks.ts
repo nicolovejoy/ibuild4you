@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiFetch } from '@/lib/firebase/api-fetch'
 import { queryKeys } from './keys'
-import type { Project, Session, Message, Brief, SystemRole, ProjectFile, FileFolder, ProjectMemberSummary } from '@/lib/types'
+import type { Project, Session, Message, Brief, BriefVersion, SystemRole, ProjectFile, FileFolder, ProjectMemberSummary } from '@/lib/types'
 import type { GarmSyncOutcome } from '@/lib/garm-grants'
 import type { ProjectUsageResponse } from '@/lib/api/project-usage'
 
@@ -499,14 +499,37 @@ export function useBrief(projectId: string | undefined) {
   })
 }
 
+// #194: archived brief versions for the Brief tab's History list. Fetched only
+// when the list is opened (enabled flag) — most visits never need it.
+export function useBriefVersions(projectId: string | undefined, enabled: boolean) {
+  return useQuery<BriefVersion[]>({
+    queryKey: queryKeys.briefVersions(projectId),
+    queryFn: async () => {
+      const res = await apiFetch(`/api/briefs/versions?project_id=${projectId}`)
+      if (!res.ok) throw new Error('Failed to load brief history')
+      const data = await res.json()
+      return data.versions as BriefVersion[]
+    },
+    enabled: !!projectId && enabled,
+  })
+}
+
 export function useUpdateBrief() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: async ({ project_id, content }: { project_id: string; content: unknown }) => {
+    mutationFn: async ({
+      project_id,
+      content,
+      source,
+    }: {
+      project_id: string
+      content: unknown
+      source?: 'restore'
+    }) => {
       const res = await apiFetch('/api/briefs', {
         method: 'PUT',
-        body: JSON.stringify({ project_id, content }),
+        body: JSON.stringify({ project_id, content, ...(source && { source }) }),
       })
       if (!res.ok) {
         const data = await res.json()
@@ -516,6 +539,7 @@ export function useUpdateBrief() {
     },
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.brief(variables.project_id) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.briefVersions(variables.project_id) })
       queryClient.invalidateQueries({ queryKey: queryKeys.projects() })
     },
   })
