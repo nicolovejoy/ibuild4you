@@ -1,7 +1,7 @@
 import { toLocale } from '@/lib/locale'
 import { getAuthenticatedUser, getAdminDb, getProjectRole, getUserDisplayName } from '@/lib/api/firebase-server-helpers'
 import { countsAsMakerActivity } from '@/lib/projects/project-view'
-import { buildSystemPrompt } from '@/lib/agent/system-prompt'
+import { buildSystemPromptParts } from '@/lib/agent/system-prompt'
 import { fetchPrototypeFeedback } from '@/lib/api/prototype-feedback'
 import { fetchPrototypeContext } from '@/lib/api/prototype-context'
 import { fetchPinnedArtifacts } from '@/lib/api/artifact-context'
@@ -243,7 +243,7 @@ export async function POST(request: Request) {
     fetchSiblingDecisions(db, { id: projectId, github_repo: projectData.github_repo as string | undefined }),
   ])
 
-  const systemPrompt = buildSystemPrompt({
+  const systemPrompt = buildSystemPromptParts({
     briefContent,
     projectContext,
     sessionNumber,
@@ -265,12 +265,12 @@ export async function POST(request: Request) {
     language: toLocale(projectData.language),
   })
 
-  // Cache the system block only. Kickoff never advances
-  // last_maker_message_at, so this prompt (including the "returning after a
-  // gap" block) is very likely byte-identical to the maker's very next
-  // /api/chat turn — a real cache read. The messages end in a synthetic
-  // turn that's never sent again, so marking them would only pay the
-  // cache-write premium for no read — see lib/agent/prompt-cache.ts.
+  // Cache the stable system block only. Kickoff never advances
+  // last_maker_message_at, and the gap recap now rides in the uncached
+  // volatile block, so the cached prefix here is byte-identical to the
+  // maker's very next /api/chat turn — a real cache read. The messages end
+  // in a synthetic turn that's never sent again, so marking them would only
+  // pay the cache-write premium for no read — see lib/agent/prompt-cache.ts.
   const cachedSystem = cacheSystemPrompt(systemPrompt)
 
   // --- Stream + store the agent greeting ---

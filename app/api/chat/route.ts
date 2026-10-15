@@ -1,7 +1,7 @@
 import { toLocale } from '@/lib/locale'
 import { getAuthenticatedUser, getAdminDb, getProjectRole, getUserDisplayName } from '@/lib/api/firebase-server-helpers'
 import { countsAsMakerActivity } from '@/lib/projects/project-view'
-import { buildSystemPrompt } from '@/lib/agent/system-prompt'
+import { buildSystemPromptParts } from '@/lib/agent/system-prompt'
 import { fetchPrototypeFeedback } from '@/lib/api/prototype-feedback'
 import { fetchPrototypeContext } from '@/lib/api/prototype-context'
 import { fetchPinnedArtifacts } from '@/lib/api/artifact-context'
@@ -347,7 +347,7 @@ async function handleChat(
     fetchSiblingDecisions(db, { id: projectId, github_repo: projectData.github_repo as string | undefined }),
   ])
 
-  const systemPrompt = buildSystemPrompt({
+  const systemPrompt = buildSystemPromptParts({
     briefContent,
     projectContext,
     sessionNumber,
@@ -371,7 +371,9 @@ async function handleChat(
 
   // Mark the prefix (system prompt + last message) for prompt caching so the
   // next turn in this conversation reads it from cache instead of paying
-  // full input price — see lib/agent/prompt-cache.ts.
+  // full input price — see lib/agent/prompt-cache.ts. The volatile tail (gap
+  // recap, prototype age labels) rides in a second, unmarked block so the
+  // cached prefix stays byte-identical across a return visit.
   const cached = applyPromptCaching(systemPrompt, claudeMessages)
 
   // Stream response from Claude. The model (and so the sampling shape) can be

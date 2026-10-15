@@ -82,7 +82,7 @@ vi.mock('@anthropic-ai/sdk', () => ({
 }))
 
 vi.mock('@/lib/agent/system-prompt', () => ({
-  buildSystemPrompt: vi.fn(() => 'system'),
+  buildSystemPromptParts: vi.fn(() => ({ stable: 'system', volatile: null })),
 }))
 
 function makeRequest(body: Record<string, unknown>) {

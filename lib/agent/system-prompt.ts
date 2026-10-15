@@ -9,7 +9,9 @@ import { LOCALE_NAMES, type Locale } from '@/lib/locale'
 
 // Maker name and gap-since-last-message are read live per request (not
 // snapshotted into the session like seed_questions / directives) so that
-// name edits and real elapsed time are reflected on every turn.
+// name edits and real elapsed time are reflected on every turn. The gap and
+// the prototype feedback/context are the live-read fields that change between
+// turns, so they end up in the volatile block (see SystemPromptParts).
 interface SystemPromptInput {
   briefContent: BriefContent | null
   projectContext: string | null
@@ -52,8 +54,18 @@ function humanizeGap(ms: number): string {
   return 'over a week'
 }
 
-export function buildSystemPrompt({ briefContent, projectContext, sessionNumber, seedQuestions, builderDirectives, sessionMode, layoutMockups, identity, makerFirstName, makerLastName, gapSinceLastMakerMessageMs, participants, prototypeFeedback, prototypeContext, pinnedArtifacts, siblingDecisions, language }: SystemPromptInput): string {
+// The prompt is sent as two system blocks (lib/agent/prompt-cache.ts):
+// `stable` is cache-marked and must be byte-identical from one turn to the
+// next; `volatile` is sent uncached and holds the parts that legitimately
+// change between back-to-back turns — the "Returning after a break" block
+// (present on turn 1 of a return visit, gone on turn 2) and the prototype
+// blocks (their "3 days ago" labels roll over daily). Keeping them out of the
+// cached prefix is what makes turn 2 a cache read instead of a second write.
+export type SystemPromptParts = { stable: string; volatile: string | null }
+
+export function buildSystemPromptParts({ briefContent, projectContext, sessionNumber, seedQuestions, builderDirectives, sessionMode, layoutMockups, identity, makerFirstName, makerLastName, gapSinceLastMakerMessageMs, participants, prototypeFeedback, prototypeContext, pinnedArtifacts, siblingDecisions, language }: SystemPromptInput): SystemPromptParts {
   const parts: string[] = []
+  const volatileParts: string[] = []
 
   parts.push(identity || DEFAULT_IDENTITY)
   parts.push(sessionMode === 'converge' ? CONVERGE_BEHAVIOR_RULES : AGENT_BEHAVIOR_RULES)
@@ -215,12 +227,12 @@ ${formatBrief(briefContent)}
 
   if (prototypeFeedback && prototypeFeedback.length > 0) {
     const block = renderPrototypeFeedbackBlock(prototypeFeedback)
-    if (block) parts.push(block)
+    if (block) volatileParts.push(block)
   }
 
   if (prototypeContext && prototypeContext.length > 0) {
     const block = renderPrototypeContextBlock(prototypeContext)
-    if (block) parts.push(block)
+    if (block) volatileParts.push(block)
   }
 
   if (pinnedArtifacts && pinnedArtifacts.length > 0) {
@@ -229,7 +241,7 @@ ${formatBrief(briefContent)}
   }
 
   if (gapSinceLastMakerMessageMs !== undefined && gapSinceLastMakerMessageMs >= ONE_HOUR_MS) {
-    parts.push(`
+    volatileParts.push(`
 ## Returning after a break
 
 The user is coming back after a gap of ${humanizeGap(gapSinceLastMakerMessageMs)}. Before continuing, briefly recap where the conversation left off (1–2 sentences — what they were describing, what question was on the table), then ask what they want to focus on now. Don't recap the whole project, just the immediate thread.
@@ -254,7 +266,16 @@ When you close this session, mention that this is an early beta (a work in progr
 `.trim())
   }
 
-  return parts.join('\n\n')
+  return {
+    stable: parts.join('\n\n'),
+    volatile: volatileParts.length > 0 ? volatileParts.join('\n\n') : null,
+  }
+}
+
+// Single-string form, used by tests and anywhere caching doesn't matter.
+export function buildSystemPrompt(input: SystemPromptInput): string {
+  const { stable, volatile } = buildSystemPromptParts(input)
+  return volatile ? `${stable}\n\n${volatile}` : stable
 }
 
 function hasBriefContent(brief: BriefContent): boolean {

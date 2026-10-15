@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { applyPromptCaching, type CacheableMessage } from '../prompt-cache'
+import { applyPromptCaching, cacheSystemPrompt, type CacheableMessage } from '../prompt-cache'
 
 describe('applyPromptCaching', () => {
   it('wraps the system prompt in a single cache-marked text block', () => {
@@ -100,5 +100,59 @@ describe('applyPromptCaching', () => {
     // The earliest message's marker ('a') was dropped first.
     const firstContent = messages[0].content as { cache_control?: unknown }[]
     expect(firstContent[0].cache_control).toBeUndefined()
+  })
+})
+
+describe('two-block system prompt (stable cached, volatile uncached)', () => {
+  it('cacheSystemPrompt keeps the single-string form: one marked block', () => {
+    expect(cacheSystemPrompt('You are Sam.')).toEqual([
+      { type: 'text', text: 'You are Sam.', cache_control: { type: 'ephemeral' } },
+    ])
+  })
+
+  it('cacheSystemPrompt emits a marked stable block followed by an unmarked volatile block', () => {
+    expect(cacheSystemPrompt({ stable: 'STABLE', volatile: 'VOLATILE' })).toEqual([
+      { type: 'text', text: 'STABLE', cache_control: { type: 'ephemeral' } },
+      { type: 'text', text: 'VOLATILE' },
+    ])
+  })
+
+  it('cacheSystemPrompt sends only the stable block when volatile is null or empty', () => {
+    expect(cacheSystemPrompt({ stable: 'STABLE', volatile: null })).toHaveLength(1)
+    expect(cacheSystemPrompt({ stable: 'STABLE', volatile: '' })).toHaveLength(1)
+  })
+
+  it('applyPromptCaching accepts parts and never counts the volatile block as a marker', () => {
+    const input: CacheableMessage[] = [
+      {
+        role: 'user',
+        content: [
+          { type: 'document', cache_control: { type: 'ephemeral' } },
+          { type: 'text', text: 'first' },
+        ],
+      },
+      {
+        role: 'user',
+        content: [
+          { type: 'document', cache_control: { type: 'ephemeral' } },
+          { type: 'text', text: 'second' },
+        ],
+      },
+      { role: 'assistant', content: 'ok' },
+      { role: 'user', content: 'third' },
+    ]
+    const { system, messages } = applyPromptCaching({ stable: 'STABLE', volatile: 'VOLATILE' }, input)
+    expect(system).toHaveLength(2)
+    expect(system[1].cache_control).toBeUndefined()
+
+    let markers = system.filter((b) => b.cache_control).length
+    for (const m of messages) {
+      if (typeof m.content === 'string') continue
+      markers += m.content.filter((b) => b.cache_control).length
+    }
+    expect(markers).toBeLessThanOrEqual(4)
+    // The last-message marker is still placed.
+    const last = messages[messages.length - 1].content as { cache_control?: unknown }[]
+    expect(last[last.length - 1].cache_control).toEqual({ type: 'ephemeral' })
   })
 })

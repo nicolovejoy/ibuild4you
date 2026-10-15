@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildSystemPrompt } from '../system-prompt'
+import { buildSystemPrompt, buildSystemPromptParts } from '../system-prompt'
 import { AGENT_BEHAVIOR_RULES, CONVERGE_BEHAVIOR_RULES, DEFAULT_IDENTITY } from '../constants'
 
 // =============================================================================
@@ -608,5 +608,84 @@ describe('agent behaviour fixes from the Weather & Tides sessions', () => {
     })
     const topics = result.slice(result.indexOf('## Topics to explore'))
     expect(topics).toContain('by first name')
+  })
+})
+
+// =============================================================================
+// buildSystemPromptParts — stable vs volatile split for prompt caching
+//
+// The chat route caches the system prompt. Anything that changes between two
+// back-to-back turns (the ≥1h "Returning after a break" block, prototype age
+// labels like "3 days ago") must live in `volatile` so the cached `stable`
+// prefix is byte-identical across a return visit.
+// =============================================================================
+
+describe('buildSystemPromptParts', () => {
+  const HOUR = 60 * 60 * 1000
+
+  it('returns volatile: null when nothing volatile is present', () => {
+    const parts = buildSystemPromptParts(minimalInput)
+    expect(parts.volatile).toBeNull()
+    expect(parts.stable).toContain(DEFAULT_IDENTITY)
+  })
+
+  it('puts the gap block in volatile and keeps stable byte-identical across turn 1 (gap) and turn 2 (no gap)', () => {
+    const turn1 = buildSystemPromptParts({ ...minimalInput, sessionNumber: 2, gapSinceLastMakerMessageMs: 3 * HOUR })
+    const turn2 = buildSystemPromptParts({ ...minimalInput, sessionNumber: 2, gapSinceLastMakerMessageMs: 60 * 1000 })
+    expect(turn1.volatile).toContain('## Returning after a break')
+    expect(turn1.stable).not.toContain('## Returning after a break')
+    expect(turn2.volatile).toBeNull()
+    expect(turn1.stable).toBe(turn2.stable)
+  })
+
+  it('puts prototype feedback and prototype context blocks in volatile', () => {
+    const parts = buildSystemPromptParts({
+      ...minimalInput,
+      prototypeFeedback: [
+        { type: 'bug', body: 'Checkout button does nothing', path: '/checkout', ageLabel: 'today', resolved: false },
+      ],
+      prototypeContext: [
+        { route: '/checkout', title: 'Checkout', outline: '# Checkout\n- Pay', ageLabel: '2 days ago' },
+      ],
+    })
+    expect(parts.volatile).toContain('## What the maker has reported from the prototype')
+    expect(parts.volatile).toContain("## What the maker's screen looked like (structure)")
+    expect(parts.stable).not.toContain('## What the maker has reported from the prototype')
+    expect(parts.stable).not.toContain("## What the maker's screen looked like (structure)")
+  })
+
+  it('keeps stable byte-identical when only prototype blocks differ', () => {
+    const withProto = buildSystemPromptParts({
+      ...minimalInput,
+      prototypeFeedback: [
+        { type: 'bug', body: 'Checkout button does nothing', path: '/checkout', ageLabel: 'today', resolved: false },
+      ],
+      prototypeContext: [
+        { route: '/checkout', title: 'Checkout', outline: '# Checkout\n- Pay', ageLabel: '2 days ago' },
+      ],
+    })
+    const without = buildSystemPromptParts(minimalInput)
+    expect(withProto.stable).toBe(without.stable)
+    expect(withProto.volatile).toContain('## What the maker has reported from the prototype')
+    expect(withProto.volatile).toContain("## What the maker's screen looked like (structure)")
+    expect(without.volatile).toBeNull()
+  })
+
+  it('keeps pinned artifacts and sibling decisions in stable (they carry no age labels)', () => {
+    const parts = buildSystemPromptParts({
+      ...minimalInput,
+      pinnedArtifacts: [{ filename: 'Figma board', source: 'linked', description: 'Early sketches', url: 'https://example.com' }],
+      siblingDecisions: [{ briefTitle: 'Sibling', topic: 'Auth', decision: 'Google only' }],
+    })
+    expect(parts.stable).toContain('Figma board')
+    expect(parts.stable).toContain('Google only')
+    expect(parts.volatile).toBeNull()
+  })
+
+  it('buildSystemPrompt is the two parts joined by a blank line', () => {
+    const input = { ...minimalInput, sessionNumber: 2, gapSinceLastMakerMessageMs: 3 * HOUR }
+    const parts = buildSystemPromptParts(input)
+    expect(buildSystemPrompt(input)).toBe(`${parts.stable}\n\n${parts.volatile}`)
+    expect(buildSystemPrompt(minimalInput)).toBe(buildSystemPromptParts(minimalInput).stable)
   })
 })
