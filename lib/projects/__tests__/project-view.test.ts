@@ -3,6 +3,7 @@ import {
   selectProjectView,
   isBuilderSideRole,
   countsAsMakerActivity,
+  resolveBuilderTab,
 } from '@/lib/projects/project-view'
 
 // =============================================================================
@@ -68,5 +69,41 @@ describe('countsAsMakerActivity', () => {
     expect(countsAsMakerActivity('builder')).toBe(false)
     expect(countsAsMakerActivity('owner')).toBe(false)
     expect(countsAsMakerActivity(null)).toBe(false)
+  })
+})
+
+// =============================================================================
+// BUILDER TAB RESOLUTION
+//
+// Opening a brief lands on the Brief tab. A ?session= link with no ?tab=
+// (the conversation picker writes those, and old bookmarks carry them) still
+// means "show me that conversation", so it resolves to Conversations.
+// =============================================================================
+
+describe('resolveBuilderTab', () => {
+  it('defaults to the brief tab', () => {
+    expect(resolveBuilderTab(null, null)).toBe('brief')
+    expect(resolveBuilderTab('', null)).toBe('brief')
+  })
+
+  it('honours an explicit tab', () => {
+    expect(resolveBuilderTab('conversations', null)).toBe('conversations')
+    expect(resolveBuilderTab('people', null)).toBe('people')
+    expect(resolveBuilderTab('setup', null)).toBe('setup')
+    expect(resolveBuilderTab('brief', 'abc')).toBe('brief')
+  })
+
+  it('maps legacy tab names', () => {
+    expect(resolveBuilderTab('sessions', null)).toBe('conversations')
+    expect(resolveBuilderTab('files', null)).toBe('brief')
+  })
+
+  it('opens conversations when a session is selected and no tab is given', () => {
+    expect(resolveBuilderTab(null, 'abc')).toBe('conversations')
+  })
+
+  it('falls back to the default for an unknown tab', () => {
+    expect(resolveBuilderTab('nonsense', null)).toBe('brief')
+    expect(resolveBuilderTab('nonsense', 'abc')).toBe('conversations')
   })
 })

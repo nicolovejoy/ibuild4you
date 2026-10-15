@@ -34,3 +34,27 @@ export function selectProjectView(
 export function countsAsMakerActivity(role: MemberRole | null): boolean {
   return role === 'maker' || role === 'apprentice'
 }
+
+export type BuilderTabId = 'brief' | 'conversations' | 'people' | 'setup'
+
+// The tab a builder lands on when the URL doesn't name one.
+export const DEFAULT_BUILDER_TAB: BuilderTabId = 'brief'
+
+const BUILDER_TABS: BuilderTabId[] = ['brief', 'conversations', 'people', 'setup']
+
+// Map legacy ?tab= values (sessions/files) so old links/bookmarks land on
+// the right tab after the IA flatten.
+const LEGACY_TAB: Record<string, BuilderTabId> = {
+  sessions: 'conversations',
+  files: 'brief',
+}
+
+// Which builder tab the URL asks for. An explicit (or legacy) ?tab= wins.
+// Without one, a ?session= link means "show me that conversation" — the
+// conversation picker writes those with no tab — otherwise the brief.
+export function resolveBuilderTab(tab: string | null, session: string | null): BuilderTabId {
+  const raw = tab || ''
+  if ((BUILDER_TABS as string[]).includes(raw)) return raw as BuilderTabId
+  if (LEGACY_TAB[raw]) return LEGACY_TAB[raw]
+  return session ? 'conversations' : DEFAULT_BUILDER_TAB
+}
