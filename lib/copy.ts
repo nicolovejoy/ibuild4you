@@ -208,6 +208,9 @@ export const copy = {
     completedSession: 'Completed conversation — read only',
     placeholder: 'Type a message...',
     makerEmptyState: 'Send a message to start the conversation.',
+    // Shown in place of makerEmptyState when the agent's automatic greeting
+    // (kickoff) failed — a blank chat otherwise reads as broken.
+    makerKickoffFailed: "Sam couldn't start the conversation just now — say hello to begin.",
     builderEmptyState: 'No messages yet.',
     defaultWelcomeMessage: (projectTitle: string) =>
       `Hey! Welcome to ${projectTitle}. I'm here to help figure out what you're looking for — just a casual conversation, no technical knowledge needed.\n\nWhat's the idea you have in mind?`,

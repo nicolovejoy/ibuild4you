@@ -346,3 +346,107 @@ describe('useStreamingChat — kickoff', () => {
     expect(result.current.messages).toHaveLength(0)
   })
 })
+
+describe('useStreamingChat — kickoff: kickoffFailed', () => {
+  it('starts false', () => {
+    const { result } = renderHook(() => useStreamingChat({ projectId: 'p1' }), { wrapper })
+    expect(result.current.kickoffFailed).toBe(false)
+  })
+
+  it('is true after a thrown network error, with no error banner and streaming reset', async () => {
+    mockApiFetch.mockRejectedValueOnce(new Error('Failed to fetch'))
+    const { result } = renderHook(() => useStreamingChat({ projectId: 'p1' }), { wrapper })
+    await act(async () => {
+      await result.current.kickoff('s1')
+    })
+    expect(result.current.kickoffFailed).toBe(true)
+    expect(result.current.error).toBeNull()
+    expect(result.current.streaming).toBe(false)
+    expect(result.current.messages).toEqual([])
+  })
+
+  it('is true after a non-OK response', async () => {
+    mockApiFetch.mockResolvedValueOnce(
+      new Response('{"error":"boom"}', { status: 500, headers: { 'Content-Type': 'application/json' } }),
+    )
+    const { result } = renderHook(() => useStreamingChat({ projectId: 'p1' }), { wrapper })
+    await act(async () => {
+      await result.current.kickoff('s1')
+    })
+    expect(result.current.kickoffFailed).toBe(true)
+    expect(result.current.error).toBeNull()
+  })
+
+  it('stays false on a deliberate 200 JSON decline', async () => {
+    mockApiFetch.mockResolvedValueOnce(
+      new Response('{"kicked_off":false,"reason":"no_prior_maker_activity"}', {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+    const { result } = renderHook(() => useStreamingChat({ projectId: 'p1' }), { wrapper })
+    await act(async () => {
+      await result.current.kickoff('s1')
+    })
+    expect(result.current.kickoffFailed).toBe(false)
+  })
+
+  it('stays false after a greeting streams successfully', async () => {
+    mockApiFetch.mockResolvedValueOnce(
+      sseResponse(['data: {"text":"Hey "}\n\n', 'data: {"text":"Sam"}\n\n', 'data: [DONE]\n\n']),
+    )
+    const { result } = renderHook(() => useStreamingChat({ projectId: 'p1' }), { wrapper })
+    await act(async () => {
+      await result.current.kickoff('s1')
+    })
+    expect(result.current.kickoffFailed).toBe(false)
+    expect(result.current.messages).toHaveLength(1)
+    expect(result.current.messages[0].content).toBe('Hey Sam')
+  })
+
+  it('is true and the placeholder is dropped when the stream breaks mid-way', async () => {
+    const broken = new Response(
+      new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode('data: {"text":"Hey"}\n\n'))
+          controller.error(new Error('connection reset'))
+        },
+      }),
+      { status: 200, headers: { 'Content-Type': 'text/event-stream' } },
+    )
+    mockApiFetch.mockResolvedValueOnce(broken)
+    const { result } = renderHook(() => useStreamingChat({ projectId: 'p1' }), { wrapper })
+    await act(async () => {
+      await result.current.kickoff('s1')
+    })
+    expect(result.current.kickoffFailed).toBe(true)
+    expect(result.current.messages).toEqual([])
+  })
+
+  it('is true and the placeholder is dropped when the stream completes with no text', async () => {
+    mockApiFetch.mockResolvedValueOnce(sseResponse(['data: [DONE]\n\n']))
+    const { result } = renderHook(() => useStreamingChat({ projectId: 'p1' }), { wrapper })
+    await act(async () => {
+      await result.current.kickoff('s1')
+    })
+    expect(result.current.kickoffFailed).toBe(true)
+    expect(result.current.messages).toEqual([])
+    expect(result.current.error).toBeNull()
+    expect(result.current.streaming).toBe(false)
+  })
+
+  it('resets to false when the maker sends a message', async () => {
+    mockApiFetch.mockRejectedValueOnce(new Error('Failed to fetch'))
+    const { result } = renderHook(() => useStreamingChat({ projectId: 'p1' }), { wrapper })
+    await act(async () => {
+      await result.current.kickoff('s1')
+    })
+    expect(result.current.kickoffFailed).toBe(true)
+
+    mockApiFetch.mockResolvedValueOnce(sseResponse(['data: {"text":"Hi!"}\n\n', 'data: [DONE]\n\n']))
+    await act(async () => {
+      await result.current.streamMessage('s1', 'hello')
+    })
+    expect(result.current.kickoffFailed).toBe(false)
+  })
+})
