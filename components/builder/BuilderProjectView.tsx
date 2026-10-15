@@ -67,19 +67,14 @@ import { getTurnIndicator } from '@/lib/turn-indicator'
 import { TurnBadge } from '@/components/ui/TurnBadge'
 import { BriefSwitcher } from '@/components/brief-switcher'
 import { toLocale, type Locale } from '@/lib/locale'
+import { resolveBuilderTab, DEFAULT_BUILDER_TAB, type BuilderTabId } from '@/lib/projects/project-view'
 import type { Project, Session, BriefContent, ProjectFile } from '@/lib/types'
 
 // Builder nav is Brief · Conversations · People · Agent setup. #120 made
 // Conversations reader-first (the transcript is the page), which pushed agent
 // config back out to its own Setup tab.
-type TabId = 'brief' | 'conversations' | 'people' | 'setup'
-
-// Map legacy ?tab= values (sessions/files) so old links/bookmarks land on
-// the right new tab instead of falling through to the default.
-const LEGACY_TAB: Record<string, TabId> = {
-  sessions: 'conversations',
-  files: 'brief',
-}
+// Opening a brief lands on Brief; see resolveBuilderTab for the URL rules.
+type TabId = BuilderTabId
 
 export function BuilderProjectView({ projectId }: { projectId: string }) {
   const router = useRouter()
@@ -112,15 +107,11 @@ export function BuilderProjectView({ projectId }: { projectId: string }) {
   // loaded-confirmation when it isn't start's turn). One-shot, consumed when
   // the modal closes / the line is dismissed.
   const [importedPayload, setImportedPayload] = useState<{ configUpdated: boolean } | null>(null)
-  const rawTab = searchParams.get('tab') || ''
-  const tabParam: TabId | null = (['brief', 'conversations', 'people', 'setup'].includes(rawTab)
-    ? (rawTab as TabId)
-    : LEGACY_TAB[rawTab]) || null
-  const activeTab: TabId = tabParam ?? 'conversations'
+  const activeTab: TabId = resolveBuilderTab(searchParams.get('tab'), searchParams.get('session'))
 
   const setTab = (tab: TabId) => {
     const params = new URLSearchParams(searchParams.toString())
-    if (tab === 'conversations') {
+    if (tab === DEFAULT_BUILDER_TAB) {
       params.delete('tab')
     } else {
       params.set('tab', tab)
