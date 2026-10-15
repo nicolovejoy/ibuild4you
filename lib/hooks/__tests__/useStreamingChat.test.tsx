@@ -423,6 +423,18 @@ describe('useStreamingChat — kickoff: kickoffFailed', () => {
     expect(result.current.messages).toEqual([])
   })
 
+  it('is true and the placeholder is dropped when the stream completes with no text', async () => {
+    mockApiFetch.mockResolvedValueOnce(sseResponse(['data: [DONE]\n\n']))
+    const { result } = renderHook(() => useStreamingChat({ projectId: 'p1' }), { wrapper })
+    await act(async () => {
+      await result.current.kickoff('s1')
+    })
+    expect(result.current.kickoffFailed).toBe(true)
+    expect(result.current.messages).toEqual([])
+    expect(result.current.error).toBeNull()
+    expect(result.current.streaming).toBe(false)
+  })
+
   it('resets to false when the maker sends a message', async () => {
     mockApiFetch.mockRejectedValueOnce(new Error('Failed to fetch'))
     const { result } = renderHook(() => useStreamingChat({ projectId: 'p1' }), { wrapper })

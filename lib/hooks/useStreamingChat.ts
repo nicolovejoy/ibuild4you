@@ -41,6 +41,7 @@ export function useStreamingChat({ projectId }: { projectId: string }) {
 
     const decoder = new TextDecoder()
     let buffer = ''
+    let receivedText = false
 
     while (true) {
       const { done, value } = await reader.read()
@@ -63,6 +64,7 @@ export function useStreamingChat({ projectId }: { projectId: string }) {
         try {
           const parsed = JSON.parse(data)
           if (parsed.text) {
+            receivedText = true
             setMessages((prev) => {
               const updated = [...prev]
               const last = updated[updated.length - 1]
@@ -77,6 +79,7 @@ export function useStreamingChat({ projectId }: { projectId: string }) {
         }
       }
     }
+    return receivedText
   }, [])
 
   const streamMessage = useCallback(async (
@@ -128,25 +131,41 @@ export function useStreamingChat({ projectId }: { projectId: string }) {
   // and stay silent. Errors are swallowed: a failed greeting must never block
   // the maker from chatting normally.
   const kickoff = useCallback(async (sessionId: string) => {
+    setKickoffFailed(false) // a retry starts clean
     setStreaming(true)
     let placeholderAdded = false
+    // Drop the trailing agent placeholder (whole greeting, even if partial).
+    const popPlaceholder = () =>
+      setMessages((prev) => {
+        const updated = [...prev]
+        if (updated[updated.length - 1]?.role === 'agent') {
+          updated.pop()
+        }
+        return updated
+      })
     try {
       const res = await apiFetch('/api/chat/kickoff', {
         method: 'POST',
         body: JSON.stringify({ session_id: sessionId }),
       })
 
-      const isStream = res.headers.get('Content-Type')?.includes('text/event-stream')
       if (!res.ok) {
         setKickoffFailed(true)
         return
       }
+      const isStream = res.headers.get('Content-Type')?.includes('text/event-stream')
       // A 200 that isn't a stream is the route declining on purpose — silent.
       if (!isStream) return
 
       setMessages((prev) => [...prev, { role: 'agent', content: '', created_at: new Date().toISOString() }])
       placeholderAdded = true
-      await consumeStream(res)
+      const receivedText = await consumeStream(res)
+      if (!receivedText) {
+        // Clean stream, no text: the server stored nothing (kickoff_empty_response).
+        setKickoffFailed(true)
+        popPlaceholder()
+        return
+      }
 
       queryClient.invalidateQueries({ queryKey: ['messages', sessionId] })
       queryClient.invalidateQueries({ queryKey: ['sessions', projectId] })
@@ -156,15 +175,7 @@ export function useStreamingChat({ projectId }: { projectId: string }) {
       // in (#156) — a cut-off fragment reads as broken, while showing
       // nothing reads as a network blip (closer to the truth). `error` stays
       // untouched: the composer must never be blocked by a failed greeting.
-      if (placeholderAdded) {
-        setMessages((prev) => {
-          const updated = [...prev]
-          if (updated[updated.length - 1]?.role === 'agent') {
-            updated.pop()
-          }
-          return updated
-        })
-      }
+      if (placeholderAdded) popPlaceholder()
     } finally {
       setStreaming(false)
     }
