@@ -151,7 +151,7 @@ Mark [ ] keep · [ ] change · [ ] drop. Changes become follow-up issues.
 - **`docs/mode-system.md` is not about session modes** — Its title and body cover viewer role glyphs and Conversation/Console chrome (header says "design agreed, not built"). Discover/converge session mode is not described there; the code is `lib/agent/system-prompt.ts:55` and `docs/iteration-architecture.md`.
 - **Decisions are "AI-extracted only; builder cannot add/edit"** (`docs/iteration-architecture.md`, Brief decisions) vs code: pasted JSON can set decisions and `locked` (`app/api/briefs/route.ts:42-113`), and the create payload accepts `brief.decisions` with `locked` (`CLAUDE.md`, Project Setup JSON).
 - **Locked decisions change only via "an explicit maker confirm (a separate, deliberate flow)"** (`lib/api/brief-merge.ts:10-12`) vs code: no such flow exists; regen never unlocks, and the only unlock path is the unguarded paste (`app/api/briefs/route.ts:42-113`).
-- **Seed questions only in discover, directives only in converge** ("UI shows one or the other", `docs/iteration-architecture.md`) vs code: both are injected in every mode (`lib/agent/system-prompt.ts:93-111`).
+- **Seed questions only in discover, directives only in converge** — code now matches the docs (#192, 2026-10-15): `buildSystemPrompt` emits `## Topics to explore` only when `session_mode !== 'converge'` and `## Directives` only when it is `converge`. Both fields stay stored on the project/session (`lib/agent/system-prompt.ts`).
 - **Directives are "Don't skip these"** (`docs/iteration-architecture.md`) and "highest-authority behavioral control" that can pin or suppress postures (`docs/conversational-posture-model.md`) vs code: "priorities, not a script", with the maker's direction overriding (`lib/agent/system-prompt.ts:107`, `lib/agent/constants.ts:58`).
 - **Pacing "8-12 exchanges"** (`docs/iteration-architecture.md`) vs code: "Do not close based on exchange count" (`lib/agent/constants.ts:96`, `lib/agent/constants.ts:137`).
 - **Welcome message "added as first message" of each new session** (`docs/iteration-architecture.md`, Between-Sessions Flow step 7) vs code: first session only (`app/api/sessions/route.ts:122-131`). `CLAUDE.md` already has this right.
@@ -164,7 +164,7 @@ Mark [ ] keep · [ ] change · [ ] drop. Changes become follow-up issues.
 
 1. Should a pasted brief (PUT) be allowed to drop or unlock a locked decision, or should it run the same lock merge as regen? Yes, for sure
 2. Should a model-created `locked: true` in regen output be honoured, or may only builders set locks? Just me I think.
-3. Should seed questions and directives be mode-scoped as the docs say, or stay injected in both modes? explain
+3. ~~Should seed questions and directives be mode-scoped as the docs say, or stay injected in both modes?~~ Decided: mode-scoped, shipped (#192).
 4. Should a builder-set `welcome_message` ever post on session 2+, given it is silently unused today? discuss
 5. Is the 10-minute idle plus 5-minute cron cadence right, and is overwrite-in-place (no brief history) acceptable? I think so, don't you?
 6. Should the banned-jargon list exclude "wireframes" while Sam is also told to emit wireframe blocks? uh? probably not this.
