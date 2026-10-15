@@ -106,6 +106,12 @@ Address them by their first name (${makerFirstName}). A trailing last initial, i
 `.trim())
   }
 
+  // #192: seed questions are a discover-mode tool and directives a
+  // converge-mode tool — the dashboard Setup tab shows one or the other per
+  // mode, and the prompt now matches. Both fields stay on the project doc so
+  // flipping the mode never loses them; the hidden one is simply not sent.
+  const converge = sessionMode === 'converge'
+
   // Seed questions and directives are written by the builder in the third
   // person ("his phone"); Sam once carried that straight into a message
   // ("His own spots live only on your phone"). Tell Sam who they're about.
@@ -113,7 +119,7 @@ Address them by their first name (${makerFirstName}). A trailing last initial, i
     ? `These were written by the builder about the people you're talking to, so they say "he", "she", "they" or a name. When you use them, address the person they're about by first name, and never carry the builder's third-person wording into a message.`
     : `These were written by the builder about the person you're talking to, so they say "he", "she", "they" or the person's name. When you use them, speak to that person as "you". Change every reference, and never carry the builder's third-person wording into a message.`
 
-  if (seedQuestions && seedQuestions.length > 0) {
+  if (!converge && seedQuestions && seedQuestions.length > 0) {
     parts.push(`
 ## Topics to explore
 
@@ -134,7 +140,7 @@ Converse in ${name} from your very first message, even before the user has writt
 `.trim())
   }
 
-  if (builderDirectives && builderDirectives.length > 0) {
+  if (converge && builderDirectives && builderDirectives.length > 0) {
     parts.push(`
 ## Directives
 

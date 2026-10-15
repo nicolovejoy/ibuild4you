@@ -102,7 +102,7 @@ describe('buildSystemPrompt', () => {
   it('includes numbered builder directives', () => {
     const result = buildSystemPrompt({
       ...minimalInput,
-      builderDirectives: ['Focus on data flow', 'Do not suggest architectures'],
+      sessionMode: 'converge', builderDirectives: ['Focus on data flow', 'Do not suggest architectures'],
     })
     expect(result).toContain('## Directives')
     expect(result).toContain('1. Focus on data flow')
@@ -110,7 +110,7 @@ describe('buildSystemPrompt', () => {
   })
 
   it('omits directives section when empty', () => {
-    const result = buildSystemPrompt({ ...minimalInput, builderDirectives: [] })
+    const result = buildSystemPrompt({ ...minimalInput, sessionMode: 'converge', builderDirectives: [] })
     expect(result).not.toContain('## Directives')
   })
 
@@ -394,7 +394,7 @@ describe('buildSystemPrompt', () => {
   it('Directives block no longer pins the old "don\'t leave the session" wording', () => {
     const result = buildSystemPrompt({
       ...minimalInput,
-      builderDirectives: ['Focus on data flow'],
+      sessionMode: 'converge', builderDirectives: ['Focus on data flow'],
     })
     expect(result).not.toContain("don't leave the session without covering them")
   })
@@ -402,7 +402,7 @@ describe('buildSystemPrompt', () => {
   it('Directives block frames directives as priorities, not a script', () => {
     const result = buildSystemPrompt({
       ...minimalInput,
-      builderDirectives: ['Focus on data flow'],
+      sessionMode: 'converge', builderDirectives: ['Focus on data flow'],
     })
     expect(result).toContain('priorities, not a script')
   })
@@ -592,7 +592,7 @@ describe('agent behaviour fixes from the Weather & Tides sessions', () => {
   })
 
   it('tells Sam the same about directives', () => {
-    const result = buildSystemPrompt({ ...minimalInput, builderDirectives: ['Talk to him as a peer.'] })
+    const result = buildSystemPrompt({ ...minimalInput, sessionMode: 'converge', builderDirectives: ['Talk to him as a peer.'] })
     const directives = result.slice(result.indexOf('## Directives'))
     expect(directives).toContain('written by the builder about the person you\'re talking to')
   })
@@ -687,5 +687,35 @@ describe('buildSystemPromptParts', () => {
     const parts = buildSystemPromptParts(input)
     expect(buildSystemPrompt(input)).toBe(`${parts.stable}\n\n${parts.volatile}`)
     expect(buildSystemPrompt(minimalInput)).toBe(buildSystemPromptParts(minimalInput).stable)
+
+// Mode scoping (#192): seed questions are a discover-mode tool, directives a
+// converge-mode tool. The dashboard shows one or the other per mode; the
+// prompt now matches instead of injecting both every session.
+// =============================================================================
+
+describe('mode-scoped seed questions and directives (#192)', () => {
+  const seedQuestions = ['What does the app do?']
+  const builderDirectives = ['Nail down the payment flow']
+
+  it('discover (default, mode undefined): seed questions in, directives out', () => {
+    const result = buildSystemPrompt({ ...minimalInput, seedQuestions, builderDirectives })
+    expect(result).toContain('## Topics to explore')
+    expect(result).toContain('1. What does the app do?')
+    expect(result).not.toContain('## Directives')
+    expect(result).not.toContain('Nail down the payment flow')
+  })
+
+  it('discover (explicit): same as default', () => {
+    const result = buildSystemPrompt({ ...minimalInput, sessionMode: 'discover', seedQuestions, builderDirectives })
+    expect(result).toContain('## Topics to explore')
+    expect(result).not.toContain('## Directives')
+  })
+
+  it('converge: directives in, seed questions out', () => {
+    const result = buildSystemPrompt({ ...minimalInput, sessionMode: 'converge', seedQuestions, builderDirectives })
+    expect(result).toContain('## Directives')
+    expect(result).toContain('1. Nail down the payment flow')
+    expect(result).not.toContain('## Topics to explore')
+    expect(result).not.toContain('What does the app do?')
   })
 })
