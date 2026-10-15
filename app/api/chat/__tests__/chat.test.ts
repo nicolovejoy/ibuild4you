@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { POST } from '../route'
-import { buildSystemPrompt } from '@/lib/agent/system-prompt'
+import { buildSystemPromptParts } from '@/lib/agent/system-prompt'
 
 // =============================================================================
 // CHAT ROUTE TESTS
@@ -131,7 +131,7 @@ vi.mock('resend', () => ({
 }))
 
 vi.mock('@/lib/agent/system-prompt', () => ({
-  buildSystemPrompt: vi.fn(() => 'You are a helpful assistant'),
+  buildSystemPromptParts: vi.fn(() => ({ stable: 'You are a helpful assistant', volatile: null })),
 }))
 
 function makeRequest(body: Record<string, unknown>) {
@@ -342,6 +342,20 @@ describe('POST /api/chat', () => {
     expect(markerCount).toBeLessThanOrEqual(4)
   })
 
+  it('sends the volatile part as a second, unmarked system block', async () => {
+    vi.mocked(buildSystemPromptParts).mockReturnValueOnce({
+      stable: 'You are a helpful assistant',
+      volatile: '## Returning after a break\n\nThe user is coming back after a gap of a few hours.',
+    })
+    const res = await POST(makeRequest({ session_id: 's1', content: 'Hello' }))
+    await readSSE(res)
+
+    expect(capturedStreamArgs?.system).toEqual([
+      { type: 'text', text: 'You are a helpful assistant', cache_control: { type: 'ephemeral' } },
+      { type: 'text', text: '## Returning after a break\n\nThe user is coming back after a gap of a few hours.' },
+    ])
+  })
+
   it('stores the complete agent response after streaming', async () => {
     const res = await POST(makeRequest({ session_id: 's1', content: 'Hello' }))
     await readSSE(res)
@@ -544,7 +558,7 @@ describe('POST /api/chat', () => {
       return text === 'My idea is a cafe app'
     })
     expect(userTurn).toBeDefined() // unprefixed, byte-identical to single-maker behavior
-    expect(buildSystemPrompt).toHaveBeenCalledWith(
+    expect(buildSystemPromptParts).toHaveBeenCalledWith(
       expect.objectContaining({ participants: undefined })
     )
   })
@@ -622,7 +636,7 @@ describe('POST /api/chat', () => {
 
     await POST(makeRequest({ session_id: 's1', content: 'more' }))
 
-    expect(buildSystemPrompt).toHaveBeenCalledWith(
+    expect(buildSystemPromptParts).toHaveBeenCalledWith(
       expect.objectContaining({
         participants: [
           { name: 'Maria', brief_role: 'originator' },
