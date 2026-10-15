@@ -533,3 +533,80 @@ describe('buildSystemPrompt', () => {
     }
   })
 })
+
+// =============================================================================
+// Weather & Tides fixes (2026-10-15): rules drawn from a repeat maker's four
+// sessions. Each test pins the behaviour, not the exact prose.
+// =============================================================================
+describe('agent behaviour fixes from the Weather & Tides sessions', () => {
+  const modes = [
+    ['discover', AGENT_BEHAVIOR_RULES],
+    ['converge', CONVERGE_BEHAVIOR_RULES],
+  ] as const
+
+  // 1. "Looks good" after a ranked list was re-asked.
+  it.each(modes)('%s: a short yes to something shown counts as acceptance as shown', (_, rules) => {
+    expect(rules).toContain('acceptance of it exactly as shown')
+  })
+
+  it.each(modes)('%s: a list to rank is put to them as a proposed order', (_, rules) => {
+    expect(rules).toContain('present it as a proposed order')
+  })
+
+  // 3. A single-select options block for choices that weren't exclusive.
+  it.each(modes)('%s: non-exclusive choices end with "All of these"', (_, rules) => {
+    expect(rules).toContain('If more than one answer can apply')
+    expect(rules).toContain('"All of these"')
+  })
+
+  // 5b/5c. Sam asserted how the app works and raised a label change unasked.
+  it.each(modes)('%s: Sam does not describe how the app works beyond the background', (_, rules) => {
+    expect(rules).toContain("Don't tell them how the app works or is meant to work")
+    expect(rules).toContain("Don't raise follow-on changes they didn't ask for")
+  })
+
+  // 6. The feedback question was asked at the close of every session.
+  it.each(modes)('%s: the closing rules no longer ask for feedback unconditionally', (_, rules) => {
+    expect(rules).not.toContain('What could we do better')
+    expect(rules).not.toContain('early beta')
+  })
+
+  it('asks for feedback and mentions the beta only when closing the first session', () => {
+    const first = buildSystemPrompt({ ...minimalInput, sessionNumber: 1 })
+    expect(first).toContain('What could we do better here?')
+    expect(first).toContain('early beta')
+  })
+
+  it('does not ask for feedback on later sessions unless a directive asks', () => {
+    const later = buildSystemPrompt({ ...minimalInput, sessionNumber: 3 })
+    expect(later).not.toContain('What could we do better here?')
+    expect(later).toContain("Don't ask for feedback on the conversation unless a directive asks for it")
+  })
+
+  // 2. A seed question about the maker ("his phone") leaked into a message.
+  it('tells Sam that topics are written about the maker and must be asked as "you"', () => {
+    const result = buildSystemPrompt({ ...minimalInput, seedQuestions: ['Where does he keep his spots?'] })
+    const topics = result.slice(result.indexOf('## Topics to explore'))
+    expect(topics).toContain('written by the builder about the person you\'re talking to')
+    expect(topics).toContain('speak to that person as "you"')
+  })
+
+  it('tells Sam the same about directives', () => {
+    const result = buildSystemPrompt({ ...minimalInput, builderDirectives: ['Talk to him as a peer.'] })
+    const directives = result.slice(result.indexOf('## Directives'))
+    expect(directives).toContain('written by the builder about the person you\'re talking to')
+  })
+
+  it('in a multi-person brief, addresses people by first name instead of "you"', () => {
+    const result = buildSystemPrompt({
+      ...minimalInput,
+      seedQuestions: ['What does she need?'],
+      participants: [
+        { name: 'Ana', brief_role: 'originator' },
+        { name: 'Ben', brief_role: 'contributor' },
+      ],
+    })
+    const topics = result.slice(result.indexOf('## Topics to explore'))
+    expect(topics).toContain('by first name')
+  })
+})

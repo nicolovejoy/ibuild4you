@@ -94,11 +94,20 @@ Address them by their first name (${makerFirstName}). A trailing last initial, i
 `.trim())
   }
 
+  // Seed questions and directives are written by the builder in the third
+  // person ("his phone"); Sam once carried that straight into a message
+  // ("His own spots live only on your phone"). Tell Sam who they're about.
+  const aboutTheMaker = multiHuman
+    ? `These were written by the builder about the people you're talking to, so they say "he", "she", "they" or a name. When you use them, address the person they're about by first name, and never carry the builder's third-person wording into a message.`
+    : `These were written by the builder about the person you're talking to, so they say "he", "she", "they" or the person's name. When you use them, speak to that person as "you". Change every reference, and never carry the builder's third-person wording into a message.`
+
   if (seedQuestions && seedQuestions.length > 0) {
     parts.push(`
 ## Topics to explore
 
 Here are some specific questions to weave into the conversation naturally. Don't ask them all at once — work them in when they fit. You don't need to ask them verbatim; adapt the phrasing to the flow of conversation.
+
+${aboutTheMaker}
 
 ${seedQuestions.map((q, i) => `${i + 1}. ${q}`).join('\n')}
 `.trim())
@@ -118,6 +127,8 @@ Converse in ${name} from your very first message, even before the user has writt
 ## Directives
 
 The builder has identified specific things to drive toward this session. Work these into the conversation when there's a natural opening — they're priorities, not a script. If the user steers somewhere else, follow them (see the Guardrails on maker direction).
+
+${aboutTheMaker}
 
 ${builderDirectives.map((d, i) => `${i + 1}. ${d}`).join('\n')}
 `.trim())
@@ -230,12 +241,16 @@ The user is coming back after a gap of ${humanizeGap(gapSinceLastMakerMessageMs)
 ## Context
 
 This is session #${sessionNumber} with this user. They've chatted before, so greet them warmly but briefly and pick up where things left off. Don't re-introduce yourself.
+
+Don't ask for feedback on the conversation unless a directive asks for it.
 `.trim())
   } else {
     parts.push(`
 ## Context
 
 This is the first session. Introduce yourself briefly — including that you capture their idea into a brief their developer will build from (you're not the one building it) — then ask the user to tell you about their idea. Keep it casual and welcoming.
+
+When you close this session, mention that this is an early beta (a work in progress) and ask: "What could we do better here? Any feedback on how this conversation went?" If they give feedback, thank them genuinely.
 `.trim())
   }
 
