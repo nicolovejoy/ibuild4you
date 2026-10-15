@@ -258,7 +258,13 @@ export async function DELETE(request: Request) {
     .collection('briefs')
     .where('project_id', '==', projectId)
     .get()
-  briefsSnap.docs.forEach((doc) => docsToDelete.push(doc.ref))
+  for (const briefDoc of briefsSnap.docs) {
+    // Firestore doesn't cascade to subcollections: delete the archived
+    // versions explicitly or they outlive the project (#194).
+    const versionsSnap = await briefDoc.ref.collection('versions').get()
+    versionsSnap.docs.forEach((v) => docsToDelete.push(v.ref))
+    docsToDelete.push(briefDoc.ref)
+  }
 
   // Project members
   const membersSnap = await db
@@ -585,6 +591,7 @@ export async function POST(request: Request) {
       content: briefContent,
       created_at: now,
       updated_at: now,
+      source: 'create',
     })
   }
 

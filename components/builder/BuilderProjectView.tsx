@@ -59,6 +59,7 @@ import {
   remindersStripLine,
 } from '@/lib/builder/conversations-view'
 import { useQueryClient } from '@tanstack/react-query'
+import { queryKeys } from '@/lib/query/keys'
 import { BuilderFilesTab } from './BuilderFilesTab'
 import { ProjectCostsCard } from './ProjectCostsCard'
 import { BriefEditor } from './BriefEditor'
@@ -513,6 +514,7 @@ function BriefTab({
         body: JSON.stringify({ project_id: projectId }),
       })
       queryClient.invalidateQueries({ queryKey: ['brief', projectId] })
+      queryClient.invalidateQueries({ queryKey: queryKeys.briefVersions(projectId) })
       setShowGenConfirm(false)
     } catch (err) {
       console.error('Brief generation failed:', err)

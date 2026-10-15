@@ -125,6 +125,11 @@ async function deleteProject(art) {
   await deleteDocsBatched(art.messageDocs.map((d) => d.ref))
   await deleteDocsBatched(art.sessionDocs.map((d) => d.ref))
   await deleteDocsBatched(art.fileDocs.map((d) => d.ref))
+  // Firestore doesn't cascade: drop each brief's archived versions first (#194).
+  for (const b of art.briefDocs) {
+    const vs = await b.ref.collection('versions').get()
+    await deleteDocsBatched(vs.docs.map((d) => d.ref))
+  }
   await deleteDocsBatched(art.briefDocs.map((d) => d.ref))
   await deleteDocsBatched(art.memberDocs.map((d) => d.ref))
   await db.collection('projects').doc(art.projectId).delete()

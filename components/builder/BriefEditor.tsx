@@ -11,6 +11,7 @@ import { parseBriefJson, serializeBriefContent, emptyBrief } from '@/lib/api/bri
 import { lockedFirst } from '@/lib/api/brief-merge'
 import { sessionNumberById, decisionProvenanceSuffix } from '@/lib/builder/decision-provenance'
 import type { BriefContent, BriefDecision, Session } from '@/lib/types'
+import { BriefHistory } from './BriefHistory'
 
 // Brief-as-document editor (#19 Phase 3). Read-first: the brief renders as a
 // calm document by default; "Edit brief" enters an explicit edit mode with two
@@ -174,6 +175,7 @@ export function BriefEditor({
                   and were buried under the ~4-line clamp with the rest of the
                   document. Compact by nature, so always show them. */}
               <DecisionsSection decisions={base.decisions} sessions={sessions} />
+              <BriefHistory projectId={projectId} />
             </>
           ) : loading ? (
             <div className="space-y-2 py-2">

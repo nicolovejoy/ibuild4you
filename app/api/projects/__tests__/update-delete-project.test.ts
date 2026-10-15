@@ -278,7 +278,7 @@ describe('DELETE /api/projects', () => {
     // Sessions with messages
     const sessionRef = { collection: 'sessions', id: 'sess-1' }
     const messageRef = { collection: 'messages', id: 'msg-1' }
-    const briefRef = { collection: 'briefs', id: 'brief-1' }
+    const briefRef = { collection: () => ({ get: async () => ({ docs: [] }) }), id: 'brief-1' }
     const memberRef = { collection: 'project_members', id: 'member-1' }
     const fileRef = { collection: 'files', id: 'file-1' }
 
@@ -327,6 +327,30 @@ describe('DELETE /api/projects', () => {
     expect(mockBatchCommit).toHaveBeenCalled()
     // And dropped the file's S3 object
     expect(mockDeleteS3Object).toHaveBeenCalledWith('projects/proj-1/file-1.pdf')
+  })
+
+  it('also deletes each brief\'s archived versions (no subcollection cascade; #194)', async () => {
+    const v1 = { id: 'v1' }
+    const v2 = { id: 'v2' }
+    const briefRef = {
+      id: 'brief-1',
+      collection: (name: string) => ({
+        get: async () => ({
+          docs: name === 'versions' ? [{ ref: v1 }, { ref: v2 }] : [],
+        }),
+      }),
+    }
+    mockWhereGet.mockImplementation(async () => {
+      if (lastCollectionName === 'briefs') return { docs: [{ id: 'brief-1', ref: briefRef }] }
+      return { docs: [] }
+    })
+
+    const res = await DELETE(makeDeleteRequest('proj-1'))
+    expect(res.status).toBe(200)
+    const deleted = mockBatchDelete.mock.calls.map((c) => c[0])
+    expect(deleted).toContain(v1)
+    expect(deleted).toContain(v2)
+    expect(deleted).toContain(briefRef)
   })
 
   it('deletes S3 objects for ready files but skips pending ones', async () => {

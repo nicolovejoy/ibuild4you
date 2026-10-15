@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { getAuthenticatedUser, getAdminDb, getProjectRole, requireRole } from '@/lib/api/firebase-server-helpers'
 import { upsertBrief } from '@/lib/api/briefs'
 import { stampDecisionProvenance } from '@/lib/api/brief-merge'
-import type { BriefContent } from '@/lib/types'
+import type { BriefContent, BriefSource } from '@/lib/types'
 
 // GET /api/briefs?project_id=xxx — get the latest brief for a project
 export async function GET(request: Request) {
@@ -44,7 +44,7 @@ export async function PUT(request: Request) {
   if (auth.error) return auth.error
 
   const body = await request.json()
-  const { project_id, content } = body
+  const { project_id, content, source: rawSource } = body
 
   if (!project_id) {
     return NextResponse.json({ error: 'project_id is required' }, { status: 400 })
@@ -112,7 +112,11 @@ export async function PUT(request: Request) {
   })
 
   // Upsert: find existing brief or create new
-  const result = await upsertBrief(db, project_id, briefContent)
+  // #194: the Brief tab's Restore re-submits an archived version through this
+  // same path so locks and provenance behave as a paste; only 'restore' is
+  // accepted from the client — regen/create are server-side sources.
+  const source: BriefSource = rawSource === 'restore' ? 'restore' : 'paste'
+  const result = await upsertBrief(db, project_id, briefContent, source)
 
   return NextResponse.json(result)
 }

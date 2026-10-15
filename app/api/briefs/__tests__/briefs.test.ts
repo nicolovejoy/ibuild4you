@@ -194,6 +194,41 @@ describe('PUT /api/briefs', () => {
     expect(contentArg.features).toEqual(['Online ordering', 'Menu display'])
   })
 
+  // --- Source provenance (#194) ---
+
+  it('upserts with source "paste" by default', async () => {
+    const res = await PUT(makePutRequest({ project_id: 'proj1', content: validContent }))
+    expect(res.status).toBe(200)
+    expect(mockUpsertBrief).toHaveBeenCalledWith(
+      expect.anything(),
+      'proj1',
+      expect.objectContaining({ problem: 'Need a cafe website' }),
+      'paste'
+    )
+  })
+
+  it('upserts with source "restore" when the body says so (#194)', async () => {
+    await PUT(makePutRequest({ project_id: 'proj1', content: validContent, source: 'restore' }))
+    expect(mockUpsertBrief).toHaveBeenCalledWith(expect.anything(), 'proj1', expect.anything(), 'restore')
+  })
+
+  it('ignores an unknown source value and falls back to "paste"', async () => {
+    await PUT(makePutRequest({ project_id: 'proj1', content: validContent, source: 'regen' }))
+    expect(mockUpsertBrief).toHaveBeenCalledWith(expect.anything(), 'proj1', expect.anything(), 'paste')
+  })
+
+  it('a restore keeps locked decisions locked (#71 + #194)', async () => {
+    await PUT(
+      makePutRequest({
+        project_id: 'proj1',
+        content: { ...validContent, decisions: [{ topic: 'Stack', decision: 'Next.js', locked: true }] },
+        source: 'restore',
+      })
+    )
+    const sent = mockUpsertBrief.mock.calls[0][2] as { decisions: { topic: string; locked?: boolean }[] }
+    expect(sent.decisions[0]).toEqual(expect.objectContaining({ topic: 'Stack', locked: true }))
+  })
+
   it('normalizes content — strips non-string features', async () => {
     await PUT(makePutRequest({
       project_id: 'proj1',
