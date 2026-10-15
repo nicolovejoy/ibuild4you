@@ -20,8 +20,8 @@ const NEXT_CONVO_PAYLOAD = `{
   "identity": "Optional. Custom agent persona override. Omit unless you want a non-default persona.",
   "context": "Optional. Background the agent uses to skip basic discovery questions. Update only if new background surfaced.",
   "session_mode": "discover (broad exploration) or converge (narrow toward decisions).",
-  "seed_questions": ["Questions the agent should weave into the early part of the next session"],
-  "builder_directives": ["Instructions injected into the agent's system prompt — e.g. 'push toward a decision on auth flow'"]
+  "seed_questions": ["Questions the agent should weave into the early part of the next session (discover mode only)"],
+  "builder_directives": ["Instructions injected into the agent's system prompt — e.g. 'push toward a decision on auth flow' (converge mode only; put always-on guardrails in context)"]
 }`
 
 const NOTES = [

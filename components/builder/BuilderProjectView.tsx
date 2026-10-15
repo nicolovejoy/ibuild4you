@@ -432,7 +432,7 @@ function ConfigUsed({ session }: { session: Session }) {
           )}
           {questions.length > 0 && (
             <div>
-              <p className="text-xs font-medium text-gray-500 uppercase mb-1">Seed questions</p>
+              <p className="text-xs font-medium text-gray-500 uppercase mb-1">Seed questions{mode === 'converge' && <span className="normal-case font-normal text-gray-400"> (not sent in converge mode)</span>}</p>
               <ul className="space-y-1">
                 {questions.map((q, i) => <li key={i} className="bg-gray-50 rounded px-2.5 py-1.5 text-sm">{i + 1}. {q}</li>)}
               </ul>
@@ -440,7 +440,7 @@ function ConfigUsed({ session }: { session: Session }) {
           )}
           {dirs.length > 0 && (
             <div>
-              <p className="text-xs font-medium text-gray-500 uppercase mb-1">Builder directives</p>
+              <p className="text-xs font-medium text-gray-500 uppercase mb-1">Builder directives{mode === 'discover' && <span className="normal-case font-normal text-gray-400"> (not sent in discover mode)</span>}</p>
               <ul className="space-y-1">
                 {dirs.map((d, i) => <li key={i} className="bg-gray-50 rounded px-2.5 py-1.5 text-sm">{i + 1}. {d}</li>)}
               </ul>

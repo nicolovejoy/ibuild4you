@@ -26,8 +26,8 @@ When I say "give me the output", produce ONLY valid JSON matching this schema (n
   "voice_sample": "Optional. One paragraph showing how the builder texts this person by hand — anchors AI-generated outbound copy.",
   "identity": "Optional. Custom agent persona override. Omit unless the builder explicitly wants a non-default persona.",
   "session_mode": "discover (broad exploration) or converge (narrow toward decisions). Defaults to discover when omitted.",
-  "seed_questions": ["Questions the agent should weave into the first session"],
-  "builder_directives": ["Instructions injected into the agent's system prompt — e.g. 'do not suggest technologies', 'focus on the ordering workflow'"],
+  "seed_questions": ["Questions the agent should weave into the first session. Used only in discover mode."],
+  "builder_directives": ["Instructions injected into the agent's system prompt — e.g. 'focus on the ordering workflow'. Used only in converge mode; ignored in discover mode. Guardrails that must hold in every session (e.g. 'do not suggest technologies') belong in context, not builder_directives."],
   "layout_mockups": [
     {
       "title": "Strategy name — shown to the maker as a visual wireframe layout",

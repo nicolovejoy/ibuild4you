@@ -52,6 +52,10 @@ describe('buildNewProjectPrompt', () => {
     expect(result.startsWith('NEW-PROJECT PREP')).toBe(true)
   })
 
+  it('says directives are ignored in discover mode', () => {
+    expect(buildNewProjectPrompt()).toContain('ignored in discover mode')
+  })
+
   it('flags title as required', () => {
     const result = buildNewProjectPrompt()
     expect(result).toMatch(/`title` is required/)

@@ -39,8 +39,8 @@ When I say "give me the output", produce ONLY valid JSON matching this schema (n
   "identity": "Optional. Custom agent persona override for this project. Omit unless the builder explicitly wants a non-default persona.",
   "context": "Optional. Background the agent uses to skip basic discovery questions. Update only if new background surfaced in the conversation.",
   "session_mode": "discover (broad exploration) or converge (narrow toward decisions)",
-  "seed_questions": ["Questions the agent should weave into the early part of the next session"],
-  "builder_directives": ["Instructions injected into the agent's system prompt to steer the conversation — e.g. 'push toward a decision on auth flow'"],
+  "seed_questions": ["Questions the agent should weave into the early part of the next session. Used only in discover mode."],
+  "builder_directives": ["Instructions injected into the agent's system prompt to steer the conversation — e.g. 'push toward a decision on auth flow'. Used only in converge mode; ignored in discover mode. Guardrails that must hold in every session belong in context."],
   "layout_mockups": [
     {
       "title": "Strategy name — shown to the maker as a visual wireframe layout",
