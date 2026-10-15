@@ -86,7 +86,7 @@ Mark [ ] keep · [ ] change · [ ] drop. Changes become follow-up issues.
   - [ ] keep · [ ] change · [ ] drop
 - **Save overwrites in place** — Existing brief doc is updated and `version` incremented; no history of prior content is kept. `lib/api/briefs.ts:256-274`.
   - [ ] keep · [ ] change · [ ] drop
-- **Pasted JSON (PUT) bypasses the lock merge** — Builder-or-higher can replace a brief; decisions get provenance stamps but `mergeLockedDecisions` is not called, so a paste can drop or unlock a locked decision. `app/api/briefs/route.ts:42-113`.
+- **Pasted JSON (PUT) bypasses the lock merge** — Builder-or-higher can replace a brief; decisions get provenance stamps but `mergeLockedDecisions` is not called, so a paste can drop or unlock a locked decision. `app/api/briefs/route.ts:42-113`. — resolved by #197 (2026-10-15)
   - [ ] keep · [ ] change · [ ] drop
 - **Locked-first display** — Helper orders locked decisions first for the brief view and markdown export. `lib/api/brief-merge.ts:120-125`.
   - [ ] keep · [ ] change · [ ] drop
@@ -150,7 +150,7 @@ Mark [ ] keep · [ ] change · [ ] drop. Changes become follow-up issues.
 
 - **`docs/mode-system.md` is not about session modes** — Its title and body cover viewer role glyphs and Conversation/Console chrome (header says "design agreed, not built"). Discover/converge session mode is not described there; the code is `lib/agent/system-prompt.ts:55` and `docs/iteration-architecture.md`.
 - **Decisions are "AI-extracted only; builder cannot add/edit"** (`docs/iteration-architecture.md`, Brief decisions) vs code: pasted JSON can set decisions and `locked` (`app/api/briefs/route.ts:42-113`), and the create payload accepts `brief.decisions` with `locked` (`CLAUDE.md`, Project Setup JSON).
-- **Locked decisions change only via "an explicit maker confirm (a separate, deliberate flow)"** (`lib/api/brief-merge.ts:10-12`) vs code: no such flow exists; regen never unlocks, and the only unlock path is the unguarded paste (`app/api/briefs/route.ts:42-113`).
+- **Locked decisions change only via "an explicit maker confirm (a separate, deliberate flow)"** (`lib/api/brief-merge.ts:10-12`) vs code: no such flow exists; regen never unlocks, and the only unlock path is the unguarded paste (`app/api/briefs/route.ts:42-113`). — resolved by #197 (2026-10-15)
 - **Seed questions only in discover, directives only in converge** — code now matches the docs (#192, 2026-10-15): `buildSystemPrompt` emits `## Topics to explore` only when `session_mode !== 'converge'` and `## Directives` only when it is `converge`. Both fields stay stored on the project/session (`lib/agent/system-prompt.ts`).
 - **Directives are "Don't skip these"** (`docs/iteration-architecture.md`) and "highest-authority behavioral control" that can pin or suppress postures (`docs/conversational-posture-model.md`) vs code: "priorities, not a script", with the maker's direction overriding (`lib/agent/system-prompt.ts:107`, `lib/agent/constants.ts:58`).
 - **Pacing "8-12 exchanges"** (`docs/iteration-architecture.md`) vs code: "Do not close based on exchange count" (`lib/agent/constants.ts:96`, `lib/agent/constants.ts:137`).
