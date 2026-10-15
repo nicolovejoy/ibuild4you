@@ -135,14 +135,13 @@ export async function garmCheck(
  * identity (they may 403 on member-gated routes until Garm is back); it never
  * grants anyone anything, and the sign-in gate stays fail-closed independently.
  *
- * No-ops (no network) on an empty email, when GARM_GATING=off (preview / kill
- * switch — no Garm wiring there), or when GARM_URL/GARM_KEY are unset. PR H
- * removes the kill switch; this guard needs revisiting then.
+ * No-ops (no network) on an empty email, or when GARM_URL/GARM_KEY are unset
+ * (preview has no Garm wiring — same condition that puts preview's sign-in
+ * gate on the local allowlist).
  */
 export async function resolveCanonicalEmail(email: string): Promise<string> {
   const norm = normalizeEmail(email)
   if (!norm) return norm
-  if (process.env.GARM_GATING === 'off') return norm
   if (!process.env.GARM_URL || !process.env.GARM_KEY) return norm
   try {
     const { canonicalEmail } = await garmCheck(norm, GARM_PROJECT, 'viewer')

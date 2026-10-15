@@ -6,7 +6,7 @@ import {
   isApprovedEmail,
 } from '@/lib/api/firebase-server-helpers'
 import { isAdminEmail } from '@/lib/constants'
-import { normalizeEmail } from '@/lib/email/normalize'
+import { normalizeEmail, isValidEmail } from '@/lib/email/normalize'
 import { scheduleGarmGrantSync } from '@/lib/garm-grants'
 import { scheduleGarmDenialRecord } from '@/lib/garm-denials'
 
@@ -71,6 +71,9 @@ export async function POST(request: Request) {
 
   if (!email?.trim()) {
     return NextResponse.json({ error: 'Email is required' }, { status: 400 })
+  }
+  if (!isValidEmail(email)) {
+    return NextResponse.json({ error: 'That doesn\'t look like a valid email address' }, { status: 400 })
   }
 
   const db = getAdminDb()

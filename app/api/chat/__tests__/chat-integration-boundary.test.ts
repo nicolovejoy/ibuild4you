@@ -18,11 +18,6 @@ vi.mock('@/lib/firebase/admin', () => ({
   }),
 }))
 vi.mock('@/lib/garm', () => ({ resolveCanonicalEmail: async (e: string) => e, garmCheck: vi.fn(), GARM_PROJECT: 'x' }))
-vi.mock('@/lib/garm-shadow', () => ({
-  scheduleGarmShadowCheck: vi.fn(),
-  shadowCheckApprovedEmail: vi.fn(),
-  shadowCheckLocalAllowlist: vi.fn(),
-}))
 
 import { POST } from '../route'
 

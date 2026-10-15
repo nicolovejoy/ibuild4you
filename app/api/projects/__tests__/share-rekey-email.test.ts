@@ -80,6 +80,12 @@ describe('PATCH /api/projects/share — re-key requester email (#12)', () => {
     expect(memberUpdate).not.toHaveBeenCalled()
   })
 
+  it('returns 400 and re-keys nothing for a malformed new_email', async () => {
+    const res = await PATCH(patchReq({ project_id: 'proj1', new_email: 'fixed@new' }))
+    expect(res.status).toBe(400)
+    expect(memberUpdate).not.toHaveBeenCalled()
+  })
+
   it('returns 403 when caller is a maker', async () => {
     mockGetProjectRole.mockResolvedValue('maker')
     const res = await PATCH(patchReq({ project_id: 'proj1', new_email: 'fixed@new.com' }))

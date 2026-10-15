@@ -17,7 +17,7 @@ import { getAdminDb } from '@/lib/api/firebase-server-helpers'
 // briefs; Garm's project grain is app-level, so the highest active brief role
 // wins, mapped down to Garm's 3 tiers. System admins always resolve to owner.
 //
-// PII: never log the email — only booleans/role, matching lib/garm-shadow.ts.
+// PII: never log the email — only booleans/role.
 //
 // Kill switch: GARM_DUAL_WRITE must be exactly 'on'. Default (unset, or any
 // other value) is OFF, and syncGarmGrantForEmail is then a silent no-op (one
@@ -199,8 +199,10 @@ export async function syncGarmGrantForEmail(rawEmail: string): Promise<GarmSyncO
 /**
  * Fire-and-forget wrapper for use from request handlers: schedules the sync
  * via Next's `after()` so it isn't dropped if the function freezes right
- * after the response goes out (same reasoning as lib/garm-shadow.ts's
- * scheduleGarmShadowCheck). No-ops entirely when the kill switch is off.
+ * after the response goes out: on Vercel, after() keeps the invocation alive
+ * until the work settles. after() throws outside a request scope (scripts,
+ * unit tests), so fall back to a plain fire-and-forget there. No-ops entirely
+ * when the kill switch is off.
  */
 export function scheduleGarmGrantSync(email: string): void {
   if (!isGarmDualWriteEnabled()) return

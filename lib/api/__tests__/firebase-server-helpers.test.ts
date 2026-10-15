@@ -17,9 +17,8 @@ import { isAdminEmail, ADMIN_EMAILS } from '@/lib/constants'
 import { normalizeEmail } from '@/lib/email/normalize'
 import type { SystemRole } from '@/lib/types'
 
-// isApprovedEmail's Garm-shadow side effect (docs/garm-consumer-plan.md Phase 4)
-// calls out to garmCheck — mock it so these tests exercise the real
-// shadowCheckApprovedEmail/scheduleGarmShadowCheck wiring without a network call.
+// isApprovedEmail gates sign-in on garmCheck — mock it so these tests never
+// make a network call.
 vi.mock('@/lib/garm', () => ({
   garmCheck: vi.fn(),
   GARM_PROJECT: 'ibuild4you',
@@ -93,14 +92,19 @@ describe('isAdminEmail', () => {
   })
 })
 
-// Since the PR G cutover the local allowlist path only runs under the
-// GARM_GATING=off kill switch — these tests pin that path (it must stay
-// correct for the one-release kill-switch window; preview runs on it).
-describe('isApprovedEmail — kill-switch local path (GARM_GATING=off)', () => {
+// Garm is the sign-in gate everywhere except one environment: a Vercel
+// *preview* deployment with no Garm wiring (no GARM_URL/GARM_KEY), which falls
+// back to the local approved_emails allowlist so the preview e2e fleet can
+// sign in. Production can never take the fallback, whatever its env says.
+// Replaces the GARM_GATING kill switch (PR H).
+describe('isApprovedEmail — preview fallback (VERCEL_ENV=preview, no Garm wiring)', () => {
   const OLD_ENV = { ...process.env }
 
   beforeEach(() => {
-    process.env.GARM_GATING = 'off'
+    vi.mocked(garmCheck).mockReset()
+    process.env.VERCEL_ENV = 'preview'
+    delete process.env.GARM_URL
+    delete process.env.GARM_KEY
   })
 
   afterEach(() => {
@@ -158,118 +162,23 @@ describe('isApprovedEmail — kill-switch local path (GARM_GATING=off)', () => {
 
     expect(await isApprovedEmail('sam@example.com')).toBe(true)
   })
-})
 
-// Under the GARM_GATING=off kill switch the local answer is authoritative and
-// the Phase-4 shadow comparison must NEVER change what isApprovedEmail
-// returns, whether Garm agrees, disagrees, or is unreachable — and GARM_SHADOW
-// genuinely gates the fetch, not just the logging.
-describe('isApprovedEmail — kill-switch path: Garm shadow never changes the outcome', () => {
-  const OLD_ENV = { ...process.env }
-
-  // getAdminDb is mocked module-wide (see vi.mock('@/lib/firebase/admin')
-  // above) and getAuthenticatedUser tests further down rely on its default
-  // factory implementation — mockReturnValueOnce so each isApprovedEmail call
-  // in a test gets exactly one canned response and nothing leaks past this
-  // describe block.
-  function mockLocalApprovedOnce(exists: boolean) {
+  it('never calls Garm on the fallback path', async () => {
     vi.mocked(getAdminDb).mockReturnValueOnce({
-      collection: () => ({ doc: () => ({ get: async () => ({ exists, data: () => ({}) }) }) }),
+      collection: () => ({ doc: () => ({ get: async () => ({ exists: true, data: () => ({}) }) }) }),
     } as unknown as FirebaseFirestore.Firestore)
-  }
 
-  // Let any fire-and-forget shadow promise settle before asserting on it.
-  async function flush() {
-    await Promise.resolve()
-    await Promise.resolve()
-    await Promise.resolve()
-  }
-
-  beforeEach(() => {
-    vi.mocked(garmCheck).mockClear()
-    process.env.GARM_GATING = 'off'
-  })
-
-  afterEach(() => {
-    process.env = { ...OLD_ENV }
-  })
-
-  it('local-approved stays approved whether Garm allows, denies, or is unreachable', async () => {
-    process.env.GARM_SHADOW = 'on'
-
-    mockLocalApprovedOnce(true)
-    vi.mocked(garmCheck).mockResolvedValueOnce({ allowed: true, role: 'viewer' })
-    expect(await isApprovedEmail('sam@example.com')).toBe(true)
-    await flush()
-
-    mockLocalApprovedOnce(true)
-    vi.mocked(garmCheck).mockResolvedValueOnce({ allowed: false, role: null })
-    expect(await isApprovedEmail('sam@example.com')).toBe(true)
-    await flush()
-
-    // garmCheck itself always fails closed internally and never rejects in
-    // production, but prove the local answer survives even if the shadow call
-    // throws outright.
-    mockLocalApprovedOnce(true)
-    vi.mocked(garmCheck).mockRejectedValueOnce(new Error('garm unreachable'))
-    expect(await isApprovedEmail('sam@example.com')).toBe(true)
-    await flush()
-  })
-
-  it('local-denied stays denied whether Garm allows, denies, or is unreachable', async () => {
-    process.env.GARM_SHADOW = 'on'
-
-    mockLocalApprovedOnce(false)
-    vi.mocked(garmCheck).mockResolvedValueOnce({ allowed: true, role: 'owner' })
-    expect(await isApprovedEmail('nobody@example.com')).toBe(false)
-    await flush()
-
-    mockLocalApprovedOnce(false)
-    vi.mocked(garmCheck).mockResolvedValueOnce({ allowed: false, role: null })
-    expect(await isApprovedEmail('nobody@example.com')).toBe(false)
-    await flush()
-
-    mockLocalApprovedOnce(false)
-    vi.mocked(garmCheck).mockRejectedValueOnce(new Error('garm unreachable'))
-    expect(await isApprovedEmail('nobody@example.com')).toBe(false)
-    await flush()
-  })
-
-  it('admin fast-path stays approved regardless of the Garm answer', async () => {
-    process.env.GARM_SHADOW = 'on'
-    // Admin path never touches Firestore — no getAdminDb mock needed.
-    vi.mocked(garmCheck).mockResolvedValueOnce({ allowed: false, role: null })
-    expect(await isApprovedEmail('nicholas.lovejoy@gmail.com')).toBe(true)
-    await flush()
-  })
-
-  it('never calls garmCheck at all when GARM_SHADOW is unset (default off)', async () => {
-    delete process.env.GARM_SHADOW
-    mockLocalApprovedOnce(true)
-
-    expect(await isApprovedEmail('sam@example.com')).toBe(true)
-    await flush()
-
-    expect(garmCheck).not.toHaveBeenCalled()
-  })
-
-  it('never calls garmCheck at all when GARM_SHADOW=off', async () => {
-    process.env.GARM_SHADOW = 'off'
-    mockLocalApprovedOnce(true)
-
-    expect(await isApprovedEmail('sam@example.com')).toBe(true)
-    await flush()
-
+    await isApprovedEmail('sam@example.com')
     expect(garmCheck).not.toHaveBeenCalled()
   })
 })
 
-// PR G cutover (docs/garm-consumer-plan.md Phase 5): with GARM_GATING unset
-// (the production default), Garm IS the sign-in gate. Fail mode is closed per
-// the ratified Q2 decision — there is no local-fallback branch to test,
-// deliberately. garmCheck is mocked; its own fail-closed internals (timeout,
-// non-200, missing env → allowed:false) are pinned in lib/__tests__/garm.test.ts.
-describe('isApprovedEmail — Garm authoritative (default, GARM_GATING unset)', () => {
+// PR G cutover (docs/garm-consumer-plan.md Phase 5): Garm IS the sign-in gate.
+// Fail mode is closed per the ratified Q2 decision — there is no local-fallback
+// branch outside preview, deliberately. garmCheck is mocked; its own
+// fail-closed internals (timeout, non-200, missing env → allowed:false) are
+// pinned in lib/__tests__/garm.test.ts.
+describe('isApprovedEmail — Garm authoritative', () => {
   const OLD_ENV = { ...process.env }
 
   function mockLocalApprovedOnce(exists: boolean) {
@@ -278,23 +187,16 @@ describe('isApprovedEmail — Garm authoritative (default, GARM_GATING unset)', 
     } as unknown as FirebaseFirestore.Firestore)
   }
 
-  // The reverse-shadow callback awaits a Firestore read before comparing, so
-  // it needs more microtask ticks than the 3-tick flush above — drain a full
-  // macrotask instead.
-  async function flush() {
-    await new Promise((resolve) => setTimeout(resolve, 0))
-  }
-
   beforeEach(() => {
-    // mockReset (not mockClear): tests in this file deliberately queue Once
-    // values that the code path never consumes (admin short-circuit; shadow
-    // disabled) — a leftover Once would offset later answers by one. vitest 3
-    // mockReset restores the vi.fn factory implementation, so getAdminDb's
-    // default stays intact for the describes below.
+    // mockReset (not mockClear): some tests queue Once values the code path
+    // never consumes (admin short-circuit) — a leftover Once would offset later
+    // answers by one. vitest 3 mockReset restores the vi.fn factory
+    // implementation, so getAdminDb's default stays intact for later describes.
     vi.mocked(garmCheck).mockReset()
     vi.mocked(getAdminDb).mockReset()
-    delete process.env.GARM_GATING
-    delete process.env.GARM_SHADOW
+    process.env.VERCEL_ENV = 'production'
+    process.env.GARM_URL = 'https://garm.example'
+    process.env.GARM_KEY = 'garm_test'
   })
 
   afterEach(() => {
@@ -329,51 +231,47 @@ describe('isApprovedEmail — Garm authoritative (default, GARM_GATING unset)', 
     expect(garmCheck).not.toHaveBeenCalled()
   })
 
-  it('only exactly "off" disables gating — stray values still gate on Garm', async () => {
-    process.env.GARM_GATING = 'false'
-    vi.mocked(garmCheck).mockResolvedValueOnce({ allowed: false, role: null })
-    expect(await isApprovedEmail('sam@example.com')).toBe(false)
-  })
-
-  it('never reads the local allowlist on the hot path (only the shadow does, when enabled)', async () => {
+  it('never reads the local allowlist', async () => {
     vi.mocked(garmCheck).mockResolvedValueOnce({ allowed: true, role: 'viewer' })
     const dbSpy = vi.mocked(getAdminDb)
     dbSpy.mockClear()
     expect(await isApprovedEmail('sam@example.com')).toBe(true)
-    await flush()
+    await new Promise((resolve) => setTimeout(resolve, 0))
     expect(dbSpy).not.toHaveBeenCalled()
   })
 
-  it('reverse shadow logs a mismatch when local disagrees, without changing the answer', async () => {
-    process.env.GARM_SHADOW = 'on'
-    vi.mocked(garmCheck).mockResolvedValueOnce({ allowed: true, role: 'viewer' })
-    mockLocalApprovedOnce(false) // local would deny → mismatch
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
-
-    expect(await isApprovedEmail('sam@example.com')).toBe(true)
-    await flush()
-
-    expect(warnSpy).toHaveBeenCalledTimes(1)
-    const line = warnSpy.mock.calls[0][0] as string
-    expect(line).toContain('[garm-shadow] mismatch:')
-    expect(line).toContain('local=false')
-    expect(line).toContain('garm=true')
-    expect(line).toContain('authority=garm')
-    expect(line).not.toContain('sam@example.com')
-    warnSpy.mockRestore()
+  // The fallback is keyed on the deployment being a preview, not on Garm being
+  // absent: a production deploy that lost its Garm env must fail closed, not
+  // quietly reopen the old allowlist.
+  it('production with no Garm wiring still gates on Garm (fails closed)', async () => {
+    delete process.env.GARM_URL
+    delete process.env.GARM_KEY
+    mockLocalApprovedOnce(true)
+    vi.mocked(garmCheck).mockResolvedValueOnce({ allowed: false, role: null })
+    expect(await isApprovedEmail('sam@example.com')).toBe(false)
+    expect(garmCheck).toHaveBeenCalled()
   })
 
-  it('reverse shadow stays silent on agreement', async () => {
-    process.env.GARM_SHADOW = 'on'
-    vi.mocked(garmCheck).mockResolvedValueOnce({ allowed: true, role: 'viewer' })
+  it('a preview that does have Garm wiring gates on Garm', async () => {
+    process.env.VERCEL_ENV = 'preview'
     mockLocalApprovedOnce(true)
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    vi.mocked(garmCheck).mockResolvedValueOnce({ allowed: false, role: null })
+    expect(await isApprovedEmail('sam@example.com')).toBe(false)
+  })
 
-    expect(await isApprovedEmail('sam@example.com')).toBe(true)
-    await flush()
+  it('outside Vercel (no VERCEL_ENV) gates on Garm', async () => {
+    delete process.env.VERCEL_ENV
+    delete process.env.GARM_URL
+    delete process.env.GARM_KEY
+    vi.mocked(garmCheck).mockResolvedValueOnce({ allowed: false, role: null })
+    expect(await isApprovedEmail('sam@example.com')).toBe(false)
+  })
 
-    expect(warnSpy).not.toHaveBeenCalled()
-    warnSpy.mockRestore()
+  it('the retired GARM_GATING=off switch no longer opens the local path', async () => {
+    process.env.GARM_GATING = 'off'
+    mockLocalApprovedOnce(true)
+    vi.mocked(garmCheck).mockResolvedValueOnce({ allowed: false, role: null })
+    expect(await isApprovedEmail('sam@example.com')).toBe(false)
   })
 })
 
