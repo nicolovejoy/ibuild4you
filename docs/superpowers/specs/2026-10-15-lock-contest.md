@@ -50,7 +50,13 @@ In the read view's Decisions section, a locked decision with `contested` shows:
 
 Each action saves the whole current brief with that one decision changed through the normal `PUT /api/briefs` (default source `paste`), so provenance stamps the accepted text as decided out-of-band and the outgoing version is archived (#194). While a resolve is in flight the three buttons are disabled; an error shows inline. These actions bypass the Part B guard (unlocking via Accept is deliberate).
 
-Pure helper `resolveContest(decisions, topic, action)` in `lib/api/brief-merge.ts` does the list edit; `action` is `'accept' | 'accept_unlock' | 'dismiss'`. Topic match is the same case-insensitive trimmed key the merge uses. A topic with no contested decision returns the list unchanged.
+Pure helper `resolveContest(decisions, topic, action, now)` in `lib/api/brief-merge.ts` does the list edit; `action` is `'accept' | 'accept_unlock' | 'dismiss'`, `now` is an ISO timestamp. Topic match is the same case-insensitive trimmed key the merge uses. A topic with no contested decision returns the list unchanged.
+
+Contested locks sort first in the Decisions section, the structured editor and the markdown export (`lockedFirst`: contested locks, then locks, then the rest). Editing a contested decision's topic or text by hand in the structured editor drops `contested` (the builder settled it).
+
+### Dismiss memory
+
+Regen re-reads the whole transcript, so without memory a dismissed contest comes straight back on the next regen. **Dismiss** therefore records `contest_dismissed: { proposed, at }` on the locked decision (only ever on a lock; `dismissedFor` gates it on `PUT /api/briefs` and the raw-JSON normaliser; regen never takes it from the model, prev carries it). In `mergeLockedDecisions` an incoming contest is ignored when its `proposed` matches the dismissed one (trimmed, case-insensitive) or matches the decision's current text; a different proposal still lands, and `contest_dismissed` is carried forward alongside it. **Accept** / **Accept and unlock** clear both `contested` and `contest_dismissed`.
 
 ## Part B — confirm before a save drops a lock
 
@@ -62,7 +68,7 @@ Pure helper `lostLocks(prev, next): string[]` in `lib/api/brief-merge.ts`: the `
 
 ## Copy
 
-All new strings live in `lib/copy.ts` under `brief`: `contestedBadge`, `contestedLine(proposed, reason)`, `contestAccept`, `contestAcceptUnlock`, `contestDismiss`, `contestError`, `lockLossWarning(topics)`, `lockLossConfirm`, `lockLossCancel`, `confirmRestoreLockLoss(version, topics)`.
+All new strings live in `lib/copy.ts` under `brief`: `contestedBadge`, `contestedTitle`, `contestedLine(proposed, reason)`, `contestAccept`, `contestAcceptUnlock`, `contestDismiss`, `contestError`, `lockLossWarning(topics)`, `lockLossConfirm`, `lockLossCancel`, `confirmRestoreLockLoss(version, topics)`.
 
 ## Tests
 
