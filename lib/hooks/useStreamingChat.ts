@@ -27,6 +27,11 @@ export function useStreamingChat({ projectId }: { projectId: string }) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [streaming, setStreaming] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // A kickoff greeting that failed (network error, 5xx, or a stream that
+  // broke mid-way). Not the same as a deliberate decline (200 JSON). The
+  // maker view uses it to swap the generic empty-state line for a hint that
+  // the greeting failed — a blank chat otherwise reads as a broken product.
+  const [kickoffFailed, setKickoffFailed] = useState(false)
 
   // Append streamed text deltas onto the trailing (empty) agent placeholder.
   // Shared by streamMessage and kickoff.
@@ -82,6 +87,7 @@ export function useStreamingChat({ projectId }: { projectId: string }) {
     const nowIso = new Date().toISOString()
     setMessages((prev) => [...prev, { role: 'agent', content: '', created_at: nowIso }])
     setStreaming(true)
+    setKickoffFailed(false)
 
     try {
       const res = await apiFetch('/api/chat', {
@@ -130,8 +136,13 @@ export function useStreamingChat({ projectId }: { projectId: string }) {
         body: JSON.stringify({ session_id: sessionId }),
       })
 
-      // No-op (declined) responses come back as JSON, not an event stream.
-      if (!res.ok || !res.headers.get('Content-Type')?.includes('text/event-stream')) return
+      const isStream = res.headers.get('Content-Type')?.includes('text/event-stream')
+      if (!res.ok) {
+        setKickoffFailed(true)
+        return
+      }
+      // A 200 that isn't a stream is the route declining on purpose — silent.
+      if (!isStream) return
 
       setMessages((prev) => [...prev, { role: 'agent', content: '', created_at: new Date().toISOString() }])
       placeholderAdded = true
@@ -140,6 +151,7 @@ export function useStreamingChat({ projectId }: { projectId: string }) {
       queryClient.invalidateQueries({ queryKey: ['messages', sessionId] })
       queryClient.invalidateQueries({ queryKey: ['sessions', projectId] })
     } catch {
+      setKickoffFailed(true)
       // Drop the greeting entirely on failure, even if it partially streamed
       // in (#156) — a cut-off fragment reads as broken, while showing
       // nothing reads as a network blip (closer to the truth). `error` stays
@@ -158,5 +170,5 @@ export function useStreamingChat({ projectId }: { projectId: string }) {
     }
   }, [projectId, queryClient, consumeStream])
 
-  return { messages, setMessages, streaming, error, setError, streamMessage, kickoff }
+  return { messages, setMessages, streaming, error, setError, streamMessage, kickoff, kickoffFailed }
 }
