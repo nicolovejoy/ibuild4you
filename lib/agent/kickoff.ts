@@ -33,6 +33,12 @@ export function shouldKickoff(
   const last = messages[messages.length - 1]
   if (last && last.role !== 'agent') return false
 
+  // The session already opens with an agent message the maker hasn't answered
+  // yet — the welcome posted at creation (first session, or a return session
+  // with a welcome written for this round). That is the greeting; a kickoff
+  // on top would greet twice.
+  if (messages.length > 0 && !messages.some((m) => m.role === 'user')) return false
+
   // Returning-after-a-break only: there must be prior maker activity to recap,
   // either in this session or anywhere else on the project.
   const lastMakerInSessionMs = messages

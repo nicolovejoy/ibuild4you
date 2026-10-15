@@ -138,7 +138,7 @@ Requires `project_id`. Only these fields are accepted: `title`, `context`, `welc
 - Early sessions: broad discovery. Later sessions: more specific as brief fills in
 - At natural checkpoints, summarize back for validation ("So you want X and Y but not Z, right?")
 - System prompt includes: current living brief, builder review annotations, prior session history
-- **Who speaks first.** Only a brief's *first* session gets the canned `welcome_message` (#70) — a `welcome_message` set later is never posted. On session 2+ the agent greets via kickoff (`lib/agent/kickoff.ts` decides client-side, `/api/chat/kickoff` is the authority): always on an **empty** return session with prior maker history (PR #177), otherwise only ≥1hr after the maker's last message. Kickoff is maker-only — builder-side roles (incl. admins, who resolve to `owner`) never trigger it.
+- **Who speaks first.** A conversation opens with the builder's `welcome_message` **word for word**: always on a brief's first session (default copy if none is set), and on session 2+ only when that welcome is new for this round — one an earlier conversation already used is stale and is not replayed (`lib/sessions/welcome.ts`, applied at session creation and on share). The kickoff never greets into a session that already opens with a welcome. Otherwise, on session 2+ the agent greets via kickoff (`lib/agent/kickoff.ts` decides client-side, `/api/chat/kickoff` is the authority): always on an **empty** return session with prior maker history (PR #177), otherwise only ≥1hr after the maker's last message. Kickoff is maker-only — builder-side roles (incl. admins, who resolve to `owner`) never trigger it.
 
 ## MVP Scope
 

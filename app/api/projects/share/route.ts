@@ -10,6 +10,8 @@ import { generateWelcomeMessage } from '@/lib/agent/welcome-message'
 import { resolveBriefRole } from '@/lib/roles/brief-role'
 import { copy } from '@/lib/copy'
 import { normalizeEmail, isValidEmail } from '@/lib/email/normalize'
+import { welcomeToPost } from '@/lib/sessions/welcome'
+import { isArchivedSession } from '@/lib/sessions/active'
 import { ensureInviteResetLink } from '@/lib/auth/ensure-invite-account'
 import { scheduleGarmGrantSync, syncGarmGrantForEmail } from '@/lib/garm-grants'
 
@@ -136,16 +138,28 @@ export async function POST(request: Request) {
         .get()
 
       if (existingMessages.empty) {
-        // Use admin-reviewed welcome message if available, otherwise generate one
-        const welcomeText = (projectData.welcome_message as string) ||
-          await generateWelcomeMessage(
-            projectData.title as string,
-            projectData.context as string | undefined,
-            undefined,
-            { project_id },
-            toLocale(projectData.language)
-          ) ||
-          copy.chat.defaultWelcomeMessage(projectData.title as string)
+        // Same rule as session creation (lib/sessions/welcome.ts): the first
+        // conversation always opens with a welcome; a return conversation only
+        // with one written for this round, word for word. Archived sessions
+        // don't make this a return conversation (#105).
+        const projectSessions = await db.collection('sessions').where('project_id', '==', project_id).get()
+        const earlierSessions = projectSessions.docs.filter((d) => d.id !== sessionDoc.id)
+        const isFirstSession = earlierSessions.every((d) => isArchivedSession(d.data()))
+        const builderWelcome = welcomeToPost({
+          isFirstSession,
+          welcome: projectData.welcome_message as string | undefined,
+          earlierWelcomes: earlierSessions.map((d) => d.data().welcome_message as string | undefined),
+        })
+        // No builder welcome on a first conversation: generate one, else the default.
+        const welcomeText = builderWelcome ?? (isFirstSession
+          ? (await generateWelcomeMessage(
+              projectData.title as string,
+              projectData.context as string | undefined,
+              undefined,
+              { project_id },
+              toLocale(projectData.language)
+            )) || copy.chat.defaultWelcomeMessage(projectData.title as string)
+          : null)
 
         if (welcomeText) {
           await db.collection('messages').add({

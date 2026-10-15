@@ -252,10 +252,10 @@ describe('POST /api/sessions', () => {
   })
 
   // #70: the canned welcome is first-contact copy — it should NOT replay on
-  // return sessions. On session 2+, no agent message is inserted; Sam greets
-  // contextually instead.
-  it('does NOT insert the canned welcome on a return session (one already exists)', async () => {
-    mockExistingSessionsCount = 1 // a live session already exists → this is a return
+  // return sessions. A welcome an earlier conversation already used is stale;
+  // Sam greets contextually instead (kickoff).
+  it('does NOT replay a welcome an earlier conversation already used', async () => {
+    mockExistingSessionDocs = [{ data: () => ({ status: 'completed', welcome_message: 'Hello maker!' }) }]
 
     await POST(makePostRequest({ project_id: 'proj1' }))
 
@@ -263,6 +263,28 @@ describe('POST /api/sessions', () => {
     expect(batchSets).toHaveLength(1)
     expect(batchSets.find((s) => s.data.role === 'agent')).toBeUndefined()
     expect(batchSets[0].data.project_id).toBe('proj1')
+  })
+
+  // A welcome written for this round is posted word for word on a return
+  // conversation — builders put links and test steps in it that Sam's
+  // generated greeting dropped (Weather & Tides, session 2 lost the app URL).
+  it('posts a new welcome verbatim on a return conversation', async () => {
+    mockExistingSessionDocs = [{ data: () => ({ status: 'completed', welcome_message: 'Round one hello' }) }]
+    mockProjectData = { ...mockProjectData, welcome_message: 'Round two: try https://app.example.com' }
+
+    await POST(makePostRequest({ project_id: 'proj1' }))
+
+    const msgSet = batchSets.find((s) => s.data.role === 'agent')
+    expect(msgSet!.data.content).toBe('Round two: try https://app.example.com')
+  })
+
+  it('posts no default welcome on a return conversation when none is set', async () => {
+    mockExistingSessionDocs = [{ data: () => ({ status: 'completed' }) }]
+    mockProjectData = { title: 'No Welcome' }
+
+    await POST(makePostRequest({ project_id: 'proj1' }))
+
+    expect(batchSets.find((s) => s.data.role === 'agent')).toBeUndefined()
   })
 
   it('inserts the welcome only on the first session (none exist yet)', async () => {

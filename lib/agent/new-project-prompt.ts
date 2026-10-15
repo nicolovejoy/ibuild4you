@@ -21,7 +21,7 @@ When I say "give me the output", produce ONLY valid JSON matching this schema (n
   "requester_last_name": "Maker's last name",
   "language": "en or fr. The language the maker is addressed in (agent replies, outbound messages, link previews). Omit for English.",
   "context": "Background info the agent uses to skip basic discovery questions. Multi-sentence is fine.",
-  "welcome_message": "The greeting the agent sends when the maker opens the project for the first time. Sets tone.",
+  "welcome_message": "Posted word for word as the agent's first message when the maker opens the project for the first time. Sets tone.",
   "nudge_message": "Optional. Verbatim outbound nudge text used to invite the maker back. Omit to let the system auto-draft.",
   "voice_sample": "Optional. One paragraph showing how the builder texts this person by hand — anchors AI-generated outbound copy.",
   "identity": "Optional. Custom agent persona override. Omit unless the builder explicitly wants a non-default persona.",

@@ -78,6 +78,15 @@ describe('shouldKickoff', () => {
     ).toBe(false)
   })
 
+  // A return session that opens with the builder's welcome (posted verbatim at
+  // creation) already has its greeting; kicking off would greet twice.
+  it('does not fire on a return session that already opens with a welcome', () => {
+    const messages = [{ role: 'agent' as const, created_at: ago(3 * KICKOFF_GAP_MS) }]
+    expect(
+      shouldKickoff(messages, NOW, { projectLastMakerMessageAt: ago(2 * KICKOFF_GAP_MS) }),
+    ).toBe(false)
+  })
+
   it('does not fire when the maker is mid-turn even if project history is stale', () => {
     const messages = [{ role: 'user' as const, created_at: ago(KICKOFF_GAP_MS / 2) }]
     expect(
