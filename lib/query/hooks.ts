@@ -14,11 +14,13 @@ export type CurrentUser = {
   first_name: string | null
   last_name: string | null
   account_label: string | null
+  locale: import('@/lib/locale').Locale | null
 }
 
-export function useCurrentUser() {
+export function useCurrentUser({ enabled = true }: { enabled?: boolean } = {}) {
   return useQuery<CurrentUser>({
     queryKey: queryKeys.currentUser(),
+    enabled,
     queryFn: async () => {
       const res = await apiFetch('/api/users/me')
       if (!res.ok) throw new Error('Failed to load user')
@@ -35,6 +37,7 @@ export function useUpdateCurrentUser() {
       first_name?: string
       last_name?: string
       account_label?: string
+      locale?: import('@/lib/locale').Locale
     }) => {
       const res = await apiFetch('/api/users/me', {
         method: 'PATCH',

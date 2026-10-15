@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { getAuthenticatedUser, getAdminDb } from '@/lib/api/firebase-server-helpers'
 import { invalidateUser } from '@/lib/api/auth-cache'
 import { normalizeEmail } from '@/lib/email/normalize'
+import { isLocale } from '@/lib/locale'
 
 // GET /api/users/me — return the current user's profile and system roles.
 // User doc data is read by getAuthenticatedUser and reused here (no second read).
@@ -16,6 +17,7 @@ export async function GET(request: Request) {
     first_name: auth.userData?.first_name ?? null,
     last_name: auth.userData?.last_name ?? null,
     account_label: auth.userData?.account_label ?? null,
+    locale: auth.userData?.locale ?? null,
   })
   if (process.env.NODE_ENV !== 'production') {
     res.headers.set('X-Cache', auth.cacheStatus)
@@ -24,19 +26,21 @@ export async function GET(request: Request) {
 }
 
 // PATCH /api/users/me — partial update of the caller's profile.
-// Accepts any subset of { first_name, last_name, account_label }. A name edit
+// Accepts any subset of { first_name, last_name, account_label, locale }. A name edit
 // requires first_name (last_name rides along); account_label can be set alone
 // (a self-assigned nav label like "main" / "test account"). Empty string clears
-// the label.
+// the label. locale ('en' | 'fr') is the viewer's UI language, set by the
+// EN/FR toggle; it can be set alone.
 export async function PATCH(request: Request) {
   const auth = await getAuthenticatedUser(request)
   if (auth.error) return auth.error
 
   const body = await request.json()
-  const { first_name, last_name, account_label } = body
+  const { first_name, last_name, account_label, locale } = body
 
   const hasName = first_name !== undefined
   const hasLabel = account_label !== undefined
+  const hasLocale = locale !== undefined
 
   if (hasName && typeof first_name !== 'string') {
     return NextResponse.json({ error: 'first_name must be a string' }, { status: 400 })
@@ -44,9 +48,12 @@ export async function PATCH(request: Request) {
   if (hasLabel && typeof account_label !== 'string') {
     return NextResponse.json({ error: 'account_label must be a string' }, { status: 400 })
   }
-  if (!hasName && !hasLabel) {
+  if (hasLocale && !isLocale(locale)) {
+    return NextResponse.json({ error: 'locale must be one of: en, fr' }, { status: 400 })
+  }
+  if (!hasName && !hasLabel && !hasLocale) {
     return NextResponse.json(
-      { error: 'first_name or account_label is required' },
+      { error: 'first_name, account_label or locale is required' },
       { status: 400 }
     )
   }
@@ -66,6 +73,9 @@ export async function PATCH(request: Request) {
   }
   if (hasLabel) {
     fields.account_label = account_label.trim()
+  }
+  if (hasLocale) {
+    fields.locale = locale
   }
 
   // Upsert the users doc (passcode-era users may not have one yet)
@@ -108,7 +118,9 @@ export async function PATCH(request: Request) {
     first_name: auth.userData?.first_name ?? null,
     last_name: auth.userData?.last_name ?? null,
     account_label: auth.userData?.account_label ?? null,
+    locale: auth.userData?.locale ?? null,
     ...(hasName ? { first_name: fields.first_name, last_name: fields.last_name } : {}),
     ...(hasLabel ? { account_label: fields.account_label } : {}),
+    ...(hasLocale ? { locale } : {}),
   })
 }

@@ -1,4 +1,5 @@
-import { copy } from '@/lib/copy'
+import { makerCopy } from '@/lib/copy-maker'
+import type { Locale } from '@/lib/locale'
 import { getTurnIndicator, type TurnState } from '@/lib/turn-indicator'
 import { viewerBriefRole } from '@/lib/roles/display'
 import { projectActivityKey } from '@/lib/api/sort-projects-by-activity'
@@ -22,22 +23,12 @@ export interface BriefSection {
 // folders (Done, then Archived) last.
 const SECTION_ORDER: SectionKey[] = ['awaiting', 'yours', 'reviewing', 'contributing', 'done', 'archived']
 
-const SECTION_META: Record<SectionKey, { title: string; emptyHint?: string }> = {
-  awaiting: { title: copy.dashboard.sections.awaiting.title },
-  yours: {
-    title: copy.dashboard.sections.yours.title,
-    emptyHint: copy.dashboard.sections.yours.emptyHint,
-  },
-  reviewing: {
-    title: copy.dashboard.sections.reviewing.title,
-    emptyHint: copy.dashboard.sections.reviewing.emptyHint,
-  },
-  contributing: {
-    title: copy.dashboard.sections.contributing.title,
-    emptyHint: copy.dashboard.sections.contributing.emptyHint,
-  },
-  done: { title: copy.dashboard.sections.done.title },
-  archived: { title: copy.dashboard.sections.archived.title },
+// Titles and hints come from the maker copy, so the dashboard reads in the
+// viewer's language.
+function sectionMeta(key: SectionKey, locale: Locale): { title: string; emptyHint?: string } {
+  const sections = makerCopy[locale].dashboard.sections
+  const meta: { title: string; emptyHint?: string } = sections[key]
+  return { title: meta.title, emptyHint: meta.emptyHint }
 }
 
 const ROLE_SECTION = {
@@ -80,7 +71,7 @@ function sortSection(briefs: Project[]): Project[] {
   })
 }
 
-export function groupBriefs(projects: Project[]): BriefSection[] {
+export function groupBriefs(projects: Project[], locale: Locale = 'en'): BriefSection[] {
   const buckets: Record<SectionKey, Project[]> = {
     awaiting: [],
     yours: [],
@@ -93,8 +84,7 @@ export function groupBriefs(projects: Project[]): BriefSection[] {
 
   return SECTION_ORDER.map((key) => ({
     key,
-    title: SECTION_META[key].title,
-    emptyHint: SECTION_META[key].emptyHint,
+    ...sectionMeta(key, locale),
     briefs: sortSection(buckets[key]),
   }))
 }

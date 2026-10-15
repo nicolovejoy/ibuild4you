@@ -7,16 +7,21 @@ import { UserMenu } from '@/components/user-menu'
 import { useCurrentUser } from '@/lib/query/hooks'
 import { publicCopy, type Locale } from '@/lib/copy-public'
 import { LangSwitch } from '@/components/public/lang'
+import { useLocale } from '@/components/locale-provider'
+import { makerCopy } from '@/lib/copy-maker'
 
 /**
- * `locale` / `langSwitchHref` are only passed by the translated public pages
- * (About, in both languages); everywhere else the header is English with no
- * language toggle, since the app behind sign-in isn't translated.
+ * Public pages (About, both languages) pass `locale` + `langSwitchHref`: the
+ * toggle is a link to the same page in the other language. Everywhere else the
+ * header follows the viewer's language and the toggle switches it in place.
  */
 export function SiteHeader({
-  locale = 'en',
+  locale: pageLocale,
   langSwitchHref,
 }: { locale?: Locale; langSwitchHref?: string } = {}) {
+  const { locale: viewerLocale, setLocale } = useLocale()
+  const locale = pageLocale ?? viewerLocale
+  const toggle = makerCopy[locale].common.langToggle
   const t = publicCopy[locale]
   const { data: currentUser } = useCurrentUser()
   const isAdmin = currentUser?.system_roles?.includes('admin') ?? false
@@ -44,7 +49,19 @@ export function SiteHeader({
             <Link href={t.aboutHref} className={`text-sm px-2 py-1 rounded-md ${linkColor}`}>
               {t.header.about}
             </Link>
-            {langSwitchHref && <LangSwitch locale={locale} href={langSwitchHref} />}
+            {langSwitchHref ? (
+              <LangSwitch locale={locale} href={langSwitchHref} />
+            ) : (
+              <button
+                type="button"
+                onClick={() => setLocale(locale === 'en' ? 'fr' : 'en')}
+                aria-label={toggle.aria}
+                title={toggle.aria}
+                className={`text-xs font-semibold tracking-wider px-2 py-1 rounded-md ${linkColor}`}
+              >
+                {toggle.label}
+              </button>
+            )}
             <UserMenu />
           </div>
         </div>

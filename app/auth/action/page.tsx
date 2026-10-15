@@ -9,7 +9,7 @@ import { authErrorMessage, validatePassword } from '@/lib/auth/password'
 import { parseActionMode, safeContinueUrl } from '@/lib/auth/action-params'
 import { StatusMessage } from '@/components/ui/StatusMessage'
 import { LoadingButton } from '@/components/ui/LoadingButton'
-import { copy } from '@/lib/copy'
+import { useLocale, useMakerCopy } from '@/components/locale-provider'
 
 // Custom Firebase email-action handler.
 //
@@ -30,6 +30,8 @@ import { copy } from '@/lib/copy'
 const REDIRECT_SECONDS = 5
 
 function ActionHandler() {
+  const { locale } = useLocale()
+  const t = useMakerCopy().action
   const params = useSearchParams()
   const mode = parseActionMode(params.get('mode'))
   const oobCode = params.get('oobCode') || ''
@@ -43,7 +45,9 @@ function ActionHandler() {
 
   // null = still verifying the code, '' = code was rejected.
   const [email, setEmail] = useState<string | null>(null)
-  const [verifyError, setVerifyError] = useState<string | null>(null)
+  // The raw error, rendered via authErrorMessage at display time so it follows
+  // the viewer's language even if that resolves after verification.
+  const [verifyError, setVerifyError] = useState<unknown>(null)
 
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
@@ -65,7 +69,7 @@ function ActionHandler() {
       .catch((err) => {
         if (!cancelled) {
           setEmail('')
-          setVerifyError(authErrorMessage(err))
+          setVerifyError(err)
         }
       })
     return () => {
@@ -88,13 +92,13 @@ function ActionHandler() {
     e.preventDefault()
     setError(null)
 
-    const invalid = validatePassword(password)
+    const invalid = validatePassword(password, locale)
     if (invalid) {
       setError(invalid)
       return
     }
     if (password !== confirm) {
-      setError('Passwords do not match.')
+      setError(t.mismatch)
       return
     }
 
@@ -103,7 +107,7 @@ function ActionHandler() {
       await confirmPasswordReset(auth, oobCode, password)
       setDone(true)
     } catch (err) {
-      setError(authErrorMessage(err))
+      setError(authErrorMessage(err, locale))
     } finally {
       setLoading(false)
     }
@@ -120,10 +124,10 @@ function ActionHandler() {
   if (!mode || !oobCode) {
     return shell(
       <>
-        <h1 className="text-lg font-semibold text-gray-900">{copy.auth.actionInvalidTitle}</h1>
-        <p className="text-sm text-gray-600">{copy.auth.actionInvalidBody}</p>
+        <h1 className="text-lg font-semibold text-gray-900">{t.invalidTitle}</h1>
+        <p className="text-sm text-gray-600">{t.invalidBody}</p>
         <Link href="/auth/login" className="text-sm text-blue-600 hover:underline">
-          Go to sign in
+          {t.goToSignIn}
         </Link>
       </>
     )
@@ -132,10 +136,10 @@ function ActionHandler() {
   if (mode !== 'resetPassword') {
     return shell(
       <>
-        <h1 className="text-lg font-semibold text-gray-900">{copy.auth.actionUnsupportedTitle}</h1>
-        <p className="text-sm text-gray-600">{copy.auth.actionUnsupportedBody}</p>
+        <h1 className="text-lg font-semibold text-gray-900">{t.unsupportedTitle}</h1>
+        <p className="text-sm text-gray-600">{t.unsupportedBody}</p>
         <Link href="/auth/login" className="text-sm text-blue-600 hover:underline">
-          Go to sign in
+          {t.goToSignIn}
         </Link>
       </>
     )
@@ -144,29 +148,29 @@ function ActionHandler() {
   if (done) {
     return shell(
       <>
-        <StatusMessage type="success" message={copy.auth.actionResetSuccess} />
+        <StatusMessage type="success" message={t.resetSuccess} />
         <p className="text-sm text-gray-600">
-          {copy.auth.actionRedirecting(countdown)}
+          {t.redirecting(countdown)}
         </p>
         <a href={continueUrl} className="text-sm text-blue-600 hover:underline">
-          Continue now
+          {t.continueNow}
         </a>
       </>
     )
   }
 
   if (email === null) {
-    return shell(<p className="text-sm text-gray-500">Checking your link…</p>)
+    return shell(<p className="text-sm text-gray-500">{t.checking}</p>)
   }
 
   if (email === '') {
     return shell(
       <>
-        <h1 className="text-lg font-semibold text-gray-900">{copy.auth.actionExpiredTitle}</h1>
-        {verifyError && <StatusMessage type="error" message={verifyError} />}
-        <p className="text-sm text-gray-600">{copy.auth.actionExpiredBody}</p>
+        <h1 className="text-lg font-semibold text-gray-900">{t.expiredTitle}</h1>
+        {verifyError != null && <StatusMessage type="error" message={authErrorMessage(verifyError, locale)} />}
+        <p className="text-sm text-gray-600">{t.expiredBody}</p>
         <Link href="/auth/login" className="text-sm text-blue-600 hover:underline">
-          Go to sign in
+          {t.goToSignIn}
         </Link>
       </>
     )
@@ -174,7 +178,7 @@ function ActionHandler() {
 
   return shell(
     <form onSubmit={handleSubmit} className="space-y-4">
-      <h1 className="text-lg font-semibold text-gray-900">{copy.auth.actionResetTitle}</h1>
+      <h1 className="text-lg font-semibold text-gray-900">{t.resetTitle}</h1>
       {error && <StatusMessage type="error" message={error} />}
 
       {/*
@@ -185,7 +189,7 @@ function ActionHandler() {
       */}
       <div>
         <label htmlFor="action-email" className="block text-sm font-medium text-gray-700 mb-1">
-          Email
+          {t.emailLabel}
         </label>
         <input
           id="action-email"
@@ -200,7 +204,7 @@ function ActionHandler() {
 
       <div>
         <label htmlFor="action-password" className="block text-sm font-medium text-gray-700 mb-1">
-          New password
+          {t.newPassword}
         </label>
         <input
           id="action-password"
@@ -217,7 +221,7 @@ function ActionHandler() {
 
       <div>
         <label htmlFor="action-confirm" className="block text-sm font-medium text-gray-700 mb-1">
-          Confirm new password
+          {t.confirmPassword}
         </label>
         <input
           id="action-confirm"
@@ -231,20 +235,21 @@ function ActionHandler() {
         />
       </div>
 
-      <p className="text-sm text-gray-500">{copy.auth.setPasswordHelp}</p>
+      <p className="text-sm text-gray-500">{t.setPasswordHelp}</p>
 
       <LoadingButton type="submit" loading={loading} fullWidth variant="primary">
-        Set password
+        {t.submit}
       </LoadingButton>
     </form>
   )
 }
 
 export default function AuthActionPage() {
+  const { common } = useMakerCopy()
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen flex items-center justify-center text-gray-400">Loading…</div>
+        <div className="min-h-screen flex items-center justify-center text-gray-400">{common.loading}</div>
       }
     >
       <ActionHandler />

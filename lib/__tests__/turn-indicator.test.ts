@@ -105,3 +105,19 @@ describe('getTurnIndicator', () => {
     expect(result?.label).toBe('Waiting on sam')
   })
 })
+
+describe('getTurnIndicator in French', () => {
+  it('translates the maker-facing labels and keeps the state', () => {
+    const yours = getTurnIndicator(makeProject(), 'maker', 'fr')
+    expect(yours?.label).toBe('À vous')
+    expect(yours?.state).toBe('your_turn')
+    const waiting = getTurnIndicator(
+      makeProject({ last_maker_message_at: '2026-01-02T00:00:00Z' }),
+      'maker',
+      'fr'
+    )
+    expect(waiting?.label).toBe('En attente du développeur')
+    expect(getTurnIndicator(makeProject(), 'builder', 'fr')?.label).toBe('En attente de Sam')
+    expect(getTurnIndicator(makeProject({ status: 'completed' }), 'maker', 'fr')?.label).toBe('Terminé')
+  })
+})

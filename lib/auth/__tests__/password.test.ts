@@ -70,3 +70,15 @@ describe('authErrorMessage', () => {
     expect(authErrorMessage(undefined)).toMatch(/went wrong|try again/i)
   })
 })
+
+describe('French messages', () => {
+  it('translates validation and auth errors', () => {
+    expect(validatePassword('short', 'fr')).toMatch(/au moins 8 caractères/)
+    expect(authErrorMessage({ code: 'auth/wrong-password' }, 'fr')).toMatch(/incorrect/)
+    expect(authErrorMessage({ code: 'nope' }, 'fr')).toMatch(/Une erreur/)
+  })
+
+  it('defaults to English', () => {
+    expect(authErrorMessage({ code: 'auth/wrong-password' })).toBe('Email or password is incorrect. Please try again.')
+  })
+})

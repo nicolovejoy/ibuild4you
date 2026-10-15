@@ -17,7 +17,8 @@ type Turn = NonNullable<ReturnType<typeof getTurnIndicator>>
 export function TurnBadge({ turn, className }: { turn: Turn; className: string }) {
   const [pinned, setPinned] = useState(false)
 
-  if (turn.label !== copy.glossary.needsSetup.term) {
+  // Keyed on state, not label, so a translated label still works.
+  if (turn.state !== 'needs_setup') {
     return <span className={className}>{turn.label}</span>
   }
 

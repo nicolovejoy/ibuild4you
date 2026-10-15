@@ -88,6 +88,7 @@ describe('GET /api/users/me', () => {
       first_name: 'Sam',
       last_name: 'Lee',
       account_label: null,
+      locale: null,
     })
     expect(mockUserGet).not.toHaveBeenCalled()
   })
@@ -99,6 +100,13 @@ describe('GET /api/users/me', () => {
     }
     const res = await GET(new Request('http://localhost/api/users/me'))
     await expect(res.json()).resolves.toMatchObject({ account_label: 'test account' })
+  })
+
+  it('returns the saved locale, or null when unset', async () => {
+    authResult = { ...authResult, userData: { first_name: 'Sam', locale: 'fr' } }
+    await expect((await GET(new Request('http://localhost/api/users/me'))).json()).resolves.toMatchObject({ locale: 'fr' })
+    authResult = { ...authResult, userData: { first_name: 'Sam' } }
+    await expect((await GET(new Request('http://localhost/api/users/me'))).json()).resolves.toMatchObject({ locale: null })
   })
 })
 
@@ -141,6 +149,22 @@ describe('PATCH /api/users/me', () => {
     )
     expect(mockBatchCommit).not.toHaveBeenCalled()
     expect(mockInvalidateUser).toHaveBeenCalledWith('u1')
+  })
+
+  it('updates locale alone without requiring a name or syncing projects', async () => {
+    requesterProjects = [{ ref: { id: 'p1' } }]
+    const res = await PATCH(patchReq({ locale: 'fr' }))
+    expect(res.status).toBe(200)
+    expect(mockUserUpdate).toHaveBeenCalledWith(expect.objectContaining({ locale: 'fr' }))
+    expect(mockBatchCommit).not.toHaveBeenCalled()
+    expect(mockInvalidateUser).toHaveBeenCalledWith('u1')
+    await expect(res.json()).resolves.toMatchObject({ locale: 'fr' })
+  })
+
+  it('returns 400 for an unsupported locale', async () => {
+    const res = await PATCH(patchReq({ locale: 'de' }))
+    expect(res.status).toBe(400)
+    expect(mockUserUpdate).not.toHaveBeenCalled()
   })
 
   it('clears account_label when passed an empty string', async () => {

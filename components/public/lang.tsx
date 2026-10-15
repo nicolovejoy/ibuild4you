@@ -1,23 +1,31 @@
 'use client'
 
 import { useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { publicCopy, type Locale } from '@/lib/copy-public'
+import { useLocale, usePageLocale } from '@/components/locale-provider'
 
 /**
- * The app has one root layout with <html lang="en">. The French public pages
- * also put lang="fr" on their own wrapper (what screen readers and browser
- * translation honour), and this sets the document-level attribute to match
- * while the page is mounted, restoring it on the way out.
+ * A public page's language comes from its URL. While mounted this pins the
+ * app-wide locale (header, user menu, <html lang>) to it, and a French page
+ * remembers French for the rest of the visit (sign-in, dashboard).
+ *
+ * An English page seen by a viewer who prefers French (cookie or saved
+ * profile — e.g. an old link to "/") moves them to the French page instead.
+ * The EN toggle records English first, so choosing English sticks.
  */
-export function HtmlLang({ locale }: { locale: Locale }) {
+export function usePublicPageLocale(locale: Locale, otherLanguageHref: string) {
+  usePageLocale(locale)
+  const { preferredLocale } = useLocale()
+  const router = useRouter()
   useEffect(() => {
-    const root = document.documentElement
-    const previous = root.lang
-    root.lang = locale
-    return () => {
-      root.lang = previous
-    }
-  }, [locale])
+    if (locale === 'en' && preferredLocale !== 'en') router.replace(otherLanguageHref)
+  }, [locale, preferredLocale, otherLanguageHref, router])
+}
+
+/** usePublicPageLocale for server-component pages (About). Renders nothing. */
+export function PublicPageLocale({ locale, otherLanguageHref }: { locale: Locale; otherLanguageHref: string }) {
+  usePublicPageLocale(locale, otherLanguageHref)
   return null
 }
 
@@ -35,10 +43,14 @@ export function LangSwitch({
   const { label, aria } = publicCopy[locale].langSwitch
   const to = href ?? publicCopy[locale].langSwitch.href
   const target = locale === 'en' ? 'fr' : 'en'
+  const { setLocale } = useLocale()
   return (
     <a
       href={to}
       hrefLang={target}
+      // Record the choice before navigating, so the other page doesn't bounce
+      // the viewer back to their old preference.
+      onClick={() => setLocale(target)}
       aria-label={aria}
       title={aria}
       className={

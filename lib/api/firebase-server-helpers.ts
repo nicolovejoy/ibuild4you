@@ -12,6 +12,8 @@ import {
   shadowCheckLocalAllowlist,
 } from '@/lib/garm-shadow'
 
+import { isLocale, type Locale } from '@/lib/locale'
+
 export { ADMIN_EMAILS }
 
 // User doc fields we cache alongside auth so callers don't re-read users/<uid>.
@@ -19,6 +21,7 @@ export type CachedUserData = {
   first_name: string | null
   last_name: string | null
   account_label: string | null
+  locale: Locale | null // viewer's chosen UI language (users.locale)
 }
 
 // Firestore Admin error codes we care about for HTTP-status mapping.
@@ -263,6 +266,7 @@ export async function getAuthenticatedUser(request: Request): Promise<AuthSucces
             first_name: (raw.first_name as string | undefined) ?? null,
             last_name: (raw.last_name as string | undefined) ?? null,
             account_label: (raw.account_label as string | undefined) ?? null,
+            locale: isLocale(raw.locale) ? raw.locale : null,
           }
         : null
       setCachedUser(uid, { systemRoles, userData })

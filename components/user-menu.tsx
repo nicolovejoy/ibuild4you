@@ -9,7 +9,7 @@ import type { User as FirebaseUser } from 'firebase/auth'
 import { useQueryClient } from '@tanstack/react-query'
 import { useCurrentUser, useUpdateCurrentUser } from '@/lib/query/hooks'
 import { SetPasswordModal } from '@/components/SetPasswordModal'
-import { copy } from '@/lib/copy'
+import { useMakerCopy } from '@/components/locale-provider'
 
 export function UserMenu() {
   const [user, setUser] = useState<FirebaseUser | null>(null)
@@ -22,6 +22,7 @@ export function UserMenu() {
   const { data: currentUser } = useCurrentUser()
   const updateUser = useUpdateCurrentUser()
   const isAdmin = currentUser?.system_roles?.includes('admin') ?? false
+  const t = useMakerCopy().common
 
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged((firebaseUser) => {
@@ -33,7 +34,7 @@ export function UserMenu() {
   const handleSignOut = async () => {
     queryClient.clear()
     await signOut(auth)
-    router.push('/')
+    router.push(t.homeHref)
     router.refresh()
   }
 
@@ -86,7 +87,7 @@ export function UserMenu() {
                       if (e.key === 'Enter') saveLabel()
                       if (e.key === 'Escape') setEditingLabel(false)
                     }}
-                    placeholder="e.g. main, test"
+                    placeholder={t.labelPlaceholder}
                     maxLength={24}
                     className="flex-1 min-w-0 text-sm border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-brand-navy"
                   />
@@ -94,14 +95,14 @@ export function UserMenu() {
                     onClick={saveLabel}
                     disabled={updateUser.isPending}
                     className="p-1 rounded hover:bg-gray-100 text-gray-600"
-                    aria-label="Save account name"
+                    aria-label={t.saveAccountName}
                   >
                     <Check className="h-4 w-4" />
                   </button>
                   <button
                     onClick={() => setEditingLabel(false)}
                     className="p-1 rounded hover:bg-gray-100 text-gray-600"
-                    aria-label="Cancel"
+                    aria-label={t.cancel}
                   >
                     <X className="h-4 w-4" />
                   </button>
@@ -112,13 +113,13 @@ export function UserMenu() {
                   className="w-full flex items-center justify-between gap-2 text-left group"
                 >
                   <span className="text-xs text-gray-500">
-                    Account name
+                    {t.accountName}
                     {currentUser?.account_label ? (
                       <span className="block text-sm text-gray-800">
                         {currentUser.account_label}
                       </span>
                     ) : (
-                      <span className="block text-sm text-gray-400 italic">Add a label</span>
+                      <span className="block text-sm text-gray-400 italic">{t.addLabel}</span>
                     )}
                   </span>
                   <Pencil className="h-3.5 w-3.5 text-gray-400 group-hover:text-gray-600 shrink-0" />
@@ -129,12 +130,12 @@ export function UserMenu() {
             <button
               onClick={() => {
                 setShowDropdown(false)
-                router.push('/about')
+                router.push(t.aboutHref)
               }}
               className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
             >
               <Info className="h-4 w-4" />
-              About
+              {t.about}
             </button>
             <button
               onClick={() => {
@@ -144,7 +145,7 @@ export function UserMenu() {
               className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
             >
               <KeyRound className="h-4 w-4" />
-              {copy.auth.setPassword}
+              {t.setPassword}
             </button>
             {isAdmin && (
               <button
@@ -155,7 +156,7 @@ export function UserMenu() {
                 className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
               >
                 <Shield className="h-4 w-4" />
-                Admin
+                {t.admin}
               </button>
             )}
             <button
@@ -163,7 +164,7 @@ export function UserMenu() {
               className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
             >
               <LogOut className="h-4 w-4" />
-              Sign out
+              {t.signOut}
             </button>
           </div>
         </>
