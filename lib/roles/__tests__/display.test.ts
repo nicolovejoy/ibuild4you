@@ -47,3 +47,11 @@ describe('viewerBriefRole', () => {
     expect(viewerBriefRole('owner', null)).toBe('reviewer')
   })
 })
+
+describe('briefRoleLabel in French', () => {
+  it('translates the label and tooltip', () => {
+    expect(briefRoleLabel('originator', 'fr')).toBe('Initiateur')
+    expect(briefRoleShort('contributor', 'fr')).toMatch(/Apporte sa voix/)
+    expect(briefRoleLabel('originator')).toBe('Originator')
+  })
+})

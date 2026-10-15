@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useMakerCopy } from '@/components/locale-context'
 import { useRouter } from 'next/navigation'
 import { ChevronDown, Check } from 'lucide-react'
 import { useProjects } from '@/lib/query/hooks'
@@ -27,6 +28,7 @@ export function BriefSwitcher({
 }) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
+  const c = useMakerCopy().chat
   const { data: projects } = useProjects()
 
   const others = (projects ?? []).filter((p) => p.id !== currentId)
@@ -53,7 +55,7 @@ export function BriefSwitcher({
       <button
         onClick={() => setOpen((v) => !v)}
         className="flex items-center gap-1.5 min-w-0 hover:opacity-80"
-        title="Switch brief"
+        title={c.switchBrief}
       >
         {label}
         <ChevronDown className="h-4 w-4 text-gray-400 shrink-0" />
@@ -64,7 +66,7 @@ export function BriefSwitcher({
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
           <div className="absolute left-0 mt-2 w-72 max-h-80 overflow-auto bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
             <div className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
-              Your briefs
+              {c.yourBriefs}
             </div>
             {(projects ?? []).map((p) => {
               const isCurrent = p.id === currentId

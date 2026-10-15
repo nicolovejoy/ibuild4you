@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { formatRelativeTime, makerCopy } from '../copy-maker'
+import { formatMessageTimestamp, formatRelativeTime, makerCopy } from '../copy-maker'
 
 const now = new Date('2026-10-15T12:00:00Z')
 const ago = (ms: number) => new Date(now.getTime() - ms).toISOString()
@@ -32,5 +32,28 @@ describe('makerCopy', () => {
   it('pluralises French counts from 2 up', () => {
     expect(makerCopy.fr.dashboard.features(1)).toBe('1 fonctionnalité')
     expect(makerCopy.fr.dashboard.decisions(2)).toBe('2 décisions')
+  })
+})
+
+describe('formatMessageTimestamp', () => {
+  it('shows only the time for today, in each language', () => {
+    const today = new Date('2026-10-15T15:05:00')
+    const now = new Date('2026-10-15T18:00:00')
+    expect(formatMessageTimestamp(today.toISOString(), 'en', now)).toMatch(/3:05\sPM/)
+    expect(formatMessageTimestamp(today.toISOString(), 'fr', now)).toBe('15:05')
+  })
+
+  it('adds a short date for older messages', () => {
+    const earlier = new Date('2026-10-08T07:53:00')
+    const now = new Date('2026-10-15T18:00:00')
+    expect(formatMessageTimestamp(earlier.toISOString(), 'en', now)).toMatch(/^Oct 8 /)
+    expect(formatMessageTimestamp(earlier.toISOString(), 'fr', now)).toMatch(/^8 oct\. 07:53$/)
+  })
+})
+
+describe('roles', () => {
+  it('keeps the English glossary terms and translates to French', () => {
+    expect(makerCopy.en.roles.originator.term).toBe('Originator')
+    expect(makerCopy.fr.roles.reviewer.term).toBe('Relecteur')
   })
 })

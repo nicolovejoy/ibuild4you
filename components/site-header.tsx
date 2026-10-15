@@ -7,7 +7,7 @@ import { UserMenu } from '@/components/user-menu'
 import { useCurrentUser } from '@/lib/query/hooks'
 import { publicCopy, type Locale } from '@/lib/copy-public'
 import { LangSwitch } from '@/components/public/lang'
-import { useLocale } from '@/components/locale-provider'
+import { useLocale } from '@/components/locale-context'
 import { makerCopy } from '@/lib/copy-maker'
 
 /**

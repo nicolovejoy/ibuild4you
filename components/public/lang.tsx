@@ -3,7 +3,7 @@
 import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { publicCopy, type Locale } from '@/lib/copy-public'
-import { useLocale, usePageLocale } from '@/components/locale-provider'
+import { useLocale, usePageLocale } from '@/components/locale-context'
 
 /**
  * A public page's language comes from its URL. While mounted this pins the

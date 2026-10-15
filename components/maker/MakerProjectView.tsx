@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, Send, ChevronDown, ChevronUp, MessageSquare, HelpCircle, Paperclip, Pencil, ThumbsUp, ThumbsDown } from 'lucide-react'
 import { getTurnIndicator } from '@/lib/turn-indicator'
-import { isSupportedUpload, SUPPORTED_TYPES_LABEL } from '@/lib/files/supported-types'
+import { isSupportedUpload } from '@/lib/files/supported-types'
 import { BuildTimestamp } from '@/components/build-timestamp'
 import { Card, CardBody } from '@/components/ui/Card'
 import { MessageContent } from '@/components/ui/MessageContent'
@@ -32,7 +32,8 @@ import { apiFetch } from '@/lib/firebase/api-fetch'
 import { useStreamingChat } from '@/lib/hooks/useStreamingChat'
 import { useRealtimeMessages } from '@/lib/hooks/useRealtimeMessages'
 import { useEscapeBack } from '@/lib/hooks/useEscapeBack'
-import { copy } from '@/lib/copy'
+import { formatMessageTimestamp, formatShortDate } from '@/lib/copy-maker'
+import { useLocale, useMakerCopy } from '@/components/locale-context'
 import { formatCostUsd } from '@/lib/observability/session-cost'
 import { shouldKickoff } from '@/lib/agent/kickoff'
 import { shouldSendOnEnter, composerHeightPx } from '@/lib/chat/composer'
@@ -56,6 +57,8 @@ export function MakerProjectView({ projectId, userEmail, participantView }: { pr
   const [editingName, setEditingName] = useState(false)
   const [editFirst, setEditFirst] = useState('')
   const [editLast, setEditLast] = useState('')
+  const { locale } = useLocale()
+  const c = useMakerCopy().chat
   useEscapeBack('/dashboard')
   const activeSession = sessions?.find((s) => s.status === 'active')
   const completedSessions = sessions?.filter((s) => s.status === 'completed') || []
@@ -76,7 +79,7 @@ export function MakerProjectView({ projectId, userEmail, participantView }: { pr
   // maker always has a sense of "what you're doing here" even before they look
   // at the chat. Turn indicator only appears for meaningful states (no
   // "Needs setup" — that's filtered out in getTurnIndicator for makers).
-  const turn = getTurnIndicator(project, project?.viewer_role ?? null)
+  const turn = getTurnIndicator(project, project?.viewer_role ?? null, locale)
 
   return (
     <div className="min-h-screen bg-brand-cream">
@@ -96,7 +99,7 @@ export function MakerProjectView({ projectId, userEmail, participantView }: { pr
               <button
                 onClick={() => { setEditFirst(currentUser?.first_name || ''); setEditLast(currentUser?.last_name || ''); setEditingName(true) }}
                 className="flex items-center gap-1 text-sm text-gray-500 hover:text-brand-navy shrink-0"
-                title="Edit your name"
+                title={c.editName}
               >
                 <span className="hidden sm:inline">{displayName}</span>
                 <Pencil className="h-3 w-3" />
@@ -108,7 +111,7 @@ export function MakerProjectView({ projectId, userEmail, participantView }: { pr
                 type="text"
                 value={editFirst}
                 onChange={(e) => setEditFirst(e.target.value)}
-                placeholder="First"
+                placeholder={c.firstShort}
                 className="w-20 px-1.5 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-brand-navy"
                 autoFocus
               />
@@ -116,7 +119,7 @@ export function MakerProjectView({ projectId, userEmail, participantView }: { pr
                 type="text"
                 value={editLast}
                 onChange={(e) => setEditLast(e.target.value)}
-                placeholder="Last"
+                placeholder={c.lastShort}
                 className="w-20 px-1.5 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-brand-navy"
               />
               <LoadingButton
@@ -130,15 +133,15 @@ export function MakerProjectView({ projectId, userEmail, participantView }: { pr
                   }
                 }}
               >
-                Save
+                {c.save}
               </LoadingButton>
-              <button onClick={() => setEditingName(false)} className="text-xs text-gray-500 hover:text-gray-700">Cancel</button>
+              <button onClick={() => setEditingName(false)} className="text-xs text-gray-500 hover:text-gray-700">{c.cancel}</button>
             </div>
           )}
             <Link
-              href="/about"
+              href={locale === 'fr' ? '/fr/about' : '/about'}
               className="p-1.5 hover:bg-gray-100 rounded text-gray-400 hover:text-gray-600 shrink-0"
-              title="What is iBuild4you?"
+              title={c.whatIsThis}
             >
               <HelpCircle className="h-4 w-4" />
             </Link>
@@ -151,11 +154,11 @@ export function MakerProjectView({ projectId, userEmail, participantView }: { pr
           <div className="flex items-center gap-2 mt-1.5 text-xs text-brand-slate">
             <span
               className="text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-500 text-white shrink-0"
-              title={briefRoleShort(viewerBriefRole(project?.viewer_role, project?.viewer_brief_role))}
+              title={briefRoleShort(viewerBriefRole(project?.viewer_role, project?.viewer_brief_role), locale)}
             >
-              {briefRoleLabel(viewerBriefRole(project?.viewer_role, project?.viewer_brief_role))}
+              {briefRoleLabel(viewerBriefRole(project?.viewer_role, project?.viewer_brief_role), locale)}
             </span>
-            <span className="truncate">Chatting with {copy.chat.agentLabel}</span>
+            <span className="truncate">{c.chattingWith(c.agentLabel)}</span>
             {turn && (
               <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium shrink-0 ${turn.className}`}>
                 {turn.label}
@@ -169,13 +172,13 @@ export function MakerProjectView({ projectId, userEmail, participantView }: { pr
         <div className="bg-blue-50 border-b border-blue-200">
           <div className="max-w-2xl mx-auto px-4 py-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-sm">
             <span className="text-blue-900">
-              You&rsquo;ve joined this conversation{displayName ? ` as ${displayName}` : ''} — everyone on this brief sees your messages.
+              {c.joinedAs(displayName)}
             </span>
             <button
               onClick={() => router.push(`/projects/${project?.slug || projectId}`)}
               className="text-blue-700 hover:text-blue-900 font-medium underline underline-offset-2 shrink-0"
             >
-              Back to builder view
+              {c.backToBuilder}
             </button>
           </div>
         </div>
@@ -233,6 +236,8 @@ function MakerChat({
   const createSession = useCreateSession()
   const uploadFiles = useUploadFiles()
   const sessionId = activeSession?.id
+  const { locale } = useLocale()
+  const c = useMakerCopy().chat
 
   const { messages, setMessages, streaming, error, setError, streamMessage, kickoff } = useStreamingChat({ projectId })
 
@@ -314,7 +319,7 @@ function MakerChat({
       console.warn('upload_rejected_too_large', oversized.map((f) => ({
         filename: f.name, size: f.size, content_type: f.type,
       })))
-      setError(`File "${oversized[0].name}" exceeds 25MB limit`)
+      setError(c.fileTooBig(oversized[0].name))
       return
     }
     // Reject types the agent can't read up front, so the maker gets an instant,
@@ -327,13 +332,11 @@ function MakerChat({
       console.warn('upload_rejected_unsupported_type', unsupported.map((f) => ({
         filename: f.name, content_type: f.type,
       })))
-      setError(
-        `Sorry, I can't open "${unsupported[0].name}". I can read ${SUPPORTED_TYPES_LABEL} — could you export it as a PDF and try again?`,
-      )
+      setError(c.unsupportedFile(unsupported[0].name, c.supportedTypes))
       return
     }
     setPendingFiles((prev) => [...prev, ...newFiles])
-  }, [setError])
+  }, [setError, c])
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     if (e.dataTransfer.types.includes('Files')) {
@@ -397,7 +400,7 @@ function MakerChat({
         // auto-greet this brand-new (now empty, since #70) session.
         kickoffAttempted.current = true
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to start session')
+        setError(err instanceof Error ? err.message : c.startFailed)
         setCreatingSession(false)
         if (!overrideText) setPendingFiles(filesToUpload) // restore files
         return
@@ -424,8 +427,8 @@ function MakerChat({
           setPendingFiles(failed.map((f) => f.file))
           setError(
             uploaded.length === 0
-              ? `Failed to upload ${filesToUpload.length === 1 ? 'file' : 'files'}: ${failed[0].error}`
-              : `${failed.length} of ${filesToUpload.length} files failed to upload — try those again.`,
+              ? c.uploadFailedOne(filesToUpload.length, failed[0].error)
+              : c.uploadFailedSome(failed.length, filesToUpload.length),
           )
         }
         if (uploaded.length === 0) {
@@ -434,7 +437,7 @@ function MakerChat({
           return
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to upload files')
+        setError(err instanceof Error ? err.message : c.uploadFailed)
         setPendingFiles(filesToUpload) // restore files
         setUploading(false)
         return
@@ -532,7 +535,7 @@ function MakerChat({
             onClick={() => fileInputRef.current?.click()}
             disabled={streaming || isLoading || uploading}
             className="p-2.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg disabled:opacity-50 transition-colors"
-            title="Attach files"
+            title={c.attachFiles}
           >
             <Paperclip className="h-5 w-5" />
           </button>
@@ -554,7 +557,7 @@ function MakerChat({
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
-            placeholder="Type a message..."
+            placeholder={c.placeholder}
             // The two-line touch minimum comes from CSS (pointer-coarse) so
             // there is no first-paint jump (#183).
             rows={1}
@@ -564,7 +567,7 @@ function MakerChat({
           <button
             onClick={() => handleSend()}
             disabled={!canSend}
-            title="Send (Cmd/Ctrl+Enter)"
+            title={c.send}
             className="p-2.5 bg-brand-navy text-white rounded-lg hover:bg-brand-navy-light disabled:bg-brand-slate disabled:cursor-not-allowed transition-colors"
           >
             <Send className="h-5 w-5" />
@@ -573,7 +576,7 @@ function MakerChat({
         {/* Keyboard hint for people with a physical keyboard; a touch screen
             has no modifier keys worth mentioning, so it is hidden there. */}
         <p className="pl-12 text-xs text-gray-400 pointer-coarse:hidden">
-          Enter adds a line · Cmd/Ctrl+Enter sends
+          {c.keyboardHint}
         </p>
 
         {/* Pending files preview */}
@@ -590,7 +593,7 @@ function MakerChat({
         )}
 
         {uploading && (
-          <p className="text-xs text-gray-400 pl-12">Uploading files...</p>
+          <p className="text-xs text-gray-400 pl-12">{c.uploading}</p>
         )}
       </div>
 
@@ -604,7 +607,7 @@ function MakerChat({
       ) : displayMessages.length === 0 ? (
         <div className="text-center text-brand-slate py-8">
           <MessageSquare className="h-10 w-10 mx-auto mb-3 text-gray-300" />
-          <p>Send a message to start the conversation.</p>
+          <p>{c.emptyState}</p>
         </div>
       ) : (
         <div className="space-y-3">
@@ -621,8 +624,8 @@ function MakerChat({
                   : 'bg-white border border-gray-200 text-gray-800'
               }`}>
                 <p className={`text-[10px] mb-1 ${msg.role === 'user' ? 'text-white/70' : 'text-gray-400'}`}>
-                  {msg.role === 'user' ? (msg.sender_display_name || msg.sender_email?.split('@')[0] || 'You') : copy.chat.agentLabel}
-                  {msg.created_at ? ` \u00b7 ${formatTimestamp(msg.created_at)}` : ''}
+                  {msg.role === 'user' ? (msg.sender_display_name || msg.sender_email?.split('@')[0] || c.you) : c.agentLabel}
+                  {msg.created_at ? ` \u00b7 ${formatMessageTimestamp(msg.created_at, locale)}` : ''}
                 </p>
                 {/* Inline file attachments */}
                 {msg.file_ids && msg.file_ids.length > 0 && (
@@ -648,14 +651,14 @@ function MakerChat({
                     <button
                       onClick={() => handleRate(msg.id!, msg.rating, 'up')}
                       className="p-1 rounded hover:bg-gray-100"
-                      title={msg.rating === 'up' ? 'Remove rating' : 'Helpful'}
+                      title={msg.rating === 'up' ? c.removeRating : c.helpful}
                     >
                       <ThumbsUp className={`h-3.5 w-3.5 ${msg.rating === 'up' ? 'text-emerald-600 fill-emerald-100' : 'text-gray-300 hover:text-gray-500'}`} />
                     </button>
                     <button
                       onClick={() => handleRate(msg.id!, msg.rating, 'down')}
                       className="p-1 rounded hover:bg-gray-100"
-                      title={msg.rating === 'down' ? 'Remove rating' : 'Not helpful'}
+                      title={msg.rating === 'down' ? c.removeRating : c.notHelpful}
                     >
                       <ThumbsDown className={`h-3.5 w-3.5 ${msg.rating === 'down' ? 'text-rose-600 fill-rose-100' : 'text-gray-300 hover:text-gray-500'}`} />
                     </button>
@@ -673,6 +676,7 @@ function MakerChat({
 
 export function MockupsPanel({ mockups }: { mockups: WireframeMockup[] }) {
   const [expanded, setExpanded] = useState(false)
+  const c = useMakerCopy().chat
 
   return (
     <Card hover={false}>
@@ -682,7 +686,7 @@ export function MockupsPanel({ mockups }: { mockups: WireframeMockup[] }) {
           className="w-full flex items-center justify-between text-left"
         >
           <h3 className="text-sm font-semibold text-brand-slate uppercase tracking-wide">
-            Layout ideas ({mockups.length})
+            {c.layoutIdeas(mockups.length)}
           </h3>
           {expanded ? (
             <ChevronUp className="h-4 w-4 text-gray-400" />
@@ -706,6 +710,7 @@ function FilesPanel({ files, projectId }: { files: ProjectFile[]; projectId: str
   const [expanded, setExpanded] = useState(false)
   // Read-only folder grouping for makers — folder management stays builder-side.
   const { data: folders } = useProjectFolders(projectId)
+  const c = useMakerCopy().chat
 
   return (
     <Card hover={false}>
@@ -715,7 +720,7 @@ function FilesPanel({ files, projectId }: { files: ProjectFile[]; projectId: str
           className="w-full flex items-center justify-between text-left"
         >
           <h3 className="text-sm font-semibold text-brand-slate uppercase tracking-wide">
-            Files ({files.length})
+            {c.files(files.length)}
           </h3>
           {expanded ? (
             <ChevronUp className="h-4 w-4 text-gray-400" />
@@ -735,12 +740,13 @@ function FilesPanel({ files, projectId }: { files: ProjectFile[]; projectId: str
 
 function SessionHistory({ sessions }: { sessions: Session[] }) {
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const c = useMakerCopy().chat
 
   return (
     <Card hover={false}>
       <CardBody>
         <h3 className="text-sm font-semibold text-brand-slate uppercase tracking-wide mb-2">
-          Previous conversations
+          {c.previousConversations}
         </h3>
         <div className="space-y-1">
           {sessions.map((session, i) => (
@@ -771,7 +777,9 @@ function SessionAccordion({
 }) {
   const { data: messages, isLoading } = useMessages(expanded ? session.id : undefined)
 
-  const date = new Date(session.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  const { locale } = useLocale()
+  const c = useMakerCopy().chat
+  const date = formatShortDate(session.created_at, locale)
 
   return (
     <div>
@@ -779,7 +787,7 @@ function SessionAccordion({
         onClick={onToggle}
         className="w-full flex items-center justify-between py-2 px-2 rounded hover:bg-gray-50 text-sm text-gray-700"
       >
-        <span>Conversation {sessionNumber} &middot; {date}</span>
+        <span>{c.conversationN(sessionNumber, date)}</span>
         <div className="flex items-center gap-2 text-gray-400">
           {session.token_usage_input != null && (
             <span className="text-[10px]">
@@ -795,7 +803,7 @@ function SessionAccordion({
           {isLoading ? (
             <Skeleton className="h-12 w-full rounded" />
           ) : messages?.length === 0 ? (
-            <p className="text-xs text-gray-400 py-2">No messages in this session.</p>
+            <p className="text-xs text-gray-400 py-2">{c.noMessagesInSession}</p>
           ) : (
             messages?.map((msg, i) => (
               <div key={msg.id || i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
@@ -805,8 +813,8 @@ function SessionAccordion({
                     : 'bg-gray-50 border border-gray-100 text-gray-700'
                 }`}>
                   <p className="text-[10px] text-gray-400 mb-0.5">
-                    {msg.role === 'user' ? (msg.sender_display_name || msg.sender_email?.split('@')[0] || 'You') : 'Assistant'}
-                    {msg.created_at ? ` \u00b7 ${formatTimestamp(msg.created_at)}` : ''}
+                    {msg.role === 'user' ? (msg.sender_display_name || msg.sender_email?.split('@')[0] || c.you) : c.assistant}
+                    {msg.created_at ? ` \u00b7 ${formatMessageTimestamp(msg.created_at, locale)}` : ''}
                   </p>
                   <MessageContent content={msg.content} />
                 </div>
@@ -817,15 +825,6 @@ function SessionAccordion({
       )}
     </div>
   )
-}
-
-function formatTimestamp(iso: string): string {
-  const date = new Date(iso)
-  const now = new Date()
-  const isToday = date.toDateString() === now.toDateString()
-  const time = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
-  if (isToday) return time
-  return `${date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} ${time}`
 }
 
 // --- Name prompt for first-time makers ---
@@ -839,6 +838,7 @@ function NamePromptModal({
 }) {
   const [first, setFirst] = useState('')
   const [last, setLast] = useState('')
+  const c = useMakerCopy().chat
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -851,13 +851,13 @@ function NamePromptModal({
       <Card hover={false}>
         <CardBody>
           <form onSubmit={handleSubmit} className="space-y-4 w-72">
-            <h2 className="text-lg font-semibold text-brand-charcoal">What should we call you?</h2>
-            <p className="text-sm text-gray-600">Just so your builder knows who they&apos;re working with.</p>
+            <h2 className="text-lg font-semibold text-brand-charcoal">{c.namePromptTitle}</h2>
+            <p className="text-sm text-gray-600">{c.namePromptBody}</p>
             <input
               type="text"
               value={first}
               onChange={(e) => setFirst(e.target.value)}
-              placeholder="First name"
+              placeholder={c.firstName}
               className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
               autoFocus
               required
@@ -866,11 +866,11 @@ function NamePromptModal({
               type="text"
               value={last}
               onChange={(e) => setLast(e.target.value)}
-              placeholder="Last name (optional)"
+              placeholder={c.lastNameOptional}
               className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
             />
             <LoadingButton type="submit" variant="primary" loading={saving} disabled={!first.trim()}>
-              Continue
+              {c.continue}
             </LoadingButton>
           </form>
         </CardBody>
