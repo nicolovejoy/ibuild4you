@@ -4,7 +4,7 @@ import { renderPrototypeFeedbackBlock, type PrototypeFeedbackItem } from './prot
 import { renderPrototypeContextBlock, type PrototypeContextItem } from './prototype-context'
 import { renderArtifactContextBlock, type ArtifactContextItem } from './artifact-context'
 import { renderSiblingDecisionsBlock, type SiblingDecision } from './sibling-decisions'
-import type { BriefContent, BriefRole } from '@/lib/types'
+import type { BriefContent, BriefDecision, BriefRole } from '@/lib/types'
 import { LOCALE_NAMES, type Locale } from '@/lib/locale'
 
 // Maker name and gap-since-last-message are read live per request (not
@@ -44,6 +44,13 @@ interface SystemPromptInput {
 }
 
 const ONE_HOUR_MS = 60 * 60 * 1000
+
+// #197: a contested lock is shown as still standing, with what the maker asked
+// for, so the agent neither re-litigates it each session nor treats it as done.
+function contestSuffix(d: BriefDecision): string {
+  if (!d.contested) return ''
+  return ` — contested: the maker confirmed they want "${d.contested.proposed}" (${d.contested.reason}). A builder will decide; don't reopen it and don't treat it as changed.`
+}
 
 function humanizeGap(ms: number): string {
   const hours = ms / (60 * 60 * 1000)
@@ -160,7 +167,7 @@ ${builderDirectives.map((d, i) => `${i + 1}. ${d}`).join('\n')}
 
 These are durable constraints for this project (locked conventions, do-not-use rules, settled choices the build depends on). They are NOT open for casual revisiting:
 
-${lockedDecisions.map((d) => `- **${d.topic}:** ${d.decision}`).join('\n')}
+${lockedDecisions.map((d) => `- **${d.topic}:** ${d.decision}${contestSuffix(d)}`).join('\n')}
 
 Before accepting any new thing the user tells you, check it against these locked decisions. If something they say **contradicts** a locked decision (e.g. they ask for a tool that's on the do-not-use list, or a convention that conflicts with one above), do NOT silently go along with it. Surface the conflict plainly — name the locked decision and ask whether they really mean to reverse it. Only treat it as changed if they explicitly confirm the reversal. Otherwise the locked decision stands.
 `.trim())

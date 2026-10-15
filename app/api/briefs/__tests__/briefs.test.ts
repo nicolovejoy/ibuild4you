@@ -283,6 +283,25 @@ describe('PUT /api/briefs', () => {
     ])
   })
 
+  it('keeps contested on a locked decision and drops it elsewhere or when malformed (#197)', async () => {
+    const contested = { proposed: 'Square', reason: 'switched POS' }
+    await PUT(makePutRequest({
+      project_id: 'proj1',
+      content: {
+        ...validContent,
+        decisions: [
+          { topic: 'Payment', decision: 'Stripe only', locked: true, contested },
+          { topic: 'Auth', decision: 'Google', contested },
+          { topic: 'DB', decision: 'Firestore', locked: true, contested: { proposed: 'x' } },
+        ],
+      },
+    }))
+    const decisions = mockUpsertBrief.mock.calls[0][2].decisions
+    expect(decisions[0].contested).toEqual(contested)
+    expect(decisions[1].contested).toBeUndefined()
+    expect(decisions[2].contested).toBeUndefined()
+  })
+
   // --- Decision provenance (#121) ---
 
   it('restores stamps the payload dropped, from the stored brief', async () => {

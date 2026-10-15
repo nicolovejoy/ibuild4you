@@ -8,6 +8,25 @@ import {
 import type { BriefContent } from '@/lib/types'
 
 describe('normalizeBriefContent', () => {
+  it('keeps contested on a locked decision only, and only when well-formed (#197)', () => {
+    const contested = { proposed: 'Square', reason: 'switched POS' }
+    const r = normalizeBriefContent({
+      decisions: [
+        { topic: 'Payment', decision: 'Stripe only', locked: true, contested },
+        { topic: 'Auth', decision: 'Google', contested },
+        { topic: 'DB', decision: 'Firestore', locked: true, contested: { proposed: 'x', reason: 3 } },
+      ],
+    })
+    expect(r.ok).toBe(true)
+    if (r.ok) {
+      expect(r.value.decisions).toEqual([
+        { topic: 'Payment', decision: 'Stripe only', locked: true, contested },
+        { topic: 'Auth', decision: 'Google' },
+        { topic: 'DB', decision: 'Firestore', locked: true },
+      ])
+    }
+  })
+
   it('accepts a full valid brief', () => {
     const input = {
       problem: 'p',

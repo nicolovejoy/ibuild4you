@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getAuthenticatedUser, getAdminDb, getProjectRole, requireRole } from '@/lib/api/firebase-server-helpers'
 import { upsertBrief } from '@/lib/api/briefs'
-import { stampDecisionProvenance } from '@/lib/api/brief-merge'
+import { contestFor, stampDecisionProvenance } from '@/lib/api/brief-merge'
 import type { BriefContent, BriefSource } from '@/lib/types'
 
 // GET /api/briefs?project_id=xxx — get the latest brief for a project
@@ -74,18 +74,23 @@ export async function PUT(request: Request) {
           .filter(
             (d: unknown) => d && typeof (d as Record<string, unknown>).topic === 'string' && typeof (d as Record<string, unknown>).decision === 'string'
           )
-          .map((d: Record<string, unknown>) => ({
-            topic: d.topic as string,
-            decision: d.decision as string,
-            // #71: preserve the durable-constraint flag set by the builder.
-            ...(d.locked === true && { locked: true }),
-            // #121: explicit provenance in the payload is honored — an outside
-            // agent may know the real origin. Anything else is stamped below.
-            ...(typeof d.decided_at === 'string' && { decided_at: d.decided_at }),
-            ...((typeof d.decided_in_session === 'string' || d.decided_in_session === null) && {
-              decided_in_session: d.decided_in_session as string | null,
-            }),
-          }))
+          .map((d: Record<string, unknown>) => {
+            // #197: a contest survives a round-trip only on a locked decision.
+            const contested = contestFor(d.locked === true, d.contested)
+            return {
+              topic: d.topic as string,
+              decision: d.decision as string,
+              // #71: preserve the durable-constraint flag set by the builder.
+              ...(d.locked === true && { locked: true }),
+              ...(contested && { contested }),
+              // #121: explicit provenance in the payload is honored — an outside
+              // agent may know the real origin. Anything else is stamped below.
+              ...(typeof d.decided_at === 'string' && { decided_at: d.decided_at }),
+              ...((typeof d.decided_in_session === 'string' || d.decided_in_session === null) && {
+                decided_in_session: d.decided_in_session as string | null,
+              }),
+            }
+          })
       : [],
     open_risks: Array.isArray(content.open_risks)
       ? content.open_risks.filter((r: unknown) => typeof r === 'string' && (r as string).trim())
