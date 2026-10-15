@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import { briefPreviewMeta } from '@/lib/og/preview-copy'
 import { resolveBriefPreview } from '@/lib/og/resolve-brief'
-import { BriefLanguageHint } from '@/components/locale-provider'
+import { BriefLanguageHint } from '@/components/locale-context'
 import { toLocale } from '@/lib/locale'
 
 // Server layout for /projects/<slug-or-id>. Gives a shared brief

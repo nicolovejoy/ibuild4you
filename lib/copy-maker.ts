@@ -10,6 +10,7 @@
 // the other fails type-check. Pick the language with useMakerCopy().
 
 import { copy } from './copy'
+import { SUPPORTED_TYPES_LABEL } from './files/supported-types'
 import type { Locale } from './locale'
 
 const en = {
@@ -105,6 +106,74 @@ const en = {
     waitingForBuilder: 'Waiting for builder',
     yourTurn: copy.dashboard.turnYourTurn,
     waitingOn: copy.dashboard.turnAwaitingMaker,
+  },
+  chat: {
+    agentLabel: copy.chat.agentLabel,
+    assistant: 'Assistant',
+    you: 'You',
+    chattingWith: (agent: string) => `Chatting with ${agent}`,
+    editName: 'Edit your name',
+    firstShort: 'First',
+    lastShort: 'Last',
+    save: 'Save',
+    cancel: 'Cancel',
+    whatIsThis: 'What is iBuild4you?',
+    joinedAs: (name: string | null) =>
+      `You’ve joined this conversation${name ? ` as ${name}` : ''} — everyone on this brief sees your messages.`,
+    backToBuilder: 'Back to builder view',
+    attachFiles: 'Attach files',
+    placeholder: copy.chat.placeholder,
+    send: 'Send (Cmd/Ctrl+Enter)',
+    keyboardHint: 'Enter adds a line · Cmd/Ctrl+Enter sends',
+    uploading: 'Uploading files...',
+    emptyState: copy.chat.makerEmptyState,
+    removeRating: 'Remove rating',
+    helpful: 'Helpful',
+    notHelpful: 'Not helpful',
+    fileTooBig: (name: string) => `File "${name}" exceeds 25MB limit`,
+    unsupportedFile: (name: string, supported: string) =>
+      `Sorry, I can't open "${name}". I can read ${supported} — could you export it as a PDF and try again?`,
+    supportedTypes: SUPPORTED_TYPES_LABEL,
+    startFailed: 'Failed to start session',
+    uploadFailedOne: (n: number, error: string) => `Failed to upload ${n === 1 ? 'file' : 'files'}: ${error}`,
+    uploadFailedSome: (failed: number, total: number) => `${failed} of ${total} files failed to upload — try those again.`,
+    uploadFailed: 'Failed to upload files',
+    layoutIdeas: (n: number) => `Layout ideas (${n})`,
+    files: (n: number) => `Files (${n})`,
+    previousConversations: 'Previous conversations',
+    conversationN: (n: number, date: string) => `Conversation ${n} · ${date}`,
+    noMessagesInSession: 'No messages in this session.',
+    namePromptTitle: 'What should we call you?',
+    namePromptBody: 'Just so your builder knows who they’re working with.',
+    firstName: 'First name',
+    lastNameOptional: 'Last name (optional)',
+    continue: 'Continue',
+    switchBrief: 'Switch brief',
+    yourBriefs: copy.dashboard.title,
+    drawingLayout: 'Drawing layout...',
+  },
+  files: {
+    empty: 'No files shared yet.',
+    pinned: 'Pinned',
+    unfiled: 'Unfiled',
+    download: 'Download',
+  },
+  roles: {
+    originator: { term: copy.glossary.originator.term, short: copy.glossary.originator.short },
+    contributor: { term: copy.glossary.contributor.term, short: copy.glossary.contributor.short },
+    reviewer: { term: copy.glossary.reviewer.term, short: copy.glossary.reviewer.short },
+  },
+  setPassword: {
+    title: copy.auth.setPassword,
+    help: copy.auth.setPasswordHelp,
+    success: copy.auth.setPasswordSuccess,
+    resetLinkSent: copy.auth.migrationBanner.resetLinkSent,
+    newPassword: 'New password',
+    confirmPassword: 'Confirm password',
+    mismatch: 'Passwords do not match.',
+    noEmail: 'Your account has no email address to attach a password to.',
+    saving: 'Saving...',
+    done: 'Done',
   },
   time: {
     justNow: 'just now',
@@ -223,6 +292,77 @@ const fr: MakerCopy = {
     yourTurn: 'À vous',
     waitingOn: (name: string) => `En attente de ${name}`,
   },
+  chat: {
+    agentLabel: copy.chat.agentLabel,
+    assistant: 'Assistant',
+    you: 'Vous',
+    chattingWith: (agent: string) => `En conversation avec ${agent}`,
+    editName: 'Modifier votre nom',
+    firstShort: 'Prénom',
+    lastShort: 'Nom',
+    save: 'Enregistrer',
+    cancel: 'Annuler',
+    whatIsThis: 'Qu’est-ce qu’iBuild4you ?',
+    joinedAs: (name: string | null) =>
+      `Vous avez rejoint cette conversation${name ? ` en tant que ${name}` : ''} : tous les participants du brief voient vos messages.`,
+    backToBuilder: 'Retour à la vue développeur',
+    attachFiles: 'Joindre des fichiers',
+    placeholder: 'Écrivez un message…',
+    send: 'Envoyer (Cmd/Ctrl+Entrée)',
+    keyboardHint: 'Entrée ajoute une ligne · Cmd/Ctrl+Entrée envoie',
+    uploading: 'Envoi des fichiers…',
+    emptyState: 'Envoyez un message pour commencer la conversation.',
+    removeRating: 'Retirer l’évaluation',
+    helpful: 'Utile',
+    notHelpful: 'Pas utile',
+    fileTooBig: (name: string) => `Le fichier « ${name} » dépasse la limite de 25 Mo`,
+    unsupportedFile: (name: string, supported: string) =>
+      `Désolé, je ne peux pas ouvrir « ${name} ». Je sais lire ${supported} : pourriez-vous l’exporter en PDF et réessayer ?`,
+    supportedTypes: 'les PDF, les images, les fichiers texte ou de code et les documents Word (.docx)',
+    startFailed: 'Impossible de démarrer la conversation',
+    uploadFailedOne: (n: number, error: string) =>
+      `Échec de l’envoi ${n === 1 ? 'du fichier' : 'des fichiers'} : ${error}`,
+    uploadFailedSome: (failed: number, total: number) =>
+      `${failed} fichier${failed > 1 ? 's' : ''} sur ${total} n’${failed > 1 ? 'ont' : 'a'} pas pu être envoyé${failed > 1 ? 's' : ''} : réessayez.`,
+    uploadFailed: 'Échec de l’envoi des fichiers',
+    layoutIdeas: (n: number) => `Idées de mise en page (${n})`,
+    files: (n: number) => `Fichiers (${n})`,
+    previousConversations: 'Conversations précédentes',
+    conversationN: (n: number, date: string) => `Conversation ${n} · ${date}`,
+    noMessagesInSession: 'Aucun message dans cette conversation.',
+    namePromptTitle: 'Comment devons-nous vous appeler ?',
+    namePromptBody: 'Pour que la personne qui développe votre projet sache avec qui elle travaille.',
+    firstName: 'Prénom',
+    lastNameOptional: 'Nom (facultatif)',
+    continue: 'Continuer',
+    switchBrief: 'Changer de brief',
+    yourBriefs: 'Vos briefs',
+    drawingLayout: 'Dessin de la mise en page…',
+  },
+  files: {
+    empty: 'Aucun fichier partagé pour l’instant.',
+    pinned: 'Épinglés',
+    unfiled: 'Sans dossier',
+    download: 'Télécharger',
+  },
+  roles: {
+    originator: { term: 'Initiateur', short: 'La personne qui a apporté l’idée de ce brief. En général la première à écrire.' },
+    contributor: { term: 'Contributeur', short: 'Apporte sa voix, ses questions et son contexte au brief, aux côtés de l’initiateur.' },
+    reviewer: { term: 'Relecteur', short: 'Annote et valide : signale ce qui manque ou n’est pas clair, et oriente la prochaine conversation.' },
+  },
+  setPassword: {
+    title: 'Définir un mot de passe',
+    help: 'Ajoutez une connexion par e-mail et mot de passe pour vous connecter sans choisir de compte Google. Nous recommandons un mot de passe généré par un gestionnaire de mots de passe.',
+    success: 'Mot de passe enregistré. Vous pouvez maintenant vous connecter avec votre e-mail et votre mot de passe.',
+    resetLinkSent:
+      'Consultez vos e-mails : nous vous avons envoyé un lien pour définir votre mot de passe. Introuvable ? Vérifiez vos courriers indésirables et déplacez-le dans votre boîte de réception.',
+    newPassword: 'Nouveau mot de passe',
+    confirmPassword: 'Confirmer le mot de passe',
+    mismatch: 'Les mots de passe ne correspondent pas.',
+    noEmail: 'Votre compte n’a pas d’adresse e-mail à laquelle associer un mot de passe.',
+    saving: 'Enregistrement…',
+    done: 'Terminé',
+  },
   time: {
     justNow: 'à l’instant',
     minutesAgo: (n: number) => `il y a ${n} min`,
@@ -248,4 +388,23 @@ export function formatRelativeTime(iso: string, locale: Locale, now: Date = new 
   if (diffHours < 24) return t.hoursAgo(diffHours)
   if (diffDays < 7) return t.daysAgo(diffDays)
   return date.toLocaleDateString(t.dateLocale, { month: 'short', day: 'numeric' })
+}
+
+/** Message timestamp: time today, else short date + time. */
+export function formatMessageTimestamp(iso: string, locale: Locale, now: Date = new Date()): string {
+  const tag = makerCopy[locale].time.dateLocale
+  const date = new Date(iso)
+  // French clocks read 07:53; English keeps 7:53 AM.
+  const time = date.toLocaleTimeString(tag, { hour: locale === 'fr' ? '2-digit' : 'numeric', minute: '2-digit' })
+  if (date.toDateString() === now.toDateString()) return time
+  return `${date.toLocaleDateString(tag, { month: 'short', day: 'numeric' })} ${time}`
+}
+
+/** Short date ("Oct 8" / "8 oct."), optionally with the year. */
+export function formatShortDate(iso: string, locale: Locale, withYear = false): string {
+  return new Date(iso).toLocaleDateString(makerCopy[locale].time.dateLocale, {
+    month: 'short',
+    day: 'numeric',
+    ...(withYear ? { year: 'numeric' } : {}),
+  })
 }

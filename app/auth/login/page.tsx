@@ -11,7 +11,7 @@ import {
 import { requestPasswordReset } from '@/lib/auth/request-reset'
 import { auth } from '@/lib/firebase/client'
 import { authErrorMessage } from '@/lib/auth/password'
-import { useLocale, useMakerCopy } from '@/components/locale-provider'
+import { useLocale, useMakerCopy } from '@/components/locale-context'
 import { useRouter } from 'next/navigation'
 import { StatusMessage } from '@/components/ui/StatusMessage'
 import { LoadingButton } from '@/components/ui/LoadingButton'

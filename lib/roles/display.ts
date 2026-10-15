@@ -1,18 +1,19 @@
-import { copy } from '@/lib/copy'
+import { makerCopy } from '@/lib/copy-maker'
+import type { Locale } from '@/lib/locale'
 import type { BriefRole, MemberRole } from '@/lib/types'
 import { defaultBriefRole, isBriefRole } from './brief-role'
 
 // Display helpers for brief roles (RAAC vocab). The persisted/semantic side
 // lives in brief-role.ts; this module is the user-facing label layer.
 
-/** Human-facing label for a brief role, e.g. 'Originator'. */
-export function briefRoleLabel(role: BriefRole): string {
-  return copy.glossary[role].term
+/** Human-facing label for a brief role, e.g. 'Originator' / 'Initiateur'. */
+export function briefRoleLabel(role: BriefRole, locale: Locale = 'en'): string {
+  return makerCopy[locale].roles[role].term
 }
 
-/** One-line description for tooltips, sourced from the glossary. */
-export function briefRoleShort(role: BriefRole): string {
-  return copy.glossary[role].short
+/** One-line description for tooltips (English sourced from the glossary). */
+export function briefRoleShort(role: BriefRole, locale: Locale = 'en'): string {
+  return makerCopy[locale].roles[role].short
 }
 
 /**

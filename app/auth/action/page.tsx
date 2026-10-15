@@ -9,7 +9,7 @@ import { authErrorMessage, validatePassword } from '@/lib/auth/password'
 import { parseActionMode, safeContinueUrl } from '@/lib/auth/action-params'
 import { StatusMessage } from '@/components/ui/StatusMessage'
 import { LoadingButton } from '@/components/ui/LoadingButton'
-import { useLocale, useMakerCopy } from '@/components/locale-provider'
+import { useLocale, useMakerCopy } from '@/components/locale-context'
 
 // Custom Firebase email-action handler.
 //

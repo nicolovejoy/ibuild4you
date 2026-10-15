@@ -9,7 +9,7 @@ import type { User as FirebaseUser } from 'firebase/auth'
 import { useQueryClient } from '@tanstack/react-query'
 import { useCurrentUser, useUpdateCurrentUser } from '@/lib/query/hooks'
 import { SetPasswordModal } from '@/components/SetPasswordModal'
-import { useMakerCopy } from '@/components/locale-provider'
+import { useMakerCopy } from '@/components/locale-context'
 
 export function UserMenu() {
   const [user, setUser] = useState<FirebaseUser | null>(null)

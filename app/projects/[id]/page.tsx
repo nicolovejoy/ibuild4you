@@ -8,6 +8,7 @@ import { useEffect } from 'react'
 import { BuilderProjectView } from '@/components/builder/BuilderProjectView'
 import { MakerProjectView } from '@/components/maker/MakerProjectView'
 import { selectProjectView, isBuilderSideRole } from '@/lib/projects/project-view'
+import { useMakerCopy } from '@/components/locale-context'
 
 export default function ProjectPage() {
   const { user, loading: authLoading, isAuthenticated } = useAuth()
@@ -16,6 +17,7 @@ export default function ProjectPage() {
   const params = useParams()
   const searchParams = useSearchParams()
   const slugOrId = params.id as string
+  const { common } = useMakerCopy()
 
   // Resolve slug or Firestore ID to a project. Response includes viewer_role —
   // no separate /api/projects/role round-trip.
@@ -46,7 +48,7 @@ export default function ProjectPage() {
   if (authLoading || approvalLoading || !user || !approved || resolving || !projectId) {
     return (
       <div className="min-h-screen bg-brand-cream flex items-center justify-center">
-        <div className="animate-pulse text-brand-slate">Loading...</div>
+        <div className="animate-pulse text-brand-slate">{common.loading}</div>
       </div>
     )
   }

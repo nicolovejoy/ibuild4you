@@ -1,5 +1,6 @@
 'use client'
 
+import { useMakerCopy } from '@/components/locale-context'
 import { WireframePreview } from './WireframePreview'
 import type { WireframeMockup } from '@/lib/types'
 
@@ -110,6 +111,7 @@ export function MessageContent({
   onOptionSelect?: (option: string) => void
 }) {
   const { segments, hasIncompleteBlock, incompleteKind } = parseMessageContent(content)
+  const c = useMakerCopy().chat
 
   // No fenced blocks at all — fast path, render as plain text
   if (segments.length <= 1 && segments[0]?.type === 'text' && !hasIncompleteBlock) {
@@ -147,7 +149,7 @@ export function MessageContent({
       })}
       {hasIncompleteBlock && (
         <p className="text-xs text-gray-400 italic mt-1 animate-pulse">
-          {incompleteKind === 'wireframe' ? 'Drawing layout...' : '…'}
+          {incompleteKind === 'wireframe' ? c.drawingLayout : '…'}
         </p>
       )}
     </div>

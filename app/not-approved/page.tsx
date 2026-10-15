@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useEffect } from 'react'
 import { Clock } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
-import { useMakerCopy } from '@/components/locale-provider'
+import { useMakerCopy } from '@/components/locale-context'
 
 export default function NotApprovedPage() {
   const { user, loading, isAuthenticated, signOut } = useAuth()

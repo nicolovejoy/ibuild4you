@@ -26,6 +26,8 @@ import { apiFetch } from '@/lib/firebase/api-fetch'
 import { groupFilesByFolder, validateFolderName } from '@/lib/files/folders'
 import { partitionPinned, isLinked } from '@/lib/files/artifacts'
 import { StatusMessage } from './StatusMessage'
+import { useLocale, useMakerCopy } from '@/components/locale-context'
+import { formatShortDate } from '@/lib/copy-maker'
 import { Modal } from './Modal'
 import type { ProjectFile, FileFolder } from '@/lib/types'
 
@@ -45,12 +47,13 @@ export function FilesGrid({
   const [selectedFile, setSelectedFile] = useState<ProjectFile | null>(null)
   const [pinError, setPinError] = useState<string | null>(null)
   const updateMeta = useUpdateFileMeta()
+  const f = useMakerCopy().files
 
   if (files.length === 0 && folders.length === 0) {
     return (
       <div className="text-center text-gray-400 py-12">
         <Image className="h-10 w-10 mx-auto mb-3 text-gray-300" />
-        <p>No files shared yet.</p>
+        <p>{f.empty}</p>
       </div>
     )
   }
@@ -99,7 +102,7 @@ export function FilesGrid({
           <div className="space-y-2">
             <p className="flex items-center gap-1.5 text-sm font-medium text-gray-600">
               <Star className="h-4 w-4 text-amber-500" fill="currentColor" />
-              Pinned
+              {f.pinned}
             </p>
             {grid(pinned)}
           </div>
@@ -119,7 +122,7 @@ export function FilesGrid({
         {unfiled.length > 0 && (
           <div className="space-y-2">
             {(sections.length > 0 || pinned.length > 0) && (
-              <p className="text-sm font-medium text-gray-500">Unfiled</p>
+              <p className="text-sm font-medium text-gray-500">{f.unfiled}</p>
             )}
             {grid(unfiled)}
           </div>
@@ -409,11 +412,9 @@ function FilePreviewModal({
     URL.revokeObjectURL(downloadUrl)
   }
 
-  const date = new Date(file.created_at).toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  })
+  const { locale } = useLocale()
+  const f = useMakerCopy().files
+  const date = formatShortDate(file.created_at, locale, true)
 
   return (
     <Modal isOpen onClose={onClose} size="lg">
@@ -492,7 +493,7 @@ function FilePreviewModal({
                 className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 hover:text-brand-navy hover:bg-gray-100 rounded-lg transition-colors"
               >
                 <Download className="h-4 w-4" />
-                Download
+                {f.download}
               </button>
             )}
           </div>

@@ -13,7 +13,7 @@ import { StatusMessage } from '@/components/ui/StatusMessage'
 import { LoadingButton } from '@/components/ui/LoadingButton'
 import { authErrorMessage, validatePassword } from '@/lib/auth/password'
 import { requestPasswordReset } from '@/lib/auth/request-reset'
-import { copy } from '@/lib/copy'
+import { useLocale, useMakerCopy } from '@/components/locale-context'
 
 interface SetPasswordModalProps {
   isOpen: boolean
@@ -33,6 +33,8 @@ export function SetPasswordModal({ isOpen, onClose, user }: SetPasswordModalProp
   const [success, setSuccess] = useState(false)
   const [resetLinkSent, setResetLinkSent] = useState(false)
   const [loading, setLoading] = useState(false)
+  const { locale } = useLocale()
+  const t = useMakerCopy().setPassword
 
   const close = () => {
     setPassword('')
@@ -47,17 +49,17 @@ export function SetPasswordModal({ isOpen, onClose, user }: SetPasswordModalProp
     e.preventDefault()
     setError(null)
 
-    const invalid = validatePassword(password)
+    const invalid = validatePassword(password, locale)
     if (invalid) {
       setError(invalid)
       return
     }
     if (password !== confirm) {
-      setError('Passwords do not match.')
+      setError(t.mismatch)
       return
     }
     if (!user.email) {
-      setError('Your account has no email address to attach a password to.')
+      setError(t.noEmail)
       return
     }
 
@@ -95,31 +97,31 @@ export function SetPasswordModal({ isOpen, onClose, user }: SetPasswordModalProp
       }
       setSuccess(true)
     } catch (err) {
-      setError(authErrorMessage(err))
+      setError(authErrorMessage(err, locale))
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <Modal isOpen={isOpen} onClose={close} title={copy.auth.setPassword} size="sm">
+    <Modal isOpen={isOpen} onClose={close} title={t.title} size="sm">
       {success ? (
         <div className="space-y-4">
           <StatusMessage
             type="success"
-            message={resetLinkSent ? copy.auth.migrationBanner.resetLinkSent : copy.auth.setPasswordSuccess}
+            message={resetLinkSent ? t.resetLinkSent : t.success}
           />
           <LoadingButton type="button" loading={false} fullWidth variant="primary" onClick={close}>
-            Done
+            {t.done}
           </LoadingButton>
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="space-y-4">
-          <p className="text-sm text-gray-600">{copy.auth.setPasswordHelp}</p>
+          <p className="text-sm text-gray-600">{t.help}</p>
           {error && <StatusMessage type="error" message={error} />}
           <div>
             <label htmlFor="new-password" className="block text-sm font-medium text-gray-700 mb-1">
-              New password
+              {t.newPassword}
             </label>
             <input
               id="new-password"
@@ -133,7 +135,7 @@ export function SetPasswordModal({ isOpen, onClose, user }: SetPasswordModalProp
           </div>
           <div>
             <label htmlFor="confirm-password" className="block text-sm font-medium text-gray-700 mb-1">
-              Confirm password
+              {t.confirmPassword}
             </label>
             <input
               id="confirm-password"
@@ -148,11 +150,11 @@ export function SetPasswordModal({ isOpen, onClose, user }: SetPasswordModalProp
           <LoadingButton
             type="submit"
             loading={loading}
-            loadingText="Saving..."
+            loadingText={t.saving}
             fullWidth
             variant="primary"
           >
-            {copy.auth.setPassword}
+            {t.title}
           </LoadingButton>
         </form>
       )}
