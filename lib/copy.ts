@@ -219,6 +219,18 @@ export const copy = {
       `Restore v${version}? The current brief is kept in history. Restoring an older version can drop a decision locked since then.`,
     confirmRestoreButton: 'Yes, restore',
     cancelRestore: 'Cancel',
+    confirmRestoreLockLoss: (version: number, topics: string[]) =>
+      `Restore v${version}? This removes the lock on: ${topics.join(', ')}. The current brief is kept in history.`,
+    // #197 — contested locks and the lock-loss guard
+    contestedBadge: 'Contested',
+    contestedLine: (proposed: string, reason: string) => `Maker wants: ${proposed} — ${reason}`,
+    contestAccept: 'Accept, keep locked',
+    contestAcceptUnlock: 'Accept and unlock',
+    contestDismiss: 'Dismiss',
+    contestError: "Couldn't save that — try again.",
+    lockLossWarning: (topics: string[]) => `This save removes the lock on: ${topics.join(', ')}. Continue?`,
+    lockLossConfirm: 'Yes, save',
+    lockLossCancel: 'Cancel',
     sourceLabel: (source: string | null) =>
       ({ create: 'created', paste: 'saved by hand', regen: 'regenerated', restore: 'restored' } as Record<string, string>)[
         source ?? ''
