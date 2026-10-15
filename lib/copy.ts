@@ -204,9 +204,10 @@ export const copy = {
     history: 'History',
     historyEmpty: 'No earlier versions yet — the first regen or save will create one.',
     historyLoading: 'Loading history…',
+    historyError: "Couldn't load history — try again.",
     restore: 'Restore',
     confirmRestore: (version: number) =>
-      `Restore v${version}? The current brief is kept in history.`,
+      `Restore v${version}? The current brief is kept in history. Restoring an older version can drop a decision locked since then.`,
     confirmRestoreButton: 'Yes, restore',
     cancelRestore: 'Cancel',
     sourceLabel: (source: string | null) =>

@@ -6,11 +6,13 @@ import React from 'react'
 const mockMutate = vi.fn()
 let mockVersions: unknown[] = []
 let mockLoading = false
+let mockError = false
 
 vi.mock('@/lib/query/hooks', () => ({
   useBriefVersions: (_id: string, enabled: boolean) => ({
     data: enabled ? mockVersions : undefined,
     isLoading: enabled && mockLoading,
+    isError: enabled && mockError,
   }),
   useUpdateBrief: () => ({ mutate: mockMutate, isPending: false }),
 }))
@@ -25,6 +27,7 @@ beforeEach(() => {
     { version: 2, content: { problem: 'v2' }, updated_at: '2026-10-01T00:00:00.000Z', source: null, archived_at: '2026-10-10T00:00:00.000Z' },
   ]
   mockLoading = false
+  mockError = false
 })
 
 describe('BriefHistory (#194)', () => {
@@ -36,6 +39,15 @@ describe('BriefHistory (#194)', () => {
     expect(screen.getByText(/Oct 10, 2026, 12:12 PM PDT/)).toBeTruthy()
     expect(screen.getByText(/regenerated/)).toBeTruthy()
     expect(screen.getByText(/unknown source/)).toBeTruthy()
+  })
+
+  it('shows an error line when the history fetch fails', () => {
+    mockError = true
+    mockVersions = []
+    render(<BriefHistory projectId="p1" />)
+    fireEvent.click(screen.getByRole('button', { name: /History/ }))
+    expect(screen.getByText(/Couldn't load history/)).toBeTruthy()
+    expect(screen.queryByText(/No earlier versions yet/)).toBeNull()
   })
 
   it('shows the empty line when there are no versions', () => {

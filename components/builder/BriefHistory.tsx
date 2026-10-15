@@ -14,7 +14,7 @@ export function BriefHistory({ projectId }: { projectId: string }) {
   const c = copy.brief
   const [open, setOpen] = useState(false)
   const [confirming, setConfirming] = useState<number | null>(null)
-  const { data: versions, isLoading } = useBriefVersions(projectId, open)
+  const { data: versions, isLoading, isError } = useBriefVersions(projectId, open)
   const updateBrief = useUpdateBrief()
 
   const restore = (content: unknown) => {
@@ -26,6 +26,7 @@ export function BriefHistory({ projectId }: { projectId: string }) {
     <div className="mt-4 pt-3 border-t border-gray-100">
       <button
         onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
         className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand-navy"
       >
         {open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
@@ -35,7 +36,8 @@ export function BriefHistory({ projectId }: { projectId: string }) {
       {open && (
         <div className="mt-2 space-y-1.5">
           {isLoading && <p className="text-xs text-gray-400">{c.historyLoading}</p>}
-          {!isLoading && versions && versions.length === 0 && (
+          {isError && <p className="text-xs text-gray-400">{c.historyError}</p>}
+          {!isLoading && !isError && versions && versions.length === 0 && (
             <p className="text-xs text-gray-400">{c.historyEmpty}</p>
           )}
           {versions?.map((v) => (
@@ -57,7 +59,7 @@ export function BriefHistory({ projectId }: { projectId: string }) {
                     {c.cancelRestore}
                   </button>
                 </span>
-              ) : (
+              ) : v.content ? (
                 <button
                   onClick={() => setConfirming(v.version)}
                   disabled={updateBrief.isPending}
@@ -65,7 +67,7 @@ export function BriefHistory({ projectId }: { projectId: string }) {
                 >
                   {c.restore}
                 </button>
-              )}
+              ) : null}
             </div>
           ))}
           {updateBrief.error && <p className="text-xs text-red-500">{updateBrief.error.message}</p>}
