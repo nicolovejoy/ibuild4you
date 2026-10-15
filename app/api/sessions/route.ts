@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getAuthenticatedUser, getAdminDb, getProjectRole, requireRole } from '@/lib/api/firebase-server-helpers'
 import { copy } from '@/lib/copy'
+import { welcomeToPost } from '@/lib/sessions/welcome'
 import { excludeArchived, isArchivedSession } from '@/lib/sessions/active'
 
 // GET /api/sessions?project_id=xxx — list sessions for a project
@@ -62,11 +63,11 @@ export async function POST(request: Request) {
   const projectData = projectDoc.data()!
   const now = new Date().toISOString()
 
-  // Is this the project's first session? Only the first session gets the canned
-  // welcome message. On session 2+ the maker is returning — Sam picks up where
-  // things left off (a state-aware recap via kickoff, or a normal contextual
-  // reply to whatever they type) instead of replaying the static first-hello
-  // opener verbatim every time (#70).
+  // Is this the project's first session? The first session always opens with a
+  // welcome (the default copy if none is set). On session 2+ the maker is
+  // returning: a welcome the builder wrote for this round is posted word for
+  // word, otherwise Sam greets via kickoff instead of replaying an old opener
+  // (#70). See lib/sessions/welcome.ts.
   const existingSessions = await db
     .collection('sessions')
     .where('project_id', '==', project_id)
@@ -119,11 +120,18 @@ export async function POST(request: Request) {
     updated_at: now,
   })
 
-  // Add the welcome message as the first message — but only on the project's
-  // first session. On return sessions Sam greets contextually instead (#70).
-  if (isFirstSession) {
-    const welcomeMessage = (projectData.welcome_message as string | undefined)
-      || copy.chat.defaultWelcomeMessage(projectData.title as string)
+  // Open the conversation with the builder's welcome, word for word: always on
+  // the first session (default copy if none is set), and on a return session
+  // only when the welcome is new for this round. Archived sessions count as
+  // "earlier" too, so a reset brief doesn't replay a welcome it already used.
+  const builderWelcome = welcomeToPost({
+    isFirstSession,
+    welcome: projectData.welcome_message as string | undefined,
+    earlierWelcomes: existingSessions.docs.map((d) => d.data().welcome_message as string | undefined),
+  })
+  const welcomeMessage =
+    builderWelcome ?? (isFirstSession ? copy.chat.defaultWelcomeMessage(projectData.title as string) : null)
+  if (welcomeMessage) {
     const msgRef = db.collection('messages').doc()
     batch.set(msgRef, {
       session_id: docRef.id,

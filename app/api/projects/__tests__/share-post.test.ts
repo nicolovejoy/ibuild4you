@@ -43,6 +43,11 @@ function membersWhereChain() {
   }
 }
 
+// Welcome-on-share fixtures. activeSession null → the welcome block is skipped.
+let activeSession: { id: string; data: Record<string, unknown> } | null = null
+let allSessions: { id: string; data: Record<string, unknown> }[] = []
+const messageAdds: Record<string, unknown>[] = []
+
 const mockCollection = vi.fn((name: string) => {
   lastCollection = name
   if (name === 'approved_emails') {
@@ -58,8 +63,29 @@ const mockCollection = vi.fn((name: string) => {
     return { doc: () => ({ get: mockProjectDocGet, update: mockProjectDocUpdate }) }
   }
   if (name === 'sessions') {
-    // No active session → welcome-message block is skipped.
-    return { where: () => ({ where: () => ({ limit: () => ({ get: async () => ({ empty: true }) }) }) }) }
+    const toDoc = (s: { id: string; data: Record<string, unknown> }) => ({
+      id: s.id,
+      data: () => s.data,
+      ref: { update: vi.fn(async () => {}) },
+    })
+    return {
+      where: () => ({
+        // .where(project).where(status).limit(1).get() — the active session
+        where: () => ({
+          limit: () => ({
+            get: async () => ({ empty: !activeSession, docs: activeSession ? [toDoc(activeSession)] : [] }),
+          }),
+        }),
+        // .where(project).get() — every session on the project
+        get: async () => ({ docs: allSessions.map(toDoc) }),
+      }),
+    }
+  }
+  if (name === 'messages') {
+    return {
+      where: () => ({ limit: () => ({ get: async () => ({ empty: true }) }) }),
+      add: async (d: Record<string, unknown>) => { messageAdds.push(d); return { id: 'msg' } },
+    }
   }
   return { where: () => ({}), doc: () => ({}) }
 })
@@ -109,8 +135,37 @@ describe('POST /api/projects/share', () => {
     approvedSets.length = 0
     projectDocData = {}
     existingMemberEmpty = true
+    activeSession = null
+    allSessions = []
+    messageAdds.length = 0
     lastCollection = ''
     mockGetProjectRole.mockResolvedValue('builder')
+  })
+
+  // The welcome posted into an empty active conversation on share follows the
+  // same rule as session creation (lib/sessions/welcome.ts).
+  it('posts the welcome into the first conversation on share', async () => {
+    projectDocData = { title: 'Cafe App', welcome_message: 'Hi Sam' }
+    activeSession = { id: 's1', data: {} }
+    allSessions = [activeSession]
+    await POST(makeReq({ project_id: 'p1', email: 'first@example.com' }))
+    expect(messageAdds.map((m) => m.content)).toEqual(['Hi Sam'])
+  })
+
+  it('does not replay an earlier conversation\'s welcome into an empty return conversation', async () => {
+    projectDocData = { title: 'Cafe App', welcome_message: 'Hi Sam' }
+    activeSession = { id: 's2', data: {} }
+    allSessions = [{ id: 's1', data: { welcome_message: 'Hi Sam' } }, activeSession]
+    await POST(makeReq({ project_id: 'p1', email: 'first@example.com' }))
+    expect(messageAdds).toHaveLength(0)
+  })
+
+  it('posts a new welcome verbatim into an empty return conversation', async () => {
+    projectDocData = { title: 'Cafe App', welcome_message: 'Round two: https://app.example.com' }
+    activeSession = { id: 's2', data: {} }
+    allSessions = [{ id: 's1', data: { welcome_message: 'Hi Sam' } }, activeSession]
+    await POST(makeReq({ project_id: 'p1', email: 'first@example.com' }))
+    expect(messageAdds.map((m) => m.content)).toEqual(['Round two: https://app.example.com'])
   })
 
   it('returns 400 and writes nothing for a malformed email', async () => {

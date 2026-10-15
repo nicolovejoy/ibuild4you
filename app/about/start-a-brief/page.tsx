@@ -10,7 +10,7 @@ const NEW_PROJECT_PAYLOAD = `{
   "requester_first_name": "Maker's first name",
   "requester_last_name": "Maker's last name",
   "context": "Background the agent uses to skip basic discovery questions. Multi-sentence is fine.",
-  "welcome_message": "The greeting the agent sends when the maker first opens the project. Sets tone.",
+  "welcome_message": "Posted word for word as the agent's first message when the maker first opens the project. Sets tone.",
   "nudge_message": "Optional. Verbatim outbound nudge text used to invite the maker back. Omit to let the system auto-draft.",
   "voice_sample": "Optional. One paragraph showing how the builder texts this person by hand — anchors AI-generated outbound copy.",
   "identity": "Optional. Custom agent persona override. Omit unless you want a non-default persona.",

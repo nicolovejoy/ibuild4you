@@ -33,7 +33,7 @@ When I say "give me the output", produce ONLY valid JSON matching this schema (n
     "decisions": [{ "topic": "short label", "decision": "what was decided", "decided_in_session": "optional session id", "decided_at": "optional ISO timestamp" }],
     "open_risks": ["plain-language description of something unresolved, unclear, or risky"]
   },
-  "welcome_message": "The greeting the agent sends when the maker opens the next session — sets tone and picks up where we left off",
+  "welcome_message": "Posted word for word as the agent's first message when the maker opens the next session, so include any link or step they need. Omit it to let the agent greet them itself.",
   "nudge_message": "Optional. Verbatim outbound nudge text used to invite the maker back. Omit to let the system auto-draft.",
   "voice_sample": "Optional. One paragraph showing how the builder texts this person by hand — anchors AI-generated outbound copy.",
   "identity": "Optional. Custom agent persona override for this project. Omit unless the builder explicitly wants a non-default persona.",

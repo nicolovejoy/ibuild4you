@@ -364,6 +364,17 @@ describe('POST /api/chat/kickoff', () => {
     expect(stored[0].data.role).toBe('agent')
   })
 
+  // A return session that opens with the builder's welcome, posted verbatim at
+  // creation, already has its greeting — kicking off would greet twice.
+  it('declines a return session whose welcome is already posted', async () => {
+    setup({ messages: [msg('agent', 2 * HOUR)], lastMakerMessageAt: iso(3 * HOUR) })
+    const res = await POST(makeRequest({ session_id: 'sess-1' }))
+    const body = await res.json()
+    expect(body.kicked_off).toBe(false)
+    expect(body.reason).toBe('opener_already_posted')
+    expect(addCalls.filter((c) => c.collection === 'messages')).toHaveLength(0)
+  })
+
   it('declines an empty session with no project history', async () => {
     setup({ messages: [], lastMakerMessageAt: null })
     const res = await POST(makeRequest({ session_id: 'sess-1' }))

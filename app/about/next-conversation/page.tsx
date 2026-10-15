@@ -14,7 +14,7 @@ const NEXT_CONVO_PAYLOAD = `{
     "decisions": [{ "topic": "short label", "decision": "what was decided" }],
     "open_risks": ["plain-language description of something unresolved, unclear, or risky"]
   },
-  "welcome_message": "The greeting the agent sends when the maker opens the next session — picks up where you left off.",
+  "welcome_message": "Posted word for word as the agent's first message when the maker opens the next session. Omit it to let the agent greet them itself.",
   "nudge_message": "Optional. Verbatim outbound nudge text used to invite the maker back. Omit to let the system auto-draft.",
   "voice_sample": "Optional. One paragraph showing how the builder texts this person by hand — anchors AI-generated outbound copy.",
   "identity": "Optional. Custom agent persona override. Omit unless you want a non-default persona.",

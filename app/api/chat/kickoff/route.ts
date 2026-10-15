@@ -124,6 +124,11 @@ export async function POST(request: Request) {
   const lastMakerAtMs = Math.max(lastMakerInSessionMs, projectLastMakerMs)
   if (!lastMakerAtMs) return noop('no_maker_history')
 
+  // Opens with an agent message the maker hasn't answered — the welcome posted
+  // at session creation (a return session with a welcome written for this
+  // round). That is the greeting; don't add a second.
+  if (storedMessages.length > 0 && makerMessages.length === 0) return noop('opener_already_posted')
+
   const lastKickoffAt = sessionData.last_kickoff_at as string | undefined | null
   const lastKickoffMs = lastKickoffAt ? new Date(lastKickoffAt).getTime() : 0
   // Already greeted this return — the maker hasn't spoken since our last
