@@ -90,11 +90,11 @@ Only `title` is required. All other fields are optional.
     { "email": "sam@example.com", "first_name": "Sam", "last_name": "Lee", "role": "maker" },
     { "email": "dana@example.com", "first_name": "Dana", "role": "apprentice", "brief_role": "contributor" }
   ],
-  "context": "Background info the agent uses to skip basic discovery questions.",
+  "context": "Background info the agent uses to skip basic discovery questions. Do not suggest technologies.",
   "welcome_message": "Hey Sam — tell me about your cafe idea!",
   "nudge_message": "Optional. When set, used verbatim as the outbound nudge text for the next session and skips AI generation. Leave blank to let the AI draft.",
   "voice_sample": "Optional. One paragraph showing how you'd text this person by hand. Used as a style anchor for AI-generated outbound copy (nudge/invite/reminder). Ignored when nudge_message is set.",
-  "session_mode": "discover",
+  "session_mode": "converge",
   "language": "fr",
   "hide_title_in_previews": false,
   "seed_questions": [
@@ -102,8 +102,7 @@ Only `title` is required. All other fields are optional.
     "Who are your customers?"
   ],
   "builder_directives": [
-    "Focus on the ordering workflow",
-    "Do not suggest technologies"
+    "Focus on the ordering workflow"
   ],
   "brief": {
     "problem": "Customers can't order online",
@@ -122,6 +121,8 @@ Side effects on create: generates slug, creates owner membership, creates a memb
 **Participants.** `participants[]` seeds any number of people on a brief in one payload — each `{ email (required), first_name?, last_name?, role?, brief_role? }`. `role` is a `MemberRole` (`maker` | `apprentice` | `builder` | `owner`; default `maker`); `brief_role` defaults from role (maker→originator, apprentice→contributor, builder→reviewer). The legacy `requester_email`/`requester_first_name`/`requester_last_name` (+ `brief_role`) still work and are folded in as the first participant. Rules: dedup by lowercased email; the creator's own email is skipped (already the owner); the project doc's displayed requester is the first `maker` participant (else the first overall); **soft cap 20** (more → 400). No hard limit elsewhere — the chat roster name-tags arbitrarily many distinct senders. The response includes a `members: [{ email, role, brief_role }]` array (passcodes no longer minted or returned, PR D).
 
 `language` (optional, `en` | `fr`, default English): the language the maker is addressed in — the agent converses in it from the first message, welcome/nudge copy is written in it, and link previews use it. The brief itself always stays in English. `hide_title_in_previews` (optional boolean): a shared `/projects/<slug>` link previews with the brief title unless this is true (then the anonymous colour/glyph/code card). Previews are unauthenticated and cached by messaging apps — never names or brief contents.
+
+`seed_questions` reach the agent only in `discover` mode and `builder_directives` only in `converge` mode (#192); both are stored regardless, so flipping `session_mode` never loses them. Guardrails that must hold in every session (e.g. "do not suggest technologies") go in `context`, which is always sent. The dashboard Setup tab already shows one or the other per mode; a JSON payload that sets both in `discover` mode simply has its directives held until the mode flips.
 
 `layout_mockups` (legacy, optional): an array of `{ title, sections: [{ type, label, description }] }` wireframes the agent may show in chat. De-prioritized 2026-10-08 (#195): the agent no longer brings up wireframes unless a builder set this field; full removal is phase 2 of that issue.
 

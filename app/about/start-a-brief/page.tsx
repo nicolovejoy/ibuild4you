@@ -15,8 +15,8 @@ const NEW_PROJECT_PAYLOAD = `{
   "voice_sample": "Optional. One paragraph showing how the builder texts this person by hand — anchors AI-generated outbound copy.",
   "identity": "Optional. Custom agent persona override. Omit unless you want a non-default persona.",
   "session_mode": "discover (broad exploration) or converge (narrow toward decisions). Defaults to discover.",
-  "seed_questions": ["Questions the agent should weave into the first session"],
-  "builder_directives": ["Instructions injected into the agent's system prompt — e.g. 'do not suggest technologies'"],
+  "seed_questions": ["Questions the agent should weave into the first session (discover mode only)"],
+  "builder_directives": ["Instructions injected into the agent's system prompt — e.g. 'focus on the ordering workflow' (converge mode only; put always-on guardrails in context)"],
   "brief": {
     "problem": "What problem the maker is trying to solve. Omit the whole brief if not enough is known yet.",
     "target_users": "Who the intended users are",
