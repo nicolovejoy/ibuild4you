@@ -85,7 +85,7 @@ export async function countRecentGarmDenials(
   }
 }
 
-/** Off the sign-in hot path, same after()-with-fallback shape as lib/garm-shadow.ts. */
+/** Off the sign-in hot path, same after()-with-fallback shape as scheduleGarmGrantSync in lib/garm-grants.ts. */
 export function scheduleGarmDenialRecord(email: string): void {
   try {
     after(() => recordGarmDenial(email))

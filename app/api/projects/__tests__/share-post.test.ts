@@ -113,6 +113,13 @@ describe('POST /api/projects/share', () => {
     mockGetProjectRole.mockResolvedValue('builder')
   })
 
+  it('returns 400 and writes nothing for a malformed email', async () => {
+    const res = await POST(makeReq({ project_id: 'p1', email: 'first@example' }))
+    expect(res.status).toBe(400)
+    expect(memberAdds).toHaveLength(0)
+    expect(approvedSets).toHaveLength(0)
+  })
+
   it('first share sets requester_email and shared_at on the project', async () => {
     projectDocData = { title: 'Cafe App' } // no requester yet
     const res = await POST(makeReq({ project_id: 'p1', email: 'first@example.com', brief_role: 'originator' }))

@@ -252,14 +252,6 @@ describe('resolveCanonicalEmail (#169)', () => {
     expect(f).not.toHaveBeenCalled()
   })
 
-  it('is a no-op (no fetch) when GARM_GATING=off — preview / kill-switch path', async () => {
-    process.env.GARM_GATING = 'off'
-    const f = vi.fn()
-    vi.stubGlobal('fetch', f)
-    await expect(resolveCanonicalEmail('Sam@Example.com')).resolves.toBe('sam@example.com')
-    expect(f).not.toHaveBeenCalled()
-  })
-
   it('is a no-op (no fetch, no warn) when GARM_URL/GARM_KEY are unset', async () => {
     delete process.env.GARM_URL
     delete process.env.GARM_KEY

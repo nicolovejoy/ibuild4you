@@ -101,6 +101,7 @@ Gate: provider audit shows all active makers have password or Google (Nico confi
 - `isApprovedEmail()` → `garmCheck(email, 'viewer')`. The `/api/approved-emails` GET (the `useApproval` client gate) answers from Garm. Admin implicit-owner can migrate from the `ADMIN_EMAILS` constant to a Garm `'*'` owner grant (keep the constant as break-glass).
 - Fail mode per D5/Q2. Writes: Garm becomes the primary for app-level access; `approved_emails` collection frozen (export to `exports/`, then stop writing; delete later — no rush).
 - PR H: remove shadow-mode logging, dead approved_emails code paths, update CLAUDE.md data model + firestore.rules notes.
+- **PR H — SHIPPED 2026-10-15, rescoped.** Removed shadow logging (`lib/garm-shadow.ts`, `GARM_SHADOW`) and the `GARM_GATING` kill switch. Preview keeps the local allowlist via an explicit rule (`VERCEL_ENV === 'preview'` and no `GARM_URL`/`GARM_KEY`), so production can never take it. **`approved_emails` was NOT frozen** — the freeze above assumed its only job was the sign-in gate, but it is also an input to the dual-write and reconcile grant decision (approved-with-no-brief → viewer; `revoked_at` → revoke). Freezing it needs those two semantics moved first (e.g. into Garm grants directly); not scheduled. Also added address-shape validation on every `approved_emails`/`project_members` writer, and `invalid_count` on the reconcile row, after two malformed rows were found 400ing the reconcile every hour.
 
 ## Explicitly out of scope
 

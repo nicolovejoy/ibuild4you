@@ -201,6 +201,7 @@ describe('GET /api/cron/garm-reconcile', () => {
     })
     expect(lastLogDoc()).toMatchObject({
       checked_count: 2,
+      invalid_count: 0,
       missing_count: 0,
       mismatch_count: 0,
       extra_count: 0,
@@ -208,6 +209,25 @@ describe('GET /api/cron/garm-reconcile', () => {
       capped: false,
       error: null,
     })
+  })
+
+  // Garm 400s a malformed address, so a junk approved_emails / project_members
+  // row used to fail its heal every hour forever (PR H found two in prod).
+  // Count it, never POST it, and keep it out of missing/error.
+  it('counts malformed addresses as invalid and never tries to grant them', async () => {
+    mockMembers = [member('maker@example.com', 'maker'), member('typo@gmail', 'maker')]
+    mockApproved = [approved("<placeholder: don't email>"), approved('maker@example.com')]
+    garmGrants = [
+      { email: 'admin@example.com', role: 'owner' },
+      { email: 'maker@example.com', role: 'viewer' },
+    ]
+
+    const res = await GET(makeReq())
+    const body = await res.json()
+
+    expect(postedGrants()).toEqual([])
+    expect(body).toMatchObject({ checked_count: 2, invalid_count: 2, missing_count: 0, error: null })
+    expect(lastLogDoc()).toMatchObject({ invalid_count: 2, missing_count: 0, error: null })
   })
 
   it('reports 24h denial counts by kind in the log row and response', async () => {

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getAdminDb } from '@/lib/api/firebase-server-helpers'
 import { isAuthorizedCron } from '@/lib/api/cron-auth'
-import { normalizeEmail } from '@/lib/email/normalize'
+import { normalizeEmail, isValidEmail } from '@/lib/email/normalize'
 import { ADMIN_EMAILS, isAdminEmail } from '@/lib/constants'
 import {
   computeGrantDecision,
@@ -51,8 +51,7 @@ import { countRecentGarmDenials } from '@/lib/garm-denials'
 // net silently disappearing behind a forgotten flag.
 //
 // PII: the garm_reconcile_log doc and every console line carry counts and
-// booleans ONLY — never an email address. Same rule as lib/garm-grants.ts and
-// lib/garm-shadow.ts.
+// booleans ONLY — never an email address. Same rule as lib/garm-grants.ts.
 // =============================================================================
 
 // Not exported: Next validates that a route.ts exports only recognized Route
@@ -177,6 +176,7 @@ export async function GET(request: Request) {
   let mismatchCount = 0
   let extraCount = 0
   let healedCount = 0
+  let invalidCount = 0
   let capped = false
   let repeatMissing = false
   let skippedDualWriteOff = false
@@ -237,6 +237,15 @@ export async function GET(request: Request) {
         ...approvedDocIds,
         ...ADMIN_EMAILS.map((e) => normalizeEmail(e)).filter(Boolean),
       ])
+      // A malformed address (a pasted note, a "name@gmail" typo) can never be
+      // granted — Garm 400s it — so healing it would fail every hour forever.
+      // Count it so the junk row stays visible, and leave it out of the diff.
+      for (const email of candidates) {
+        if (!isValidEmail(email)) {
+          candidates.delete(email)
+          invalidCount++
+        }
+      }
       checkedCount = candidates.size
 
       const actual = await fetchActiveGrants(garmUrl, garmKey)
@@ -317,6 +326,7 @@ export async function GET(request: Request) {
 
   const summary = {
     checked_count: checkedCount,
+    invalid_count: invalidCount,
     missing_count: missingCount,
     mismatch_count: mismatchCount,
     extra_count: extraCount,

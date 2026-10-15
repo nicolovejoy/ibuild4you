@@ -140,3 +140,19 @@ describe('POST /api/approved-emails re-add clears a prior revoke', () => {
     expect(scheduleGarmGrantSyncMock).toHaveBeenCalledWith('sam@example.com')
   })
 })
+
+describe('POST /api/approved-emails validates the address', () => {
+  beforeEach(() => {
+    scheduleGarmGrantSyncMock.mockClear()
+    mockSet.mockClear()
+    authSystemRoles = ['admin']
+  })
+
+  it('returns 400 and writes nothing for a malformed address', async () => {
+    const res = await POST(makePostReq({ email: 'sam@gmail' }))
+
+    expect(res.status).toBe(400)
+    expect(mockSet).not.toHaveBeenCalled()
+    expect(scheduleGarmGrantSyncMock).not.toHaveBeenCalled()
+  })
+})

@@ -9,7 +9,7 @@ import {
 import { generateWelcomeMessage } from '@/lib/agent/welcome-message'
 import { resolveBriefRole } from '@/lib/roles/brief-role'
 import { copy } from '@/lib/copy'
-import { normalizeEmail } from '@/lib/email/normalize'
+import { normalizeEmail, isValidEmail } from '@/lib/email/normalize'
 import { ensureInviteResetLink } from '@/lib/auth/ensure-invite-account'
 import { scheduleGarmGrantSync, syncGarmGrantForEmail } from '@/lib/garm-grants'
 
@@ -26,6 +26,9 @@ export async function POST(request: Request) {
       { error: 'project_id and email are required' },
       { status: 400 }
     )
+  }
+  if (!isValidEmail(email)) {
+    return NextResponse.json({ error: 'That doesn\'t look like a valid email address' }, { status: 400 })
   }
 
   const db = getAdminDb()
@@ -205,6 +208,9 @@ export async function PATCH(request: Request) {
   // and removing it would risk locking someone else out. The corrected address
   // gets access via the invite flow's fresh password-setup link.
   if (typeof new_email === 'string' && new_email.trim()) {
+    if (!isValidEmail(new_email)) {
+      return NextResponse.json({ error: 'That doesn\'t look like a valid email address' }, { status: 400 })
+    }
     return rekeyRequesterEmail(db, project_id, new_email, auth.email)
   }
 

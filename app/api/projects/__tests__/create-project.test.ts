@@ -369,6 +369,21 @@ describe('POST /api/projects', () => {
     expect(data.error).toMatch(/participant/i)
   })
 
+  it('returns 400 naming a malformed participant email, creating nothing', async () => {
+    const res = await POST(makeRequest({
+      title: 'Typo',
+      participants: [{ email: 'ok@example.com' }, { email: 'sam@gmail' }],
+    }))
+    expect(res.status).toBe(400)
+    const data = await res.json()
+    expect(data.error).toContain('sam@gmail')
+  })
+
+  it('returns 400 for a malformed legacy requester_email', async () => {
+    const res = await POST(makeRequest({ title: 'Typo', requester_email: 'sam at example.com' }))
+    expect(res.status).toBe(400)
+  })
+
   // --- Full setup payload ---
 
   it('saves all optional setup fields on the project', async () => {

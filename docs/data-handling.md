@@ -8,7 +8,7 @@ solved yet. Not a public privacy policy.
 **Firestore** (`ibuild4you-a0c4d`, Admin SDK only — see `lib/firebase/admin.ts`):
 
 - `users` — email, first/last name, self-assigned `account_label`.
-- `approved_emails` — sign-in allowlist, keyed by lowercased email.
+- `approved_emails` — per-email approval record, keyed by lowercased email. Feeds the Garm grant decision; the sign-in gate itself is Garm (local allowlist only on a Garm-less preview).
 - `project_members` — email, name, role, per-brief membership; **stores a
   plaintext `passcode`** (maker auth secret, minted in 5 routes, pasted into
   invite emails). Being retired — see `docs/garm-consumer-plan.md`.

@@ -15,7 +15,7 @@ import { resolveBriefRole, defaultBriefRole } from '@/lib/roles/brief-role'
 import { copy } from '@/lib/copy'
 import { deleteS3Object } from '@/lib/s3/client'
 import { stampDecisionProvenance } from '@/lib/api/brief-merge'
-import { normalizeEmail } from '@/lib/email/normalize'
+import { normalizeEmail, isValidEmail } from '@/lib/email/normalize'
 import { scheduleGarmGrantSync } from '@/lib/garm-grants'
 import type { BriefRole, MemberRole } from '@/lib/types'
 
@@ -408,6 +408,14 @@ export async function POST(request: Request) {
   for (const p of rawParticipants) {
     const email = normalizeEmail(typeof p.email === 'string' ? p.email : '')
     if (!email) continue
+    // Reject the whole payload rather than silently dropping the entry — a
+    // dropped participant looks like a successful invite that never arrives.
+    if (!isValidEmail(email)) {
+      return NextResponse.json(
+        { error: `Not a valid email address: ${email}` },
+        { status: 400 }
+      )
+    }
     if (email === creatorEmail || seenEmails.has(email)) continue
     seenEmails.add(email)
     const role: MemberRole =
