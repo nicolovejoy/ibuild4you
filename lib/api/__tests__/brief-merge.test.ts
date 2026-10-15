@@ -5,6 +5,9 @@ import {
   lockedFirst,
   stampDecisionProvenance,
   stripDecisionProvenance,
+  lostLocks,
+  resolveContest,
+  contestFor,
 } from '../brief-merge'
 import type { BriefContent, BriefDecision } from '@/lib/types'
 
@@ -180,7 +183,12 @@ describe('stampDecisionProvenance', () => {
   it('restores stamps an outside agent dropped when round-tripping the JSON', () => {
     // The ferry may return decisions without decided_* — carry-forward puts them back.
     const prev: BriefDecision[] = [
-      { topic: 'Payment', decision: 'Stripe', decided_in_session: 's2', decided_at: '2026-07-05T00:00:00Z' },
+      {
+        topic: 'Payment',
+        decision: 'Stripe',
+        decided_in_session: 's2',
+        decided_at: '2026-07-05T00:00:00Z',
+      },
     ]
     const out = stampDecisionProvenance({
       prev,
@@ -189,7 +197,12 @@ describe('stampDecisionProvenance', () => {
       now: NOW,
     })
     expect(out).toEqual([
-      { topic: 'payment', decision: 'Stripe', decided_in_session: 's2', decided_at: '2026-07-05T00:00:00Z' },
+      {
+        topic: 'payment',
+        decision: 'Stripe',
+        decided_in_session: 's2',
+        decided_at: '2026-07-05T00:00:00Z',
+      },
     ])
   })
 
@@ -207,23 +220,43 @@ describe('stampDecisionProvenance', () => {
     // Model saw stamps in its prompt and echoed (or hallucinated) them back.
     const out = stampDecisionProvenance({
       prev: [
-        { topic: 'Auth', decision: 'Google only', decided_in_session: 's1', decided_at: '2026-07-01T00:00:00Z' },
+        {
+          topic: 'Auth',
+          decision: 'Google only',
+          decided_in_session: 's1',
+          decided_at: '2026-07-01T00:00:00Z',
+        },
       ],
       next: [
-        { topic: 'Auth', decision: 'Google only', decided_in_session: 's9', decided_at: '2099-01-01T00:00:00Z' },
+        {
+          topic: 'Auth',
+          decision: 'Google only',
+          decided_in_session: 's9',
+          decided_at: '2099-01-01T00:00:00Z',
+        },
       ],
       sessionId: 's3',
       now: NOW,
     })
     expect(out).toEqual([
-      { topic: 'Auth', decision: 'Google only', decided_in_session: 's1', decided_at: '2026-07-01T00:00:00Z' },
+      {
+        topic: 'Auth',
+        decision: 'Google only',
+        decided_in_session: 's1',
+        decided_at: '2026-07-01T00:00:00Z',
+      },
     ])
   })
 
   it('restamps with the current context when the decision text changed this round', () => {
     const out = stampDecisionProvenance({
       prev: [
-        { topic: 'Auth', decision: 'Google only', decided_in_session: 's1', decided_at: '2026-07-01T00:00:00Z' },
+        {
+          topic: 'Auth',
+          decision: 'Google only',
+          decided_in_session: 's1',
+          decided_at: '2026-07-01T00:00:00Z',
+        },
       ],
       next: [d('Auth', 'Google + passcode')],
       sessionId: 's3',
@@ -237,16 +270,31 @@ describe('stampDecisionProvenance', () => {
   it('honors explicit provenance on a changed decision (paste path)', () => {
     const out = stampDecisionProvenance({
       prev: [
-        { topic: 'Auth', decision: 'Google only', decided_in_session: 's1', decided_at: '2026-07-01T00:00:00Z' },
+        {
+          topic: 'Auth',
+          decision: 'Google only',
+          decided_in_session: 's1',
+          decided_at: '2026-07-01T00:00:00Z',
+        },
       ],
       next: [
-        { topic: 'Auth', decision: 'Google + passcode', decided_in_session: null, decided_at: '2026-07-10T00:00:00Z' },
+        {
+          topic: 'Auth',
+          decision: 'Google + passcode',
+          decided_in_session: null,
+          decided_at: '2026-07-10T00:00:00Z',
+        },
       ],
       sessionId: null,
       now: NOW,
     })
     expect(out).toEqual([
-      { topic: 'Auth', decision: 'Google + passcode', decided_in_session: null, decided_at: '2026-07-10T00:00:00Z' },
+      {
+        topic: 'Auth',
+        decision: 'Google + passcode',
+        decided_in_session: null,
+        decided_at: '2026-07-10T00:00:00Z',
+      },
     ])
   })
 
@@ -328,5 +376,153 @@ describe('lockedFirst', () => {
 
   it('handles undefined', () => {
     expect(lockedFirst(undefined)).toEqual([])
+  })
+})
+
+describe('mergeLockedDecisions — contested locks (#197)', () => {
+  const contest = { proposed: 'Square', reason: 'switched POS, confirmed in conversation 3' }
+
+  it('copies a model-emitted contested onto the verbatim lock', () => {
+    const prev = [
+      {
+        topic: 'Payment',
+        decision: 'Stripe only',
+        locked: true,
+        decided_at: '2026-01-01T00:00:00.000Z',
+      },
+    ]
+    const next = [{ topic: 'payment', decision: 'Square', contested: contest }]
+    expect(mergeLockedDecisions(prev, next)).toEqual([
+      {
+        topic: 'Payment',
+        decision: 'Stripe only',
+        locked: true,
+        decided_at: '2026-01-01T00:00:00.000Z',
+        contested: contest,
+      },
+    ])
+  })
+
+  it('carries an existing contested forward when regen no longer mentions it', () => {
+    const prev = [{ topic: 'Payment', decision: 'Stripe only', locked: true, contested: contest }]
+    const next = [{ topic: 'Payment', decision: 'Stripe only' }]
+    expect(mergeLockedDecisions(prev, next)).toEqual([
+      { topic: 'Payment', decision: 'Stripe only', locked: true, contested: contest },
+    ])
+  })
+
+  it('a newer contested replaces the older one', () => {
+    const prev = [{ topic: 'Payment', decision: 'Stripe only', locked: true, contested: contest }]
+    const newer = { proposed: 'PayPal', reason: 'changed again, conversation 4' }
+    const next = [{ topic: 'Payment', decision: 'Stripe only', contested: newer }]
+    expect(mergeLockedDecisions(prev, next)[0].contested).toEqual(newer)
+  })
+
+  it('strips contested from a non-locked decision', () => {
+    const prev = [d('Stack', 'Next.js', true)]
+    const next = [{ topic: 'Auth', decision: 'Google', contested: contest }]
+    expect(mergeLockedDecisions(prev, next)).toEqual([
+      { topic: 'Stack', decision: 'Next.js', locked: true },
+      { topic: 'Auth', decision: 'Google' },
+    ])
+  })
+
+  it('strips contested from regen output even when nothing was locked', () => {
+    const next = [{ topic: 'Auth', decision: 'Google', contested: contest }]
+    expect(mergeLockedDecisions([], next)).toEqual([{ topic: 'Auth', decision: 'Google' }])
+  })
+})
+
+describe('lostLocks (#197 Part B)', () => {
+  it('returns nothing when every lock survives, even if text or order changed', () => {
+    const prev = [d('Stack', 'Next.js', true), d('Auth', 'Google')]
+    const next = [d('Auth', 'Google'), d('stack ', 'Next.js, no Vue', true), d('DB', 'Firestore')]
+    expect(lostLocks(prev, next)).toEqual([])
+  })
+
+  it('names a locked topic that is missing from next', () => {
+    expect(lostLocks([d('Stack', 'Next.js', true)], [d('Auth', 'Google')])).toEqual(['Stack'])
+  })
+
+  it('names a locked topic that next carries unlocked', () => {
+    expect(lostLocks([d('Stack', 'Next.js', true)], [d('Stack', 'Next.js')])).toEqual(['Stack'])
+  })
+
+  it('lists several in prev order and ignores unlocked prev decisions', () => {
+    const prev = [d('A', '1', true), d('B', '2'), d('C', '3', true)]
+    expect(lostLocks(prev, [])).toEqual(['A', 'C'])
+  })
+
+  it('handles undefined', () => {
+    expect(lostLocks(undefined, undefined)).toEqual([])
+    expect(lostLocks([d('A', '1', true)], undefined)).toEqual(['A'])
+  })
+})
+
+describe('resolveContest (#197 Part A)', () => {
+  const contest = { proposed: 'Square', reason: 'switched POS' }
+  const list = (): BriefDecision[] => [
+    {
+      topic: 'Payment',
+      decision: 'Stripe only',
+      locked: true,
+      contested: contest,
+      decided_at: '2026-01-01T00:00:00.000Z',
+    },
+    d('Auth', 'Google'),
+  ]
+
+  it('accept: takes the proposed text, keeps the lock, clears contested', () => {
+    expect(resolveContest(list(), 'payment', 'accept')).toEqual([
+      {
+        topic: 'Payment',
+        decision: 'Square',
+        locked: true,
+        decided_at: '2026-01-01T00:00:00.000Z',
+      },
+      d('Auth', 'Google'),
+    ])
+  })
+
+  it('accept_unlock: takes the proposed text and removes the lock', () => {
+    expect(resolveContest(list(), 'Payment', 'accept_unlock')).toEqual([
+      { topic: 'Payment', decision: 'Square', decided_at: '2026-01-01T00:00:00.000Z' },
+      d('Auth', 'Google'),
+    ])
+  })
+
+  it('dismiss: clears contested and changes nothing else', () => {
+    expect(resolveContest(list(), 'Payment', 'dismiss')).toEqual([
+      {
+        topic: 'Payment',
+        decision: 'Stripe only',
+        locked: true,
+        decided_at: '2026-01-01T00:00:00.000Z',
+      },
+      d('Auth', 'Google'),
+    ])
+  })
+
+  it('returns the list unchanged for a topic with no contest', () => {
+    const l = list()
+    expect(resolveContest(l, 'Auth', 'accept')).toEqual(l)
+    expect(resolveContest(l, 'Nope', 'dismiss')).toEqual(l)
+  })
+})
+
+describe('contestFor (#197)', () => {
+  it('accepts a well-formed contest on a locked decision only', () => {
+    expect(contestFor(true, { proposed: 'Square', reason: 'why' })).toEqual({
+      proposed: 'Square',
+      reason: 'why',
+    })
+    expect(contestFor(false, { proposed: 'Square', reason: 'why' })).toBeUndefined()
+  })
+  it('rejects malformed input', () => {
+    expect(contestFor(true, undefined)).toBeUndefined()
+    expect(contestFor(true, 'Square')).toBeUndefined()
+    expect(contestFor(true, { proposed: '', reason: 'why' })).toBeUndefined()
+    expect(contestFor(true, { proposed: 'Square', reason: 3 })).toBeUndefined()
+    expect(contestFor(true, { proposed: 'Square' })).toBeUndefined()
   })
 })

@@ -287,6 +287,11 @@ export interface BriefContent {
   open_risks?: string[]
 }
 
+export interface BriefDecisionContest {
+  proposed: string // what the maker wants instead
+  reason: string // why, and when they confirmed it
+}
+
 export interface BriefDecision {
   topic: string // short label ("Data source", "Ticker selection")
   decision: string // what was decided ("Reddit API for user sentiment")
@@ -294,6 +299,10 @@ export interface BriefDecision {
   // list). Survives brief regen verbatim and the agent must reconcile new intake
   // against it rather than silently overwriting. See lib/api/brief-merge.ts (#71).
   locked?: boolean
+  // #197: regen may *contest* a locked decision (the maker explicitly confirmed
+  // a reversal in conversation) but never remove it. Only ever set on a locked
+  // decision; cleared by a builder's Accept/Dismiss on the Brief tab.
+  contested?: BriefDecisionContest
   // Provenance (#121) — stamped by code (stampDecisionProvenance), never by the
   // model. Session doc id (stable; conversation number is derived at render);
   // null = decided out-of-band (e.g. prep chat → paste). Old decisions without
