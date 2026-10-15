@@ -77,3 +77,7 @@ Files:
   system array whose single block has `cache_control: { type: 'ephemeral' }`,
   that the last message's last block is marked, and that the total marker
   count is ≤ 4 in the many-attachments case.
+
+## Follow-up shipped 2026-10-15
+
+The volatile system-prompt content (the ≥1h "coming back after a gap" block and prototype age labels) now lives in a second, unmarked system block after the cache-marked stable block. `buildSystemPromptParts` returns `{stable, volatile}`, `cacheSystemPrompt`/`applyPromptCaching` emit both, and `/api/chat` and `/api/chat/kickoff` use it. A return visit's turn 2 therefore reads the prefix turn 1 wrote instead of paying a second full cache write. See `docs/superpowers/plans/2026-10-15-split-volatile-system-prompt.md`.
