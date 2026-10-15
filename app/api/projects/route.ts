@@ -188,7 +188,9 @@ export async function PATCH(request: Request) {
   }
 
   // Only allow updating specific setup fields
-  const allowed = ['welcome_message', 'nudge_message', 'voice_sample', 'seed_questions', 'context', 'title', 'builder_directives', 'session_mode', 'requester_first_name', 'requester_last_name', 'last_nudged_at', 'last_builder_activity_at', 'layout_mockups', 'identity', 'github_repo', 'auto_reminders_enabled', 'feedback_requires_identity', 'language', 'hide_title_in_previews'] as const
+  // #195 phase 2: `layout_mockups` was removed from this list; the PATCH ignores
+  // unknown fields, so an older payload that still sends it gets a 200 and no write.
+  const allowed = ['welcome_message', 'nudge_message', 'voice_sample', 'seed_questions', 'context', 'title', 'builder_directives', 'session_mode', 'requester_first_name', 'requester_last_name', 'last_nudged_at', 'last_builder_activity_at', 'identity', 'github_repo', 'auto_reminders_enabled', 'feedback_requires_identity', 'language', 'hide_title_in_previews'] as const
   if ('language' in updates && !isLocale(updates.language)) {
     return NextResponse.json({ error: 'language must be one of: en, fr' }, { status: 400 })
   }
@@ -307,7 +309,7 @@ export async function DELETE(request: Request) {
 
 // POST /api/projects — create a new project
 // Accepts full setup payload: title (required), plus optional context,
-// requester info, session config, and layout mockups.
+// requester info and session config.
 export async function POST(request: Request) {
   const auth = await getAuthenticatedUser(request)
   if (auth.error) return auth.error
@@ -359,9 +361,9 @@ export async function POST(request: Request) {
   if (Array.isArray(body.builder_directives) && body.builder_directives.length > 0) {
     projectData.builder_directives = body.builder_directives.filter((d: unknown) => typeof d === 'string' && d.trim())
   }
-  if (Array.isArray(body.layout_mockups) && body.layout_mockups.length > 0) {
-    projectData.layout_mockups = body.layout_mockups
-  }
+  // #195 phase 2: `layout_mockups` is accepted but ignored for one release so
+  // older saved payloads do not 400. Remove the field from the docs and then
+  // from here once that release has shipped.
   // #150: opt into rejecting fully-anonymous widget feedback. Only set if
   // explicitly provided — absent stays absent (default off), not `false`.
   if (typeof body.feedback_requires_identity === 'boolean') {
@@ -520,7 +522,7 @@ export async function POST(request: Request) {
     updated_at: now,
   }
   // Snapshot config fields onto the session so it captures the initial setup
-  for (const field of ['session_mode', 'seed_questions', 'builder_directives', 'welcome_message', 'identity', 'layout_mockups'] as const) {
+  for (const field of ['session_mode', 'seed_questions', 'builder_directives', 'welcome_message', 'identity'] as const) {
     if (projectData[field] !== undefined) {
       sessionData[field] = projectData[field]
     }

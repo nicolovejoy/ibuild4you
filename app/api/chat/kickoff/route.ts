@@ -12,7 +12,7 @@ import { logAnthropicCall } from '@/lib/observability/anthropic'
 import { accumulateSessionUsage } from '@/lib/observability/session-cost'
 import Anthropic from '@anthropic-ai/sdk'
 import { isArchivedSession } from '@/lib/sessions/active'
-import type { BriefContent, BriefRole, WireframeMockup } from '@/lib/types'
+import type { BriefContent, BriefRole } from '@/lib/types'
 
 // Agent kickoff (#31). When a maker opens a stale session, the frontend calls
 // this route to have the agent greet them first — typing indicator + a
@@ -206,7 +206,6 @@ export async function POST(request: Request) {
   const seedQuestions = (sessionData.seed_questions ?? projectData.seed_questions) as string[] | undefined
   const builderDirectives = (sessionData.builder_directives ?? projectData.builder_directives) as string[] | undefined
   const sessionMode = (sessionData.session_mode ?? projectData.session_mode) as 'discover' | 'converge' | undefined
-  const layoutMockups = (sessionData.layout_mockups ?? projectData.layout_mockups) as WireframeMockup[] | undefined
   const identity = (sessionData.identity ?? projectData.identity) as string | undefined
   const makerFirstName = projectData.requester_first_name as string | undefined
   const makerLastName = projectData.requester_last_name as string | undefined
@@ -250,7 +249,6 @@ export async function POST(request: Request) {
     seedQuestions,
     builderDirectives,
     sessionMode,
-    layoutMockups,
     identity,
     makerFirstName,
     makerLastName,

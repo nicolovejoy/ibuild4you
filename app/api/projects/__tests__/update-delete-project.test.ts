@@ -223,6 +223,20 @@ describe('PATCH /api/projects', () => {
     expect(data.secret_field).toBeUndefined()
   })
 
+  it('accepts layout_mockups without storing it (#195 phase 2)', async () => {
+    const res = await PATCH(
+      makePatchRequest({
+        project_id: 'proj-1',
+        layout_mockups: [{ title: 'Old', sections: [] }],
+      })
+    )
+    expect(res.status).toBe(200)
+
+    const data = await res.json()
+    expect(data.id).toBe('proj-1')
+    expect(data.layout_mockups).toBeUndefined()
+  })
+
   it('always adds updated_at', async () => {
     const res = await PATCH(
       makePatchRequest({
