@@ -1,3 +1,4 @@
+import { toLocale } from '@/lib/locale'
 import type { BriefContent } from '@/lib/types'
 import {
   NEXT_CONVO_SYSTEM_PROMPT,
@@ -120,6 +121,7 @@ export async function regenerateBriefForProject(
     conversationHistory: allMessages,
     projectTitle,
     sessionCount: sessionIds.length,
+    language: toLocale(projectDoc.data()?.language),
   })
 
   // Prompt caching: two breakpoints.

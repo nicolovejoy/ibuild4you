@@ -169,6 +169,27 @@ describe('PATCH /api/projects', () => {
     expect(data.voice_sample).toBe('Short. Direct. No filler.')
   })
 
+  it('updates language and hide_title_in_previews', async () => {
+    const res = await PATCH(
+      makePatchRequest({ project_id: 'proj-1', language: 'fr', hide_title_in_previews: true })
+    )
+    expect(res.status).toBe(200)
+
+    const data = await res.json()
+    expect(data.language).toBe('fr')
+    expect(data.hide_title_in_previews).toBe(true)
+  })
+
+  it('rejects an unsupported language', async () => {
+    const res = await PATCH(makePatchRequest({ project_id: 'proj-1', language: 'de' }))
+    expect(res.status).toBe(400)
+  })
+
+  it('rejects a non-boolean hide_title_in_previews', async () => {
+    const res = await PATCH(makePatchRequest({ project_id: 'proj-1', hide_title_in_previews: 'yes' }))
+    expect(res.status).toBe(400)
+  })
+
   it('regenerates slug when title changes', async () => {
     const res = await PATCH(
       makePatchRequest({

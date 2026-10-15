@@ -91,7 +91,13 @@ describe('buildNextConvoPrompt', () => {
 
   it('tells the prep Claude to write maker-facing text in the maker\'s language', () => {
     const result = buildNextConvoPrompt(emptyInput)
-    expect(result).toMatch(/language other than English/)
+    expect(result).toMatch(/Write `welcome_message` and `nudge_message` in that language/)
+  })
+
+  it('passes the brief language in the project block', () => {
+    expect(buildNextConvoPrompt({ ...emptyInput, language: 'fr' })).toMatch(/Maker's language: French/)
+    expect(buildNextConvoPrompt(emptyInput)).toMatch(/Maker's language: English/)
+    expect(buildNextConvoPrompt(emptyInput)).not.toMatch(/Converse in French/)
   })
 
   it('keeps the brief itself in English even when the conversation is not', () => {

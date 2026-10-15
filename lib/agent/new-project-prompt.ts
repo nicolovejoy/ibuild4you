@@ -19,6 +19,7 @@ When I say "give me the output", produce ONLY valid JSON matching this schema (n
   "requester_email": "Maker's email. Required to share the project with them later — creates a maker membership and approves the email for sign-in.",
   "requester_first_name": "Maker's first name",
   "requester_last_name": "Maker's last name",
+  "language": "en or fr. The language the maker is addressed in (agent replies, outbound messages, link previews). Omit for English.",
   "context": "Background info the agent uses to skip basic discovery questions. Multi-sentence is fine.",
   "welcome_message": "The greeting the agent sends when the maker opens the project for the first time. Sets tone.",
   "nudge_message": "Optional. Verbatim outbound nudge text used to invite the maker back. Omit to let the system auto-draft.",
@@ -49,7 +50,7 @@ When I say "give me the output", produce ONLY valid JSON matching this schema (n
 Rules:
 - Only include top-level fields we've actually discussed. Omit fields with no signal — don't invent a \`nudge_message\` or \`voice_sample\` from thin air.
 - \`session_opener\` is accepted as a legacy alias for \`welcome_message\` — prefer \`welcome_message\`.
-- If the maker should be addressed in a language other than English, write \`welcome_message\` and \`nudge_message\` in that language, and add a \`builder_directives\` entry such as "Converse in French" so the agent uses it from the first message. The brief itself always stays in English (the builder reads it): translate anything the maker said in another language.
+- If the maker should be addressed in a language other than English, set \`language\` (e.g. "fr") and write \`welcome_message\` and \`nudge_message\` in that language. The language setting makes the agent use it from the first message, so don't add a directive for it. The brief itself always stays in English (the builder reads it): translate anything the maker said in another language.
 - \`title\` is required; everything else is optional.
 - Omit the entire \`brief\` object if not enough is known to seed it — the agent will discover during the first session.
 - Extract brief content ONLY from what we discussed. Do not invent or assume.

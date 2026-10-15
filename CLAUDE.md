@@ -95,6 +95,8 @@ Only `title` is required. All other fields are optional.
   "nudge_message": "Optional. When set, used verbatim as the outbound nudge text for the next session and skips AI generation. Leave blank to let the AI draft.",
   "voice_sample": "Optional. One paragraph showing how you'd text this person by hand. Used as a style anchor for AI-generated outbound copy (nudge/invite/reminder). Ignored when nudge_message is set.",
   "session_mode": "discover",
+  "language": "fr",
+  "hide_title_in_previews": false,
   "seed_questions": [
     "What problem are you trying to solve?",
     "Who are your customers?"
@@ -119,13 +121,15 @@ Side effects on create: generates slug, creates owner membership, creates a memb
 
 **Participants.** `participants[]` seeds any number of people on a brief in one payload — each `{ email (required), first_name?, last_name?, role?, brief_role? }`. `role` is a `MemberRole` (`maker` | `apprentice` | `builder` | `owner`; default `maker`); `brief_role` defaults from role (maker→originator, apprentice→contributor, builder→reviewer). The legacy `requester_email`/`requester_first_name`/`requester_last_name` (+ `brief_role`) still work and are folded in as the first participant. Rules: dedup by lowercased email; the creator's own email is skipped (already the owner); the project doc's displayed requester is the first `maker` participant (else the first overall); **soft cap 20** (more → 400). No hard limit elsewhere — the chat roster name-tags arbitrarily many distinct senders. The response includes a `members: [{ email, role, brief_role }]` array (passcodes no longer minted or returned, PR D).
 
+`language` (optional, `en` | `fr`, default English): the language the maker is addressed in — the agent converses in it from the first message, welcome/nudge copy is written in it, and link previews use it. The brief itself always stays in English. `hide_title_in_previews` (optional boolean): a shared `/projects/<slug>` link previews with the brief title unless this is true (then the anonymous colour/glyph/code card). Previews are unauthenticated and cached by messaging apps — never names or brief contents.
+
 `layout_mockups` (legacy, optional): an array of `{ title, sections: [{ type, label, description }] }` wireframes the agent may show in chat. De-prioritized 2026-10-08 (#195): the agent no longer brings up wireframes unless a builder set this field; full removal is phase 2 of that issue.
 
 A decision may carry `"locked": true` — a durable constraint (locked convention / do-not-use rule). Locked decisions survive brief regen verbatim (code-side merge in `regenerateBriefForProject`, never dropped by the model) and the agent must reconcile new intake against them: a maker statement contradicting a locked decision triggers an explicit confirm instead of a silent overwrite (#71). Set via the create payload or the Brief-tab JSON paste (`PUT /api/briefs`).
 
 ### Update (PATCH /api/projects)
 
-Requires `project_id`. Only these fields are accepted: `title`, `context`, `welcome_message`, `nudge_message`, `voice_sample`, `session_mode`, `seed_questions`, `builder_directives`, `layout_mockups`, `requester_first_name`, `requester_last_name`, `last_nudged_at`, `last_builder_activity_at`, `identity`. Changing `title` regenerates the slug.
+Requires `project_id`. Only these fields are accepted: `title`, `context`, `welcome_message`, `nudge_message`, `voice_sample`, `session_mode`, `seed_questions`, `builder_directives`, `layout_mockups`, `requester_first_name`, `requester_last_name`, `last_nudged_at`, `last_builder_activity_at`, `identity`, `github_repo`, `auto_reminders_enabled`, `feedback_requires_identity`, `language` (`en`|`fr`, else 400), `hide_title_in_previews` (boolean, else 400). Changing `title` regenerates the slug.
 
 ## Agent Behavior Rules
 

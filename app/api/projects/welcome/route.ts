@@ -1,3 +1,4 @@
+import { toLocale } from '@/lib/locale'
 import { NextResponse } from 'next/server'
 import {
   getAuthenticatedUser,
@@ -35,7 +36,8 @@ export async function POST(request: Request) {
     projectData.title as string,
     projectData.context as string | undefined,
     undefined,
-    { project_id }
+    { project_id },
+    toLocale(projectData.language)
   )
 
   return NextResponse.json({ welcome_message: welcomeMessage })

@@ -101,3 +101,14 @@ describe('prepConfigHash', () => {
     expect(a).toBe(b)
   })
 })
+
+describe('brief language', () => {
+  it('asks for the nudge in French when the brief language is fr', () => {
+    expect(buildPrepUserContent({ ...base, language: 'fr' })).toMatch(/Write the nudge in French/)
+    expect(buildPrepUserContent(base)).not.toMatch(/Write the nudge in/)
+  })
+
+  it('changes the config hash when the language changes', () => {
+    expect(prepConfigHash({ ...base, language: 'fr' })).not.toBe(prepConfigHash(base))
+  })
+})

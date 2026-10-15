@@ -1,10 +1,12 @@
 import type { BriefContent } from '@/lib/types'
+import { LOCALE_NAMES, toLocale, type Locale } from '@/lib/locale'
 
 interface NextConvoPromptInput {
   currentBrief: BriefContent | null
   conversationHistory: { role: string; content: string }[]
   projectTitle: string
   sessionCount: number
+  language?: Locale
 }
 
 // Static portion of the next-convo prep prompt: intro, JSON schema, extraction
@@ -52,7 +54,7 @@ When I say "give me the output", produce ONLY valid JSON matching this schema (n
 Rules:
 - Only include top-level fields the conversation actually addressed. Omit fields the builder didn't discuss — don't invent a \`nudge_message\` or \`voice_sample\` from thin air.
 - \`session_opener\` is accepted as a legacy alias for \`welcome_message\` — prefer \`welcome_message\`.
-- If the maker should be addressed in a language other than English, write \`welcome_message\` and \`nudge_message\` in that language, and add a \`builder_directives\` entry such as "Converse in French" so the agent uses it from the first message. The brief itself always stays in English (the builder reads it): translate anything the maker said in another language.
+- The maker's language is given in the <project> block. Write \`welcome_message\` and \`nudge_message\` in that language. The project's language setting already makes the agent use it, so don't add a directive for it. The brief itself always stays in English (the builder reads it): translate anything the maker said in another language.
 - Extract brief content ONLY from what the user has actually said. Do not invent or assume.
 - If a brief field has no information yet, use an empty string (or empty array for features/decisions/open_risks).
 - Keep descriptions concise and in plain language.
@@ -79,11 +81,13 @@ export function buildNextConvoUserContent({
   conversationHistory,
   projectTitle,
   sessionCount,
+  language,
 }: NextConvoPromptInput): string {
   return [
     `<project>
 Title: ${projectTitle}
 Sessions so far: ${sessionCount}
+Maker's language: ${LOCALE_NAMES[toLocale(language)]}
 </project>`,
     `<current_brief>
 ${currentBrief ? JSON.stringify(currentBrief, null, 2) : 'No brief yet'}

@@ -472,6 +472,31 @@ describe('POST /api/projects', () => {
     expect(data.requester_email).toBeUndefined()
   })
 
+  it('saves language and hide_title_in_previews on the project', async () => {
+    const res = await POST(makeRequest({
+      title: 'Le café de Sam',
+      language: 'fr',
+      hide_title_in_previews: true,
+    }))
+
+    expect(res.status).toBe(201)
+    const data = await res.json()
+    expect(data.language).toBe('fr')
+    expect(data.hide_title_in_previews).toBe(true)
+  })
+
+  it('ignores an unsupported language and a non-boolean hide flag', async () => {
+    const res = await POST(makeRequest({
+      title: 'Test',
+      language: 'de',
+      hide_title_in_previews: 'yes',
+    }))
+
+    const data = await res.json()
+    expect(data.language).toBeUndefined()
+    expect(data.hide_title_in_previews).toBeUndefined()
+  })
+
   it('ignores invalid session_mode values', async () => {
     const res = await POST(makeRequest({
       title: 'Test',

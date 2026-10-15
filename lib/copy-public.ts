@@ -10,7 +10,8 @@
 
 import { copy } from './copy'
 
-export type Locale = 'en' | 'fr'
+import type { Locale } from './locale'
+export type { Locale }
 
 const en = {
   langSwitch: { label: 'FR', aria: 'Lire en français', href: '/fr' },

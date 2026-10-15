@@ -8,6 +8,8 @@ import type { BriefContent } from '@/lib/types'
 // Fired eagerly at config-set time so both are pre-warmed on the card. House tone
 // is friendly + terse (see feedback_outbound_tone memory).
 
+import { LOCALE_NAMES, type Locale } from '@/lib/locale'
+
 export interface PrepInput {
   projectTitle: string
   // All active makers' first names, pre-joined ("Matt and Scott") — the nudge
@@ -21,6 +23,8 @@ export interface PrepInput {
   builderDirectives?: string[]
   welcomeMessage?: string | null
   voiceSample?: string | null
+  // Brief language — the nudge is written in it (default English).
+  language?: Locale
 }
 
 export interface PrepResult {
@@ -102,6 +106,8 @@ export function buildPrepUserContent(input: PrepInput): string {
   ]
   if (input.voiceSample?.trim())
     sections.push(`\nMatch this builder's texting voice:\n${input.voiceSample.trim()}`)
+  if (input.language && input.language !== 'en')
+    sections.push(`\nWrite the nudge in ${LOCALE_NAMES[input.language]}. Keep the focus line in English (the builder reads it).`)
   sections.push('\nCall emit_prep with the nudge_message and focus.')
   return sections.join('\n')
 }
@@ -112,7 +118,7 @@ export function buildPrepUserContent(input: PrepInput): string {
 export function prepConfigHash(
   input: Pick<
     PrepInput,
-    'sessionMode' | 'seedQuestions' | 'builderDirectives' | 'welcomeMessage' | 'voiceSample' | 'makerNames'
+    'sessionMode' | 'seedQuestions' | 'builderDirectives' | 'welcomeMessage' | 'voiceSample' | 'makerNames' | 'language'
   > & { briefSignal?: string | number | null },
 ): string {
   const payload = JSON.stringify({
@@ -123,6 +129,8 @@ export function prepConfigHash(
     v: (input.voiceSample || '').trim(),
     n: (input.makerNames || '').trim(),
     b: input.briefSignal ?? '',
+    // Only present for non-English so existing English hashes don't change.
+    ...(input.language && input.language !== 'en' ? { l: input.language } : {}),
   })
   // djb2 — small, stable, no crypto dependency.
   let h = 5381

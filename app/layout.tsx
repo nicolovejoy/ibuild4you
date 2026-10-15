@@ -1,3 +1,4 @@
+import { previewCopy } from '@/lib/og/preview-copy'
 import type { Metadata } from 'next'
 import { Montserrat, Open_Sans } from 'next/font/google'
 import './globals.css'
@@ -18,7 +19,7 @@ const openSans = Open_Sans({
 })
 
 const SITE_URL = 'https://ibuild4you.com'
-const SITE_DESCRIPTION = 'AI-powered project intake — from idea to structured brief'
+const SITE_DESCRIPTION = previewCopy.en.siteDescription
 
 export const metadata: Metadata = {
   // metadataBase makes the generated opengraph-image emit an absolute https URL,
@@ -32,6 +33,7 @@ export const metadata: Metadata = {
     siteName: 'iBuild4you',
     title: 'iBuild4you',
     description: SITE_DESCRIPTION,
+    locale: previewCopy.en.ogLocale,
     // og:image is supplied automatically from app/opengraph-image.tsx.
   },
   twitter: {
