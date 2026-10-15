@@ -150,7 +150,6 @@ const en = {
     continue: 'Continue',
     switchBrief: 'Switch brief',
     yourBriefs: copy.dashboard.title,
-    drawingLayout: 'Drawing layout...',
   },
   files: {
     empty: 'No files shared yet.',
@@ -337,7 +336,6 @@ const fr: MakerCopy = {
     continue: 'Continuer',
     switchBrief: 'Changer de brief',
     yourBriefs: 'Vos briefs',
-    drawingLayout: 'Dessin de la mise en page…',
   },
   files: {
     empty: 'Aucun fichier partagé pour l’instant.',

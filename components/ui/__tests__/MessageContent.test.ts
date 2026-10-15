@@ -14,74 +14,40 @@ describe('parseMessageContent', () => {
     expect(hasIncompleteBlock).toBe(false)
   })
 
-  it('parses a single wireframe block', () => {
-    const content = '```wireframe\n{"title":"Test","sections":[{"type":"hero","label":"Hi","description":"desc"}]}\n```'
-    const { segments, hasIncompleteBlock } = parseMessageContent(content)
-    expect(segments).toHaveLength(1)
-    expect(segments[0].type).toBe('wireframe')
-    if (segments[0].type === 'wireframe') {
-      expect(segments[0].parsed).not.toBeNull()
-      expect(segments[0].parsed!.title).toBe('Test')
-      expect(segments[0].parsed!.sections).toHaveLength(1)
-    }
-    expect(hasIncompleteBlock).toBe(false)
-  })
-
-  it('handles text before and after a wireframe block', () => {
+  // #195 phase 2: wireframe fences are no longer a block type. Old messages
+  // that still carry one render as the plain text they are.
+  it('treats a legacy wireframe fence as plain text', () => {
     const content = 'Here is the layout:\n\n```wireframe\n{"title":"Layout","sections":[]}\n```\n\nWhat do you think?'
-    const { segments } = parseMessageContent(content)
-    expect(segments).toHaveLength(3)
-    expect(segments[0]).toEqual({ type: 'text', content: 'Here is the layout:\n\n' })
-    expect(segments[1].type).toBe('wireframe')
-    expect(segments[2]).toEqual({ type: 'text', content: '\n\nWhat do you think?' })
+    const { segments, hasIncompleteBlock } = parseMessageContent(content)
+    expect(hasIncompleteBlock).toBe(false)
+    expect(segments).toEqual([{ type: 'text', content }])
   })
 
-  it('handles multiple wireframe blocks', () => {
-    const content = 'Option A:\n\n```wireframe\n{"title":"A","sections":[]}\n```\n\nOption B:\n\n```wireframe\n{"title":"B","sections":[]}\n```'
-    const { segments } = parseMessageContent(content)
-    expect(segments).toHaveLength(4)
-    expect(segments[0].type).toBe('text')
-    expect(segments[1].type).toBe('wireframe')
-    expect(segments[2].type).toBe('text')
-    expect(segments[3].type).toBe('wireframe')
-  })
-
-  it('handles malformed JSON gracefully', () => {
-    const content = '```wireframe\n{not valid json}\n```'
-    const { segments } = parseMessageContent(content)
-    expect(segments).toHaveLength(1)
-    expect(segments[0].type).toBe('wireframe')
-    if (segments[0].type === 'wireframe') {
-      expect(segments[0].parsed).toBeNull()
-      expect(segments[0].raw).toBe('{not valid json}')
-    }
-  })
-
-  it('handles valid JSON without required fields', () => {
-    const content = '```wireframe\n{"name":"missing title and sections"}\n```'
-    const { segments } = parseMessageContent(content)
-    expect(segments[0].type).toBe('wireframe')
-    if (segments[0].type === 'wireframe') {
-      expect(segments[0].parsed).toBeNull()
-    }
-  })
-
-  it('detects incomplete block (streaming in progress)', () => {
+  it('does not flag an unclosed legacy wireframe fence as a streaming block', () => {
     const content = 'Here is the layout:\n\n```wireframe\n{"title":"Test","sec'
-    const { segments, hasIncompleteBlock } = parseMessageContent(content)
-    expect(hasIncompleteBlock).toBe(true)
-    // Text before the incomplete block should still show
-    expect(segments).toHaveLength(1)
-    expect(segments[0]).toEqual({ type: 'text', content: 'Here is the layout:\n\n' })
+    const { segments, hasIncompleteBlock, incompleteKind } = parseMessageContent(content)
+    expect(hasIncompleteBlock).toBe(false)
+    expect(incompleteKind).toBeUndefined()
+    expect(segments).toEqual([{ type: 'text', content }])
   })
 
-  it('handles complete block followed by incomplete block', () => {
-    const content = '```wireframe\n{"title":"Done","sections":[]}\n```\n\nNow another:\n\n```wireframe\n{"title":"Still stream'
-    const { segments, hasIncompleteBlock } = parseMessageContent(content)
+  it('still detects an unclosed options fence while streaming', () => {
+    const content = 'Which way?\n\n```options\n["Pickup", "Deli'
+    const { segments, hasIncompleteBlock, incompleteKind } = parseMessageContent(content)
     expect(hasIncompleteBlock).toBe(true)
-    expect(segments).toHaveLength(2)
-    expect(segments[0].type).toBe('wireframe')
-    expect(segments[1].type).toBe('text')
+    expect(incompleteKind).toBe('options')
+    expect(segments).toEqual([{ type: 'text', content: 'Which way?\n\n' }])
+  })
+
+  it('keeps a legacy wireframe fence and an options block apart', () => {
+    const content =
+      '```wireframe\n{"title":"A","sections":[]}\n```\n\nLike this?\n\n```options\n["Yes", "No"]\n```'
+    const { segments } = parseMessageContent(content)
+    expect(segments.map((s) => s.type)).toEqual(['text', 'options'])
+    expect(segments[0]).toEqual({
+      type: 'text',
+      content: '```wireframe\n{"title":"A","sections":[]}\n```\n\nLike this?\n\n',
+    })
   })
 
   // --- options blocks (#131) ---
@@ -134,12 +100,5 @@ describe('parseMessageContent', () => {
     expect(hasIncompleteBlock).toBe(true)
     expect(segments).toHaveLength(1)
     expect(segments[0]).toEqual({ type: 'text', content: 'Pick one:\n\n' })
-  })
-
-  it('handles a wireframe and an options block in the same message', () => {
-    const content =
-      '```wireframe\n{"title":"A","sections":[]}\n```\n\nLike this?\n\n```options\n["Yes", "No"]\n```'
-    const { segments } = parseMessageContent(content)
-    expect(segments.map((s) => s.type)).toEqual(['wireframe', 'text', 'options'])
   })
 })
