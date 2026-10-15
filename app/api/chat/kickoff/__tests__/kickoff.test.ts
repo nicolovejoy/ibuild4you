@@ -109,7 +109,7 @@ vi.mock('@anthropic-ai/sdk', () => ({
 }))
 
 vi.mock('@/lib/agent/system-prompt', () => ({
-  buildSystemPrompt: vi.fn(() => 'You are a helpful assistant'),
+  buildSystemPromptParts: vi.fn(() => ({ stable: 'You are a helpful assistant', volatile: null })),
 }))
 
 vi.mock('@/lib/observability/anthropic', () => ({
@@ -240,6 +240,24 @@ describe('POST /api/chat/kickoff', () => {
     // The synthetic final turn never recurs — no message marker.
     const sent = capturedStreamArgs?.messages || []
     expect(sent.every((m) => typeof m.content === 'string')).toBe(true)
+  })
+
+  it('sends the gap recap as a second, unmarked system block so the cached prefix matches the next /api/chat turn', async () => {
+    const { buildSystemPromptParts } = await import('@/lib/agent/system-prompt')
+    vi.mocked(buildSystemPromptParts).mockReturnValueOnce({
+      stable: 'You are a helpful assistant',
+      volatile: '## Returning after a break\n\nrecap',
+    })
+    setup({
+      messages: [msg('agent', 5 * HOUR), msg('user', 3 * HOUR), msg('agent', 3 * HOUR)],
+      lastMakerMessageAt: iso(3 * HOUR),
+    })
+    await drain(await POST(makeRequest({ session_id: 'sess-1' })))
+
+    expect(capturedStreamArgs?.system).toEqual([
+      { type: 'text', text: 'You are a helpful assistant', cache_control: { type: 'ephemeral' } },
+      { type: 'text', text: '## Returning after a break\n\nrecap' },
+    ])
   })
 
   it('declines when a builder opens the session (#110 — kickoff is maker re-engagement)', async () => {
