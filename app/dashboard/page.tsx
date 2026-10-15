@@ -21,6 +21,8 @@ import { BriefBadge } from '@/components/ui/BriefBadge'
 import { RoleGlyph } from '@/components/ui/RoleGlyph'
 import { briefIdentity } from '@/lib/brief-identity'
 import { copy, formatDisplayName, getMakerShortName } from '@/lib/copy'
+import { formatRelativeTime } from '@/lib/copy-maker'
+import { useLocale, useMakerCopy } from '@/components/locale-provider'
 import { viewerBriefRole } from '@/lib/roles/display'
 import { groupBriefs, shouldFlatten, type SectionKey } from '@/lib/dashboard/group-briefs'
 import { getProjectShareLink } from '@/lib/url'
@@ -33,6 +35,7 @@ export default function DashboardPage() {
   const { approved, loading: approvalLoading } = useApproval()
   const { data: currentUser } = useCurrentUser()
   const router = useRouter()
+  const m = useMakerCopy()
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -49,7 +52,7 @@ export default function DashboardPage() {
   if (authLoading || approvalLoading) {
     return (
       <div className="min-h-screen bg-brand-cream flex items-center justify-center">
-        <div className="animate-pulse text-brand-slate">Loading...</div>
+        <div className="animate-pulse text-brand-slate">{m.common.loading}</div>
       </div>
     )
   }
@@ -73,7 +76,7 @@ export default function DashboardPage() {
 
       <main className="max-w-4xl mx-auto px-4 py-8">
         <div className="flex items-center justify-between mb-6">
-          <h2 className={`text-2xl font-semibold ${headingColor}`}>{copy.dashboard.title}</h2>
+          <h2 className={`text-2xl font-semibold ${headingColor}`}>{m.dashboard.title}</h2>
           {isAdmin && (
             <div className="flex items-center gap-2">
               <Link
@@ -391,6 +394,9 @@ function ProjectList({ isAdmin }: { isAdmin: boolean }) {
   const router = useRouter()
   const archiveProject = useArchiveProject()
   const [sharingProject, setSharingProject] = useState<Project | null>(null)
+  const { locale } = useLocale()
+  const d = useMakerCopy().dashboard
+  const ago = (iso: string) => formatRelativeTime(iso, locale)
 
   if (isLoading) {
     return (
@@ -402,21 +408,21 @@ function ProjectList({ isAdmin }: { isAdmin: boolean }) {
   }
 
   if (error) {
-    return <StatusMessage type="error" message="Failed to load briefs. Please try again." />
+    return <StatusMessage type="error" message={d.loadFailed} />
   }
 
   if (!projects?.length) {
     return (
       <EmptyState
         icon={FolderOpen}
-        title="No briefs yet"
-        description={isAdmin ? copy.dashboard.emptyAdmin : copy.dashboard.emptyMaker}
+        title={d.emptyTitle}
+        description={isAdmin ? copy.dashboard.emptyAdmin : d.emptyMaker}
       />
     )
   }
 
   const renderCard = (project: Project) => {
-    const turn = getTurnIndicator(project, project.viewer_role ?? null)
+    const turn = getTurnIndicator(project, project.viewer_role ?? null, locale)
     return (
       <Card key={project.id} style={{ borderLeft: `6px solid ${briefIdentity(project.id).color}` }}>
         <CardBody>
@@ -456,31 +462,31 @@ function ProjectList({ isAdmin }: { isAdmin: boolean }) {
                 )}
                 {project.brief_version != null && (
                   <span className="text-gray-400">
-                    Brief
+                    {d.brief}
                     {(project.brief_feature_count ?? 0) > 0 && (
-                      <> &middot; {project.brief_feature_count} feature{project.brief_feature_count === 1 ? '' : 's'}</>
+                      <> &middot; {d.features(project.brief_feature_count ?? 0)}</>
                     )}
                     {(project.brief_decision_count ?? 0) > 0 && (
-                      <> &middot; {project.brief_decision_count} decision{project.brief_decision_count === 1 ? '' : 's'}</>
+                      <> &middot; {d.decisions(project.brief_decision_count ?? 0)}</>
                     )}
                   </span>
                 )}
               </div>
               <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-gray-400 mt-1">
                 {project.last_maker_message_at && (
-                  <span>{makerShortName(project)} messaged {formatRelativeTime(project.last_maker_message_at)}</span>
+                  <span>{d.activityMaker(makerShortName(project), ago(project.last_maker_message_at))}</span>
                 )}
                 {project.last_message_at && project.last_message_by === 'agent' && (
-                  <span>{copy.dashboard.activityAgent(formatRelativeTime(project.last_message_at))}</span>
+                  <span>{d.activityAgent(ago(project.last_message_at))}</span>
                 )}
                 {project.last_builder_activity_at && (
-                  <span>{copy.dashboard.builderActivity(formatRelativeTime(project.last_builder_activity_at))}</span>
+                  <span>{d.builderActivity(ago(project.last_builder_activity_at))}</span>
                 )}
                 {!project.last_maker_message_at && project.shared_at && (
-                  <span>{copy.dashboard.sharedAt(formatRelativeTime(project.shared_at))}</span>
+                  <span>{d.sharedAt(ago(project.shared_at))}</span>
                 )}
                 {project.last_nudged_at && (
-                  <span>{copy.dashboard.nudgedAt(formatRelativeTime(project.last_nudged_at))}</span>
+                  <span>{d.nudgedAt(ago(project.last_nudged_at))}</span>
                 )}
               </div>
             </div>
@@ -494,7 +500,7 @@ function ProjectList({ isAdmin }: { isAdmin: boolean }) {
                 }}
                 disabled={archiveProject.isPending}
                 className="p-1.5 text-gray-400 hover:text-brand-navy hover:bg-gray-100 rounded disabled:opacity-50"
-                title={project.viewer_archived ? copy.dashboard.unarchive : copy.dashboard.archive}
+                title={project.viewer_archived ? d.unarchive : d.archive}
               >
                 {project.viewer_archived ? <ArchiveRestore className="h-4 w-4" /> : <Archive className="h-4 w-4" />}
               </button>
@@ -520,7 +526,7 @@ function ProjectList({ isAdmin }: { isAdmin: boolean }) {
   // Group into role/turn-state sections (#44). When grouping earns nothing
   // (one bucket, or a small total), fall back to the flat activity-sorted list
   // exactly as before — only multi-bucket dashboards get section headers.
-  const sections = groupBriefs(projects)
+  const sections = groupBriefs(projects, locale)
 
   return (
     <>
@@ -861,19 +867,4 @@ function makerDisplayName(project: Project): string | null {
 
 function makerShortName(project: Project): string {
   return getMakerShortName(project.requester_first_name, project.requester_email)
-}
-
-function formatRelativeTime(iso: string): string {
-  const date = new Date(iso)
-  const now = new Date()
-  const diffMs = now.getTime() - date.getTime()
-  const diffMins = Math.floor(diffMs / 60000)
-  const diffHours = Math.floor(diffMs / 3600000)
-  const diffDays = Math.floor(diffMs / 86400000)
-
-  if (diffMins < 1) return 'just now'
-  if (diffMins < 60) return `${diffMins}m ago`
-  if (diffHours < 24) return `${diffHours}h ago`
-  if (diffDays < 7) return `${diffDays}d ago`
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }

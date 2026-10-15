@@ -48,6 +48,7 @@ export interface AppUser extends BaseEntity {
   first_name?: string
   last_name?: string
   account_label?: string // self-assigned nav label ("main", "test account")
+  locale?: Locale // chosen UI language (EN/FR toggle); absent = cookie / brief / English
   system_roles?: SystemRole[]
 }
 

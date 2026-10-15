@@ -5,11 +5,12 @@ import { useRouter } from 'next/navigation'
 import { useEffect } from 'react'
 import { Clock } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
-import { copy } from '@/lib/copy'
+import { useMakerCopy } from '@/components/locale-provider'
 
 export default function NotApprovedPage() {
   const { user, loading, isAuthenticated, signOut } = useAuth()
   const router = useRouter()
+  const { common, notApproved: t } = useMakerCopy()
 
   useEffect(() => {
     if (!loading && !isAuthenticated) {
@@ -20,7 +21,7 @@ export default function NotApprovedPage() {
   if (loading || !user) {
     return (
       <div className="min-h-screen bg-brand-cream flex items-center justify-center">
-        <div className="animate-pulse text-brand-slate">Loading...</div>
+        <div className="animate-pulse text-brand-slate">{common.loading}</div>
       </div>
     )
   }
@@ -34,15 +35,15 @@ export default function NotApprovedPage() {
     <div className="min-h-screen bg-brand-cream flex items-center justify-center px-4">
       <div className="max-w-md text-center space-y-6">
         <Clock className="h-16 w-16 text-brand-slate mx-auto" />
-        <h1 className="text-2xl font-bold text-brand-charcoal">{copy.auth.notApprovedTitle}</h1>
-        <p className="text-brand-slate">{copy.auth.notApprovedMessage(user.email ?? '')}</p>
-        <p className="text-sm text-brand-slate">{copy.auth.notApprovedWrongAccount}</p>
+        <h1 className="text-2xl font-bold text-brand-charcoal">{t.title}</h1>
+        <p className="text-brand-slate">{t.message(user.email ?? '')}</p>
+        <p className="text-sm text-brand-slate">{t.wrongAccount}</p>
         <div className="flex items-center justify-center gap-3">
           <Button variant="primary" onClick={handleSignOut}>
-            {copy.auth.signOut}
+            {common.signOut}
           </Button>
-          <Button variant="ghost" onClick={() => router.push('/')}>
-            Back to home
+          <Button variant="ghost" onClick={() => router.push(common.homeHref)}>
+            {common.backToHome}
           </Button>
         </div>
       </div>

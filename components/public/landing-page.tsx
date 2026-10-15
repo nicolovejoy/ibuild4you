@@ -9,13 +9,14 @@ import { ScaffoldIcon } from '@/components/ScaffoldIcon'
 import { LoadingButton } from '@/components/ui/LoadingButton'
 import { StatusMessage } from '@/components/ui/StatusMessage'
 import { publicCopy, type Locale } from '@/lib/copy-public'
-import { LangSwitch, HtmlLang } from '@/components/public/lang'
+import { LangSwitch, usePublicPageLocale } from '@/components/public/lang'
 
 // Public landing page, shared by / (English) and /fr (French).
 export function LandingPage({ locale }: { locale: Locale }) {
   const t = publicCopy[locale]
   const { user, loading, isAuthenticated } = useAuth()
   const router = useRouter()
+  usePublicPageLocale(locale, locale === 'en' ? '/fr' : '/')
 
   useEffect(() => {
     if (!loading && isAuthenticated) {
@@ -35,7 +36,6 @@ export function LandingPage({ locale }: { locale: Locale }) {
 
   return (
     <div className="min-h-screen bg-brand-cream relative" lang={locale}>
-      <HtmlLang locale={locale} />
       <div className="absolute top-4 right-4">
         <LangSwitch locale={locale} />
       </div>

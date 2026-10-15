@@ -1,8 +1,10 @@
 import type { Metadata } from 'next'
 import { briefPreviewMeta } from '@/lib/og/preview-copy'
 import { resolveBriefPreview } from '@/lib/og/resolve-brief'
+import { BriefLanguageHint } from '@/components/locale-provider'
+import { toLocale } from '@/lib/locale'
 
-// Server layout for /projects/<slug-or-id>: only here to give a shared brief
+// Server layout for /projects/<slug-or-id>. Gives a shared brief
 // link its own share title/description in the brief's language (the page itself
 // is a client component and can't export metadata). The card image comes from
 // ./opengraph-image.tsx. Same privacy rules as that route — title (unless hidden),
@@ -34,6 +36,26 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   }
 }
 
-export default function ProjectLayout({ children }: { children: React.ReactNode }) {
-  return children
+// Also hands the brief's language (nothing else) to the client, so a French
+// maker opening their link signed out lands on a French sign-in page.
+export default async function ProjectLayout({
+  children,
+  params,
+}: {
+  children: React.ReactNode
+  params: Promise<{ id: string }>
+}) {
+  const { id } = await params
+  let language: unknown = null
+  try {
+    language = (await resolveBriefPreview(id))?.language
+  } catch {
+    language = null
+  }
+  return (
+    <>
+      {language ? <BriefLanguageHint language={toLocale(language)} /> : null}
+      {children}
+    </>
+  )
 }

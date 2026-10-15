@@ -1,15 +1,16 @@
 import Link from 'next/link'
 import { SiteHeader } from '@/components/site-header'
 import { publicCopy, type Locale } from '@/lib/copy-public'
-import { HtmlLang } from '@/components/public/lang'
+import { PublicPageLocale } from '@/components/public/lang'
 
 // About page, shared by /about (English) and /fr/about (French).
 export function AboutPage({ locale }: { locale: Locale }) {
   const a = publicCopy[locale].about
+  const otherLanguageHref = locale === 'en' ? '/fr/about' : '/about'
   return (
     <div className="min-h-screen bg-brand-cream" lang={locale}>
-      <HtmlLang locale={locale} />
-      <SiteHeader locale={locale} langSwitchHref={locale === 'en' ? '/fr/about' : '/about'} />
+      <PublicPageLocale locale={locale} otherLanguageHref={otherLanguageHref} />
+      <SiteHeader locale={locale} langSwitchHref={otherLanguageHref} />
 
       <div className="max-w-2xl mx-auto px-4 py-12 sm:py-16 space-y-12 sm:space-y-16">
         {/* What is this? */}

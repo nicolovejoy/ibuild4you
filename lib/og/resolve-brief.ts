@@ -1,3 +1,4 @@
+import { cache } from 'react'
 import { getAdminDb } from '@/lib/firebase/admin'
 
 // Server-only lookup for a brief's public link preview. Used by the per-brief
@@ -16,7 +17,7 @@ export interface BriefPreview {
 }
 
 /** Resolve a slug-or-id route param. Null when not found. */
-export async function resolveBriefPreview(slugOrId: string, opts: { withSessionCount?: boolean } = {}): Promise<BriefPreview | null> {
+async function lookupBriefPreview(slugOrId: string, opts: { withSessionCount?: boolean } = {}): Promise<BriefPreview | null> {
   const db = getAdminDb()
   let doc: FirebaseFirestore.DocumentSnapshot | null = null
   const bySlug = await db.collection('projects').where('slug', '==', slugOrId).limit(1).get()
@@ -42,3 +43,7 @@ export async function resolveBriefPreview(slugOrId: string, opts: { withSessionC
     sessionCount,
   }
 }
+
+// Deduped per request: the brief layout calls this from both generateMetadata
+// and its render.
+export const resolveBriefPreview = cache(lookupBriefPreview)

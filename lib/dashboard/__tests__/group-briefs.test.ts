@@ -181,3 +181,11 @@ describe('shouldFlatten', () => {
     expect(shouldFlatten(out)).toBe(false)
   })
 })
+
+describe('groupBriefs in French', () => {
+  it('uses French section titles and hints', () => {
+    const out = groupBriefs([], 'fr')
+    expect(section(out, 'awaiting').title).toBe('À vous de jouer')
+    expect(section(out, 'yours').emptyHint).toBe('Aucun brief lancé par vous.')
+  })
+})
