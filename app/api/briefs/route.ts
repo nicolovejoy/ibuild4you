@@ -112,7 +112,7 @@ export async function PUT(request: Request) {
   })
 
   // Upsert: find existing brief or create new
-  const result = await upsertBrief(db, project_id, briefContent)
+  const result = await upsertBrief(db, project_id, briefContent, 'paste')
 
   return NextResponse.json(result)
 }

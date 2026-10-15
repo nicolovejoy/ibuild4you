@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { regenerateBriefForProject } from '../briefs'
+import { regenerateBriefForProject, upsertBrief } from '../briefs'
 
 // =============================================================================
 // regenerateBriefForProject — extracted from /api/briefs/generate so the cron
@@ -21,7 +21,11 @@ vi.mock('@anthropic-ai/sdk', () => ({
 // In-memory Firestore mock keyed by collection. Each query path explicitly
 // supports the chained where().orderBy().get() and where().orderBy().limit().get()
 // shapes that the implementation uses.
-type DocLike = { id: string; data: () => Record<string, unknown>; ref?: { update: typeof mockBriefUpdate } }
+type DocLike = {
+  id: string
+  data: () => Record<string, unknown>
+  ref?: { update: typeof mockBriefUpdate; collection?: (name: string) => unknown }
+}
 
 const sessionsByProject: Record<string, DocLike[]> = {}
 const messagesBySession: Record<string, DocLike[]> = {}
@@ -29,6 +33,12 @@ const briefsByProject: Record<string, DocLike[]> = {}
 const projectDocs: Record<string, { exists: boolean; data: () => Record<string, unknown> }> = {}
 const briefAddCalls: Record<string, unknown>[] = []
 const mockBriefUpdate = vi.fn(async () => {})
+const mockVersionSet = vi.fn(async (..._args: unknown[]) => {})
+// Brief doc ref used by the existing-brief tests: update + versions subcollection (#194)
+const briefRef = {
+  update: mockBriefUpdate,
+  collection: () => ({ doc: (id: string) => ({ set: (d: unknown) => mockVersionSet(id, d) }) }),
+}
 
 function makeDb() {
   return {
@@ -89,6 +99,7 @@ function toolUseResponse(input: unknown, stop_reason: string = 'tool_use') {
 beforeEach(() => {
   mockMessagesCreate.mockReset()
   mockBriefUpdate.mockReset()
+  mockVersionSet.mockReset()
   briefAddCalls.length = 0
   for (const k of Object.keys(sessionsByProject)) delete sessionsByProject[k]
   for (const k of Object.keys(messagesBySession)) delete messagesBySession[k]
@@ -221,7 +232,7 @@ describe('regenerateBriefForProject', () => {
           updated_at: '2026-04-01T00:00:00Z',
           content: { ...validBrief, problem: 'PRIOR_BRIEF_PROBLEM' },
         }),
-        ref: { update: mockBriefUpdate },
+        ref: briefRef,
       },
     ]
     mockMessagesCreate.mockResolvedValue(toolUseResponse(validBrief))
@@ -286,7 +297,7 @@ describe('regenerateBriefForProject', () => {
             decisions: [{ topic: 'Stack', decision: 'Next.js, no Vue', locked: true }],
           },
         }),
-        ref: { update: mockBriefUpdate },
+        ref: briefRef,
       },
     ]
     // Model "forgets" the locked decision entirely and returns unrelated ones.
@@ -323,7 +334,7 @@ describe('regenerateBriefForProject', () => {
             decisions: [{ topic: 'Stack', decision: 'Next.js, no Vue', locked: true }],
           },
         }),
-        ref: { update: mockBriefUpdate },
+        ref: briefRef,
       },
     ]
     // Model echoes the real lock and also locks a decision of its own.
@@ -395,7 +406,7 @@ describe('regenerateBriefForProject', () => {
             ],
           },
         }),
-        ref: { update: mockBriefUpdate },
+        ref: briefRef,
       },
     ]
     // Model echoes the decision with hallucinated provenance.
@@ -450,5 +461,51 @@ describe('regenerateBriefForProject', () => {
     const idx2 = userText.indexOf('SESSION_TWO_SECOND')
     expect(idx1).toBeGreaterThan(0)
     expect(idx2).toBeGreaterThan(idx1)
+  })
+})
+
+describe('upsertBrief — version history (#194)', () => {
+  const content = { problem: 'New', target_users: '', features: [], constraints: '', additional_context: '', decisions: [], open_risks: [] }
+
+  it('archives the outgoing live brief to versions/{version} before overwriting, and stamps source', async () => {
+    briefsByProject['p1'] = [{
+      id: 'brief-1',
+      data: () => ({ project_id: 'p1', version: 3, content: { problem: 'Old' }, updated_at: '2026-10-01T00:00:00.000Z', source: 'regen' }),
+      ref: briefRef,
+    }]
+    const result = await upsertBrief(makeDb(), 'p1', content, 'paste')
+
+    expect(mockVersionSet).toHaveBeenCalledTimes(1)
+    const [docId, archived] = mockVersionSet.mock.calls[0] as [string, Record<string, unknown>]
+    expect(docId).toBe('3')
+    expect(archived.version).toBe(3)
+    expect(archived.content).toEqual({ problem: 'Old' })
+    expect(archived.updated_at).toBe('2026-10-01T00:00:00.000Z')
+    expect(archived.source).toBe('regen')
+    expect(typeof archived.archived_at).toBe('string')
+
+    expect(mockBriefUpdate).toHaveBeenCalledWith(expect.objectContaining({ version: 4, source: 'paste', content }))
+    expect(result.version).toBe(4)
+    expect(result.source).toBe('paste')
+  })
+
+  it('archives a legacy doc (no source, no updated_at) with source null and created_at as updated_at', async () => {
+    briefsByProject['p1'] = [{
+      id: 'brief-1',
+      data: () => ({ project_id: 'p1', version: 1, content: { problem: 'Old' }, created_at: '2026-09-01T00:00:00.000Z' }),
+      ref: briefRef,
+    }]
+    await upsertBrief(makeDb(), 'p1', content, 'regen')
+    const [, archived] = mockVersionSet.mock.calls[0] as [string, Record<string, unknown>]
+    expect(archived.source).toBeNull()
+    expect(archived.updated_at).toBe('2026-09-01T00:00:00.000Z')
+  })
+
+  it('archives nothing on the first-ever write and stamps source on the new doc', async () => {
+    briefsByProject['p1'] = []
+    const result = await upsertBrief(makeDb(), 'p1', content, 'paste')
+    expect(mockVersionSet).not.toHaveBeenCalled()
+    expect(briefAddCalls[0]).toEqual(expect.objectContaining({ version: 1, source: 'paste' }))
+    expect(result.source).toBe('paste')
   })
 })

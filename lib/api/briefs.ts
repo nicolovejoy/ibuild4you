@@ -1,5 +1,5 @@
 import { toLocale } from '@/lib/locale'
-import type { BriefContent } from '@/lib/types'
+import type { BriefContent, BriefSource } from '@/lib/types'
 import {
   NEXT_CONVO_SYSTEM_PROMPT,
   buildNextConvoUserContent,
@@ -236,14 +236,16 @@ export async function regenerateBriefForProject(
     }),
   }
 
-  return upsertBrief(db, projectId, stamped)
+  return upsertBrief(db, projectId, stamped, 'regen')
 }
 
-// Upsert a brief: update existing doc in place (increment version) or create new
+// Upsert a brief: update the existing doc in place (increment version) or
+// create a new one. `source` records who produced this version (#194).
 export async function upsertBrief(
   db: FirebaseFirestore.Firestore,
   projectId: string,
-  briefContent: BriefContent
+  briefContent: BriefContent,
+  source: BriefSource
 ) {
   const now = new Date().toISOString()
 
@@ -257,13 +259,32 @@ export async function upsertBrief(
   if (!existingSnap.empty) {
     // Update existing brief in place, increment version
     const existingDoc = existingSnap.docs[0]
-    const currentVersion = (existingDoc.data().version as number) || 0
+    const existing = existingDoc.data()
+    const currentVersion = (existing.version as number) || 0
     const newVersion = currentVersion + 1
+
+    // #194: archive the outgoing version first so a bad regen or paste can be
+    // rolled back from the Brief tab. Keyed by the outgoing version number;
+    // no retention cap — briefs are a few KB.
+    await existingDoc.ref
+      .collection('versions')
+      .doc(String(currentVersion))
+      .set({
+        version: currentVersion,
+        content: existing.content ?? null,
+        updated_at:
+          (existing.updated_at as string | undefined) ??
+          (existing.created_at as string | undefined) ??
+          now,
+        source: (existing.source as BriefSource | undefined) ?? null,
+        archived_at: now,
+      })
 
     await existingDoc.ref.update({
       content: briefContent,
       version: newVersion,
       updated_at: now,
+      source,
     })
 
     return {
@@ -272,6 +293,7 @@ export async function upsertBrief(
       version: newVersion,
       content: briefContent,
       updated_at: now,
+      source,
     }
   } else {
     // Create new brief doc
@@ -281,6 +303,7 @@ export async function upsertBrief(
       content: briefContent,
       created_at: now,
       updated_at: now,
+      source,
     })
 
     return {
@@ -290,6 +313,7 @@ export async function upsertBrief(
       content: briefContent,
       created_at: now,
       updated_at: now,
+      source,
     }
   }
 }

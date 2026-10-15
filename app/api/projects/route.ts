@@ -585,6 +585,7 @@ export async function POST(request: Request) {
       content: briefContent,
       created_at: now,
       updated_at: now,
+      source: 'create',
     })
   }
 

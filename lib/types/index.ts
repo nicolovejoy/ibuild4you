@@ -196,10 +196,24 @@ export interface FileFolder extends BaseEntity {
 }
 
 // Briefs collection — the living brief for a project
+// #194: who produced a brief version. Archived versions carry the source that
+// produced THEM, so the history reads "v3 — regen", "v4 — paste".
+export type BriefSource = 'create' | 'paste' | 'regen' | 'restore'
+
 export interface Brief extends BaseEntity {
   project_id: string
   version: number
   content: BriefContent
+  source?: BriefSource // absent on briefs written before #194
+}
+
+// One archived brief version (briefs/{id}/versions/{version}).
+export interface BriefVersion {
+  version: number
+  content: BriefContent
+  updated_at: string
+  source: BriefSource | null
+  archived_at: string
 }
 
 // Reviews collection — builder annotations on a brief
