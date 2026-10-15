@@ -66,6 +66,7 @@ vi.mock('@/lib/query/hooks', () => ({
 }))
 
 const mockStreamMessage = vi.fn()
+let mockKickoffFailed = false
 
 vi.mock('@/lib/hooks/useStreamingChat', () => ({
   useStreamingChat: () => ({
@@ -75,6 +76,8 @@ vi.mock('@/lib/hooks/useStreamingChat', () => ({
     error: null,
     setError: vi.fn(),
     streamMessage: mockStreamMessage,
+    kickoff: vi.fn(),
+    kickoffFailed: mockKickoffFailed,
   }),
 }))
 
@@ -133,6 +136,7 @@ afterEach(() => {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mockKickoffFailed = false
   // Restore the default implementations after clearAllMocks resets them.
   mockUseProject.mockReturnValue({ data: sampleProject, isLoading: false })
   mockUseSessions.mockReturnValue({
@@ -150,6 +154,20 @@ beforeEach(() => {
 })
 
 describe('MakerProjectView', () => {
+  it('shows the generic empty-state line when the chat is empty and no kickoff failed', () => {
+    renderView()
+    expect(screen.getByText('Send a message to start the conversation.')).toBeTruthy()
+  })
+
+  it('shows the kickoff-failed hint instead when the greeting failed', () => {
+    mockKickoffFailed = true
+    renderView()
+    expect(screen.getByText("Sam couldn't start the conversation just now — say hello to begin.")).toBeTruthy()
+    expect(screen.queryByText('Send a message to start the conversation.')).toBeNull()
+    // The composer stays usable.
+    expect(document.querySelectorAll('textarea').length).toBeGreaterThan(0)
+  })
+
   it('renders the project title and chat composer when an active session exists', () => {
     renderView()
     expect(screen.getAllByText('Test Project').length).toBeGreaterThan(0)

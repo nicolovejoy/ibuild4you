@@ -239,7 +239,7 @@ function MakerChat({
   const { locale } = useLocale()
   const c = useMakerCopy().chat
 
-  const { messages, setMessages, streaming, error, setError, streamMessage, kickoff } = useStreamingChat({ projectId })
+  const { messages, setMessages, streaming, error, setError, streamMessage, kickoff, kickoffFailed } = useStreamingChat({ projectId })
 
   const { data: savedMessages, isLoading: messagesLoading } = useMessages(sessionId)
   useRealtimeMessages(sessionId)
@@ -607,7 +607,7 @@ function MakerChat({
       ) : displayMessages.length === 0 ? (
         <div className="text-center text-brand-slate py-8">
           <MessageSquare className="h-10 w-10 mx-auto mb-3 text-gray-300" />
-          <p>{c.emptyState}</p>
+          <p>{kickoffFailed ? c.kickoffFailed : c.emptyState}</p>
         </div>
       ) : (
         <div className="space-y-3">
