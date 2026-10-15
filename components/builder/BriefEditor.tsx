@@ -105,8 +105,16 @@ export function BriefEditor({
     setMode('view')
   }
 
+  // #197 Part B: any change to the working copy (or the view) makes a held
+  // lock-loss confirmation stale — drop it so Save re-checks the new draft.
+  const changeDraft = (next: BriefContent) => {
+    setDraft(next)
+    setPendingSave(null)
+  }
+
   const switchTo = (next: EditView) => {
     if (next === editView) return
+    setPendingSave(null)
     if (next === 'raw') {
       setRawText(serializeBriefContent(draft))
       setError(null)
@@ -161,7 +169,10 @@ export function BriefEditor({
     try {
       await updateBrief.mutateAsync({
         project_id: projectId,
-        content: { ...base, decisions: resolveContest(base.decisions ?? [], topic, action) },
+        content: {
+          ...base,
+          decisions: resolveContest(base.decisions ?? [], topic, action, new Date().toISOString()),
+        },
       })
     } catch {
       setResolveError(copy.brief.contestError)
@@ -266,13 +277,14 @@ export function BriefEditor({
         </div>
 
         {editView === 'structured' ? (
-          <StructuredEditor draft={draft} onChange={setDraft} />
+          <StructuredEditor draft={draft} onChange={changeDraft} />
         ) : (
           <textarea
             value={rawText}
             onChange={(e) => {
               setRawText(e.target.value)
               setError(null)
+              setPendingSave(null)
             }}
             rows={20}
             spellCheck={false}
@@ -413,7 +425,7 @@ function DecisionsSection({
                 {d.locked && d.contested && (
                   <span
                     className="inline-flex items-center mr-1.5 px-1 py-0.5 rounded bg-rose-100 text-rose-800 text-[10px] font-semibold uppercase tracking-wide align-middle"
-                    title="The maker confirmed in conversation that they want this changed — you decide"
+                    title={copy.brief.contestedTitle}
                   >
                     {copy.brief.contestedBadge}
                   </span>
@@ -430,6 +442,7 @@ function DecisionsSection({
                       <button
                         disabled={resolving}
                         onClick={() => onResolve(d.topic, 'accept')}
+                        aria-label={`${copy.brief.contestAccept} — ${d.topic}`}
                         className="font-medium text-brand-navy hover:underline disabled:opacity-40"
                       >
                         {copy.brief.contestAccept}
@@ -437,6 +450,7 @@ function DecisionsSection({
                       <button
                         disabled={resolving}
                         onClick={() => onResolve(d.topic, 'accept_unlock')}
+                        aria-label={`${copy.brief.contestAcceptUnlock} — ${d.topic}`}
                         className="font-medium text-brand-navy hover:underline disabled:opacity-40"
                       >
                         {copy.brief.contestAcceptUnlock}
@@ -444,6 +458,7 @@ function DecisionsSection({
                       <button
                         disabled={resolving}
                         onClick={() => onResolve(d.topic, 'dismiss')}
+                        aria-label={`${copy.brief.contestDismiss} — ${d.topic}`}
                         className="text-gray-500 hover:underline disabled:opacity-40"
                       >
                         {copy.brief.contestDismiss}
@@ -455,7 +470,11 @@ function DecisionsSection({
             )
           })}
         </ul>
-        {resolveError && <p className="mt-2 text-xs text-red-500">{resolveError}</p>}
+        {resolveError && (
+          <p role="alert" className="mt-2 text-xs text-red-500">
+            {resolveError}
+          </p>
+        )}
         {ordered.length > DECISIONS_PREVIEW_COUNT && (
           <button
             onClick={() => setShowAll((v) => !v)}
@@ -604,7 +623,18 @@ function DecisionsField({
   // displayed order; map back to the same objects on change.
   const ordered = lockedFirst(decisions)
   const update = (i: number, patch: Partial<BriefDecision>) =>
-    onChange(ordered.map((d, idx) => (idx === i ? { ...d, ...patch } : d)))
+    onChange(ordered.map((d, idx) => (idx === i ? patchDecision(d, patch) : d)))
+
+  // Unlocking drops the field rather than storing `locked: false`.
+  const unlock = (i: number) =>
+    onChange(
+      ordered.map((d, idx) => {
+        if (idx !== i) return d
+        const rest = { ...d }
+        delete rest.locked
+        return rest
+      }),
+    )
 
   return (
     <div>
@@ -614,7 +644,7 @@ function DecisionsField({
           {ordered.map((d, i) => (
             <li key={i} className="flex items-start gap-2">
               <button
-                onClick={() => update(i, { locked: !d.locked })}
+                onClick={() => (d.locked ? unlock(i) : update(i, { locked: true }))}
                 title={
                   d.locked
                     ? 'Locked — a durable constraint the agent reconciles against instead of silently overwriting. Click to unlock.'
@@ -653,4 +683,15 @@ function DecisionsField({
       </button>
     </div>
   )
+}
+
+// #197: editing a contested decision's topic or text by hand settles the
+// contest — the builder decided — so `contested` is dropped from the result.
+function patchDecision(d: BriefDecision, patch: Partial<BriefDecision>): BriefDecision {
+  const next = { ...d, ...patch }
+  const settled =
+    (patch.topic !== undefined && patch.topic !== d.topic) ||
+    (patch.decision !== undefined && patch.decision !== d.decision)
+  if (settled && next.contested) delete next.contested
+  return next
 }

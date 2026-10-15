@@ -221,6 +221,8 @@ export async function regenerateBriefForProject(
           // dropped here; the locks that exist come back verbatim from the
           // previous brief in reconcileBrief below. A well-formed `contested`
           // (#197) rides through; reconcileBrief keeps it only on a real lock.
+          // `contest_dismissed` is never taken from the model — the previous
+          // brief carries it.
           .map((d) => {
             // `locked: true` here only means "shape-check the contest"; the
             // merge below keeps it solely on a decision that is really locked.

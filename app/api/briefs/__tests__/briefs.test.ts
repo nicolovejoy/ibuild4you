@@ -302,6 +302,70 @@ describe('PUT /api/briefs', () => {
     expect(decisions[2].contested).toBeUndefined()
   })
 
+  it('keeps contest_dismissed on a locked decision and drops it elsewhere or when malformed (#197)', async () => {
+    const dismissed = { proposed: 'Square', at: '2026-10-15T12:00:00.000Z' }
+    await PUT(makePutRequest({
+      project_id: 'proj1',
+      content: {
+        ...validContent,
+        decisions: [
+          { topic: 'Payment', decision: 'Stripe only', locked: true, contest_dismissed: dismissed },
+          { topic: 'Auth', decision: 'Google', contest_dismissed: dismissed },
+          { topic: 'DB', decision: 'Firestore', locked: true, contest_dismissed: { proposed: 'x' } },
+        ],
+      },
+    }))
+    const decisions = mockUpsertBrief.mock.calls[0][2].decisions
+    expect(decisions[0].contest_dismissed).toEqual(dismissed)
+    expect(decisions[1].contest_dismissed).toBeUndefined()
+    expect(decisions[2].contest_dismissed).toBeUndefined()
+  })
+
+  it('an unchanged contested lock round-trips with its prior stamps (#197)', async () => {
+    const contested = { proposed: 'Square', reason: 'switched POS' }
+    mockGet.mockResolvedValue({
+      empty: false,
+      docs: [
+        {
+          id: 'brief-1',
+          data: () => ({
+            version: 3,
+            content: {
+              problem: 'p',
+              decisions: [
+                {
+                  topic: 'Payment',
+                  decision: 'Stripe only',
+                  locked: true,
+                  contested,
+                  decided_in_session: 's2',
+                  decided_at: '2026-07-05T00:00:00Z',
+                },
+              ],
+            },
+          }),
+        },
+      ],
+    })
+    await PUT(makePutRequest({
+      project_id: 'proj1',
+      content: {
+        problem: 'p',
+        decisions: [{ topic: 'Payment', decision: 'Stripe only', locked: true, contested }],
+      },
+    }))
+    expect(mockUpsertBrief.mock.calls[0][2].decisions).toEqual([
+      {
+        topic: 'Payment',
+        decision: 'Stripe only',
+        locked: true,
+        contested,
+        decided_in_session: 's2',
+        decided_at: '2026-07-05T00:00:00Z',
+      },
+    ])
+  })
+
   // --- Decision provenance (#121) ---
 
   it('restores stamps the payload dropped, from the stored brief', async () => {

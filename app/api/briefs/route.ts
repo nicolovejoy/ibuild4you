@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getAuthenticatedUser, getAdminDb, getProjectRole, requireRole } from '@/lib/api/firebase-server-helpers'
 import { upsertBrief } from '@/lib/api/briefs'
-import { contestFor, stampDecisionProvenance } from '@/lib/api/brief-merge'
+import { contestFor, dismissedFor, stampDecisionProvenance } from '@/lib/api/brief-merge'
 import type { BriefContent, BriefSource } from '@/lib/types'
 
 // GET /api/briefs?project_id=xxx — get the latest brief for a project
@@ -77,12 +77,14 @@ export async function PUT(request: Request) {
           .map((d: Record<string, unknown>) => {
             // #197: a contest survives a round-trip only on a locked decision.
             const contested = contestFor(d.locked === true, d.contested)
+            const dismissed = dismissedFor(d.locked === true, d.contest_dismissed)
             return {
               topic: d.topic as string,
               decision: d.decision as string,
               // #71: preserve the durable-constraint flag set by the builder.
               ...(d.locked === true && { locked: true }),
               ...(contested && { contested }),
+              ...(dismissed && { contest_dismissed: dismissed }),
               // #121: explicit provenance in the payload is honored — an outside
               // agent may know the real origin. Anything else is stamped below.
               ...(typeof d.decided_at === 'string' && { decided_at: d.decided_at }),

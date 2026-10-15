@@ -11,7 +11,12 @@
 // persisted. Locked decisions are immutable through regen; only an explicit
 // maker confirm (a separate, deliberate flow) ever changes one.
 
-import type { BriefContent, BriefDecision, BriefDecisionContest } from '@/lib/types'
+import type {
+  BriefContent,
+  BriefContestDismissed,
+  BriefDecision,
+  BriefDecisionContest,
+} from '@/lib/types'
 
 // Decisions are identified by their topic label (case-insensitive, trimmed).
 // Two decisions with the same topic are "the same decision"; regen reusing a
@@ -19,6 +24,10 @@ import type { BriefContent, BriefDecision, BriefDecisionContest } from '@/lib/ty
 function topicKey(d: BriefDecision): string {
   return d.topic.trim().toLowerCase()
 }
+
+// Loose text comparison for contest proposals (#197): case and surrounding
+// whitespace don't make a proposal different.
+const normText = (s: string) => s.trim().toLowerCase()
 
 // Re-inject any decision that was locked in `prev` but dropped or reworded by
 // `next`. Returns the reconciled decision list:
@@ -34,7 +43,7 @@ export function mergeLockedDecisions(
   const nextList = next ?? []
   const lockedPrev = prevList.filter((d) => d.locked)
 
-  if (lockedPrev.length === 0) return nextList.map(withoutContest)
+  if (lockedPrev.length === 0) return nextList.map(withoutContestFields)
 
   const lockedKeys = new Set(lockedPrev.map(topicKey))
   const nextByKey = new Map(nextList.map((d) => [topicKey(d), d]))
@@ -43,25 +52,36 @@ export function mergeLockedDecisions(
   // a locked topic (regen may have reworded a locked decision under its topic —
   // the locked verbatim version wins). A contest only makes sense on a lock, so
   // it is stripped from everything else (#197).
-  const fromNext = nextList.filter((d) => !lockedKeys.has(topicKey(d))).map(withoutContest)
+  const fromNext = nextList.filter((d) => !lockedKeys.has(topicKey(d))).map(withoutContestFields)
 
   // Locked decisions first (durable, prominent), then regen's contributions.
   // #197: a locked decision keeps its text verbatim but picks up `contested`
   // when regen emitted one for its topic; an existing contest is carried
   // forward until a builder rules on it (regen never clears a contest).
+  // A contest is ignored when it repeats a proposal the builder already
+  // dismissed (regen re-reads the whole transcript and would raise it again),
+  // or when it proposes the decision's current text (meaningless).
   return [
     ...lockedPrev.map((d) => {
       const incoming = nextByKey.get(topicKey(d))?.contested
-      return { ...d, locked: true, ...(incoming ? { contested: incoming } : {}) }
+      const ignore =
+        !incoming ||
+        (d.contest_dismissed !== undefined &&
+          normText(incoming.proposed) === normText(d.contest_dismissed.proposed)) ||
+        normText(incoming.proposed) === normText(d.decision)
+      return { ...d, locked: true, ...(ignore ? {} : { contested: incoming }) }
     }),
     ...fromNext,
   ]
 }
 
-function withoutContest(d: BriefDecision): BriefDecision {
-  if (d.contested === undefined) return d
+// Contest state (`contested`, `contest_dismissed`) only lives on a lock; strip
+// both from anything else.
+function withoutContestFields(d: BriefDecision): BriefDecision {
+  if (d.contested === undefined && d.contest_dismissed === undefined) return d
   const rest = { ...d }
   delete rest.contested
+  delete rest.contest_dismissed
   return rest
 }
 
@@ -88,23 +108,40 @@ export function contestFor(locked: boolean, raw: unknown): BriefDecisionContest 
   return { proposed: c.proposed, reason: c.reason }
 }
 
+// Same gate for `contest_dismissed` (#197): only on a lock, only when
+// well-formed. Used by PUT /api/briefs and the raw-JSON normaliser; regen never
+// accepts it from the model (prev carries it).
+export function dismissedFor(locked: boolean, raw: unknown): BriefContestDismissed | undefined {
+  if (!locked || !raw || typeof raw !== 'object') return undefined
+  const c = raw as Record<string, unknown>
+  if (typeof c.proposed !== 'string' || !c.proposed.trim()) return undefined
+  if (typeof c.at !== 'string') return undefined
+  return { proposed: c.proposed, at: c.at }
+}
+
 // --- #197 Part A: builder rules on a contested lock ---
 export type ContestAction = 'accept' | 'accept_unlock' | 'dismiss'
 
 // accept        → decision text becomes the proposal, lock kept
 // accept_unlock → decision text becomes the proposal, lock removed
-// dismiss       → nothing changes but the contest is cleared
+// dismiss       → the contest is cleared and remembered as
+//                 `contest_dismissed { proposed, at: now }` so the next regen
+//                 does not raise the same proposal again
+// Accepting clears any older `contest_dismissed` too (the lock changed).
 // Pure; a topic with no contest returns the list unchanged.
 export function resolveContest(
   decisions: BriefDecision[],
   topic: string,
-  action: ContestAction
+  action: ContestAction,
+  now: string // ISO
 ): BriefDecision[] {
   const key = topic.trim().toLowerCase()
   return decisions.map((d) => {
     if (topicKey(d) !== key || !d.contested) return d
-    const base = withoutContest(d)
-    if (action === 'dismiss') return base
+    const base = withoutContestFields(d)
+    if (action === 'dismiss') {
+      return { ...base, contest_dismissed: { proposed: d.contested.proposed, at: now } }
+    }
     const accepted = { ...base, decision: d.contested.proposed }
     if (action === 'accept') return accepted
     const unlocked = { ...accepted }
@@ -180,11 +217,16 @@ export function stampDecisionProvenance(args: {
 
 // Order decisions with locked ones first so durable constraints read as
 // constraints, not just another bullet (#71 — "surface locked decisions
-// prominently"). Stable within each group. Pure; used by the brief view and the
-// markdown export (the build↔brief copy-paste ferry).
+// prominently"). Contested locks lead (#197) — they wait on a builder. Stable
+// within each group. Pure; used by the brief view, the structured editor and
+// the markdown export (the build↔brief copy-paste ferry).
 export function lockedFirst(decisions: BriefDecision[] | undefined): BriefDecision[] {
   const list = decisions ?? []
-  return [...list.filter((d) => d.locked), ...list.filter((d) => !d.locked)]
+  return [
+    ...list.filter((d) => d.locked && d.contested),
+    ...list.filter((d) => d.locked && !d.contested),
+    ...list.filter((d) => !d.locked),
+  ]
 }
 
 // Apply locked-decision durability to a regenerated brief. Pure — returns a new

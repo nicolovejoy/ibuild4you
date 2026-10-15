@@ -431,6 +431,47 @@ describe('regenerateBriefForProject', () => {
     expect(persistedDecisions()[0].contested).toEqual(contested)
   })
 
+  it('does not re-raise a dismissed proposal; contest_dismissed is carried (#197)', async () => {
+    const contest_dismissed = { proposed: 'Square', at: '2026-10-01T00:00:00.000Z' }
+    seedLockedPayment({ contest_dismissed })
+    mockMessagesCreate.mockResolvedValue(
+      toolUseResponse({
+        ...validBrief,
+        decisions: [
+          { topic: 'Payment', decision: 'Stripe only', contested: { proposed: 'square ', reason: 'again' } },
+        ],
+      }),
+    )
+    await regenerateBriefForProject(makeDb(), 'p1')
+    expect(persistedDecisions()[0].contested).toBeUndefined()
+    expect(persistedDecisions()[0].contest_dismissed).toEqual(contest_dismissed)
+  })
+
+  it('a different proposal still lands after a dismissal; model contest_dismissed is ignored (#197)', async () => {
+    const contest_dismissed = { proposed: 'Square', at: '2026-10-01T00:00:00.000Z' }
+    seedLockedPayment({ contest_dismissed })
+    const paypal = { proposed: 'PayPal', reason: 'changed again, conversation 4' }
+    mockMessagesCreate.mockResolvedValue(
+      toolUseResponse({
+        ...validBrief,
+        decisions: [
+          {
+            topic: 'Payment',
+            decision: 'Stripe only',
+            contested: paypal,
+            contest_dismissed: { proposed: 'PayPal', at: '2026-10-02T00:00:00.000Z' },
+          },
+          { topic: 'Auth', decision: 'Google', contest_dismissed: { proposed: 'x', at: 'y' } },
+        ],
+      }),
+    )
+    await regenerateBriefForProject(makeDb(), 'p1')
+    const byTopic = Object.fromEntries(persistedDecisions().map((d) => [d.topic as string, d]))
+    expect(byTopic.Payment.contested).toEqual(paypal)
+    expect(byTopic.Payment.contest_dismissed).toEqual(contest_dismissed)
+    expect(byTopic.Auth.contest_dismissed).toBeUndefined()
+  })
+
   it('advertises contested in the update_brief tool schema (#197)', async () => {
     seedLockedPayment()
     mockMessagesCreate.mockResolvedValue(toolUseResponse(validBrief))

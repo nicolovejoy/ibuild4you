@@ -8,6 +8,7 @@ import {
   lostLocks,
   resolveContest,
   contestFor,
+  dismissedFor,
 } from '../brief-merge'
 import type { BriefContent, BriefDecision } from '@/lib/types'
 
@@ -374,6 +375,18 @@ describe('lockedFirst', () => {
     expect(lockedFirst(list).map((x) => x.topic)).toEqual(['A', 'C', 'B', 'D'])
   })
 
+  it('puts contested locks ahead of plain locks, stable within each group', () => {
+    const c = { proposed: 'x', reason: 'y' }
+    const list: BriefDecision[] = [
+      d('A', '1'),
+      d('B', '2', true),
+      { topic: 'C', decision: '3', locked: true, contested: c },
+      d('D', '4', true),
+      { topic: 'E', decision: '5', locked: true, contested: c },
+    ]
+    expect(lockedFirst(list).map((x) => x.topic)).toEqual(['C', 'E', 'B', 'D', 'A'])
+  })
+
   it('handles undefined', () => {
     expect(lockedFirst(undefined)).toEqual([])
   })
@@ -431,6 +444,57 @@ describe('mergeLockedDecisions — contested locks (#197)', () => {
     const next = [{ topic: 'Auth', decision: 'Google', contested: contest }]
     expect(mergeLockedDecisions([], next)).toEqual([{ topic: 'Auth', decision: 'Google' }])
   })
+
+  const dismissed = { proposed: 'Square', at: '2026-10-01T00:00:00.000Z' }
+
+  it('ignores a contest repeating a dismissed proposal (case/whitespace-insensitive)', () => {
+    const prev = [{ topic: 'Payment', decision: 'Stripe only', locked: true, contest_dismissed: dismissed }]
+    const next = [
+      { topic: 'Payment', decision: 'Stripe only', contested: { proposed: '  square ', reason: 'again' } },
+    ]
+    expect(mergeLockedDecisions(prev, next)).toEqual([
+      { topic: 'Payment', decision: 'Stripe only', locked: true, contest_dismissed: dismissed },
+    ])
+  })
+
+  it('a different proposal still lands and contest_dismissed is carried', () => {
+    const prev = [{ topic: 'Payment', decision: 'Stripe only', locked: true, contest_dismissed: dismissed }]
+    const paypal = { proposed: 'PayPal', reason: 'changed again' }
+    const next = [{ topic: 'Payment', decision: 'Stripe only', contested: paypal }]
+    expect(mergeLockedDecisions(prev, next)).toEqual([
+      {
+        topic: 'Payment',
+        decision: 'Stripe only',
+        locked: true,
+        contest_dismissed: dismissed,
+        contested: paypal,
+      },
+    ])
+  })
+
+  it('ignores a contest whose proposal equals the current decision', () => {
+    const prev = [{ topic: 'Payment', decision: 'Stripe only', locked: true }]
+    const next = [
+      { topic: 'Payment', decision: 'Stripe only', contested: { proposed: 'STRIPE ONLY ', reason: 'x' } },
+    ]
+    expect(mergeLockedDecisions(prev, next)).toEqual([
+      { topic: 'Payment', decision: 'Stripe only', locked: true },
+    ])
+  })
+
+  it('carries contest_dismissed forward when regen says nothing', () => {
+    const prev = [{ topic: 'Payment', decision: 'Stripe only', locked: true, contest_dismissed: dismissed }]
+    expect(mergeLockedDecisions(prev, [])).toEqual(prev)
+  })
+
+  it('strips contest_dismissed (and contested) from decisions taken from next', () => {
+    const next = [{ topic: 'Auth', decision: 'Google', contest_dismissed: dismissed, contested: contest }]
+    expect(mergeLockedDecisions([], next)).toEqual([{ topic: 'Auth', decision: 'Google' }])
+    expect(mergeLockedDecisions([d('Stack', 'Next.js', true)], next)).toEqual([
+      d('Stack', 'Next.js', true),
+      { topic: 'Auth', decision: 'Google' },
+    ])
+  })
 })
 
 describe('lostLocks (#197 Part B)', () => {
@@ -473,7 +537,7 @@ describe('resolveContest (#197 Part A)', () => {
   ]
 
   it('accept: takes the proposed text, keeps the lock, clears contested', () => {
-    expect(resolveContest(list(), 'payment', 'accept')).toEqual([
+    expect(resolveContest(list(), 'payment', 'accept', '2026-10-15T12:00:00.000Z')).toEqual([
       {
         topic: 'Payment',
         decision: 'Square',
@@ -485,28 +549,41 @@ describe('resolveContest (#197 Part A)', () => {
   })
 
   it('accept_unlock: takes the proposed text and removes the lock', () => {
-    expect(resolveContest(list(), 'Payment', 'accept_unlock')).toEqual([
+    expect(resolveContest(list(), 'Payment', 'accept_unlock', '2026-10-15T12:00:00.000Z')).toEqual([
       { topic: 'Payment', decision: 'Square', decided_at: '2026-01-01T00:00:00.000Z' },
       d('Auth', 'Google'),
     ])
   })
 
-  it('dismiss: clears contested and changes nothing else', () => {
-    expect(resolveContest(list(), 'Payment', 'dismiss')).toEqual([
+  it('dismiss: clears contested, remembers the proposal with the given now, changes nothing else', () => {
+    expect(resolveContest(list(), 'Payment', 'dismiss', '2026-10-15T12:00:00.000Z')).toEqual([
       {
         topic: 'Payment',
         decision: 'Stripe only',
         locked: true,
         decided_at: '2026-01-01T00:00:00.000Z',
+        contest_dismissed: { proposed: 'Square', at: '2026-10-15T12:00:00.000Z' },
       },
       d('Auth', 'Google'),
     ])
   })
 
+  it('accept and accept_unlock clear an older contest_dismissed too', () => {
+    const withDismissed = (): BriefDecision[] => [
+      { ...list()[0], contest_dismissed: { proposed: 'PayPal', at: '2026-02-01T00:00:00.000Z' } },
+    ]
+    expect(resolveContest(withDismissed(), 'Payment', 'accept', '2026-10-15T12:00:00.000Z')).toEqual([
+      { topic: 'Payment', decision: 'Square', locked: true, decided_at: '2026-01-01T00:00:00.000Z' },
+    ])
+    expect(resolveContest(withDismissed(), 'Payment', 'accept_unlock', '2026-10-15T12:00:00.000Z')).toEqual([
+      { topic: 'Payment', decision: 'Square', decided_at: '2026-01-01T00:00:00.000Z' },
+    ])
+  })
+
   it('returns the list unchanged for a topic with no contest', () => {
     const l = list()
-    expect(resolveContest(l, 'Auth', 'accept')).toEqual(l)
-    expect(resolveContest(l, 'Nope', 'dismiss')).toEqual(l)
+    expect(resolveContest(l, 'Auth', 'accept', '2026-10-15T12:00:00.000Z')).toEqual(l)
+    expect(resolveContest(l, 'Nope', 'dismiss', '2026-10-15T12:00:00.000Z')).toEqual(l)
   })
 })
 
@@ -524,5 +601,26 @@ describe('contestFor (#197)', () => {
     expect(contestFor(true, { proposed: '', reason: 'why' })).toBeUndefined()
     expect(contestFor(true, { proposed: 'Square', reason: 3 })).toBeUndefined()
     expect(contestFor(true, { proposed: 'Square' })).toBeUndefined()
+    expect(contestFor(true, { proposed: '   ', reason: 'x' })).toBeUndefined()
+    expect(contestFor(true, ['a'])).toBeUndefined()
+  })
+})
+
+describe('dismissedFor (#197)', () => {
+  it('accepts a well-formed dismissal on a locked decision only', () => {
+    const v = { proposed: 'Square', at: '2026-10-15T12:00:00.000Z' }
+    expect(dismissedFor(true, v)).toEqual(v)
+    expect(dismissedFor(false, v)).toBeUndefined()
+  })
+  it('rejects malformed input', () => {
+    expect(dismissedFor(true, undefined)).toBeUndefined()
+    expect(dismissedFor(true, 'Square')).toBeUndefined()
+    expect(dismissedFor(true, ['a'])).toBeUndefined()
+    expect(dismissedFor(true, { proposed: '  ', at: '2026-10-15T12:00:00.000Z' })).toBeUndefined()
+    expect(dismissedFor(true, { proposed: 'Square', at: 3 })).toBeUndefined()
+    expect(dismissedFor(true, { proposed: 'Square' })).toBeUndefined()
+  })
+  it('drops extra fields', () => {
+    expect(dismissedFor(true, { proposed: 'Square', at: 'x', extra: 1 })).toEqual({ proposed: 'Square', at: 'x' })
   })
 })

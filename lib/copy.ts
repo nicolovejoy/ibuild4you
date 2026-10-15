@@ -223,6 +223,7 @@ export const copy = {
       `Restore v${version}? This removes the lock on: ${topics.join(', ')}. The current brief is kept in history.`,
     // #197 — contested locks and the lock-loss guard
     contestedBadge: 'Contested',
+    contestedTitle: 'The maker confirmed in conversation that they want this changed — you decide',
     contestedLine: (proposed: string, reason: string) => `Maker wants: ${proposed} — ${reason}`,
     contestAccept: 'Accept, keep locked',
     contestAcceptUnlock: 'Accept and unlock',

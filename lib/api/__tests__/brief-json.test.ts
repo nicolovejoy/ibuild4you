@@ -27,6 +27,25 @@ describe('normalizeBriefContent', () => {
     }
   })
 
+  it('keeps contest_dismissed on a locked decision only, and only when well-formed (#197)', () => {
+    const contest_dismissed = { proposed: 'Square', at: '2026-10-15T12:00:00.000Z' }
+    const r = normalizeBriefContent({
+      decisions: [
+        { topic: 'Payment', decision: 'Stripe only', locked: true, contest_dismissed },
+        { topic: 'Auth', decision: 'Google', contest_dismissed },
+        { topic: 'DB', decision: 'Firestore', locked: true, contest_dismissed: { proposed: 'x', at: 3 } },
+      ],
+    })
+    expect(r.ok).toBe(true)
+    if (r.ok) {
+      expect(r.value.decisions).toEqual([
+        { topic: 'Payment', decision: 'Stripe only', locked: true, contest_dismissed },
+        { topic: 'Auth', decision: 'Google' },
+        { topic: 'DB', decision: 'Firestore', locked: true },
+      ])
+    }
+  })
+
   it('accepts a full valid brief', () => {
     const input = {
       problem: 'p',
