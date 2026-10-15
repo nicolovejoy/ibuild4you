@@ -151,7 +151,6 @@ ${builderDirectives.map((d, i) => `${i + 1}. ${d}`).join('\n')}
 `.trim())
   }
 
-
   const lockedDecisions = briefContent?.decisions?.filter((d) => d.locked) ?? []
   const openDecisions = briefContent?.decisions?.filter((d) => !d.locked) ?? []
 
