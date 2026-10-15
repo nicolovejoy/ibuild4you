@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildNextConvoPrompt } from '../next-convo-prompt'
+import { buildNextConvoPrompt, NEXT_CONVO_SYSTEM_PROMPT } from '../next-convo-prompt'
 import { NEXT_CONVO_IMPORT_FIELDS } from '@/lib/api/import-payload'
 
 // =============================================================================
@@ -103,5 +103,17 @@ describe('buildNextConvoPrompt', () => {
   it('keeps the brief itself in English even when the conversation is not', () => {
     const result = buildNextConvoPrompt(emptyInput)
     expect(result).toMatch(/brief.*in English/i)
+  })
+})
+
+// 5a (Weather & Tides, 2026-10-15): "Keep everything on server for now",
+// answered to "which spots should forecast history cover?", became a
+// standalone decision "All spots stored on server". This prompt drives brief
+// regeneration too, so the scope rule lands in both places.
+describe('decision scope', () => {
+  it('keeps each decision within the question it answered, in the maker\'s words', () => {
+    expect(NEXT_CONVO_SYSTEM_PROMPT).toContain('A decision answers the question it was given')
+    expect(NEXT_CONVO_SYSTEM_PROMPT).toContain("Use the maker's own words")
+    expect(NEXT_CONVO_SYSTEM_PROMPT).toContain("Don't record consequences or follow-on changes the maker didn't state")
   })
 })
