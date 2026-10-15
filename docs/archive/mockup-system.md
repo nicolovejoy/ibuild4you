@@ -1,3 +1,5 @@
+> **Archived 2026-10-15.** The wireframe feature was removed in #195 phase 2. Kept for history only.
+
 # Inline Wireframe Mockup System
 
 ## What it does
