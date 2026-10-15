@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk'
+import type { SystemPromptParts } from './system-prompt'
 
 // Local, minimal shape for a message's content block — wide enough that the
 // route's own ClaudeMessage/ContentBlock types satisfy it without a cast,
@@ -15,16 +16,26 @@ const CACHE_CONTROL = { type: 'ephemeral' as const }
 // Anthropic 400s a request carrying more than 4 cache_control markers.
 const MAX_CACHE_MARKERS = 4
 
-// Wraps a system prompt string into the single cache-marked text block
-// Anthropic's `system` param expects. Shared by applyPromptCaching (chat)
-// and kickoff (app/api/chat/kickoff/route.ts), which caches only its system
-// block: kickoff never advances last_maker_message_at, so its system prompt
-// (including the "returning after a gap" block) is very likely
-// byte-identical to the maker's very next /api/chat turn — a real cache
-// read. Kickoff's messages end in a synthetic turn that's never sent again,
-// so marking them would only pay the cache-write premium for no read.
-export function cacheSystemPrompt(system: string): Anthropic.TextBlockParam[] {
-  return [{ type: 'text', text: system, cache_control: CACHE_CONTROL }]
+// Wraps a system prompt into the text blocks Anthropic's `system` param
+// expects. A plain string becomes one cache-marked block. SystemPromptParts
+// becomes a cache-marked `stable` block followed by an UNMARKED `volatile`
+// block: Anthropic caches the prefix up to the last marker, so the volatile
+// tail (gap recap, prototype age labels - lib/agent/system-prompt.ts) can
+// change every turn without invalidating the cached prefix. Shared by
+// applyPromptCaching (chat), kickoff (app/api/chat/kickoff/route.ts) and
+// the stars-demo facilitator (string form).
+//
+// Kickoff caches only its system block: it never advances
+// last_maker_message_at, so its system prompt is very likely byte-identical
+// to the maker's very next /api/chat turn - a real cache read. Kickoff's
+// messages end in a synthetic turn that's never sent again, so marking them
+// would only pay the cache-write premium for no read.
+export function cacheSystemPrompt(system: string | SystemPromptParts): Anthropic.TextBlockParam[] {
+  const stable = typeof system === 'string' ? system : system.stable
+  const volatile = typeof system === 'string' ? null : system.volatile
+  const blocks: Anthropic.TextBlockParam[] = [{ type: 'text', text: stable, cache_control: CACHE_CONTROL }]
+  if (volatile) blocks.push({ type: 'text', text: volatile })
+  return blocks
 }
 
 // Marks the chat prefix for Anthropic prompt caching: one marker on the
@@ -37,7 +48,7 @@ export function cacheSystemPrompt(system: string): Anthropic.TextBlockParam[] {
 // Never mutates its inputs — returns new arrays/objects for anything it
 // changes, and returns `messages` untouched when it's empty.
 export function applyPromptCaching<M extends CacheableMessage>(
-  system: string,
+  system: string | SystemPromptParts,
   messages: M[]
 ): { system: Anthropic.TextBlockParam[]; messages: M[] } {
   const systemBlocks = cacheSystemPrompt(system)
