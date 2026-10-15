@@ -358,6 +358,89 @@ describe('regenerateBriefForProject', () => {
     expect(byTopic.Payment.locked).toBeUndefined() // model's lock is dropped
   })
 
+  // #197 — regen may contest a lock but never remove it.
+  function seedLockedPayment(extra: Record<string, unknown> = {}) {
+    sessionsByProject.p1 = [{ id: 's1', data: () => ({}) }]
+    messagesBySession.s1 = [{ id: 'm1', data: () => ({ role: 'user', content: 'hi' }) }]
+    projectDocs.p1 = { exists: true, data: () => ({ title: 'X' }) }
+    briefsByProject.p1 = [
+      {
+        id: 'brief-1',
+        data: () => ({
+          version: 2,
+          content: {
+            ...validBrief,
+            decisions: [
+              { topic: 'Payment', decision: 'Stripe only', locked: true, decided_in_session: 's0', decided_at: '2026-01-01T00:00:00.000Z', ...extra },
+            ],
+          },
+        }),
+        ref: briefRef,
+      },
+    ]
+  }
+  const persistedDecisions = () =>
+    (mockBriefUpdate.mock.calls[0] as unknown as [{ content: { decisions: Array<Record<string, unknown>> } }])[0].content.decisions
+
+  it('keeps a model-emitted contested on a locked topic; text, lock and stamps unchanged (#197)', async () => {
+    seedLockedPayment()
+    const contested = { proposed: 'Square', reason: 'switched POS provider, confirmed in conversation 3' }
+    mockMessagesCreate.mockResolvedValue(
+      toolUseResponse({ ...validBrief, decisions: [{ topic: 'Payment', decision: 'Square', contested }] }),
+    )
+    await regenerateBriefForProject(makeDb(), 'p1')
+    expect(persistedDecisions()).toEqual([
+      { topic: 'Payment', decision: 'Stripe only', locked: true, contested, decided_in_session: 's0', decided_at: '2026-01-01T00:00:00.000Z' },
+    ])
+  })
+
+  it('drops contested on an unlocked topic and still drops a model-emitted lock (#197)', async () => {
+    seedLockedPayment()
+    mockMessagesCreate.mockResolvedValue(
+      toolUseResponse({
+        ...validBrief,
+        decisions: [
+          { topic: 'Payment', decision: 'Stripe only' },
+          { topic: 'Auth', decision: 'Google', locked: true, contested: { proposed: 'Email', reason: 'x' } },
+        ],
+      }),
+    )
+    await regenerateBriefForProject(makeDb(), 'p1')
+    const byTopic = Object.fromEntries(persistedDecisions().map((d) => [d.topic as string, d]))
+    expect(byTopic.Auth.locked).toBeUndefined()
+    expect(byTopic.Auth.contested).toBeUndefined()
+    expect(byTopic.Payment.contested).toBeUndefined()
+  })
+
+  it('drops a malformed contested (missing or empty fields) (#197)', async () => {
+    seedLockedPayment()
+    mockMessagesCreate.mockResolvedValue(
+      toolUseResponse({ ...validBrief, decisions: [{ topic: 'Payment', decision: 'Stripe only', contested: { proposed: '', reason: 'x' } }] }),
+    )
+    await regenerateBriefForProject(makeDb(), 'p1')
+    expect(persistedDecisions()[0].contested).toBeUndefined()
+  })
+
+  it('carries an existing contested forward when the model omits it (#197)', async () => {
+    const contested = { proposed: 'Square', reason: 'earlier' }
+    seedLockedPayment({ contested })
+    mockMessagesCreate.mockResolvedValue(
+      toolUseResponse({ ...validBrief, decisions: [{ topic: 'Payment', decision: 'Stripe only' }] }),
+    )
+    await regenerateBriefForProject(makeDb(), 'p1')
+    expect(persistedDecisions()[0].contested).toEqual(contested)
+  })
+
+  it('advertises contested in the update_brief tool schema (#197)', async () => {
+    seedLockedPayment()
+    mockMessagesCreate.mockResolvedValue(toolUseResponse(validBrief))
+    await regenerateBriefForProject(makeDb(), 'p1')
+    const args = mockMessagesCreate.mock.calls[0][0]
+    const decisionProps = args.tools[0].input_schema.properties.decisions.items.properties
+    expect(decisionProps.contested.required).toEqual(['proposed', 'reason'])
+    expect(args.system[0].text).toMatch(/contested/)
+  })
+
   // #121 — provenance is stamped by code on regen: a decision new this round
   // gets the latest non-archived session that has messages; unchanged decisions
   // keep their prior stamps; model-echoed decided_* fields are stripped.
