@@ -31,7 +31,7 @@ When I say "give me the output", produce ONLY valid JSON matching this schema (n
     "constraints": "Any constraints, limitations, or things the user explicitly doesn't want",
     "additional_context": "Any other relevant information that doesn't fit the above categories",
     "decisions": [{ "topic": "short label", "decision": "what was decided", "decided_in_session": "optional session id", "decided_at": "optional ISO timestamp" }],
-    "open_risks": ["plain-language description of something unresolved, unclear, or risky"]
+    "open_risks": ["plain-language description of something unresolved, unclear, or risky", { "text": "a risk only one side can settle", "owner": "maker" }]
   },
   "welcome_message": "Posted word for word as the agent's first message when the maker opens the next session, so include any link or step they need. Omit it to let the agent greet them itself.",
   "nudge_message": "Optional. Verbatim outbound nudge text used to invite the maker back. Omit to let the system auto-draft.",
@@ -57,7 +57,7 @@ Rules:
 - Preserve prior decisions unless the user explicitly reversed one in the conversation.
 - A decision may carry \`"locked": true\` — a durable constraint (e.g. a locked convention or do-not-use rule). NEVER drop, reword, or unset a locked decision; carry it forward verbatim with \`"locked": true\`. If the conversation contains a statement that contradicts a locked decision but the user did not explicitly confirm reversing it, keep the locked decision as-is and record the contradiction in \`open_risks\` (e.g. "conflicts with locked decision: <topic>"). If the user DID explicitly confirm the reversal, keep the locked decision as-is and add \`"contested": { "proposed": "<what they want instead>", "reason": "<why, and when they confirmed it>" }\` on that decision instead of an open risk — a builder decides whether the lock changes. Never set \`contested\` on an unlocked decision.
 - A decision may carry \`decided_in_session\` (session id, or null for out-of-band) and \`decided_at\` (ISO timestamp) — provenance stamps. Carry these through unchanged if present; you may set them when you know the real provenance; omit otherwise (the system stamps new decisions itself).
-- Open risks = things that are unresolved, unclear, or risky based on the conversation. Extract from what the user actually said — don't invent risks. Examples: "no plan for getting first users", "pricing model undecided", "unclear how data gets into the system".
+- Open risks = things that are unresolved, unclear, or risky based on the conversation. Extract from what the user actually said — don't invent risks. Examples: "no plan for getting first users", "pricing model undecided", "unclear how data gets into the system". A risk may carry \`"owner": "maker"\` when only the maker can settle it (their preference, a fact about their world, a decision that is theirs to make) or \`"owner": "builder"\` when it is the builder's to resolve (technical, scheduling, something the builder said they would look into); omit \`owner\` when unclear. Carry an existing owner forward unless the conversation resolved the risk.
 
 Please review the project data the builder will give you next and let's discuss:
 - What went well in the conversation so far?

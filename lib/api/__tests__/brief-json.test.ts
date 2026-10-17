@@ -184,3 +184,23 @@ describe('serializeBriefContent', () => {
     ])
   })
 })
+
+describe('open_risks owners (#220)', () => {
+  it('accepts owned risks and canonicalizes ownerless objects', () => {
+    const r = normalizeBriefContent({ open_risks: [{ text: 'q', owner: 'maker' }, { text: 'p' }, 'plain'] })
+    expect(r.ok && r.value.open_risks).toEqual([{ text: 'q', owner: 'maker' }, 'p', 'plain'])
+  })
+  it('does not 400 on a bad owner, keeps the text', () => {
+    const r = normalizeBriefContent({ open_risks: [{ text: 'q', owner: 'Maker' }] })
+    expect(r.ok && r.value.open_risks).toEqual(['q'])
+  })
+  it('round-trips an owned risk through serialize and parse', () => {
+    const b = { ...emptyBrief(), open_risks: [{ text: 'q', owner: 'maker' as const }] }
+    const r = parseBriefJson(serializeBriefContent(b))
+    expect(r.ok && r.value.open_risks).toEqual(b.open_risks)
+  })
+  it('rejects a non-list or a junk element', () => {
+    expect(normalizeBriefContent({ open_risks: 'x' }).ok).toBe(false)
+    expect(normalizeBriefContent({ open_risks: [42] }).ok).toBe(false)
+  })
+})

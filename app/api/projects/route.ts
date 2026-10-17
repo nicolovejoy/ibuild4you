@@ -12,6 +12,7 @@ import { sortProjectsByActivity } from '@/lib/api/sort-projects-by-activity'
 import { generateSlug } from '@/lib/utils'
 import { isLocale } from '@/lib/locale'
 import { resolveBriefRole, defaultBriefRole } from '@/lib/roles/brief-role'
+import { normalizeRisks } from '@/lib/brief/risks'
 import { copy } from '@/lib/copy'
 import { applyImportToOpenSession } from '@/lib/sessions/apply-import'
 import { deleteS3Object } from '@/lib/s3/client'
@@ -590,8 +591,8 @@ export async function POST(request: Request) {
             now,
           }),
         }),
-      ...(Array.isArray(b.open_risks) && b.open_risks.length > 0 && {
-        open_risks: b.open_risks.filter((r: unknown) => typeof r === 'string' && r.trim()),
+      ...(normalizeRisks(b.open_risks).length > 0 && {
+        open_risks: normalizeRisks(b.open_risks),
       }),
     }
     await db.collection('briefs').add({

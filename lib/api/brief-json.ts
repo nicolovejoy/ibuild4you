@@ -2,6 +2,7 @@ import type { BriefContent, BriefDecision } from '@/lib/types'
 import type { ParseResult } from './import-payload'
 import { parseLooseJson } from '@/lib/utils'
 import { contestFor, dismissedFor } from './brief-merge'
+import { normalizeRisks } from '@/lib/brief/risks'
 
 // Pure validation + (de)serialization for the brief-as-document editor (#19
 // Phase 3). The structured view and the raw-JSON view operate on ONE
@@ -12,6 +13,16 @@ const asString = (v: unknown): string => (typeof v === 'string' ? v : '')
 
 const isStringArray = (v: unknown): v is string[] =>
   Array.isArray(v) && v.every((x) => typeof x === 'string')
+
+// An open risk is a string or an object with a string `text`. A bad `owner`
+// is not an error here; normalizeRisks drops it and keeps the text.
+const isRiskArray = (v: unknown): boolean =>
+  Array.isArray(v) &&
+  v.every(
+    (x) =>
+      typeof x === 'string' ||
+      (!!x && typeof x === 'object' && typeof (x as { text?: unknown }).text === 'string'),
+  )
 
 export function emptyBrief(): BriefContent {
   return {
@@ -37,8 +48,8 @@ export function normalizeBriefContent(input: unknown): ParseResult<BriefContent>
   if (o.features !== undefined && !isStringArray(o.features)) {
     return { ok: false, error: '"features" must be a list of strings' }
   }
-  if (o.open_risks !== undefined && !isStringArray(o.open_risks)) {
-    return { ok: false, error: '"open_risks" must be a list of strings' }
+  if (o.open_risks !== undefined && !isRiskArray(o.open_risks)) {
+    return { ok: false, error: '"open_risks" must be a list of strings or { text, owner } objects' }
   }
 
   const decisions: BriefDecision[] = []
@@ -81,7 +92,7 @@ export function normalizeBriefContent(input: unknown): ParseResult<BriefContent>
     constraints: asString(o.constraints),
     additional_context: asString(o.additional_context),
     decisions,
-    open_risks: isStringArray(o.open_risks) ? o.open_risks.filter((s) => s.trim() !== '') : [],
+    open_risks: normalizeRisks(o.open_risks),
   }
   return { ok: true, value }
 }

@@ -12,6 +12,7 @@ import {
   stampDecisionProvenance,
   stripDecisionProvenance,
 } from '@/lib/api/brief-merge'
+import { normalizeRisks, carryRiskOwners } from '@/lib/brief/risks'
 import { isArchivedSession } from '@/lib/sessions/active'
 import Anthropic from '@anthropic-ai/sdk'
 
@@ -59,7 +60,22 @@ const UPDATE_BRIEF_TOOL = {
           required: ['topic', 'decision'],
         },
       },
-      open_risks: { type: 'array', items: { type: 'string' } },
+      open_risks: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            text: { type: 'string' },
+            owner: {
+              type: 'string',
+              enum: ['maker', 'builder'],
+              description:
+                "maker = only the maker can settle it (their preference, a fact about their world, a decision that is theirs); builder = the builder's to resolve. Omit when unclear. Carry an existing owner forward unless the conversation resolved the risk.",
+            },
+          },
+          required: ['text'],
+        },
+      },
     },
     required: [
       'problem',
@@ -230,16 +246,17 @@ export async function regenerateBriefForProject(
             return { topic: d.topic, decision: d.decision, ...(contested ? { contested } : {}) }
           })
       : [],
-    open_risks: Array.isArray(raw.open_risks)
-      ? raw.open_risks.filter(
-          (r): r is string => typeof r === 'string' && r.trim().length > 0,
-        )
-      : [],
+    open_risks: normalizeRisks(raw.open_risks),
   }
 
   // #71: locked decisions are durable — re-inject any the model dropped or
   // reworded, so a constraint survives regen verbatim across many sessions.
-  const reconciled = reconcileBrief(currentBrief, briefContent)
+  const merged = reconcileBrief(currentBrief, briefContent)
+  // #220: an owner the model forgot is restored when the risk text still matches.
+  const reconciled: BriefContent = {
+    ...merged,
+    open_risks: carryRiskOwners(currentBrief?.open_risks, merged.open_risks ?? []),
+  }
 
   // #121: stamp decision provenance by code. The coercion above already strips
   // model-emitted decided_* fields (it maps only topic/decision/locked);

@@ -116,4 +116,9 @@ describe('decision scope', () => {
     expect(NEXT_CONVO_SYSTEM_PROMPT).toContain("Use the maker's own words")
     expect(NEXT_CONVO_SYSTEM_PROMPT).toContain("Don't record consequences or follow-on changes the maker didn't state")
   })
+
+  it('tells the model about risk owners (#220)', () => {
+    expect(NEXT_CONVO_SYSTEM_PROMPT).toContain('"owner": "maker"')
+    expect(NEXT_CONVO_SYSTEM_PROMPT).toContain('Carry an existing owner forward')
+  })
 })
