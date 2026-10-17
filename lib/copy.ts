@@ -220,6 +220,20 @@ export const copy = {
       ({ create: 'created', paste: 'saved by hand', regen: 'regenerated', restore: 'restored' } as Record<string, string>)[
         source ?? ''
       ] ?? 'unknown source',
+    // Ferry desk — the copy/paste loop that fronts the Brief tab
+    stampCopied: 'Prep copied',
+    stampPasted: 'Payload pasted',
+    stampMaker: 'Last maker activity',
+    never: 'never',
+    newerThanPaste: 'newer than your paste',
+    copyPrep: 'Copy next-convo prep',
+    copied: 'Copied!',
+    details: 'Details',
+    detailsHint: 'brief · history · regenerate · attachments',
+    escHint: 'Esc back to dashboard',
+    pastePlaceholder: 'Paste the JSON from your prep chat here…',
+    versionLine: (version: number | null, sessions: number) =>
+      `${version == null ? 'No brief yet' : `Brief v${version}`} · session ${sessions}`,
   },
 
   // --- Chat ---
