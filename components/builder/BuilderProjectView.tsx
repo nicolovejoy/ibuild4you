@@ -11,6 +11,7 @@ import { BuildTimestamp } from '@/components/build-timestamp'
 import { Card, CardBody } from '@/components/ui/Card'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { StatusMessage } from '@/components/ui/StatusMessage'
+import { Button } from '@/components/ui/Button'
 import { LoadingButton } from '@/components/ui/LoadingButton'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { MessageContent } from '@/components/ui/MessageContent'
@@ -480,7 +481,7 @@ function BriefTab({
   const [jsonCopied, setJsonCopied] = useState(false)
   const [pasteJson, setPasteJson] = useState('')
   const [pasteError, setPasteError] = useState<string | null>(null)
-  const [importWarnings, setImportWarnings] = useState<string[]>([])
+  const [importWarnings, setImportWarnings] = useState<{ messages: string[]; configUpdated: boolean } | null>(null)
   const [showGenConfirm, setShowGenConfirm] = useState(false)
   const queryClient = useQueryClient()
   const [generating, setGenerating] = useState(false)
@@ -577,7 +578,7 @@ function BriefTab({
 
   const handleImportJson = async () => {
     setPasteError(null)
-    setImportWarnings([])
+    setImportWarnings(null)
     const result = parseNextConvoPayload(pasteJson)
     if (!result.ok) {
       setPasteError(result.error)
@@ -596,14 +597,19 @@ function BriefTab({
           } as Parameters<typeof updateProject.mutateAsync>[0])
           configUpdated = true
         }
-        warnings = nextConvoImportWarnings(result.value.projectUpdate, project?.session_mode)
+        // Skip while the project is unloaded: session_mode would default to
+        // discover and could warn falsely.
+        warnings =
+          project || result.value.projectUpdate.session_mode !== undefined
+            ? nextConvoImportWarnings(result.value.projectUpdate, project?.session_mode)
+            : []
       } else {
         await updateBrief.mutateAsync({ project_id: projectId, content: result.value.brief as BriefContent })
       }
       setPasteJson('')
       // Ignored fields: stay on the Brief tab so the builder reads the warning.
       if (warnings.length > 0) {
-        setImportWarnings(warnings)
+        setImportWarnings({ messages: warnings, configUpdated })
         return
       }
       // Import succeeded — hand the builder to the next step instead of leaving
@@ -706,17 +712,30 @@ function BriefTab({
             <textarea
               ref={importTextareaRef}
               value={pasteJson}
-              onChange={(e) => { setPasteJson(e.target.value); setPasteError(null); setImportWarnings([]) }}
+              onChange={(e) => { setPasteJson(e.target.value); setPasteError(null); setImportWarnings(null) }}
               placeholder='Paste the "next-convo" JSON here...'
               rows={3}
               className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm font-mono focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
             />
             {pasteError && <StatusMessage type="error" message={pasteError} />}
-            {importWarnings.map((w) => (
+            {importWarnings?.messages.map((w) => (
               <StatusMessage key={w} type="warning" message={w} />
             ))}
-            {importWarnings.length > 0 && (
-              <StatusMessage type="info" message={copy.brief.importStayHint} />
+            {importWarnings && (
+              <div className="flex items-center gap-3">
+                <p className="text-xs text-gray-500">{copy.brief.importStayHint}</p>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => {
+                    const { configUpdated } = importWarnings
+                    setImportWarnings(null)
+                    onImported?.({ configUpdated })
+                  }}
+                >
+                  {copy.brief.importContinueButton}
+                </Button>
+              </div>
             )}
             <LoadingButton
               variant="secondary"

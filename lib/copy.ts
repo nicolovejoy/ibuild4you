@@ -201,7 +201,8 @@ export const copy = {
       'This payload includes seed questions, but the brief is in converge mode — seed questions are only sent in discover mode. They were saved and will apply if the mode flips.',
     importIgnoredDirectives:
       'This payload includes builder directives, but the brief is in discover mode — directives are only sent in converge mode. They were saved and will apply if the mode flips.',
-    importStayHint: 'Brief updated. Open Conversations to continue.',
+    importStayHint: 'Brief updated. Read the note above, then continue.',
+    importContinueButton: 'Continue to Conversations',
     emptyTitle: 'No brief yet',
     emptyDescription:
       'Copy the prep context for Claude and paste the response above, or use Generate via API.',
