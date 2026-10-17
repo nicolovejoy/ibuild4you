@@ -92,7 +92,7 @@ describe('applyImportToOpenSession', () => {
       op: 'update',
       collection: 'sessions',
       id: 's1',
-      data: { ...project, last_kickoff_at: null, unqueued_notified_at: null, updated_at: NOW },
+      data: { ...project, last_kickoff_at: NOW, unqueued_notified_at: null, updated_at: NOW },
     })
     expect(writes).toContainEqual({ op: 'update', collection: 'projects', id: 'p1', data: { maker_waiting_since: null } })
   })
@@ -132,5 +132,37 @@ describe('applyImportToOpenSession', () => {
     })
     await applyImportToOpenSession(db, 'p1', project, NOW)
     expect(writes).toContainEqual(expect.objectContaining({ op: 'update', collection: 'sessions', id: 's2' }))
+  })
+
+  it('re-import with unchanged welcome does not re-post', async () => {
+    const { db, writes } = makeDb({
+      sessions: { s1: { ...activeSession, welcome_message: 'Fresh welcome' } },
+      messages: { g: greeting },
+    })
+    expect(await applyImportToOpenSession(db, 'p1', project, NOW)).toBe('applied')
+    expect(writes.filter((w) => w.op === 'set')).toEqual([])
+  })
+
+  it('welcome identical to an existing agent message is not re-posted', async () => {
+    const { db, writes } = makeDb({
+      sessions: { s1: activeSession },
+      messages: { w: { session_id: 's1', role: 'agent', content: ' Fresh welcome ', created_at: '2026-10-10T08:00:00.000Z' }, g: greeting },
+    })
+    await applyImportToOpenSession(db, 'p1', project, NOW)
+    expect(writes.filter((w) => w.op === 'set')).toEqual([])
+  })
+
+  it('posting a welcome stamps last_kickoff_at to now', async () => {
+    const { db, writes } = makeDb({ sessions: { s1: activeSession }, messages: { g: greeting } })
+    await applyImportToOpenSession(db, 'p1', project, NOW)
+    const upd = writes.find((w) => w.collection === 'sessions' && w.op === 'update')
+    expect(upd?.data?.last_kickoff_at).toBe(NOW)
+  })
+
+  it('no welcome posted leaves last_kickoff_at null', async () => {
+    const { db, writes } = makeDb({ sessions: { s1: { ...activeSession, welcome_message: 'Fresh welcome' } }, messages: { g: greeting } })
+    await applyImportToOpenSession(db, 'p1', project, NOW)
+    const upd = writes.find((w) => w.collection === 'sessions' && w.op === 'update')
+    expect(upd?.data?.last_kickoff_at).toBeNull()
   })
 })

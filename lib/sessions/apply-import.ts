@@ -37,6 +37,22 @@ export async function applyImportToOpenSession(
   )
   if (makerReplied) return 'maker_replied'
 
+  // The welcome the session already opened with (its snapshot, read before we
+  // overwrite it) counts as used, so re-importing an unchanged welcome is a no-op.
+  // Archived sessions count as "earlier" too, same as session creation.
+  const welcome = welcomeToPost({
+    isFirstSession: false,
+    welcome: project.welcome_message as string | undefined,
+    earlierWelcomes: sessionSnap.docs.map((d) => d.data().welcome_message as string | undefined),
+  })
+  // Also skip a welcome already present as an agent message in this session.
+  const alreadyPosted =
+    welcome !== null &&
+    messages.some(
+      (d) => d.data().role === 'agent' && String(d.data().content ?? '').trim() === welcome.trim()
+    )
+  const toPost = alreadyPosted ? null : welcome
+
   const batch = db.batch()
   for (const g of greetings) batch.delete(g.ref)
 
@@ -46,25 +62,19 @@ export async function applyImportToOpenSession(
   }
   batch.update(active.ref, {
     ...sessionUpdate,
-    last_kickoff_at: null,
+    // With a welcome posted the conversation is already opened: stamp the kickoff
+    // so it declines instead of greeting on top. Otherwise null re-arms it.
+    last_kickoff_at: toPost ? now : null,
     unqueued_notified_at: null,
     updated_at: now,
   })
   batch.update(db.collection('projects').doc(projectId), { maker_waiting_since: null })
 
-  // Archived sessions count as "earlier" too, same as session creation.
-  const welcome = welcomeToPost({
-    isFirstSession: false,
-    welcome: project.welcome_message as string | undefined,
-    earlierWelcomes: sessionSnap.docs
-      .filter((d) => d.id !== active.id)
-      .map((d) => d.data().welcome_message as string | undefined),
-  })
-  if (welcome) {
+  if (toPost) {
     batch.set(db.collection('messages').doc(), {
       session_id: active.id,
       role: 'agent',
-      content: welcome,
+      content: toPost,
       created_at: now,
       updated_at: now,
     })
