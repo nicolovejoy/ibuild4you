@@ -97,7 +97,7 @@ try {
   }
   if (!(await box.isVisible().catch(() => false))) throw new Error('composer never appeared')
   await box.fill('I want a booking page for my dog-walking service.')
-  await box.press('Enter')
+  await box.press('Control+Enter')
   await mpage.waitForTimeout(22000)
   if (!mAuth) throw new Error('no maker Bearer token captured')
 
