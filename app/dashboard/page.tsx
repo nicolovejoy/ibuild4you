@@ -26,6 +26,7 @@ import { useLocale, useMakerCopy } from '@/components/locale-context'
 import { viewerBriefRole } from '@/lib/roles/display'
 import { groupBriefs, shouldFlatten, type SectionKey } from '@/lib/dashboard/group-briefs'
 import { getProjectShareLink } from '@/lib/url'
+import { makerNewerThanPaste } from '@/lib/builder/ferry-stamps'
 import { parseNewProjectPayload } from '@/lib/api/import-payload'
 import { parseLooseJson } from '@/lib/utils'
 import { buildNewProjectPrompt } from '@/lib/agent/new-project-prompt'
@@ -472,7 +473,24 @@ function ProjectList({ isAdmin }: { isAdmin: boolean }) {
               </div>
               <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-gray-400 mt-1">
                 {project.last_maker_message_at && (
-                  <span>{d.activityMaker(makerShortName(project), ago(project.last_maker_message_at))}</span>
+                  <span
+                    className={
+                      makerNewerThanPaste(project) ? 'text-brand-navy font-medium' : undefined
+                    }
+                  >
+                    {d.activityMaker(makerShortName(project), ago(project.last_maker_message_at))}
+                    {makerNewerThanPaste(project) && (
+                      <span className="ml-1.5 text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-brand-navy text-white">
+                        {d.newerThanPaste}
+                      </span>
+                    )}
+                  </span>
+                )}
+                {project.prep_copied_at && (
+                  <span>{d.prepCopiedAt(ago(project.prep_copied_at))}</span>
+                )}
+                {project.payload_pasted_at && (
+                  <span>{d.payloadPastedAt(ago(project.payload_pasted_at))}</span>
                 )}
                 {project.last_message_at && project.last_message_by === 'agent' && (
                   <span>{d.activityAgent(ago(project.last_message_at))}</span>
