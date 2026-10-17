@@ -94,6 +94,7 @@ export interface Project extends BaseEntity {
   brief_version?: number | null
   brief_decision_count?: number | null
   brief_feature_count?: number | null
+  brief_maker_question_count?: number | null
   viewer_role?: MemberRole | 'admin' | null
   viewer_brief_role?: BriefRole | null // viewer's stored brief_role (chrome badges)
   viewer_archived?: boolean // whether the viewer archived this brief (per-viewer, from their membership)

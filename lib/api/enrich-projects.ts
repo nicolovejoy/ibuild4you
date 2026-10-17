@@ -1,4 +1,5 @@
-import type { BriefRole } from '@/lib/types'
+import type { BriefRole, BriefContent } from '@/lib/types'
+import { makerQuestions } from '@/lib/brief/risks'
 import { isArchivedSession } from '@/lib/sessions/active'
 
 // Enrich project docs with last activity, session count, and brief metadata.
@@ -95,12 +96,15 @@ export async function enrichProjects(
       let briefVersion: number | null = null
       let briefDecisionCount: number | null = null
       let briefFeatureCount: number | null = null
+      let briefMakerQuestionCount = 0
       if (!briefSnap.empty) {
         const briefData = briefSnap.docs[0].data()
         briefVersion = (briefData.version as number) || null
         const content = briefData.content as { decisions?: unknown[]; features?: unknown[] } | undefined
         briefDecisionCount = Array.isArray(content?.decisions) ? content.decisions.length : 0
         briefFeatureCount = Array.isArray(content?.features) ? content.features.length : 0
+        // Same read: maker-owned open risks, for the builder's dashboard count (#220).
+        briefMakerQuestionCount = makerQuestions(briefData.content as BriefContent | undefined).length
       }
 
       // Derived from the sessions snapshot.
@@ -125,6 +129,7 @@ export async function enrichProjects(
         brief_version: briefVersion,
         brief_decision_count: briefDecisionCount,
         brief_feature_count: briefFeatureCount,
+        brief_maker_question_count: briefMakerQuestionCount,
         viewer_role: viewerRoles?.get(project.id) ?? null,
         viewer_brief_role: viewerBriefRoles?.get(project.id) ?? null,
         viewer_archived: viewerArchived?.get(project.id) ?? false,

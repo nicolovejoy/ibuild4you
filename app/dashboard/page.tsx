@@ -329,6 +329,15 @@ function ProjectList({ isAdmin }: { isAdmin: boolean }) {
                     {(project.brief_decision_count ?? 0) > 0 && (
                       <> &middot; {d.decisions(project.brief_decision_count ?? 0)}</>
                     )}
+                    {builderSide && (project.brief_maker_question_count ?? 0) > 0 && (
+                      <>
+                        {' '}&middot;{' '}
+                        {d.makerQuestions(
+                          project.brief_maker_question_count ?? 0,
+                          makerDisplayName(project) || d.makerFallbackName,
+                        )}
+                      </>
+                    )}
                   </span>
                 )}
               </div>

@@ -53,7 +53,7 @@ function makeFixture() {
     id: `${p.id}-brief-1`,
     project_id: p.id,
     version: 1,
-    content: { features: ['a'], decisions: [] },
+    content: { features: ['a'], decisions: [], open_risks: ['x', { text: 'q', owner: 'maker' }] },
   }))
 
   return { projects, sessions, messages, briefs }
@@ -190,6 +190,7 @@ describe('enrichProjects read budget', () => {
     expect(p.latest_session_created_at).toBe('2026-05-02T00:00:00Z') // not the archived one's
     expect(p.last_message_at).toBe('2026-05-03T00:00:00Z') // not m-arch
     expect(p.has_active_session).toBe(false)
+    expect(p.brief_maker_question_count).toBe(0) // no brief
   })
 
   it('populates the expected enrichment fields', async () => {
@@ -204,6 +205,7 @@ describe('enrichProjects read budget', () => {
     expect(first.last_maker_message_at).toBeTruthy()
     expect(first.brief_version).toBe(1)
     expect(first.brief_feature_count).toBe(1)
+    expect(first.brief_maker_question_count).toBe(1)
   })
 
   it('carries viewer_role and viewer_brief_role from the supplied maps (zero extra reads)', async () => {
