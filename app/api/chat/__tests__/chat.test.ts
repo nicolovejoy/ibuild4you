@@ -487,6 +487,49 @@ describe('POST /api/chat', () => {
     expect(typeof args.last_maker_message_at).toBe('string')
   })
 
+  // --- #214 stale-greeting guard ---
+
+  const greetingHistory = [
+    { id: 'm1', data: () => ({ role: 'agent', content: 'Canned hello', kind: 'unqueued_greeting', created_at: '2026-01-01T00:00:00Z' }) },
+  ]
+
+  it('passes nothingQueued when unqueued AND a tagged greeting is in history', async () => {
+    queryResults.messages = greetingHistory
+    await POST(makeRequest({ session_id: 's1', content: 'Hello' }))
+    expect(buildSystemPromptParts).toHaveBeenCalledWith(expect.objectContaining({ nothingQueued: true }))
+  })
+
+  it('does not pass nothingQueued without a tagged greeting', async () => {
+    await POST(makeRequest({ session_id: 's1', content: 'Hello' }))
+    expect(buildSystemPromptParts).toHaveBeenCalledWith(expect.objectContaining({ nothingQueued: false }))
+  })
+
+  it('queued + lingering greeting -> nothingQueued false', async () => {
+    queryResults.messages = greetingHistory
+    docData.projects = {
+      exists: true,
+      data: () => ({ title: 'Test Project', slug: 'test-project', context: null, payload_pasted_at: '2026-01-02T00:00:00Z' }),
+    }
+    await POST(makeRequest({ session_id: 's1', content: 'Hello' }))
+    expect(buildSystemPromptParts).toHaveBeenCalledWith(expect.objectContaining({ nothingQueued: false }))
+  })
+
+  it('maker turn clears maker_waiting_since', async () => {
+    await POST(makeRequest({ session_id: 's1', content: 'Hello' }))
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const calls = mockUpdate.mock.calls as any[][]
+    const upd = calls.find((c) => c[0] && typeof c[0] === 'object' && 'last_maker_message_at' in c[0])
+    expect(upd![0]).toHaveProperty('maker_waiting_since', null)
+  })
+
+  it('builder turn does not touch maker_waiting_since', async () => {
+    mockGetProjectRole.mockResolvedValue('builder')
+    await POST(makeRequest({ session_id: 's1', content: 'Builder here' }))
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const calls = mockUpdate.mock.calls as any[][]
+    expect(calls.some((c) => c[0] && typeof c[0] === 'object' && 'maker_waiting_since' in c[0])).toBe(false)
+  })
+
   // --- Dual-role participation (#110) ---
   // Builder-side senders chat without counting as maker activity: their
   // messages must not silence reminder nudges, move the turn indicator, or

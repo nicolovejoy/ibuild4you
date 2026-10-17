@@ -14,6 +14,7 @@ import { logAnthropicCall } from '@/lib/observability/anthropic'
 import { accumulateSessionUsage } from '@/lib/observability/session-cost'
 import Anthropic from '@anthropic-ai/sdk'
 import { isArchivedSession } from '@/lib/sessions/active'
+import { isPayloadQueued } from '@/lib/sessions/queued'
 import type { BriefContent, BriefRole } from '@/lib/types'
 
 // Debounce window for maker-activity notifications. The cron at /api/cron/notify
@@ -154,6 +155,8 @@ async function handleChat(
       // session starts fresh (cron at /api/cron/maker-reminders reads these).
       reminders_sent_count: 0,
       last_reminder_sent_at: null,
+      // The maker has spoken, so they're no longer waiting on the builder (#214).
+      maker_waiting_since: null,
       updated_at: now,
     })
   }
@@ -174,6 +177,7 @@ async function handleChat(
         file_ids: (data.file_ids as string[] | undefined) || [],
         sender_email: (data.sender_email as string | undefined) || '',
         sender_display_name: (data.sender_display_name as string | undefined) || '',
+        kind: data.kind as 'unqueued_greeting' | undefined,
       }
     })
     // An empty turn in history is a 400 from Anthropic ("all messages must
@@ -346,6 +350,11 @@ async function handleChat(
     fetchSiblingDecisions(db, { id: projectId, github_repo: projectData.github_repo as string | undefined }),
   ])
 
+  // #214: the maker was greeted with the canned "nothing queued" text and the
+  // builder still hasn't pasted a payload since they last spoke.
+  const nothingQueued =
+    !isPayloadQueued(projectData) && storedMessages.some((m) => m.kind === 'unqueued_greeting')
+
   const systemPrompt = buildSystemPromptParts({
     briefContent,
     projectContext,
@@ -357,6 +366,7 @@ async function handleChat(
     makerFirstName,
     makerLastName,
     gapSinceLastMakerMessageMs,
+    nothingQueued,
     participants,
     prototypeFeedback,
     prototypeContext,
