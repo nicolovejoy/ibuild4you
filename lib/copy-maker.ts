@@ -109,6 +109,7 @@ const en = {
     waitingForBuilder: 'Waiting for builder',
     yourTurn: copy.dashboard.turnYourTurn,
     waitingOn: copy.dashboard.turnAwaitingMaker,
+    makerWaiting: copy.dashboard.turnMakerWaiting,
   },
   chat: {
     agentLabel: copy.chat.agentLabel,
@@ -297,6 +298,7 @@ const fr: MakerCopy = {
     waitingForBuilder: 'En attente du développeur',
     yourTurn: 'À vous',
     waitingOn: (name: string) => `En attente de ${name}`,
+    makerWaiting: 'Maker en attente — rien de prévu',
   },
   chat: {
     agentLabel: copy.chat.agentLabel,

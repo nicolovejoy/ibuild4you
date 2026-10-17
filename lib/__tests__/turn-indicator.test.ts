@@ -120,4 +120,38 @@ describe('getTurnIndicator in French', () => {
     expect(getTurnIndicator(makeProject(), 'builder', 'fr')?.label).toBe('En attente de Sam')
     expect(getTurnIndicator(makeProject({ status: 'completed' }), 'maker', 'fr')?.label).toBe('Terminé')
   })
+  describe('maker_waiting', () => {
+    const waiting = { maker_waiting_since: '2026-01-02T00:00:00Z' }
+
+    it('shows a builder viewer maker_waiting when set', () => {
+      const result = getTurnIndicator(makeProject(waiting), 'builder')
+      expect(result?.state).toBe('maker_waiting')
+      expect(result?.label).toBe('Maker waiting — nothing queued')
+      expect(result?.className).toBe('bg-rose-100 text-rose-700')
+    })
+
+    it('never shows the maker viewer maker_waiting', () => {
+      expect(getTurnIndicator(makeProject(waiting), 'maker')?.state).toBe('your_turn')
+    })
+
+    it('is your_turn once the maker messaged and the flag is cleared', () => {
+      const result = getTurnIndicator(
+        makeProject({
+          maker_waiting_since: null,
+          last_maker_message_at: '2026-01-03T00:00:00Z',
+        }),
+        'builder'
+      )
+      expect(result?.state).toBe('your_turn')
+    })
+
+    it('yields to completed and needs_setup', () => {
+      expect(getTurnIndicator(makeProject({ ...waiting, status: 'completed' }), 'builder')?.state).toBe('completed')
+      expect(getTurnIndicator(makeProject({ ...waiting, session_count: 0 }), 'builder')?.state).toBe('needs_setup')
+    })
+
+    it('has a French label', () => {
+      expect(getTurnIndicator(makeProject(waiting), 'builder', 'fr')?.label).toBe('Maker en attente — rien de prévu')
+    })
+  })
 })

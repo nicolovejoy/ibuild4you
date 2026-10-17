@@ -41,6 +41,7 @@ const ROLE_SECTION = {
 // the brief actually awaiting a reply leads the Awaiting-you list.
 const URGENCY: Record<TurnState, number> = {
   your_turn: 0,
+  maker_waiting: 0,
   needs_setup: 1,
   waiting: 2,
   completed: 3,
@@ -56,7 +57,7 @@ function sectionFor(project: Project): SectionKey {
   if (project.viewer_archived) return 'archived'
   if (project.status === 'completed') return 'done'
   const turn = turnStateFor(project)
-  if (turn === 'your_turn' || turn === 'needs_setup') return 'awaiting'
+  if (turn === 'your_turn' || turn === 'maker_waiting' || turn === 'needs_setup') return 'awaiting'
   const role = viewerBriefRole(project.viewer_role, project.viewer_brief_role)
   return ROLE_SECTION[role]
 }
