@@ -73,11 +73,68 @@ describe('FerryDesk', () => {
 
   it('Details is collapsed by default, shows the hint, and reveals children on click', () => {
     renderDesk()
-    expect(screen.queryByText('details body')).toBeNull()
+    const toggle = screen.getByRole('button', { name: /Details/ })
+    // Children stay mounted while collapsed (so an in-progress brief edit
+    // survives a collapse); the wrapper is hidden instead.
+    const wrapper = screen.getByText('details body').parentElement as HTMLElement
+    expect(wrapper.className).toContain('hidden')
+    expect(toggle.getAttribute('aria-controls')).toBe(wrapper.id)
+    expect(wrapper.id).toBeTruthy()
     expect(screen.getByText('brief · history · regenerate · attachments')).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: /Details/ }))
-    expect(screen.getByText('details body')).toBeTruthy()
+    fireEvent.click(toggle)
+    expect(wrapper.className).not.toContain('hidden')
     expect(screen.queryByText('brief · history · regenerate · attachments')).toBeNull()
+  })
+
+  it('keeps Details children mounted across a collapse', () => {
+    function Stateful() {
+      const [v, setV] = React.useState('')
+      return <input aria-label="draft" value={v} onChange={(e) => setV(e.target.value)} />
+    }
+    render(
+      <FerryDesk
+        stamps={stamps()}
+        briefVersion={4}
+        sessionCount={3}
+        pasteValue=""
+        onPasteChange={vi.fn()}
+        pasteError={null}
+        importing={false}
+        onImport={vi.fn()}
+        copyingPrep={false}
+        prepCopied={false}
+        onCopyPrep={vi.fn()}
+        onEscapeEmpty={vi.fn()}
+      >
+        <Stateful />
+      </FerryDesk>
+    )
+    const toggle = screen.getByRole('button', { name: /Details/ })
+    fireEvent.click(toggle)
+    fireEvent.change(screen.getByLabelText('draft'), { target: { value: 'half-typed' } })
+    fireEvent.click(toggle) // collapse
+    fireEvent.click(toggle) // reopen
+    expect((screen.getByLabelText('draft') as HTMLInputElement).value).toBe('half-typed')
+  })
+
+  it('labels the paste box for screen readers', () => {
+    renderDesk()
+    expect(screen.getByLabelText('Paste the JSON from your prep chat here…').tagName).toBe('TEXTAREA')
+  })
+
+  it('omits the session part of the version line while sessions load', () => {
+    renderDesk({ sessionCount: undefined })
+    expect(screen.getByText('Brief v4')).toBeTruthy()
+    expect(screen.queryByText(/session/)).toBeNull()
+  })
+
+  it('suffixes the pasted stamp with the version the paste produced', () => {
+    renderDesk({
+      stamps: stamps({
+        pasted: { at: '2026-10-17T16:20:00.000Z', absolute: 'Oct 17, 9:20 AM', relative: '2 hours ago', version: 3 },
+      }),
+    })
+    expect(screen.getByTestId('stamp-pasted').textContent).toContain('2 hours ago · v3')
   })
 
   it('Import is disabled when the box is empty and calls onImport when filled', () => {

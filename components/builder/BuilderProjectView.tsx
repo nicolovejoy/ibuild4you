@@ -577,7 +577,10 @@ function BriefTab({
       setTimeout(() => setPayloadCopied(false), 2000)
       // "Prep copied" stamp. Fire-and-forget: a failed stamp write must not
       // undo or hide a copy that already landed on the clipboard.
-      updateProject.mutate({ project_id: projectId, prep_copied_at: new Date().toISOString() })
+      updateProject.mutate(
+        { project_id: projectId, prep_copied_at: new Date().toISOString() },
+        { onError: (err) => console.error('Failed to write prep_copied_at stamp:', err) }
+      )
     } catch (err) {
       console.error('Failed to copy payload:', err)
     } finally {
@@ -700,7 +703,7 @@ function BriefTab({
         <FerryDesk
           stamps={ferryStamps(project ?? {})}
           briefVersion={brief?.version ?? null}
-          sessionCount={briefTabSessions?.length ?? 0}
+          sessionCount={briefTabSessions?.length}
           pasteValue={pasteJson}
           onPasteChange={(v) => { setPasteJson(v); setPasteError(null); setImportWarnings(null) }}
           pasteError={pasteError}
@@ -776,7 +779,6 @@ function BriefTab({
           </div>
         </FerryDesk>
       </div>
-
 
       {/* Confirm the metered-API regen — it overwrites the brief (locked
           decisions survive). Offer a copy-first so no manual edit is lost. */}

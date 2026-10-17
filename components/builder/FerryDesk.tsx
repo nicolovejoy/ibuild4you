@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useId, useState } from 'react'
 import { Upload, ClipboardCopy, Check, ChevronRight, ChevronDown } from 'lucide-react'
 import { LoadingButton } from '@/components/ui/LoadingButton'
 import { StatusMessage } from '@/components/ui/StatusMessage'
@@ -14,7 +14,7 @@ import type { FerryStamp, FerryStamps } from '@/lib/builder/ferry-stamps'
 type FerryDeskProps = {
   stamps: FerryStamps
   briefVersion: number | null
-  sessionCount: number
+  sessionCount: number | undefined // undefined while sessions load: the line omits it
   pasteValue: string
   onPasteChange: (v: string) => void
   pasteError: string | null
@@ -80,6 +80,7 @@ export function FerryDesk({
   // Collapsed by default: the ferry loop is the page; the brief, history,
   // regen and attachments are one labelled click away.
   const [detailsOpen, setDetailsOpen] = useState(false)
+  const detailsId = useId()
 
   const { copied, pasted, maker } = stamps
   const pastedSub = [pasted.relative, pasted.version != null ? copy.brief.pastedVersion(pasted.version) : '']
@@ -140,6 +141,7 @@ export function FerryDesk({
         onChange={(e) => onPasteChange(e.target.value)}
         onKeyDown={handleKeyDown}
         placeholder={copy.brief.pastePlaceholder}
+        aria-label={copy.brief.pastePlaceholder}
         className="w-full min-h-[55vh] rounded-lg border border-gray-300 bg-white p-3 font-mono text-sm focus:border-brand-navy focus:outline-none"
       />
 
@@ -179,6 +181,7 @@ export function FerryDesk({
             type="button"
             onClick={() => setDetailsOpen((open) => !open)}
             aria-expanded={detailsOpen}
+            aria-controls={detailsId}
             className="flex items-center gap-1 self-center text-sm font-medium text-brand-navy"
           >
             {detailsOpen ? (
@@ -190,7 +193,11 @@ export function FerryDesk({
           </button>
           {!detailsOpen && <span className="text-xs text-gray-400">{copy.brief.detailsHint}</span>}
         </div>
-        {detailsOpen && <div className="mt-3">{children}</div>}
+        {/* Hidden, not unmounted: collapsing must not throw away an
+            in-progress BriefEditor edit or BriefHistory state. */}
+        <div id={detailsId} className={detailsOpen ? 'mt-3' : 'hidden'}>
+          {children}
+        </div>
       </div>
     </div>
   )
