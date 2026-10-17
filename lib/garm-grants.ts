@@ -4,8 +4,8 @@ import { ADMIN_EMAILS } from '@/lib/constants'
 import { getAdminDb } from '@/lib/api/firebase-server-helpers'
 
 // =============================================================================
-// Garm dual-write — the deferred piece of consumer-plan Phase 4.
-// See docs/garm-consumer-plan.md "Phase 4 — Garm shadow mode" (dual-write bullet).
+// Garm dual-write — consumer-plan Phase 4 (docs/archive/garm-consumer-plan.md),
+// kept after the cutover: it is how a local membership write reaches Garm.
 //
 // THE ONE RULE: local Firestore stays the source of truth in this phase. This
 // module only mirrors the outcome of a local membership/approval write into a

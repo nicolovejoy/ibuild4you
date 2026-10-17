@@ -8,7 +8,7 @@
 
 **Tech Stack:** Next.js App Router route handlers, Firebase Admin SDK (mocked in tests), vitest, React Query hook, Tailwind. No new dependencies.
 
-**Spec:** this plan's "Why" sections + issue #174 + `docs/reliability-hardening-plan.md` (the "What this plan does and does not fix" header) + handoff entries dated 2026-08-22 in `~/src/.handoff/ibuild4you-prompt-lab.md`.
+**Spec:** this plan's "Why" sections + issue #174 + `docs/archive/reliability-hardening-plan.md` (the "What this plan does and does not fix" header) + handoff entries dated 2026-08-22 in `~/src/.handoff/ibuild4you-prompt-lab.md`.
 
 ## Global Constraints
 
@@ -591,11 +591,11 @@ git commit -m "Share modals warn when the invitee's Garm grant did not land"
 ### Task 3: Docs + issue close-out
 
 **Files:**
-- Modify: `CLAUDE.md` (Data Model: add `garm_denials`; Next Steps: one line), `docs/reliability-hardening-plan.md` header ("follow-on work" sentence → link to this plan, mark done)
+- Modify: `CLAUDE.md` (Data Model: add `garm_denials`; Next Steps: one line), `docs/archive/reliability-hardening-plan.md` header ("follow-on work" sentence → link to this plan, mark done)
 - Modify: issue #174 (comment + close on merge — done by the PR via `Closes #174` in the PR body, not by hand)
 
 - [ ] **Step 1:** In `CLAUDE.md` Data Model list add: `- **garm_denials** — counts-only record of sign-in denials keyed by sha256(email); kind unknown-principal | known-member (lib/garm-denials.ts). No addresses.` and under Data Model `garm_reconcile_log` if listed, note the two denial fields.
-- [ ] **Step 2:** In `docs/reliability-hardening-plan.md` header paragraph replace "that detector and the invite-path fix (#174) are follow-on work, not part of this plan" with "both shipped in the follow-on plan `docs/superpowers/plans/2026-08-22-garm-denial-detector-and-await-invite-grant.md`".
+- [ ] **Step 2:** In `docs/archive/reliability-hardening-plan.md` header paragraph replace "that detector and the invite-path fix (#174) are follow-on work, not part of this plan" with "both shipped in the follow-on plan `docs/superpowers/plans/2026-08-22-garm-denial-detector-and-await-invite-grant.md`".
 - [ ] **Step 3:** `git commit -m "docs: garm_denials collection + plan cross-links"`.
 
 ---

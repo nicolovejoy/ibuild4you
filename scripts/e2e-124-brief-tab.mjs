@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // Verify the Brief-tab round (Nico 2026-07-11) on preview:
 //  1. The next-convo paste target is first-class near the top of the Brief tab
-//     (visible without opening any fold, ABOVE the brief content).
+//     (visible without opening any fold, ABOVE the brief content, which sits
+//     under the Details twiddle since the ferry desk, #222).
 //  2. The brief renders collapsed (~4 lines) with "Show full brief" → expands.
 //  3. The brief is not editable from the get-go — no form fields until "Edit
 //     brief" is clicked (read-first BriefEditor).
@@ -34,8 +35,6 @@ const { browser, page } = await launchLoggedIn({ viewport: { width: 1400, height
 // --- 1. Create the brief via the dashboard Import-JSON modal ---
 await page.getByRole('button', { name: 'New brief' }).first().click()
 await page.waitForTimeout(400)
-await page.getByRole('button', { name: 'Import JSON' }).click()
-await page.waitForTimeout(300)
 await page.locator('#project-json').fill(JSON.stringify(payload))
 const createRespP = page
   .waitForResponse((r) => /\/api\/projects$/.test(r.url()) && r.request().method() === 'POST', { timeout: 15000 })
@@ -53,14 +52,18 @@ console.log(`created brief ${brief.id} (${brief.slug})`)
 await page.goto(`${BASE}/projects/${brief.slug}?tab=brief`, { waitUntil: 'domcontentloaded' })
 await page.waitForTimeout(3000)
 
-const pasteBox = page.getByPlaceholder(/next-convo/)
+const pasteBox = page.getByPlaceholder(/prep chat/)
 if (!(await pasteBox.isVisible().catch(() => false))) fail('paste card not visible without opening a fold')
 else ok('paste target visible first-class')
 
+// Ferry desk (#222): the brief sits under the Details twiddle, below the paste box.
+await page.getByRole('button', { name: /^Details$/ }).click()
+await page.waitForTimeout(400)
 // Headings render uppercase via CSS and innerText reflects text-transform —
 // compare uppercased.
 const mainText = (await page.locator('main').innerText()).replace(/\s+/g, ' ').toUpperCase()
-const pasteIdx = mainText.indexOf('PASTE NEXT-CONVO PAYLOAD')
+// The paste box's placeholder is not innerText; anchor on the stamp row above it.
+const pasteIdx = mainText.indexOf('PREP COPIED')
 const problemIdx = mainText.indexOf('CUSTOMERS CANNOT ORDER ONLINE')
 if (pasteIdx < 0 || problemIdx < 0) fail(`missing sections (paste@${pasteIdx}, problem@${problemIdx})`)
 else if (pasteIdx > problemIdx) fail('paste card renders below the brief content')
@@ -110,6 +113,8 @@ if (page.url().includes('tab=brief')) fail(`import didn't hand off to Conversati
 else ok('import hands off to Conversations')
 await page.goto(`${BASE}/projects/${brief.slug}?tab=brief`, { waitUntil: 'domcontentloaded' })
 await page.waitForTimeout(2500)
+await page.getByRole('button', { name: /^Details$/ }).click()
+await page.waitForTimeout(400)
 const afterText = (await page.locator('main').innerText()).replace(/\s+/g, ' ')
 if (!afterText.includes(newProblem)) fail('imported brief content not visible after reload')
 else ok('imported content persisted')

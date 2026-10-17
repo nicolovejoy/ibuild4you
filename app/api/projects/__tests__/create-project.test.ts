@@ -397,7 +397,6 @@ describe('POST /api/projects', () => {
       seed_questions: ['What problem are you solving?', 'Who are your users?'],
       builder_directives: ['Push toward single page'],
       welcome_message: 'Hi Sam!',
-      layout_mockups: [{ title: 'Layout A', sections: [] }],
     }))
 
     expect(res.status).toBe(201)
@@ -412,8 +411,6 @@ describe('POST /api/projects', () => {
     expect(data.seed_questions).toEqual(['What problem are you solving?', 'Who are your users?'])
     expect(data.builder_directives).toEqual(['Push toward single page'])
     expect(data.welcome_message).toBe('Hi Sam!')
-    // #195 phase 2: accepted for one release, never stored.
-    expect(data.layout_mockups).toBeUndefined()
   })
 
   it('saves nudge_message and voice_sample on the project', async () => {
@@ -449,7 +446,6 @@ describe('POST /api/projects', () => {
       seed_questions: ['Q1'],
       builder_directives: ['D1'],
       welcome_message: 'Hello!',
-      layout_mockups: [{ title: 'Mock', sections: [] }],
     }))
 
     const sessions = addedDocs['sessions']
@@ -460,7 +456,6 @@ describe('POST /api/projects', () => {
       builder_directives: ['D1'],
       welcome_message: 'Hello!',
     })
-    expect(sessions[0]).not.toHaveProperty('layout_mockups')
   })
 
   // --- Field validation / sanitization ---
@@ -538,23 +533,11 @@ describe('POST /api/projects', () => {
       title: 'Test',
       seed_questions: [],
       builder_directives: [],
-      layout_mockups: [],
     }))
 
     const data = await res.json()
     expect(data.seed_questions).toBeUndefined()
     expect(data.builder_directives).toBeUndefined()
-    expect(data.layout_mockups).toBeUndefined()
-  })
-
-  it('ignores layout_mockups on create without rejecting the request (#195)', async () => {
-    const res = await POST(makeRequest({
-      title: 'Legacy Payload',
-      layout_mockups: [{ title: 'Old', sections: [{ type: 'hero', label: 'Hi', description: 'x' }] }],
-    }))
-    expect(res.status).toBe(201)
-    const data = await res.json()
-    expect(data).not.toHaveProperty('layout_mockups')
   })
 
   it('does not snapshot config fields onto session when none provided', async () => {

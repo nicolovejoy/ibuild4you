@@ -1,3 +1,4 @@
+import { RequireSignIn } from '@/components/dashboard/RequireSignIn'
 import { PayloadDoc } from '@/components/payload-doc'
 
 // Annotated descriptor for the "next-convo" payload — the JSON you paste into a
@@ -35,12 +36,14 @@ const NOTES = [
 
 export default function NextConversationPayloadPage() {
   return (
-    <PayloadDoc
-      title="Starting the next conversation"
-      endpoint="PATCH /api/projects + new brief revision"
-      intro="The payload that updates an existing brief and shapes the maker's next session — what the agent opens with, what to focus on, and any new decisions. Paste it into the project's Brief tab. Field values below describe what each field is for — replace them with real content."
-      json={NEXT_CONVO_PAYLOAD}
-      notes={NOTES}
-    />
+    <RequireSignIn>
+      <PayloadDoc
+        title="Starting the next conversation"
+        endpoint="PATCH /api/projects + new brief revision"
+        intro="The payload that updates an existing brief and shapes the maker's next session — what the agent opens with, what to focus on, and any new decisions. Paste it into the project's Brief tab. Field values below describe what each field is for — replace them with real content."
+        json={NEXT_CONVO_PAYLOAD}
+        notes={NOTES}
+      />
+    </RequireSignIn>
   )
 }

@@ -45,8 +45,6 @@ const { browser, page } = await launchLoggedIn({ viewport: { width: 1400, height
 // --- 1. Create via the dashboard Import-JSON modal ---
 await page.getByRole('button', { name: 'New brief' }).first().click()
 await page.waitForTimeout(400)
-await page.getByRole('button', { name: 'Import JSON' }).click()
-await page.waitForTimeout(300)
 await page.locator('#project-json').fill(JSON.stringify(payload))
 const createRespP = page
   .waitForResponse((r) => /\/api\/projects$/.test(r.url()) && r.request().method() === 'POST', { timeout: 15000 })
@@ -91,7 +89,7 @@ if (!mainText.includes(`added ${TODAY_SHORT}`))
 else ok(`suffix renders for create stamp (added ${TODAY_SHORT})`)
 
 // --- 4. Paste with dropped stamps + one new decision ---
-const pasteBox = page.getByPlaceholder(/next-convo/)
+const pasteBox = page.getByPlaceholder(/prep chat/)
 await pasteBox.fill(
   JSON.stringify({
     ...briefFields,

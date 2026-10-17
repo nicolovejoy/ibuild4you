@@ -3,7 +3,7 @@ import { getAdminAuth } from '@/lib/firebase/admin'
 import { normalizeEmail } from '@/lib/email/normalize'
 import { rewriteActionLink } from '@/lib/auth/rewrite-action-link'
 
-// Garm consumer plan Phase 1 / PR A (docs/garm-consumer-plan.md): invites move
+// Garm consumer plan Phase 1 / PR A (docs/archive/garm-consumer-plan.md): invites move
 // from "here's your passcode" to "here's a link to set your password" — and
 // since PR D the link (or Google) is the ONLY way in. Does NOT touch closed
 // signup: it only ever runs for an email the caller has already approved as an

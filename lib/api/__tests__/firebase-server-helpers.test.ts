@@ -1,9 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
   requireRole,
-  canChat,
-  canReview,
-  canConfigure,
   canManage,
   getAuthenticatedUser,
   getProjectRole,
@@ -96,7 +93,6 @@ describe('isAdminEmail', () => {
 // *preview* deployment with no Garm wiring (no GARM_URL/GARM_KEY), which falls
 // back to the local approved_emails allowlist so the preview e2e fleet can
 // sign in. Production can never take the fallback, whatever its env says.
-// Replaces the GARM_GATING kill switch (PR H).
 describe('isApprovedEmail — preview fallback (VERCEL_ENV=preview, no Garm wiring)', () => {
   const OLD_ENV = { ...process.env }
 
@@ -173,7 +169,7 @@ describe('isApprovedEmail — preview fallback (VERCEL_ENV=preview, no Garm wiri
   })
 })
 
-// PR G cutover (docs/garm-consumer-plan.md Phase 5): Garm IS the sign-in gate.
+// PR G cutover (docs/archive/garm-consumer-plan.md Phase 5): Garm IS the sign-in gate.
 // Fail mode is closed per the ratified Q2 decision — there is no local-fallback
 // branch outside preview, deliberately. garmCheck is mocked; its own
 // fail-closed internals (timeout, non-200, missing env → allowed:false) are
@@ -266,13 +262,6 @@ describe('isApprovedEmail — Garm authoritative', () => {
     vi.mocked(garmCheck).mockResolvedValueOnce({ allowed: false, role: null })
     expect(await isApprovedEmail('sam@example.com')).toBe(false)
   })
-
-  it('the retired GARM_GATING=off switch no longer opens the local path', async () => {
-    process.env.GARM_GATING = 'off'
-    mockLocalApprovedOnce(true)
-    vi.mocked(garmCheck).mockResolvedValueOnce({ allowed: false, role: null })
-    expect(await isApprovedEmail('sam@example.com')).toBe(false)
-  })
 })
 
 describe('hasSystemRole', () => {
@@ -322,30 +311,6 @@ describe('requireRole', () => {
 })
 
 describe('permission helpers', () => {
-  it('canChat allows maker+', () => {
-    expect(canChat('maker')).toBe(true)
-    expect(canChat('apprentice')).toBe(true)
-    expect(canChat('builder')).toBe(true)
-    expect(canChat('owner')).toBe(true)
-    expect(canChat(null)).toBe(false)
-  })
-
-  it('canReview allows apprentice+', () => {
-    expect(canReview('maker')).toBe(false)
-    expect(canReview('apprentice')).toBe(true)
-    expect(canReview('builder')).toBe(true)
-    expect(canReview('owner')).toBe(true)
-    expect(canReview(null)).toBe(false)
-  })
-
-  it('canConfigure allows builder+', () => {
-    expect(canConfigure('maker')).toBe(false)
-    expect(canConfigure('apprentice')).toBe(false)
-    expect(canConfigure('builder')).toBe(true)
-    expect(canConfigure('owner')).toBe(true)
-    expect(canConfigure(null)).toBe(false)
-  })
-
   it('canManage allows owner only', () => {
     expect(canManage('maker')).toBe(false)
     expect(canManage('apprentice')).toBe(false)

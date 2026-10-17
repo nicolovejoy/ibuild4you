@@ -17,7 +17,7 @@ how-to-embed or triage story changes.
 
 | Piece | Where |
 | ----- | ----- |
-| Widget (form) | `components/FeedbackWidget.tsx` |
+| Widget (form) | `lib/feedback/reference/FeedbackWidget.tsx` |
 | Launcher (corner button) | `components/feedback-launcher.tsx` *(in host apps; see below)* |
 | Payload builder + validation | `lib/feedback/payload.ts` |
 | Ingestion endpoint | `app/api/feedback/route.ts` (public, CORS-open) |
@@ -29,7 +29,7 @@ how-to-embed or triage story changes.
 The widget is a React component you **copy in**, not a script bundle. Three
 files travel together:
 
-1. Copy `components/FeedbackWidget.tsx` + `lib/feedback/payload.ts` +
+1. Copy `lib/feedback/reference/FeedbackWidget.tsx` + `lib/feedback/payload.ts` +
    `lib/feedback/capture.ts` into the host repo (`FeedbackType` is inlined in
    `payload.ts` so there's no iBuild4you dependency; `capture.ts` is the #72
    structural page snapshot — plain DOM APIs, zero deps).

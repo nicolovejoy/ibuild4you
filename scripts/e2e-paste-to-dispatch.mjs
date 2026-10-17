@@ -32,8 +32,6 @@ const { browser, page } = await launchLoggedIn({ viewport: { width: 1400, height
 // --- Setup: create the brief via the dashboard Import-JSON modal ---
 await page.getByRole('button', { name: 'New brief' }).first().click()
 await page.waitForTimeout(400)
-await page.getByRole('button', { name: 'Import JSON' }).click()
-await page.waitForTimeout(300)
 await page.locator('#project-json').fill(JSON.stringify(payload))
 const createRespP = page
   .waitForResponse((r) => /\/api\/projects$/.test(r.url()) && r.request().method() === 'POST', { timeout: 15000 })
@@ -50,7 +48,7 @@ console.log(`created brief ${brief.id} (${brief.slug})`)
 const pasteOnBriefTab = async (json) => {
   await page.goto(`${BASE}/projects/${brief.slug}?tab=brief`, { waitUntil: 'domcontentloaded' })
   await page.waitForTimeout(2500)
-  await page.getByPlaceholder(/next-convo/).fill(JSON.stringify(json))
+  await page.getByPlaceholder(/prep chat/).fill(JSON.stringify(json))
   await page.getByRole('button', { name: 'Import JSON' }).click()
   await page.waitForTimeout(2500)
 }

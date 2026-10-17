@@ -15,17 +15,6 @@ export type MemberRole = 'owner' | 'builder' | 'apprentice' | 'maker'
 // conceptually separate axes; this field separates them in the data model.
 export type BriefRole = 'originator' | 'contributor' | 'reviewer'
 
-// Project members collection — role lives on the project-person relationship
-export interface ProjectMember extends BaseEntity {
-  project_id: string
-  user_id: string
-  email: string
-  role: MemberRole
-  brief_role?: BriefRole | null
-  added_by: string // email of who added them
-  archived_at?: string | null // when this viewer archived the brief from their dashboard (per-viewer)
-}
-
 // Member summary returned by GET /api/projects/[id]/members (Roles panel).
 export interface ProjectMemberSummary {
   id: string
@@ -40,17 +29,6 @@ export interface ProjectMemberSummary {
 
 // System-level roles — platform-wide capabilities (not project-scoped)
 export type SystemRole = 'admin' | 'support'
-
-// Users collection — identity + system roles
-export interface AppUser extends BaseEntity {
-  email: string
-  display_name?: string
-  first_name?: string
-  last_name?: string
-  account_label?: string // self-assigned nav label ("main", "test account")
-  locale?: Locale // chosen UI language (EN/FR toggle); absent = cookie / brief / English
-  system_roles?: SystemRole[]
-}
 
 // Projects collection — one per maker engagement.
 // UI-LEVEL NAMING: this construct is called "brief" in user-facing copy

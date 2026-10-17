@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { ArrowLeft, Copy, Check } from 'lucide-react'
 import { SiteHeader } from '@/components/site-header'
 
-// Shared layout for the two payload-reference pages under /about. Renders an
+// Shared layout for the two payload-reference pages under /dashboard/docs. Renders an
 // intro, a copy-pastable annotated JSON descriptor, and a short notes list.
 // The JSON descriptors mirror the schemas in lib/agent/new-project-prompt.ts
 // and lib/agent/next-convo-prompt.ts — keep them in sync if those change.
@@ -36,11 +36,11 @@ export function PayloadDoc({
 
       <div className="max-w-2xl mx-auto px-4 py-12 sm:py-16 space-y-8">
         <Link
-          href="/about"
+          href="/dashboard"
           className="inline-flex items-center gap-1 text-sm text-brand-slate hover:text-brand-navy"
         >
           <ArrowLeft className="h-4 w-4" />
-          Back to About
+          Back to dashboard
         </Link>
 
         <div className="space-y-3">

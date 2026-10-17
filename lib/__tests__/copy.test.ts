@@ -81,14 +81,8 @@ describe('glossary (RAAC sweep)', () => {
     expect(g.nextConversation).toBeUndefined()
   })
 
-  it('uses Sessions/Setup as the builder-nav glossary keys', () => {
-    expect(copy.glossary.session.term).toBe('Session')
-    expect(copy.glossary.setup.term).toBe('Setup')
-  })
-
-  it('names the assistant Sam (chat) / Sam Scribe (glossary)', () => {
+  it('names the assistant Sam', () => {
     expect(copy.chat.agentLabel).toBe('Sam')
-    expect(copy.glossary.roan.term).toBe('Sam Scribe')
   })
 })
 

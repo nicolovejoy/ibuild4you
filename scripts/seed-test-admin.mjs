@@ -112,8 +112,7 @@ async function findOrCreateTestProject() {
 
 async function upsertMembership(projectId) {
   // One project_members row per (project_id, email). Update in place if it
-  // already exists. No passcode field — retired (Garm PR D); the scrub script
-  // removes any stale one.
+  // already exists. No passcode field — retired (Garm PR D).
   const existing = await db
     .collection('project_members')
     .where('project_id', '==', projectId)

@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import {
   ArrowLeft, MessageSquare, Send, FileText, Sparkles, Plus, X,
   Share2, ChevronDown, ChevronUp, Copy, Check, Mail, RotateCw,
-  Trash2, Settings, Upload, Users, KeyRound, UserPlus,
+  Trash2, Settings, Upload, Users, UserPlus,
 } from 'lucide-react'
 import { BuildTimestamp } from '@/components/build-timestamp'
 import { Card, CardBody } from '@/components/ui/Card'
@@ -62,7 +62,6 @@ import {
 import { useQueryClient } from '@tanstack/react-query'
 import { queryKeys } from '@/lib/query/keys'
 import { BuilderFilesTab } from './BuilderFilesTab'
-import { ProjectCostsCard } from './ProjectCostsCard'
 import { BriefEditor } from './BriefEditor'
 import { FerryDesk } from './FerryDesk'
 import { ferryStamps } from '@/lib/builder/ferry-stamps'
@@ -301,7 +300,7 @@ export function BuilderProjectView({ projectId }: { projectId: string }) {
             <PeopleTab project={project} onShare={openShare} />
           )}
           {activeTab === 'setup' && (
-            project ? <AgentConfigCard project={project} defaultExpanded /> : <Skeleton className="h-64 w-full rounded-lg" />
+            project ? <AgentConfigCard project={project} /> : <Skeleton className="h-64 w-full rounded-lg" />
           )}
         </main>
       </div>
@@ -892,9 +891,6 @@ function ConversationsTab({
         onImportedConsumed={onImportedConsumed}
       />
 
-      {/* Operator telemetry, admin-only (#120, #185). */}
-      {isAdmin && <ProjectCostsCard projectId={projectId} />}
-
       {sessions.length === 0 ? (
         <EmptyState
           icon={MessageSquare}
@@ -1393,6 +1389,11 @@ function PeoplePanel({ project, onInvite }: { project: Project; onInvite: () => 
           </button>
         </div>
 
+        {/* One sign-in link for the whole brief (#81, reshaped by Garm PR D):
+            everyone signs in with Google or their own password, so there is
+            nothing per-person to reveal — this is the link the operator re-sends. */}
+        <ProjectLinkCopy project={project} />
+
         {isLoading && <Skeleton className="h-12 w-full" />}
         {error && <StatusMessage type="error" message={(error as Error).message} />}
         {members && members.length === 0 && (
@@ -1490,10 +1491,6 @@ function PeoplePanel({ project, onInvite }: { project: Project; onInvite: () => 
                     </div>
                   </div>
                 )}
-
-                {/* Chat participants get a re-copyable sign-in link (#81).
-                    Console operators know their way to the brief already. */}
-                {!isConsole && <MemberInviteReveal project={project} />}
               </li>
             )
           })}
@@ -1534,14 +1531,11 @@ function PeoplePanel({ project, onInvite }: { project: Project; onInvite: () => 
   )
 }
 
-// Per-member sign-in link re-copy (#81, reshaped by Garm PR D). Passcodes are
-// retired, so there's no per-person secret to reveal anymore — everyone signs
-// in with Google or their own password ("Forgot password?" resets it). The
-// share link is what the operator re-sends.
-function MemberInviteReveal({ project }: { project: Project }) {
-  const [open, setOpen] = useState(false)
+// The brief's sign-in link, copyable once for the whole roster. Passcodes are
+// retired (Garm PR D): everyone signs in with Google or their own password
+// ("Forgot password?" sets one), so the share link is all there is to re-send.
+function ProjectLinkCopy({ project }: { project: Project }) {
   const [copied, setCopied] = useState(false)
-
   const link = getProjectShareLink(project.slug, project.id)
 
   const handleCopy = async () => {
@@ -1551,31 +1545,17 @@ function MemberInviteReveal({ project }: { project: Project }) {
   }
 
   return (
-    <div className="mt-1.5">
-      <button
-        onClick={() => setOpen(!open)}
-        className="text-xs text-brand-navy hover:underline flex items-center gap-1"
-      >
-        <KeyRound className="h-3 w-3" />
-        {open ? 'Hide sign-in link' : 'Show sign-in link'}
-      </button>
-
-      {open && (
-        <div className="mt-2 space-y-2 rounded-md bg-gray-50 border border-gray-200 p-2.5">
-          <div>
-            <p className="text-[11px] text-gray-500 mb-0.5">Link</p>
-            <div className="flex items-center gap-1.5">
-              <code className="flex-1 min-w-0 truncate px-2 py-1 bg-white border border-gray-300 rounded text-xs text-gray-700">{link}</code>
-              <button onClick={handleCopy} className="p-1 text-gray-500 hover:text-brand-navy hover:bg-gray-100 rounded shrink-0" title="Copy link">
-                {copied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
-              </button>
-            </div>
-          </div>
-          <p className="text-[11px] text-gray-400">
-            They sign in with Google or their email + password — &ldquo;Forgot password?&rdquo; on the sign-in page sets one.
-          </p>
-        </div>
-      )}
+    <div className="mb-3 rounded-md bg-gray-50 border border-gray-200 p-2.5">
+      <p className="text-[11px] text-gray-500 mb-0.5">Sign-in link</p>
+      <div className="flex items-center gap-1.5">
+        <code className="flex-1 min-w-0 truncate px-2 py-1 bg-white border border-gray-300 rounded text-xs text-gray-700">{link}</code>
+        <button onClick={handleCopy} className="p-1 text-gray-500 hover:text-brand-navy hover:bg-gray-100 rounded shrink-0" title="Copy link">
+          {copied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+        </button>
+      </div>
+      <p className="text-[11px] text-gray-400 mt-1">
+        They sign in with Google or their email + password &mdash; &ldquo;Forgot password?&rdquo; on the sign-in page sets one.
+      </p>
     </div>
   )
 }
@@ -1583,10 +1563,9 @@ function MemberInviteReveal({ project }: { project: Project }) {
 // The single agent-config home (#19 UX-scrub Phase 1). Formerly the "Agent
 // setup" card (EditableSetup); the duplicate config fold inside the dispatch
 // card is gone, so this is now the ONE place to edit how the agent behaves.
-// Collapsible so it doesn't dominate the surface; defaultExpanded after a JSON
-// import (#25) so the builder lands on the thing to review.
-function AgentConfigCard({ project, defaultExpanded = false }: { project: Project; defaultExpanded?: boolean }) {
-  const [expanded, setExpanded] = useState(defaultExpanded)
+// Always expanded: it is the Setup tab's whole content, so a collapse toggle
+// only hid the thing the builder came to edit.
+function AgentConfigCard({ project }: { project: Project }) {
   const [welcomeMessage, setWelcomeMessage] = useState(project.welcome_message || '')
   const [seedQuestions, setSeedQuestions] = useState<string[]>(project.seed_questions || [])
   const [newQuestion, setNewQuestion] = useState('')
@@ -1684,24 +1663,10 @@ function AgentConfigCard({ project, defaultExpanded = false }: { project: Projec
   return (
     <Card hover={false}>
       <CardBody>
-        <button
-          onClick={() => setExpanded((v) => !v)}
-          className="w-full flex items-center justify-between text-sm font-semibold text-brand-slate uppercase tracking-wide"
-        >
-          <span className="flex items-center gap-1.5">
-            <Settings className="h-4 w-4" />
-            Agent setup
-          </span>
-          {expanded ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
-        </button>
-        {!expanded && (
-          <p className="text-xs text-gray-400 mt-1.5">
-            {sessionMode === 'converge' ? 'Converge' : 'Discover'} mode
-            {` · ${(sessionMode === 'discover' ? seedQuestions : directives).length} ${sessionMode === 'discover' ? 'seed question' : 'directive'}${(sessionMode === 'discover' ? seedQuestions : directives).length === 1 ? '' : 's'}`}
-            {` · reminders ${autoReminders ? 'on' : 'off'}`}
-          </p>
-        )}
-        {expanded && (
+        <h2 className="flex items-center gap-1.5 text-sm font-semibold text-brand-slate uppercase tracking-wide">
+          <Settings className="h-4 w-4" />
+          Agent setup
+        </h2>
         <div className="space-y-5 mt-4">
           {/* Opening message */}
           <div>
@@ -1846,7 +1811,6 @@ function AgentConfigCard({ project, defaultExpanded = false }: { project: Projec
             {updateProject.error && <span className="text-xs text-red-500">{updateProject.error.message}</span>}
           </div>
         </div>
-        )}
       </CardBody>
       {deleting && <DeleteBriefModal project={project} onClose={() => setDeleting(false)} />}
     </Card>

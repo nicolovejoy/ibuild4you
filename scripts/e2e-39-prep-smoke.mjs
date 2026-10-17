@@ -40,8 +40,6 @@ const openImportModal = async () => {
   await page.waitForTimeout(2000)
   await page.getByRole('button', { name: 'New brief' }).first().click()
   await page.waitForTimeout(400)
-  await page.getByRole('button', { name: 'Import JSON' }).click()
-  await page.waitForTimeout(300)
 }
 
 const importCreate = async (payload) => {
@@ -185,7 +183,7 @@ const nextConvo = {
   identity: IDENTITY_V2,
   welcome_message: `Welcome back Mara — let's lock scope. (${stamp})`,
 }
-await page.getByPlaceholder(/next-convo/).fill(JSON.stringify(nextConvo))
+await page.getByPlaceholder(/prep chat/).fill(JSON.stringify(nextConvo))
 await page.getByRole('button', { name: 'Import JSON' }).click()
 await page.waitForTimeout(3000)
 

@@ -148,7 +148,7 @@ Mark [ ] keep · [ ] change · [ ] drop. Changes become follow-up issues.
 
 ## 6. Doc vs code drift
 
-- **`docs/mode-system.md` is not about session modes** — Its title and body cover viewer role glyphs and Conversation/Console chrome (header says "design agreed, not built"). Discover/converge session mode is not described there; the code is `lib/agent/system-prompt.ts:55` and `docs/iteration-architecture.md`.
+- **`docs/archive/mode-system.md` is not about session modes** — Its title and body cover viewer role glyphs and Conversation/Console chrome (header says "design agreed, not built"). Discover/converge session mode is not described there; the code is `lib/agent/system-prompt.ts:55` and `docs/iteration-architecture.md`.
 - **Decisions are "AI-extracted only; builder cannot add/edit"** (`docs/iteration-architecture.md`, Brief decisions) vs code: pasted JSON can set decisions and `locked` (`app/api/briefs/route.ts:42-113`), and the create payload accepts `brief.decisions` with `locked` (`CLAUDE.md`, Project Setup JSON).
 - **Locked decisions change only via "an explicit maker confirm (a separate, deliberate flow)"** (`lib/api/brief-merge.ts:10-12`) vs code: no such flow exists; regen never unlocks, and the only unlock path is the unguarded paste (`app/api/briefs/route.ts:42-113`). — resolved by #197 (2026-10-15)
 - **Seed questions only in discover, directives only in converge** — code now matches the docs (#192, 2026-10-15): `buildSystemPrompt` emits `## Topics to explore` only when `session_mode !== 'converge'` and `## Directives` only when it is `converge`. Both fields stay stored on the project/session (`lib/agent/system-prompt.ts`).

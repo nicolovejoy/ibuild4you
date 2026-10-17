@@ -11,7 +11,7 @@ solved yet. Not a public privacy policy.
 - `approved_emails` — per-email approval record, keyed by lowercased email. Feeds the Garm grant decision; the sign-in gate itself is Garm (local allowlist only on a Garm-less preview).
 - `project_members` — email, name, role, per-brief membership; **stores a
   plaintext `passcode`** (maker auth secret, minted in 5 routes, pasted into
-  invite emails). Being retired — see `docs/garm-consumer-plan.md`.
+  invite emails). Being retired — see `docs/archive/garm-consumer-plan.md`.
 - `projects` — `requester_email` / `requester_first_name` / `requester_last_name`,
   builder `context` notes about the requester.
 - `sessions` / `messages` — the full maker↔agent conversation transcript

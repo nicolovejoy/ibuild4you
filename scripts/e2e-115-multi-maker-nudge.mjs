@@ -30,8 +30,6 @@ const { browser, page } = await launchLoggedIn({ viewport: { width: 1400, height
 // --- 1. Create the 2-maker brief via the dashboard Import-JSON modal ---
 await page.getByRole('button', { name: 'New brief' }).first().click()
 await page.waitForTimeout(400)
-await page.getByRole('button', { name: 'Import JSON' }).click()
-await page.waitForTimeout(300)
 await page.locator('#project-json').fill(JSON.stringify(payload))
 const createRespP = page
   .waitForResponse((r) => /\/api\/projects$/.test(r.url()) && r.request().method() === 'POST', { timeout: 15000 })
@@ -91,7 +89,7 @@ if (!(await startBtn.count())) {
     if (!page.url().includes('tab=brief')) fail(`import link didn't switch tab: ${page.url()}`)
     // The import target is a first-class card now (not a fold): assert the
     // paste textarea is visible and took focus.
-    const pasteBox = page.getByPlaceholder(/next-convo/)
+    const pasteBox = page.getByPlaceholder(/prep chat/)
     if (!(await pasteBox.isVisible().catch(() => false))) fail('import textarea not visible')
     else {
       const focused = await page.evaluate(() => document.activeElement?.tagName === 'TEXTAREA')

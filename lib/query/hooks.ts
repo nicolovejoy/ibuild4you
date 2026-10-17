@@ -3,7 +3,6 @@ import { apiFetch } from '@/lib/firebase/api-fetch'
 import { queryKeys } from './keys'
 import type { Project, Session, Message, Brief, BriefVersion, SystemRole, ProjectFile, FileFolder, ProjectMemberSummary } from '@/lib/types'
 import type { GarmSyncOutcome } from '@/lib/garm-grants'
-import type { ProjectUsageResponse } from '@/lib/api/project-usage'
 
 // --- Current user ---
 
@@ -582,21 +581,6 @@ export function useSessions(projectId: string | undefined) {
       return res.json()
     },
     enabled: !!projectId,
-  })
-}
-
-// Admin-only per-brief Anthropic spend (#185). `enabled` lets the caller gate
-// on isAdmin so non-admins never fire a request that would 403.
-export function useProjectUsage(projectId: string | undefined, enabled: boolean) {
-  return useQuery<ProjectUsageResponse>({
-    queryKey: queryKeys.projectUsage(projectId),
-    queryFn: async () => {
-      const res = await apiFetch(`/api/projects/${projectId}/usage`)
-      if (!res.ok) throw new Error('Failed to load usage')
-      return res.json()
-    },
-    enabled: !!projectId && enabled,
-    staleTime: 60 * 1000,
   })
 }
 

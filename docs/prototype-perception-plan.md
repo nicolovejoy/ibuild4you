@@ -2,7 +2,7 @@
 
 > **STATUS: DECIDED 2026-07-04** (deep-think session, approved).
 > Implementation follows the slices in §4. Grounded in the current code at:
-`lib/feedback/payload.ts`, `components/FeedbackWidget.tsx`, `app/api/feedback/route.ts`,
+`lib/feedback/payload.ts`, `lib/feedback/reference/FeedbackWidget.tsx`, `app/api/feedback/route.ts`,
 `lib/api/prototype-feedback.ts`, `lib/agent/prototype-feedback.ts`,
 `app/api/chat/route.ts`, `app/api/chat/kickoff/route.ts`, `lib/s3/client.ts`,
 `lib/agent/attachments.ts`, `firestore.indexes.json`, `scripts/e2e-72-feedback-chat.mjs`.
@@ -213,7 +213,7 @@ bytes, with metadata staying in the `prototype_context` doc (`screenshot_key`).
 **Recommendation: yes, byside/offer-builder is the pilot, and it shapes scope:**
 
 - **Copy-in constraint holds.** The capture builder is a third small file
-  (`lib/feedback/capture.ts`) that travels with `FeedbackWidget.tsx` + `payload.ts`.
+  (`lib/feedback/capture.ts`) that travels with `lib/feedback/reference/FeedbackWidget.tsx` + `payload.ts`.
   Zero npm deps, plain DOM APIs — works in any React/Next host without framework
   coupling. (This constraint alone kills html2canvas.)
 - **PII posture is set by the pilot.** byside's closing-journey pages carry real
@@ -421,5 +421,5 @@ replacing it.
 - /Users/nico/src/ibuild4you/app/api/feedback/route.ts
 - /Users/nico/src/ibuild4you/lib/agent/prototype-feedback.ts (pattern for new lib/agent/prototype-context.ts + lib/api/prototype-context.ts)
 - /Users/nico/src/ibuild4you/app/api/chat/route.ts (and app/api/chat/kickoff/route.ts)
-- /Users/nico/src/ibuild4you/components/FeedbackWidget.tsx
+- /Users/nico/src/ibuild4you/lib/feedback/reference/FeedbackWidget.tsx
 - /Users/nico/src/ibuild4you/firestore.indexes.json
