@@ -4,6 +4,7 @@
 import type { Firestore } from 'firebase-admin/firestore'
 import { makerCopy } from '../copy-maker'
 import type { Locale } from '../locale'
+import { normalizeEmail } from '../email/normalize'
 
 export function unqueuedGreeting(language: Locale, builderFirstName: string | null | undefined): string {
   const chat = makerCopy[language].chat
@@ -21,7 +22,7 @@ export async function ownerFirstName(db: Firestore, projectId: string): Promise<
       .get()
     const email = members.docs[0]?.data().email as string | undefined
     if (!email) return null
-    const users = await db.collection('users').where('email', '==', email.toLowerCase()).limit(1).get()
+    const users = await db.collection('users').where('email', '==', normalizeEmail(email) ?? email).limit(1).get()
     const first = users.docs[0]?.data().first_name as string | undefined
     return first?.trim() || null
   } catch {
