@@ -40,6 +40,7 @@ const openBriefTab = async (slug) => {
 }
 const dashboardCard = () => page.locator('div.cursor-pointer:has(h3)', { hasText: TITLE }).first()
 
+let projectId = null
 try {
   await page.goto(`${BASE}/dashboard`, { waitUntil: 'domcontentloaded' })
   await page.locator('div.cursor-pointer:has(h3)').first().waitFor({ timeout: 15000 })
@@ -54,13 +55,16 @@ try {
   })
   if (resp.status() !== 201) throw new Error(`create failed: ${resp.status()}`)
   const proj = await resp.json()
-  const projectId = proj.id || proj.project_id
+  projectId = proj.id || proj.project_id
   const slug = proj.slug
   console.log('created', projectId, slug)
 
   // 2. Card shows only the maker-owned question.
   await openBriefTab(slug)
   const card = page.locator('[data-testid=open-questions]')
+  // The card renders once the brief query resolves; wait for it rather than
+  // asserting on the first paint.
+  await card.waitFor({ timeout: 15000 }).catch(() => {})
   ok('open-questions card visible', await card.isVisible())
   ok('exactly one item', (await card.locator('li').count()) === 1)
   ok('item is "Which stations?"', ((await card.locator('li').first().textContent()) || '').trim() === 'Which stations?')
@@ -96,6 +100,9 @@ try {
   await page.screenshot({ path: `${shotDir}/smoke-220-dashboard-2.png` })
 } catch (e) {
   ok('script ran without error', false, String(e.message).split('\n')[0])
+} finally {
+  // Leave preview clean (same convention as e2e-214).
+  if (projectId) await call('DELETE', `/api/projects?project_id=${projectId}`).catch(() => {})
 }
 
 await browser.close()
