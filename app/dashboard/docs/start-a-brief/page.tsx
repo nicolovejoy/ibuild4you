@@ -25,7 +25,7 @@ const NEW_PROJECT_PAYLOAD = `{
     "constraints": "Any constraints, limitations, or things the maker explicitly doesn't want",
     "additional_context": "Anything else that doesn't fit the categories above",
     "decisions": [{ "topic": "short label", "decision": "what was decided" }],
-    "open_risks": ["plain-language description of something unresolved, unclear, or risky"]
+    "open_risks": ["plain-language description of something unresolved, unclear, or risky", { "text": "a risk only one side can settle", "owner": "maker" }]
   }
 }`
 

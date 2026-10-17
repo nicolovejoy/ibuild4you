@@ -152,3 +152,23 @@ describe('renderSessionMd', () => {
     )
   })
 })
+
+describe('renderBriefMd open risk owners (#220)', () => {
+  it('renders plain, maker and builder risks', () => {
+    const md = renderBriefMd({
+      project: { title: 'T' },
+      brief: {
+        version: 1,
+        content: {
+          problem: 'p',
+          open_risks: ['Payment fees', { text: 'Which stations?', owner: 'maker' }, { text: 'Hosting', owner: 'builder' }],
+        },
+      },
+      sessions: [],
+      reviews: [],
+    })
+    expect(md).toContain('- Payment fees')
+    expect(md).toContain('- (maker) Which stations?')
+    expect(md).toContain('- (builder) Hosting')
+  })
+})
