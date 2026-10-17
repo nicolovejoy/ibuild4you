@@ -27,6 +27,7 @@ import { viewerBriefRole } from '@/lib/roles/display'
 import { groupBriefs, shouldFlatten, type SectionKey } from '@/lib/dashboard/group-briefs'
 import { getProjectShareLink } from '@/lib/url'
 import { makerNewerThanPaste } from '@/lib/builder/ferry-stamps'
+import { isBuilderSideRole } from '@/lib/projects/project-view'
 import { parseNewProjectPayload } from '@/lib/api/import-payload'
 import { parseLooseJson } from '@/lib/utils'
 import { buildNewProjectPrompt } from '@/lib/agent/new-project-prompt'
@@ -422,6 +423,15 @@ function ProjectList({ isAdmin }: { isAdmin: boolean }) {
 
   const renderCard = (project: Project) => {
     const turn = getTurnIndicator(project, project.viewer_role ?? null, locale)
+    // Ferry-desk bookkeeping (prep copied / pasted stamps, "new since paste")
+    // is builder-side only — a maker never sees it. The pill only fires on a
+    // live brief: a finished or archived one has nothing left to ferry.
+    const builderSide = isAdmin || isBuilderSideRole(project.viewer_role ?? null)
+    const hot =
+      builderSide &&
+      project.status === 'active' &&
+      !project.viewer_archived &&
+      makerNewerThanPaste(project)
     return (
       <Card key={project.id} style={{ borderLeft: `6px solid ${briefIdentity(project.id).color}` }}>
         <CardBody>
@@ -473,23 +483,19 @@ function ProjectList({ isAdmin }: { isAdmin: boolean }) {
               </div>
               <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-gray-400 mt-1">
                 {project.last_maker_message_at && (
-                  <span
-                    className={
-                      makerNewerThanPaste(project) ? 'text-brand-navy font-medium' : undefined
-                    }
-                  >
+                  <span className={hot ? 'text-brand-navy font-medium' : undefined}>
                     {d.activityMaker(makerShortName(project), ago(project.last_maker_message_at))}
-                    {makerNewerThanPaste(project) && (
+                    {hot && (
                       <span className="ml-1.5 text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-brand-navy text-white">
                         {d.newerThanPaste}
                       </span>
                     )}
                   </span>
                 )}
-                {project.prep_copied_at && (
+                {builderSide && project.prep_copied_at && (
                   <span>{d.prepCopiedAt(ago(project.prep_copied_at))}</span>
                 )}
-                {project.payload_pasted_at && (
+                {builderSide && project.payload_pasted_at && (
                   <span>{d.payloadPastedAt(ago(project.payload_pasted_at))}</span>
                 )}
                 {project.last_message_at && project.last_message_by === 'agent' && (
