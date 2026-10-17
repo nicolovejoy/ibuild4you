@@ -3,7 +3,8 @@
 // Canonical form: an unowned risk is a plain string; an owned one is
 // { text, owner } with owner exactly 'maker' | 'builder'. An object without a
 // valid owner collapses to its string. That keeps every pre-#220 brief valid
-// and byte-identical after normalization. This is the only module that knows
+// and semantically unchanged after normalization (strings are trimmed, empties
+// dropped). This is the only module that knows
 // the shape; everything else goes through these helpers.
 import type { BriefContent, BriefRisk, BriefRiskOwner } from '@/lib/types'
 
@@ -37,7 +38,7 @@ export function normalizeRisks(raw: unknown): Risk[] {
 
 // Texts of the risks owned by the maker, in order.
 export function makerQuestions(content: BriefContent | undefined): string[] {
-  return (content?.open_risks ?? []).filter((r) => riskOwner(r) === 'maker').map(riskText)
+  return normalizeRisks(content?.open_risks).filter((r) => riskOwner(r) === 'maker').map(riskText)
 }
 
 const key = (r: Risk) => riskText(r).trim().toLowerCase()

@@ -215,7 +215,7 @@ export const copy = {
     details: 'Details',
     detailsHint: 'brief · history · regenerate · attachments',
     escHint: 'Esc back to dashboard',
-    openQuestionsTitle: (name: string, n: number) => `Open questions for ${name} (${n})`,
+    openQuestionsTitle: (name: string) => `Open questions for ${name}`,
     openQuestionsFallbackName: 'the maker',
     openQuestionsCopy: 'Copy as markdown',
     openQuestionsCopied: 'Copied!',

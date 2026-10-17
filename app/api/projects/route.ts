@@ -558,6 +558,7 @@ export async function POST(request: Request) {
   // Create initial brief if provided in the payload
   if (body.brief && typeof body.brief === 'object') {
     const b = body.brief as Record<string, unknown>
+    const seedRisks = normalizeRisks(b.open_risks)
     const briefContent = {
       problem: typeof b.problem === 'string' ? b.problem : '',
       target_users: typeof b.target_users === 'string' ? b.target_users : '',
@@ -591,9 +592,7 @@ export async function POST(request: Request) {
             now,
           }),
         }),
-      ...(normalizeRisks(b.open_risks).length > 0 && {
-        open_risks: normalizeRisks(b.open_risks),
-      }),
+      ...(seedRisks.length > 0 && { open_risks: seedRisks }),
     }
     await db.collection('briefs').add({
       project_id: docRef.id,

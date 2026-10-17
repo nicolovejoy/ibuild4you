@@ -334,7 +334,7 @@ function ProjectList({ isAdmin }: { isAdmin: boolean }) {
                         {' '}&middot;{' '}
                         {d.makerQuestions(
                           project.brief_maker_question_count ?? 0,
-                          makerDisplayName(project) || d.makerFallbackName,
+                          project.requester_first_name || d.makerFallbackName,
                         )}
                       </>
                     )}

@@ -242,6 +242,22 @@ describe('PUT /api/briefs', () => {
     expect(contentArg.features).toEqual(['Valid', 'Also valid'])
   })
 
+  it('normalizes open_risks and carries no owner from the stored brief', async () => {
+    mockGet.mockResolvedValue({
+      empty: false,
+      docs: [{ data: () => ({ version: 3, content: { ...validContent, open_risks: [{ text: 'bad', owner: 'maker' }] } }) }],
+    })
+    await PUT(makePutRequest({
+      project_id: 'proj1',
+      content: {
+        ...validContent,
+        open_risks: [{ text: 'q', owner: 'maker' }, { text: 'bad', owner: 'Maker' }, 'plain'],
+      },
+    }))
+    const contentArg = mockUpsertBrief.mock.calls[0][2]
+    expect(contentArg.open_risks).toEqual([{ text: 'q', owner: 'maker' }, 'bad', 'plain'])
+  })
+
   it('normalizes content — filters invalid decisions', async () => {
     await PUT(makePutRequest({
       project_id: 'proj1',

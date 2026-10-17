@@ -16,7 +16,7 @@ describe('OpenQuestionsCard', () => {
   it('lists the questions with the title and count', () => {
     render(<OpenQuestionsCard title="Tideline" makerName="Mara" questions={['a', 'b']} />)
     expect(screen.getByTestId('open-questions')).toBeTruthy()
-    expect(screen.getByText('Open questions for Mara (2)')).toBeTruthy()
+    expect(screen.getByRole('heading').textContent).toBe('Open questions for Mara (2)')
     expect(screen.getAllByRole('listitem')).toHaveLength(2)
   })
 

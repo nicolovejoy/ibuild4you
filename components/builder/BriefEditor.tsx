@@ -382,20 +382,23 @@ function BriefReadView({ content }: { content: BriefContent }) {
       {openRisks.length > 0 && (
         <Section label="Open risks">
           <ul className="list-disc list-inside space-y-1">
-            {openRisks.map((r, i) => (
+            {openRisks.map((r, i) => {
+              const owner = riskOwner(r)
+              return (
               <li key={i} className="text-gray-800 text-sm">
-                {riskOwner(r) && (
+                {owner && (
                   <span
                     className={`inline-flex items-center mr-1.5 px-1.5 py-0.5 rounded text-[10px] font-semibold ${
-                      riskOwner(r) === 'maker' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-700'
+                      owner === 'maker' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-700'
                     }`}
                   >
-                    {riskOwner(r) === 'maker' ? copy.brief.riskOwnerMaker : copy.brief.riskOwnerBuilder}
+                    {owner === 'maker' ? copy.brief.riskOwnerMaker : copy.brief.riskOwnerBuilder}
                   </span>
                 )}
                 {riskText(r)}
               </li>
-            ))}
+              )
+            })}
           </ul>
         </Section>
       )}

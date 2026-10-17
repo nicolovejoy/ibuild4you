@@ -29,7 +29,11 @@ export function OpenQuestionsCard({
     <div data-testid="open-questions" className="rounded-lg border border-gray-200 bg-white px-3 py-2">
       <div className="flex items-center justify-between gap-3">
         <h3 className="text-xs font-semibold text-brand-slate uppercase tracking-wide">
-          {copy.brief.openQuestionsTitle(makerName, questions.length)}
+          {copy.brief.openQuestionsTitle(makerName)}
+          {' '}
+          <span className="text-gray-400 normal-case tracking-normal font-normal">
+            ({questions.length})
+          </span>
         </h3>
         <button
           type="button"

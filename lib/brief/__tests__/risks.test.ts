@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import type { BriefContent } from '@/lib/types'
 import { riskText, riskOwner, normalizeRisks, makerQuestions, carryRiskOwners } from '@/lib/brief/risks'
 
 describe('riskText / riskOwner', () => {
@@ -52,5 +53,15 @@ describe('carryRiskOwners', () => {
   it('does not carry when the text changed, and handles undefined current', () => {
     expect(carryRiskOwners([{ text: 'a', owner: 'maker' }], ['a!'])).toEqual(['a!'])
     expect(carryRiskOwners(undefined, ['a'])).toEqual(['a'])
+  })
+})
+
+describe('makerQuestions hardening', () => {
+  const base = { problem: '', target_users: '', features: [], constraints: '', additional_context: '', decisions: [] } as unknown as BriefContent
+  it('tolerates null elements', () => {
+    expect(makerQuestions({ ...base, open_risks: [null, 'x', { text: 'q', owner: 'maker' }] as unknown as BriefContent['open_risks'] })).toEqual(['q'])
+  })
+  it('tolerates a non-array', () => {
+    expect(makerQuestions({ ...base, open_risks: 'oops' as unknown as BriefContent['open_risks'] })).toEqual([])
   })
 })
