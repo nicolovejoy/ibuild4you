@@ -258,6 +258,13 @@ export interface FeedbackReply extends BaseEntity {
   via_email: boolean // true if this reply arrived via inbound mail
 }
 
+// An open risk may carry an owner (#220). Helpers live in lib/brief/risks.ts.
+export type BriefRiskOwner = 'maker' | 'builder'
+export interface BriefRisk {
+  text: string
+  owner?: BriefRiskOwner
+}
+
 // Structured brief content sections
 export interface BriefContent {
   problem: string
@@ -266,7 +273,7 @@ export interface BriefContent {
   constraints: string
   additional_context: string
   decisions?: BriefDecision[]
-  open_risks?: string[]
+  open_risks?: Array<string | BriefRisk> // string = unowned; see lib/brief/risks.ts, #220
 }
 
 export interface BriefDecisionContest {

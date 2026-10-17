@@ -12,6 +12,7 @@ import { lockedFirst, lostLocks, resolveContest, type ContestAction } from '@/li
 import { copy } from '@/lib/copy'
 import { sessionNumberById, decisionProvenanceSuffix } from '@/lib/builder/decision-provenance'
 import type { BriefContent, BriefDecision, Session } from '@/lib/types'
+import { riskText } from '@/lib/brief/risks'
 import { BriefHistory } from './BriefHistory'
 
 // Brief-as-document editor (#19 Phase 3). Read-first: the brief renders as a
@@ -381,7 +382,7 @@ function BriefReadView({ content }: { content: BriefContent }) {
       {openRisks.length > 0 && (
         <Section label="Open risks">
           <ul className="list-disc list-inside space-y-1">
-            {openRisks.map((r, i) => <li key={i} className="text-gray-800 text-sm">{r}</li>)}
+            {openRisks.map((r, i) => <li key={i} className="text-gray-800 text-sm">{riskText(r)}</li>)}
           </ul>
         </Section>
       )}
@@ -533,7 +534,7 @@ function StructuredEditor({
       />
       <StringListField
         label="Open risks"
-        items={draft.open_risks || []}
+        items={(draft.open_risks || []).map(riskText)}
         onChange={(open_risks) => set({ open_risks })}
         placeholder="Add an open risk…"
       />
