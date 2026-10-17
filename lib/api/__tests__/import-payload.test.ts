@@ -98,9 +98,8 @@ describe('parseNextConvoPayload', () => {
   it('forwards all known fields into projectUpdate when brief is present', () => {
     const payload: Record<string, unknown> = { brief: { problem: 'p' } }
     for (const field of NEXT_CONVO_IMPORT_FIELDS) {
-      payload[field] = field === 'seed_questions' || field === 'builder_directives'
-        ? []
-        : `value-for-${field}`
+      payload[field] =
+        field === 'seed_questions' || field === 'builder_directives' ? [] : `value-for-${field}`
     }
     const r = parseNextConvoPayload(JSON.stringify(payload))
     expect(r.ok).toBe(true)
@@ -120,7 +119,9 @@ describe('parseNextConvoPayload', () => {
   })
 
   it('lets explicit welcome_message win over session_opener when both present', () => {
-    const r = parseNextConvoPayload('{"brief":{},"session_opener":"legacy","welcome_message":"explicit"}')
+    const r = parseNextConvoPayload(
+      '{"brief":{},"session_opener":"legacy","welcome_message":"explicit"}'
+    )
     expect(r.ok).toBe(true)
     if (r.ok && r.value.mode === 'multi') {
       expect(r.value.projectUpdate.welcome_message).toBe('explicit')
@@ -156,7 +157,10 @@ describe('nextConvoImportWarnings', () => {
     expect(w[0]).toMatch(/discover/i)
   })
   it('uses the payload session_mode over the current mode', () => {
-    const w = nextConvoImportWarnings({ session_mode: 'converge', seed_questions: ['q'] }, 'discover')
+    const w = nextConvoImportWarnings(
+      { session_mode: 'converge', seed_questions: ['q'] },
+      'discover'
+    )
     expect(w).toHaveLength(1)
     expect(w[0]).toMatch(/seed questions/i)
   })
@@ -169,8 +173,12 @@ describe('nextConvoImportWarnings', () => {
     expect(nextConvoImportWarnings({ builder_directives: [] }, 'discover')).toHaveLength(0)
   })
   it('warns once when both fields are present', () => {
-    expect(nextConvoImportWarnings({ seed_questions: ['q'], builder_directives: ['d'] }, 'converge')).toHaveLength(1)
-    expect(nextConvoImportWarnings({ seed_questions: ['q'], builder_directives: ['d'] }, 'discover')).toHaveLength(1)
+    expect(
+      nextConvoImportWarnings({ seed_questions: ['q'], builder_directives: ['d'] }, 'converge')
+    ).toHaveLength(1)
+    expect(
+      nextConvoImportWarnings({ seed_questions: ['q'], builder_directives: ['d'] }, 'discover')
+    ).toHaveLength(1)
   })
   it('returns nothing for a projectUpdate without either field', () => {
     expect(nextConvoImportWarnings({ welcome_message: 'hi' }, 'converge')).toEqual([])
