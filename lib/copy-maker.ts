@@ -323,7 +323,7 @@ const fr: MakerCopy = {
     kickoffFailed: 'Sam n’a pas pu lancer la conversation — dites bonjour pour commencer.',
     nothingQueuedGreeting: (builder: string) =>
       `Bonjour — ${builder} n’a pas encore préparé notre prochaine conversation, alors je n’ai rien de nouveau à voir avec vous. Si quelque chose vous préoccupe d’ici là, dites-le-moi et je garderai des notes pour ${builder}.`,
-    builderFallbackName: 'votre builder',
+    builderFallbackName: 'votre développeur',
     removeRating: 'Retirer l’évaluation',
     helpful: 'Utile',
     notHelpful: 'Pas utile',

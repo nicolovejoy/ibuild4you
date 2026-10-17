@@ -41,7 +41,7 @@ In `/api/chat/kickoff`, after the existing guards pass, if `isUnqueuedReturn(...
 - Copy, in the brief's language, from `lib/copy.ts` (EN) and `lib/copy-maker.ts` (FR), `chat.nothingQueuedGreeting(builderFirstName)`:
   - EN: "Hi — {builder} hasn't queued our next conversation yet, so I don't have anything new to go through with you. If something's on your mind in the meantime, tell me and I'll keep notes for {builder}."
   - FR: the French twin, same register as the other maker copy.
-  - `builderFirstName` is the project owner's `first_name` from `users` (looked up via the `owner` membership), falling back to "your builder" / "votre builder" **(call)**.
+  - `builderFirstName` is the project owner's `first_name` from `users` (looked up via the `owner` membership), falling back to "your builder" / "votre développeur" **(call)** (FR: maker-facing copy says développeur, per the glossary; post-review 2026-10-17).
 - The stored message carries `kind: 'unqueued_greeting'` (new optional `Message.kind`; nothing else sets it). It is how the import step finds and removes the stale greeting later.
 - Stamp `sessions.last_kickoff_at` as today (so the decline path `already_kicked_off` keeps working).
 - Stamp `projects.maker_waiting_since = now` (new field, ISO string) unless already set.
