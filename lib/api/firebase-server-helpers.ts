@@ -52,18 +52,6 @@ const ROLE_RANK: Record<MemberRole, number> = {
   owner: 3,
 }
 
-export function canChat(role: MemberRole | null): boolean {
-  return role !== null // maker+
-}
-
-export function canReview(role: MemberRole | null): boolean {
-  return role !== null && ROLE_RANK[role] >= ROLE_RANK['apprentice']
-}
-
-export function canConfigure(role: MemberRole | null): boolean {
-  return role !== null && ROLE_RANK[role] >= ROLE_RANK['builder']
-}
-
 export function canManage(role: MemberRole | null): boolean {
   return role !== null && ROLE_RANK[role] >= ROLE_RANK['owner']
 }
@@ -320,8 +308,8 @@ export async function getUserDisplayName(
 // rollback, or fixing Garm), never silent code. Admins are break-glass.
 //
 // The one exception is a Vercel preview deployment with no Garm wiring —
-// see usesPreviewAllowlist(). PR H replaced the GARM_GATING kill switch with
-// that rule, so production can no longer be flipped onto the allowlist.
+// see usesPreviewAllowlist(). There is no env-var switch: production can
+// never be flipped onto the local allowlist.
 export async function isApprovedEmail(email: string, systemRoles: SystemRole[] = []): Promise<boolean> {
   // Admins never depend on Garm — break-glass so a Garm outage can't lock the
   // operator out of the app that manages the recovery. ADMIN_EMAILS stays the

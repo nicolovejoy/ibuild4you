@@ -87,7 +87,6 @@ if (projectId) {
   })
   const body = await res.json().catch(() => ({}))
   check('share invite succeeded', res.status === 200, `status ${res.status}`)
-  check('no passcode in the share response (retired — PR D)', body.passcode === undefined)
   resetLink = body.reset_link || null
   check(
     'reset_link is a real Firebase action link',

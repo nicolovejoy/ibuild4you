@@ -1,7 +1,7 @@
 // Shared headless-login helper for agent-driven e2e on preview (and prod).
 // Extracts the bypass-cookie + sign-in dance every e2e script repeated.
 //
-// Garm PR C/D: passcode auth is retired (the route answers 410), so all
+// Garm PR C/D: passcode auth is retired (the route is gone), so all
 // headless sign-in is email+password. The test admin's password is set via
 // Admin SDK by scripts/seed-test-admin-password.mjs and lives in a gitignored
 // file; cast identity passwords live in .test-cast-passwords.json (seeded by

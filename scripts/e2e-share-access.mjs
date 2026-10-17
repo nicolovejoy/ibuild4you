@@ -25,11 +25,10 @@ async function checkOnce() {
   await page.waitForTimeout(1200)
   const title = (await page.getByText('Maker access', { exact: true }).count()) > 0
   const hasInviteMsg = (await page.getByText('Invite message', { exact: true }).count()) > 0
-  const hasPasscode = (await page.getByText('Maker passcode', { exact: true }).count()) > 0
   const hasLink = (await page.getByText('Brief link', { exact: true }).count()) > 0
   // #120 renamed the recurring-contact pointer to the Conversations dispatch.
   const hasPointer = (await page.getByText(/use the send action at the top of/).count()) > 0
-  return { title, hasInviteMsg, hasPasscode, hasLink, hasPointer }
+  return { title, hasInviteMsg, hasLink, hasPointer }
 }
 
 let result = null
@@ -44,6 +43,6 @@ for (let i = 0; i < 12; i++) {
 await page.screenshot({ path: `${shotDir}/p4-maker-access.png` })
 console.log('FINAL:', JSON.stringify(result, null, 2))
 await browser.close()
-const pass = result && result.title && !result.hasInviteMsg && !result.hasPasscode && result.hasLink && result.hasPointer
-console.log(pass ? '\n✅ PASS — access-only view, link only, no passcode, no first-time invite copy' : '\n❌ FAIL')
+const pass = result && result.title && !result.hasInviteMsg && result.hasLink && result.hasPointer
+console.log(pass ? '\n✅ PASS — access-only view, link only, no first-time invite copy' : '\n❌ FAIL')
 process.exit(pass ? 0 : 1)

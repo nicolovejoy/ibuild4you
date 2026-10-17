@@ -187,9 +187,7 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: 'Project not found' }, { status: 404 })
   }
 
-  // Only allow updating specific setup fields
-  // #195 phase 2: `layout_mockups` was removed from this list; the PATCH ignores
-  // unknown fields, so an older payload that still sends it gets a 200 and no write.
+  // Only allow updating specific setup fields; unknown fields are ignored.
   const allowed = ['welcome_message', 'nudge_message', 'voice_sample', 'seed_questions', 'context', 'title', 'builder_directives', 'session_mode', 'requester_first_name', 'requester_last_name', 'last_nudged_at', 'prep_copied_at', 'payload_pasted_at', 'payload_pasted_version', 'last_builder_activity_at', 'identity', 'github_repo', 'auto_reminders_enabled', 'feedback_requires_identity', 'language', 'hide_title_in_previews'] as const
   if ('language' in updates && !isLocale(updates.language)) {
     return NextResponse.json({ error: 'language must be one of: en, fr' }, { status: 400 })
@@ -361,9 +359,6 @@ export async function POST(request: Request) {
   if (Array.isArray(body.builder_directives) && body.builder_directives.length > 0) {
     projectData.builder_directives = body.builder_directives.filter((d: unknown) => typeof d === 'string' && d.trim())
   }
-  // #195 phase 2: `layout_mockups` is accepted but ignored for one release so
-  // older saved payloads do not 400. Remove the field from the docs and then
-  // from here once that release has shipped.
   // #150: opt into rejecting fully-anonymous widget feedback. Only set if
   // explicitly provided — absent stays absent (default off), not `false`.
   if (typeof body.feedback_requires_identity === 'boolean') {

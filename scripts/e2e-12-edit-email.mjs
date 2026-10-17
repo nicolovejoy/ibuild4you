@@ -83,8 +83,6 @@ console.log('after email:', afterEmail)
 await page.screenshot({ path: `${shotDir}/e2e-12-edited.png` })
 
 const emailChanged = r1.body?.email === MARKER && afterEmail === MARKER
-// PR D: the re-key response must NOT reissue a passcode.
-const noPasscode = r1.body?.passcode === undefined
 
 // 2. Restore the original email so the fixture is left as we found it.
 let restored = false
@@ -95,7 +93,7 @@ if (origEmail && origEmail !== MARKER) {
 }
 
 await browser.close()
-const pass = r1.status === 200 && emailChanged && noPasscode
-console.log('\nemailChanged:', emailChanged, '| noPasscode:', noPasscode, '| restored:', restored)
-console.log(pass ? '\n✅ PASS — email re-keyed, no passcode in play' : '\n❌ FAIL')
+const pass = r1.status === 200 && emailChanged
+console.log('\nemailChanged:', emailChanged, '| restored:', restored)
+console.log(pass ? '\n✅ PASS — email re-keyed' : '\n❌ FAIL')
 process.exit(pass ? 0 : 1)
