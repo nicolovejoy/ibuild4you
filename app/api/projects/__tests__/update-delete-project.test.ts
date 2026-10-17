@@ -257,6 +257,14 @@ describe('PATCH /api/projects', () => {
     expect(now).toBe(data.updated_at)
   })
 
+  it('PATCH logs the import outcome (no emails, no content)', async () => {
+    mockApplyImport.mockResolvedValueOnce('maker_replied')
+    const spy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    await PATCH(makePatchRequest({ project_id: 'proj-1', payload_pasted_at: '2026-10-17T00:00:00.000Z' }))
+    expect(spy).toHaveBeenCalledWith('[projects] apply_import', { project_id: 'proj-1', result: 'maker_replied' })
+    spy.mockRestore()
+  })
+
   it('PATCH still answers 200 when applyImportToOpenSession throws', async () => {
     mockApplyImport.mockRejectedValueOnce(new Error('boom'))
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
