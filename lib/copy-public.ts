@@ -66,18 +66,6 @@ const en = {
       contributor: copy.glossary.contributor,
       reviewer: copy.glossary.reviewer,
     },
-    payloadHeading: 'For builders: payload reference',
-    payloadIntro:
-      'Briefs can be set up and updated with JSON. These pages have the copy-pastable payloads, annotated field by field.',
-    payloadStart: {
-      title: 'Starting a brief',
-      desc: 'The payload that creates a new project and its first session.',
-    },
-    payloadNext: {
-      title: 'Starting the next conversation',
-      desc: "The payload that updates a brief and steers the maker's next session.",
-    },
-    payloadNote: '',
   },
 }
 
@@ -166,18 +154,6 @@ const fr: PublicCopy = {
           'Annote et valide — signale ce qui manque ou reste flou, et oriente la session suivante.',
       },
     },
-    payloadHeading: 'Pour les développeurs : référence des payloads',
-    payloadIntro:
-      'Les briefs peuvent être créés et mis à jour en JSON. Ces pages présentent les payloads à copier-coller, annotés champ par champ.',
-    payloadStart: {
-      title: 'Démarrer un brief',
-      desc: 'Le payload qui crée un nouveau projet et sa première session.',
-    },
-    payloadNext: {
-      title: 'Lancer la conversation suivante',
-      desc: 'Le payload qui met à jour un brief et oriente la prochaine session du maker.',
-    },
-    payloadNote: '(en anglais)',
   },
 }
 

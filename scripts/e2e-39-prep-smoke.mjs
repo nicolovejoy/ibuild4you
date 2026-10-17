@@ -40,8 +40,6 @@ const openImportModal = async () => {
   await page.waitForTimeout(2000)
   await page.getByRole('button', { name: 'New brief' }).first().click()
   await page.waitForTimeout(400)
-  await page.getByRole('button', { name: 'Import JSON' }).click()
-  await page.waitForTimeout(300)
 }
 
 const importCreate = async (payload) => {

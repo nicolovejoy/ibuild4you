@@ -34,8 +34,6 @@ page.on('request', (r) => { if (r.url().includes('/api/chat/kickoff')) kickoffCa
 // --- 1. Create the brief via the dashboard Import-JSON modal ---
 await page.getByRole('button', { name: 'New brief' }).first().click()
 await page.waitForTimeout(400)
-await page.getByRole('button', { name: 'Import JSON' }).click()
-await page.waitForTimeout(300)
 await page.locator('#project-json').fill(JSON.stringify(payload))
 const createRespP = page
   .waitForResponse((r) => /\/api\/projects$/.test(r.url()) && r.request().method() === 'POST', { timeout: 15000 })

@@ -126,18 +126,18 @@ export const copy = {
     title: 'Your briefs',
     emptyAdmin: 'Create a brief, set it up, and share it with a maker.',
     emptyMaker: "You don't have any briefs yet. Check back soon!",
-    turnNeedsSetup: 'Needs setup',
     turnAwaitingMaker: (name: string) => `Waiting on ${name}`,
     turnYourTurn: 'Your turn',
     activityAgent: (time: string) => `Agent responded ${time}`,
     activityMaker: (name: string, time: string) => `${name} messaged ${time}`,
-    activityGeneric: (time: string) => `Last active ${time}`,
     builderActivity: (time: string) => `You edited ${time}`,
     nudgedAt: (time: string) => `Nudged ${time}`,
     prepCopiedAt: (time: string) => `Prep copied ${time}`,
     payloadPastedAt: (time: string) => `Pasted ${time}`,
     newerThanPaste: 'new since paste',
     sharedAt: (time: string) => `Shared ${time}`,
+    // New-brief modal: link to the annotated create payload under /dashboard/docs.
+    payloadReference: 'Payload reference',
     archive: 'Archive',
     unarchive: 'Unarchive',
     // Role/turn-state sections (#44). Titles head each group; emptyHint shows on
@@ -152,53 +152,18 @@ export const copy = {
     },
   },
 
-  // --- New brief modal (internal key kept as `newProject` to match data model) ---
-  newProject: {
-    titlePlaceholder: "Sam's Cafe Website",
-    contextLabel: 'Context for the agent',
-    contextPlaceholder:
-      "Sam owns a cafe in downtown Portland. They want to let customers order online and pick up in store. They're not technical at all...",
-    contextHelp: 'Background info the agent will use to skip basic discovery questions.',
-  },
-
   // --- Share modal (dashboard) ---
   shareModal: {
     emailLabel: 'Their email address',
     emailPlaceholder: 'sam@example.com',
     emailHelp: "They'll be approved automatically. You'll get a link to send them.",
     successMessage: (email: string) => `${email} has been approved and linked to this brief.`,
-    sendLinkPrompt: 'Send them this link:',
     garmSyncFailed:
       "Invited, but the sign-in permission didn't register. They may not be able to sign in yet — it should self-heal within the hour, or re-share to retry now. If they still can't sign in after that, check the reconcile log.",
   },
 
-  // --- Setup tab ---
-  setup: {
-    agentSetup: 'Agent setup',
-    conversationOpener: 'Opening message',
-    conversationOpenerPlaceholder:
-      'The message the assistant sends when the maker opens the next session.',
-    conversationOpenerGenerate: 'Generate',
-    conversationOpenerRegenerate: 'Regenerate',
-    seedQuestionsLabel: 'Seed questions',
-    seedQuestionsDescription: 'Questions the agent should weave into the conversation early on.',
-    seedQuestionsPlaceholder: 'What does a typical day look like for you?',
-    directivesLabel: 'Builder directives',
-    directivesDescription: 'Things the agent should actively drive toward.',
-    directivesPlaceholder: 'Get them to pick 1-2 tickers to start with',
-    modeLabel: 'Mode',
-    discoverDescription: 'Broad exploration — the agent asks open-ended questions',
-    convergeDescription: 'Push for decisions — the agent narrows scope and presents options',
-    shareWithMaker: 'Share with maker',
-  },
-
   // --- Brief tab ---
   brief: {
-    copyPrepContext: 'Copy prep context',
-    copyPrepHelp:
-      'Copy the prep context, paste into Claude to discuss strategy, then ask for output and paste the JSON below.',
-    importPlaceholder:
-      'Paste JSON here (multi-field with brief/session_opener/directives/mode, or brief-only)...',
     importButton: 'Import JSON',
     importIgnoredSeedQuestions:
       'This payload includes seed questions, but the brief is in converge mode — seed questions are only sent in discover mode. They were saved and will apply if the mode flips.',
@@ -207,8 +172,6 @@ export const copy = {
     importStayHint: 'Brief updated. Read the note above, then continue.',
     importContinueButton: 'Continue to Conversations',
     emptyTitle: 'No brief yet',
-    emptyDescription:
-      'Copy the prep context for Claude and paste the response above, or use Generate via API.',
     // #194 — version history on the Brief tab
     history: 'History',
     historyEmpty: 'No earlier versions yet — the first regen or save will create one.',
@@ -256,20 +219,13 @@ export const copy = {
   // --- Chat ---
   chat: {
     agentLabel: 'Sam',
-    completedSession: 'Completed conversation — read only',
     placeholder: 'Type a message...',
     makerEmptyState: 'Send a message to start the conversation.',
     // Shown in place of makerEmptyState when the agent's automatic greeting
     // (kickoff) failed — a blank chat otherwise reads as broken.
     makerKickoffFailed: "Sam couldn't start the conversation just now — say hello to begin.",
-    builderEmptyState: 'No messages yet.',
     defaultWelcomeMessage: (projectTitle: string) =>
       `Hey! Welcome to ${projectTitle}. I'm here to help figure out what you're looking for — just a casual conversation, no technical knowledge needed.\n\nWhat's the idea you have in mind?`,
-  },
-
-  // --- Maker view ---
-  maker: {
-    previousConversations: 'Previous sessions',
   },
 
   // --- Auth ---
@@ -278,9 +234,6 @@ export const copy = {
     signInPrompt: 'Sign in to continue',
     signInGoogle: 'Sign in with Google',
     signInPassword: 'Sign in with password',
-    // Garm PR D: the retired passcode login route answers 410 Gone with this.
-    passcodeRetired:
-      'Passcodes have been retired. Sign in with Google or your email and password — use "Forgot password?" on the sign-in page to set one.',
     passwordDivider: 'or sign in with a password',
     passwordLabel: 'Password',
     forgotPassword: 'Forgot password?',
@@ -293,17 +246,6 @@ export const copy = {
     setPasswordHelp:
       'Add an email + password login so you can sign in without choosing a Google account. We recommend a password manager–generated password.',
     setPasswordSuccess: 'Password set. You can now sign in with your email and password.',
-    // Migration banner (Garm PR B, kept after PR D): a passcode-era account
-    // with a still-persisted session has no password/Google credential — this
-    // is its in-app path to set one before that session ends.
-    migrationBanner: {
-      message: 'Passcodes have been retired. Set a password or connect Google now so you keep access to your brief.',
-      setPassword: 'Set a password',
-      connectGoogle: 'Connect Google',
-      dismiss: 'Dismiss',
-      resetLinkSent:
-        "Check your email — we sent a link to set your password. Not there? Check junk/spam and move it to your inbox.",
-    },
     // Custom Firebase email-action handler at /auth/action. Hosted by us so the
     // set-password form lives on ibuild4you.com — password managers key the
     // saved credential to the domain, and Firebase's own page is on
@@ -325,32 +267,6 @@ export const copy = {
       `Thanks for signing up. Your account (${email}) isn't approved yet. We'll let you know when you're in.`,
     notApprovedWrongAccount: 'Signed in with the wrong account? Sign out and try again.',
     signOut: 'Sign out',
-  },
-
-  // --- Landing page ---
-  landing: {
-    tagline:
-      'Have an idea for an app or website but not sure where to start? Our AI guides you through the details and turns your idea into a clear plan — no technical knowledge needed.',
-    howItWorks: 'How it works',
-    steps: [
-      {
-        title: 'Tell us your idea',
-        desc: 'Chat with our AI assistant about what you want to build. No jargon, just a conversation.',
-      },
-      {
-        title: 'We figure out the details',
-        desc: "As you talk, we capture everything you've described so your builder knows exactly what you need.",
-      },
-      {
-        title: 'Refine over time',
-        desc: 'Come back anytime to add more details. Your plan evolves as your thinking does.',
-      },
-    ],
-    interestTitle: 'Interested?',
-    interestSubtitle:
-      "We're invite-only right now. Let us know you're interested and we'll be in touch.",
-    interestSuccess: 'Thanks for your interest!',
-    interestSuccessDetail: "We'll be in touch when we have a spot for you.",
   },
 
   // --- About page ---
@@ -385,13 +301,8 @@ export const copy = {
   // assistant is "Sam" in chat (agentLabel) and "Sam Scribe" on the About page.
   glossary: {
     brief: {
-      term: 'Brief',
       short:
         'The living document at the center of everything — grows every time someone weighs in.',
-    },
-    roan: {
-      term: 'Sam Scribe',
-      short: 'The assistant that carries questions between people and keeps the brief up to date.',
     },
     originator: {
       term: 'Originator',
@@ -406,30 +317,15 @@ export const copy = {
       short:
         "Annotates and validates — flags what's missing or unclear and steers the next session.",
     },
-    builderDownstream: {
-      term: 'Builder',
-      short: 'Downstream: the person who reads the finished brief and writes the software.',
-    },
-    session: {
-      term: 'Session',
-      short: 'One conversation between you and Sam. You can come back across many.',
-    },
     conversations: {
-      term: 'Conversations',
       short:
         'Read the conversation as it happened, and send the next round when the current one is done.',
     },
     people: {
-      term: 'People',
       short: 'Who’s on this brief — their roles and access links. Invite from here.',
     },
     setup: {
-      term: 'Setup',
       short: 'Context, seed questions, and directives that shape what Sam opens with next.',
-    },
-    files: {
-      term: 'Files',
-      short: 'Anything attached to a brief — PDFs, images, docs Sam can reference.',
     },
     needsSetup: {
       term: 'Needs setup',
@@ -443,7 +339,6 @@ export const copy = {
   // --- Delete confirmation ---
   deleteProject: {
     warning: "This permanently deletes this brief and all its conversations. This can't be undone.",
-    confirmLabel: 'Type "delete" to confirm',
   },
 
   // --- Loop / feedback (#149, #150) ---

@@ -1,5 +1,5 @@
 import type { BriefRole } from '@/lib/types'
-import { ROLE_GLYPHS } from '@/lib/roles/mode'
+import { ROLE_GLYPHS } from '@/lib/roles/glyphs'
 import { briefRoleLabel, briefRoleShort } from '@/lib/roles/display'
 
 // Renders the viewer's per-brief role as a studio-family glyph (mode channel),

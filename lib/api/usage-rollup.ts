@@ -131,7 +131,7 @@ export function rollUpUsage(rows: ApiUsageRow[], days: number, since: string): U
 }
 
 // --- Per-brief rollup (#185) ---------------------------------------------
-// Used by GET /api/projects/[id]/usage. Groups one project's rows by
+// Groups one project's rows by
 // conversation so the builder view can show "what did this brief cost, and
 // which conversation cost what". Calls that aren't tied to a session (brief
 // regen, welcome message, outbound prep) land in one NO_SESSION_KEY bucket so

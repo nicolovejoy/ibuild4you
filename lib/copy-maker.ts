@@ -169,7 +169,6 @@ const en = {
     title: copy.auth.setPassword,
     help: copy.auth.setPasswordHelp,
     success: copy.auth.setPasswordSuccess,
-    resetLinkSent: copy.auth.migrationBanner.resetLinkSent,
     newPassword: 'New password',
     confirmPassword: 'Confirm password',
     mismatch: 'Passwords do not match.',
@@ -358,8 +357,6 @@ const fr: MakerCopy = {
     title: 'Définir un mot de passe',
     help: 'Ajoutez une connexion par e-mail et mot de passe pour vous connecter sans choisir de compte Google. Nous recommandons un mot de passe généré par un gestionnaire de mots de passe.',
     success: 'Mot de passe enregistré. Vous pouvez maintenant vous connecter avec votre e-mail et votre mot de passe.',
-    resetLinkSent:
-      'Consultez vos e-mails : nous vous avons envoyé un lien pour définir votre mot de passe. Introuvable ? Vérifiez vos courriers indésirables et déplacez-le dans votre boîte de réception.',
     newPassword: 'Nouveau mot de passe',
     confirmPassword: 'Confirmer le mot de passe',
     mismatch: 'Les mots de passe ne correspondent pas.',

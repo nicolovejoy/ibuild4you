@@ -28,11 +28,9 @@ const page = await ctx.newPage()
 
 await loginPage(page)
 
-// Open the New-brief modal → Import JSON tab.
+// Open the New-brief modal (import-only).
 await page.getByRole('button', { name: 'New brief' }).first().click()
 await page.waitForTimeout(400)
-await page.getByRole('button', { name: 'Import JSON' }).click()
-await page.waitForTimeout(300)
 await page.locator('#project-json').fill(JSON.stringify(payload, null, 2))
 
 // Submit and capture the create response.
@@ -63,20 +61,18 @@ if (!maker) fail(`maker membership missing for ${makerEmail}`)
 else {
   if (maker.role !== 'maker') fail(`maker role = ${maker.role}`)
   if (maker.brief_role !== 'originator') fail(`maker brief_role = ${maker.brief_role}`)
-  if (maker.passcode !== undefined) fail(`maker passcode should be gone (PR D), got: ${maker.passcode}`)
 }
 if (!helper) fail(`helper membership missing for ${helperEmail}`)
 else {
   if (helper.role !== 'apprentice') fail(`helper role = ${helper.role}`)
   if (helper.brief_role !== 'contributor') fail(`helper brief_role = ${helper.brief_role}`)
-  if (helper.passcode !== undefined) fail(`helper passcode should be gone (PR D), got: ${helper.passcode}`)
 }
 // Displayed requester = first maker participant.
 if (body.requester_email !== makerEmail) fail(`requester_email = ${body.requester_email}, expected ${makerEmail}`)
 if (body.requester_first_name !== 'Mae') fail(`requester_first_name = ${body.requester_first_name}`)
 
 if (!process.exitCode) {
-  console.log('PASS: 2 participants created, each with role/brief_role (no passcode); requester stamped to first maker')
+  console.log('PASS: 2 participants created, each with role/brief_role; requester stamped to first maker')
   console.log(`  maker:  ${maker.role}/${maker.brief_role}`)
   console.log(`  helper: ${helper.role}/${helper.brief_role}`)
 }

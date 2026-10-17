@@ -26,8 +26,6 @@ await loginPage(page)
 // Create the brief through the Import JSON modal and capture the Bearer header.
 await page.getByRole('button', { name: 'New brief' }).first().click()
 await page.waitForTimeout(400)
-await page.getByRole('button', { name: 'Import JSON' }).click()
-await page.waitForTimeout(300)
 await page.locator('#project-json').fill(JSON.stringify({
   _payload_type: 'new-project',
   title: `Welcome verbatim e2e ${stamp}`,
