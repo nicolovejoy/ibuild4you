@@ -447,6 +447,8 @@ describe('POST /api/chat/kickoff', () => {
       expect(stored.data.kind).toBe('unqueued_greeting')
       expect(stored.data.role).toBe('agent')
       expect(updateCalls.some((u) => typeof u.maker_waiting_since === 'string')).toBe(true)
+      // The once-per-session email gate is stamped on the first canned kickoff.
+      expect(updateCalls.some((u) => typeof u.unqueued_notified_at === 'string')).toBe(true)
       expect(updateCalls.some((u) => 'last_maker_message_at' in u || 'notify_after' in u || 'notify_pending_since' in u)).toBe(false)
       expect(resendSend).toHaveBeenCalledTimes(1)
       expect((resendSend.mock.calls[0] as unknown[])[0]).toMatchObject({
@@ -459,6 +461,7 @@ describe('POST /api/chat/kickoff', () => {
       const out = await drain(await POST(makeRequest({ session_id: 'sess-1' })))
       expect(out).toContain("hasn't queued")
       expect(resendSend).not.toHaveBeenCalled()
+      expect(updateCalls.some((u) => 'unqueued_notified_at' in u)).toBe(false)
     })
 
     it('keeps the earlier maker_waiting_since', async () => {
