@@ -1,3 +1,4 @@
+import { RequireSignIn } from '@/components/dashboard/RequireSignIn'
 import { PayloadDoc } from '@/components/payload-doc'
 
 // Annotated descriptor for the "new-project" payload — the JSON you paste into
@@ -38,12 +39,14 @@ const NOTES = [
 
 export default function StartABriefPayloadPage() {
   return (
-    <PayloadDoc
-      title="Starting a brief"
-      endpoint="POST /api/projects"
-      intro="The payload that creates a new project and its first session. Paste it into the Dashboard's Import JSON tab, or POST it directly. Field values below describe what each field is for — replace them with real content."
-      json={NEW_PROJECT_PAYLOAD}
-      notes={NOTES}
-    />
+    <RequireSignIn>
+      <PayloadDoc
+        title="Starting a brief"
+        endpoint="POST /api/projects"
+        intro="The payload that creates a new project and its first session. Paste it into the Dashboard's Import JSON tab, or POST it directly. Field values below describe what each field is for — replace them with real content."
+        json={NEW_PROJECT_PAYLOAD}
+        notes={NOTES}
+      />
+    </RequireSignIn>
   )
 }

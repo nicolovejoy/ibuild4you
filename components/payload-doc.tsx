@@ -36,11 +36,11 @@ export function PayloadDoc({
 
       <div className="max-w-2xl mx-auto px-4 py-12 sm:py-16 space-y-8">
         <Link
-          href="/about"
+          href="/dashboard"
           className="inline-flex items-center gap-1 text-sm text-brand-slate hover:text-brand-navy"
         >
           <ArrowLeft className="h-4 w-4" />
-          Back to About
+          Back to dashboard
         </Link>
 
         <div className="space-y-3">

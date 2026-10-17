@@ -13,7 +13,7 @@ The contract lives in three coordinated places:
 | Field names + types  | `payload.ts` (`FeedbackPayload`)                   |
 | Field validation     | `payload.ts` (`validateFeedbackInput`)             |
 | Server-side accept   | `app/api/feedback/route.ts`                        |
-| Reference client     | `components/FeedbackWidget.tsx`                    |
+| Reference client     | `lib/feedback/reference/FeedbackWidget.tsx`                    |
 
 If you copy the widget into another repo, also copy `payload.ts`. They're
 designed to travel together.

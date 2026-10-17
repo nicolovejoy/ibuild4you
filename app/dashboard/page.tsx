@@ -5,9 +5,9 @@ import { useApproval } from '@/lib/hooks/useApproval'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { Plus, FolderOpen, Share2, Copy, Check, Mail, Settings, ChevronRight, ChevronDown, Archive, ArchiveRestore } from 'lucide-react'
+import { Plus, FolderOpen, Copy, Check, Settings, ChevronRight, ChevronDown, Archive, ArchiveRestore } from 'lucide-react'
 import { SiteHeader } from '@/components/site-header'
-import { useProjects, useCreateProject, useShareProject, useCurrentUser, useArchiveProject } from '@/lib/query/hooks'
+import { useProjects, useCreateProject, useCurrentUser, useArchiveProject } from '@/lib/query/hooks'
 import { LoadingButton } from '@/components/ui/LoadingButton'
 import { Card, CardBody } from '@/components/ui/Card'
 import { EmptyState } from '@/components/ui/EmptyState'
@@ -25,7 +25,6 @@ import { formatRelativeTime } from '@/lib/copy-maker'
 import { useLocale, useMakerCopy } from '@/components/locale-context'
 import { viewerBriefRole } from '@/lib/roles/display'
 import { groupBriefs, shouldFlatten, type SectionKey } from '@/lib/dashboard/group-briefs'
-import { getProjectShareLink } from '@/lib/url'
 import { makerNewerThanPaste } from '@/lib/builder/ferry-stamps'
 import { isBuilderSideRole } from '@/lib/projects/project-view'
 import { parseNewProjectPayload } from '@/lib/api/import-payload'
@@ -99,13 +98,10 @@ export default function DashboardPage() {
 }
 
 function NewProjectButton() {
+  // Import-only: a brief is created from a pasted new-project JSON payload
+  // (the "Copy new-brief prep" → Claude → paste loop). The old hand-filled
+  // form was retired in the 2026-10 pare-down.
   const [showForm, setShowForm] = useState(false)
-  const [mode, setMode] = useState<'form' | 'import'>('import')
-  const [title, setTitle] = useState('')
-  const [firstName, setFirstName] = useState('')
-  const [lastName, setLastName] = useState('')
-  const [email, setEmail] = useState('')
-  const [context, setContext] = useState('')
   const [jsonInput, setJsonInput] = useState('')
   const [jsonError, setJsonError] = useState<string | null>(null)
   const [prepCopied, setPrepCopied] = useState(false)
@@ -119,35 +115,10 @@ function NewProjectButton() {
   }
 
   const resetAndClose = () => {
-    setTitle('')
-    setFirstName('')
-    setLastName('')
-    setEmail('')
-    setContext('')
     setJsonInput('')
     setJsonError(null)
     setPrepCopied(false)
-    setMode('import')
     setShowForm(false)
-  }
-
-  const handleCreate = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!title.trim()) return
-
-    try {
-      const result = await createProject.mutateAsync({
-        title: title.trim(),
-        ...(firstName.trim() && { requester_first_name: firstName.trim() }),
-        ...(lastName.trim() && { requester_last_name: lastName.trim() }),
-        ...(email.trim() && { requester_email: email.trim() }),
-        ...(context.trim() && { context: context.trim() }),
-      })
-      resetAndClose()
-      router.push(`/projects/${result.slug || result.id}?tab=conversations`)
-    } catch {
-      // error is available via createProject.error
-    }
   }
 
   const handleImport = async () => {
@@ -199,191 +170,72 @@ function NewProjectButton() {
       </LoadingButton>
 
       <Modal isOpen={showForm} onClose={resetAndClose} title="New brief">
-        {/* Mode toggle */}
-        <div className="flex gap-1 mb-4">
-          <button
-            onClick={() => setMode('form')}
-            className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
-              mode === 'form' ? 'bg-brand-navy text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-            }`}
-          >
-            Form
-          </button>
-          <button
-            onClick={() => setMode('import')}
-            className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
-              mode === 'import' ? 'bg-brand-navy text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-            }`}
-          >
-            Import JSON
-          </button>
-        </div>
-
-        {mode === 'form' ? (
-          <form onSubmit={handleCreate} className="space-y-4">
-            <div>
-              <label htmlFor="project-title" className="block text-sm font-medium text-gray-700 mb-1">
-                Title *
-              </label>
-              <input
-                id="project-title"
-                type="text"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="Sam's Cafe App"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
-                autoFocus
-              />
-            </div>
-
-            <div className="flex gap-3">
-              <div className="flex-1">
-                <label htmlFor="project-first-name" className="block text-sm font-medium text-gray-700 mb-1">
-                  Maker first name
-                </label>
-                <input
-                  id="project-first-name"
-                  type="text"
-                  value={firstName}
-                  onChange={(e) => setFirstName(e.target.value)}
-                  placeholder="Sam"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
-                />
-              </div>
-              <div className="flex-1">
-                <label htmlFor="project-last-name" className="block text-sm font-medium text-gray-700 mb-1">
-                  Last name
-                </label>
-                <input
-                  id="project-last-name"
-                  type="text"
-                  value={lastName}
-                  onChange={(e) => setLastName(e.target.value)}
-                  placeholder="Lee"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label htmlFor="project-email" className="block text-sm font-medium text-gray-700 mb-1">
-                Maker email
-              </label>
-              <input
-                id="project-email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="sam@example.com"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
-              />
-              <p className="text-xs text-gray-500 mt-1">
-                Needed to share the brief with them later.
-              </p>
-            </div>
-
-            <div>
-              <label htmlFor="project-context" className="block text-sm font-medium text-gray-700 mb-1">
-                Context for the agent
-              </label>
-              <textarea
-                id="project-context"
-                value={context}
-                onChange={(e) => setContext(e.target.value)}
-                placeholder="Sam owns a cafe in downtown Portland. They want to let customers order online and pick up in store. They're not technical at all..."
-                rows={4}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
-              />
-              <p className="text-xs text-gray-500 mt-1">
-                Background info the agent will use to skip basic discovery questions.
-              </p>
-            </div>
-
-            {createProject.error && (
-              <StatusMessage type="error" message={createProject.error.message} />
-            )}
-
-            <div className="flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={resetAndClose}
-                className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800"
-              >
-                Cancel
-              </button>
-              <LoadingButton
-                type="submit"
-                variant="primary"
-                loading={createProject.isPending}
-                loadingText="Creating..."
-                disabled={!title.trim()}
-              >
-                Create brief
-              </LoadingButton>
-            </div>
-          </form>
-        ) : (
-          <div className="space-y-4">
-            <div>
-              <button
-                type="button"
-                onClick={handleCopyPrep}
-                className="flex items-center gap-1.5 text-xs text-gray-600 hover:text-brand-navy mb-2"
-              >
-                {prepCopied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
-                {prepCopied ? 'Copied!' : 'Copy new-brief prep'}
-              </button>
-              <label htmlFor="project-json" className="block text-sm font-medium text-gray-700 mb-1">
-                Paste new-brief JSON
-              </label>
-              <textarea
-                id="project-json"
-                value={jsonInput}
-                onChange={(e) => { setJsonInput(e.target.value); setJsonError(null) }}
-                placeholder={'{\n  "_payload_type": "new-project",\n  "title": "Sam\'s Cafe App",\n  "requester_email": "sam@example.com",\n  ...\n}'}
-                rows={10}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-xs font-mono focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
-                autoFocus
-              />
-              <p className="text-xs text-gray-500 mt-1">
-                Copy the new-brief prep, paste into Claude to discuss the setup, then paste the returned JSON here. Only &quot;title&quot; is required.
-              </p>
-            </div>
-
-            {jsonPreview && (
-              <div className="bg-gray-50 rounded-md px-3 py-2 text-sm">
-                <p className="font-medium text-gray-800">{jsonPreview.title}</p>
-                {jsonPreview.fields.length > 0 && (
-                  <p className="text-xs text-gray-500 mt-0.5">{jsonPreview.fields.join(' · ')}</p>
-                )}
-              </div>
-            )}
-
-            {jsonError && <StatusMessage type="error" message={jsonError} />}
-            {createProject.error && (
-              <StatusMessage type="error" message={createProject.error.message} />
-            )}
-
-            <div className="flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={resetAndClose}
-                className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800"
-              >
-                Cancel
-              </button>
-              <LoadingButton
-                variant="primary"
-                loading={createProject.isPending}
-                loadingText="Creating..."
-                disabled={!jsonInput.trim()}
-                onClick={handleImport}
-              >
-                Import & create
-              </LoadingButton>
-            </div>
+        <div className="space-y-4">
+          <div>
+            <button
+              type="button"
+              onClick={handleCopyPrep}
+              className="flex items-center gap-1.5 text-xs text-gray-600 hover:text-brand-navy mb-2"
+            >
+              {prepCopied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+              {prepCopied ? 'Copied!' : 'Copy new-brief prep'}
+            </button>
+            <label htmlFor="project-json" className="block text-sm font-medium text-gray-700 mb-1">
+              Paste new-brief JSON
+            </label>
+            <textarea
+              id="project-json"
+              value={jsonInput}
+              onChange={(e) => { setJsonInput(e.target.value); setJsonError(null) }}
+              placeholder={'{\n  "_payload_type": "new-project",\n  "title": "Sam\'s Cafe App",\n  "requester_email": "sam@example.com",\n  ...\n}'}
+              rows={10}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-xs font-mono focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
+              autoFocus
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Copy the new-brief prep, paste into Claude to discuss the setup, then paste the returned JSON here. Only &quot;title&quot; is required.
+            </p>
+            <Link
+              href="/dashboard/docs/start-a-brief"
+              className="inline-block text-xs text-brand-navy underline mt-1"
+            >
+              {copy.dashboard.payloadReference}
+            </Link>
           </div>
-        )}
+
+          {jsonPreview && (
+            <div className="bg-gray-50 rounded-md px-3 py-2 text-sm">
+              <p className="font-medium text-gray-800">{jsonPreview.title}</p>
+              {jsonPreview.fields.length > 0 && (
+                <p className="text-xs text-gray-500 mt-0.5">{jsonPreview.fields.join(' · ')}</p>
+              )}
+            </div>
+          )}
+
+          {jsonError && <StatusMessage type="error" message={jsonError} />}
+          {createProject.error && (
+            <StatusMessage type="error" message={createProject.error.message} />
+          )}
+
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={resetAndClose}
+              className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800"
+            >
+              Cancel
+            </button>
+            <LoadingButton
+              variant="primary"
+              loading={createProject.isPending}
+              loadingText="Creating..."
+              disabled={!jsonInput.trim()}
+              onClick={handleImport}
+            >
+              Import & create
+            </LoadingButton>
+          </div>
+        </div>
       </Modal>
     </>
   )
@@ -393,7 +245,6 @@ function ProjectList({ isAdmin }: { isAdmin: boolean }) {
   const { data: projects, isLoading, error } = useProjects()
   const router = useRouter()
   const archiveProject = useArchiveProject()
-  const [sharingProject, setSharingProject] = useState<Project | null>(null)
   const { locale } = useLocale()
   const d = useMakerCopy().dashboard
   const ago = (iso: string) => formatRelativeTime(iso, locale)
@@ -526,18 +377,6 @@ function ProjectList({ isAdmin }: { isAdmin: boolean }) {
               >
                 {project.viewer_archived ? <ArchiveRestore className="h-4 w-4" /> : <Archive className="h-4 w-4" />}
               </button>
-              {isAdmin && (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    setSharingProject(project)
-                  }}
-                  className="p-1.5 text-gray-400 hover:text-brand-navy hover:bg-gray-100 rounded"
-                  title="Share with someone"
-                >
-                  <Share2 className="h-4 w-4" />
-                </button>
-              )}
             </div>
           </div>
         </CardBody>
@@ -587,183 +426,7 @@ function ProjectList({ isAdmin }: { isAdmin: boolean }) {
         </div>
       )}
 
-      {sharingProject && (
-        <ShareModal
-          project={sharingProject}
-          onClose={() => setSharingProject(null)}
-        />
-      )}
     </>
-  )
-}
-
-function ShareModal({ project, onClose }: { project: Project; onClose: () => void }) {
-  const [email, setEmail] = useState('')
-  const [firstName, setFirstName] = useState('')
-  const [lastName, setLastName] = useState('')
-  const [copied, setCopied] = useState(false)
-  const [emailCopied, setEmailCopied] = useState(false)
-  const shareProject = useShareProject()
-  const shareLink = getProjectShareLink(project.slug, project.id)
-
-  const inviteEmailBody = copy.invite.body({ projectTitle: project.title, shareLink, resetLink: shareProject.data?.reset_link ?? null })
-
-  const handleShare = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!email.trim()) return
-
-    try {
-      await shareProject.mutateAsync({
-        project_id: project.id,
-        email: email.trim(),
-        first_name: firstName.trim() || undefined,
-        last_name: lastName.trim() || undefined,
-      })
-    } catch {
-      // error shown via shareProject.error
-    }
-  }
-
-  const handleCopy = async () => {
-    await navigator.clipboard.writeText(shareLink)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
-  }
-
-  const handleCopyEmail = async () => {
-    await navigator.clipboard.writeText(inviteEmailBody)
-    setEmailCopied(true)
-    setTimeout(() => setEmailCopied(false), 2000)
-  }
-
-  return (
-    <Modal isOpen onClose={onClose} title={`Share "${project.title}"`}>
-      {shareProject.isSuccess ? (
-        <div className="space-y-4">
-          <StatusMessage type="success" message={copy.shareModal.successMessage(email)} />
-          {shareProject.data?.garm_sync === 'failed' && (
-            <StatusMessage type="warning" message={copy.shareModal.garmSyncFailed} />
-          )}
-          <div>
-            <p className="text-sm text-gray-700 mb-2">Send them this link:</p>
-            <div className="flex items-center gap-2">
-              <input
-                type="text"
-                readOnly
-                value={shareLink}
-                className="flex-1 px-3 py-2 bg-gray-50 border border-gray-300 rounded-md text-sm text-gray-700"
-              />
-              <button
-                onClick={handleCopy}
-                className="p-2 text-gray-500 hover:text-brand-navy hover:bg-gray-100 rounded"
-                title="Copy link"
-              >
-                {copied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
-              </button>
-            </div>
-          </div>
-
-          <div>
-            <p className="text-sm text-gray-700 mb-2 flex items-center gap-1.5">
-              <Mail className="h-4 w-4" />
-              Invite email to send them:
-            </p>
-            <textarea
-              readOnly
-              value={inviteEmailBody}
-              rows={8}
-              className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-md text-sm text-gray-700 resize-none"
-            />
-            <button
-              onClick={handleCopyEmail}
-              className="mt-1.5 flex items-center gap-1.5 text-sm text-gray-500 hover:text-brand-navy"
-            >
-              {emailCopied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
-              {emailCopied ? 'Copied!' : 'Copy email'}
-            </button>
-          </div>
-
-          <div className="flex justify-end">
-            <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800">
-              Done
-            </button>
-          </div>
-        </div>
-      ) : (
-        <form onSubmit={handleShare} className="space-y-4">
-          <div className="flex gap-3">
-            <div className="flex-1">
-              <label htmlFor="share-first-name" className="block text-sm font-medium text-gray-700 mb-1">
-                First name
-              </label>
-              <input
-                id="share-first-name"
-                type="text"
-                value={firstName}
-                onChange={(e) => setFirstName(e.target.value)}
-                placeholder="Sam"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
-                autoFocus
-              />
-            </div>
-            <div className="flex-1">
-              <label htmlFor="share-last-name" className="block text-sm font-medium text-gray-700 mb-1">
-                Last name
-              </label>
-              <input
-                id="share-last-name"
-                type="text"
-                value={lastName}
-                onChange={(e) => setLastName(e.target.value)}
-                placeholder="Lee"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
-              />
-            </div>
-          </div>
-          <div>
-            <label htmlFor="share-email" className="block text-sm font-medium text-gray-700 mb-1">
-              {copy.shareModal.emailLabel}
-            </label>
-            <input
-              id="share-email"
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder={copy.shareModal.emailPlaceholder}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
-            />
-            <p className="text-xs text-gray-500 mt-1">
-              {copy.shareModal.emailHelp}
-            </p>
-          </div>
-
-          {shareProject.error && (
-            <StatusMessage type="error" message={shareProject.error.message} />
-          )}
-
-          <div className="flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800"
-            >
-              Cancel
-            </button>
-            <LoadingButton
-              type="submit"
-              variant="primary"
-              loading={shareProject.isPending}
-              loadingText="Sharing..."
-              disabled={!email.trim()}
-              icon={Share2}
-            >
-              Share
-            </LoadingButton>
-          </div>
-        </form>
-      )}
-    </Modal>
   )
 }
 

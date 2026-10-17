@@ -43,26 +43,6 @@ export function AboutPage({ locale }: { locale: Locale }) {
           </div>
         </section>
 
-        {/* Payload references */}
-        <section className="space-y-3">
-          <h2 className="text-xl font-semibold text-brand-charcoal">{a.payloadHeading}</h2>
-          <p className="text-brand-slate leading-relaxed">
-            {a.payloadIntro} {a.payloadNote}
-          </p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <PayloadLink
-              href="/about/start-a-brief"
-              title={a.payloadStart.title}
-              desc={a.payloadStart.desc}
-            />
-            <PayloadLink
-              href="/about/next-conversation"
-              title={a.payloadNext.title}
-              desc={a.payloadNext.desc}
-            />
-          </div>
-        </section>
-
         {/* Privacy note */}
         <section className="space-y-3 border-l-2 border-brand-navy/30 pl-4">
           <h2 className="text-xl font-semibold text-brand-charcoal">{a.privacyIntroHeading}</h2>
@@ -95,17 +75,5 @@ function RoleCard({ term, short }: { term: string; short: string }) {
       <p className="font-semibold text-brand-charcoal">{term}</p>
       <p className="text-sm text-brand-slate mt-1 leading-relaxed">{short}</p>
     </div>
-  )
-}
-
-function PayloadLink({ href, title, desc }: { href: string; title: string; desc: string }) {
-  return (
-    <Link
-      href={href}
-      className="block border border-gray-200 bg-white rounded-xl p-4 hover:border-brand-navy/40 transition-colors"
-    >
-      <p className="font-semibold text-brand-charcoal">{title}</p>
-      <p className="text-sm text-brand-slate mt-1 leading-relaxed">{desc}</p>
-    </Link>
   )
 }
