@@ -105,3 +105,11 @@ describe('getMakerShortName', () => {
     expect(getMakerShortName(undefined, undefined, 'the maker')).toBe('the maker')
   })
 })
+
+describe('nothingQueuedGreeting twins (#214)', () => {
+  it('has a French twin that differs from English', async () => {
+    const { makerCopy } = await import('../copy-maker')
+    expect(typeof makerCopy.fr.chat.nothingQueuedGreeting).toBe('function')
+    expect(makerCopy.fr.chat.nothingQueuedGreeting('Nico')).not.toBe(makerCopy.en.chat.nothingQueuedGreeting('Nico'))
+  })
+})
