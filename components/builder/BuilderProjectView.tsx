@@ -525,6 +525,8 @@ function BriefTab({
   }
 
   const handleCopyPayload = async () => {
+    // Never build the prep prompt without the loaded project (no "Untitled" fallback).
+    if (!project) return
     setLoadingPayload(true)
     try {
       // Fetch all sessions for the project
@@ -558,9 +560,9 @@ function BriefTab({
       const prompt = buildNextConvoPrompt({
         currentBrief,
         conversationHistory: allMessages,
-        projectTitle: project?.title || 'Untitled',
+        projectTitle: project.title,
         sessionCount: sessions?.length || 0,
-        language: project?.language,
+        language: project.language,
       })
 
       await navigator.clipboard.writeText(prompt)
@@ -665,11 +667,14 @@ function BriefTab({
           the Max sub (cost model); the in-app "Update from conversation" is the
           optional metered-API convenience, never the default. */}
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        {/* The project query can be loading or errored while the brief is already
+            shown; copying then produced `Title: Untitled` in the prep export (#215). */}
         <LoadingButton
           variant="ghost"
           size="sm"
           loading={loadingPayload}
           loadingText="Loading..."
+          disabled={!project}
           onClick={handleCopyPayload}
           icon={ClipboardCopy}
         >
