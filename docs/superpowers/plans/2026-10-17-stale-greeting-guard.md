@@ -23,6 +23,7 @@
 ## Review Focus
 
 1. A brief with maker history but **no paste stamp at all** (every pre-#222 brief on prod): `isPayloadQueued` is false, so kickoff would post the canned greeting on every return visit forever. Expected: that is correct per spec only once the builder uses the ferry desk; pin with a test in Task 1 (`payload_pasted_at` undefined → false) and in Task 3 (greeting posts). Flag in the PR body that older briefs need one paste to arm.
+   **Post-review ruling (2026-10-17):** superseded in part. "Every return visit forever" was the defect: the canned path now fires only when `!isPayloadQueued` **and** (the active session has no maker message **or** `prep_copied_at > last_maker_message_at`), via `isUnqueuedReturn` in `lib/sessions/queued.ts`. A mid-round ≥1h return (first session included) takes the model path.
 2. `payload_pasted_at` equal to `last_maker_message_at` (same second): spec says strictly newer. Test in Task 1.
 3. Two tabs kick off at once: the `last_kickoff_at` stamp precedes the canned post, and the email is gated on `unqueued_notified_at`. Task 3 tests the second call declines `already_kicked_off` and sends no second email.
 4. Import PATCH when the active session has a maker message **before** the greeting (old round still active) but none after: spec says clean it. Task 5 tests "maker message older than the greeting" → cleaned.

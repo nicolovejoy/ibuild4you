@@ -176,9 +176,9 @@ function setup(opts: {
         title: 'Cafe app',
         slug: 'cafe-app',
         last_maker_message_at: opts.lastMakerMessageAt ?? null,
-        // Queued by default (pasted after the maker last spoke) so the model
-        // path is exercised; #214 tests override this.
-        payload_pasted_at: new Date().toISOString(),
+        // No paste/prep stamps by default: a return-after-a-break with the
+        // maker's own messages in the session takes the model path under the
+        // #214 rule (isUnqueuedReturn). Tests that need a stamp set it.
         ...opts.project,
       }),
     },
@@ -397,7 +397,8 @@ describe('POST /api/chat/kickoff', () => {
   // #70: a return session now starts empty (no canned welcome). The agent should
   // still greet when the project has prior maker history.
   it('fires on an empty return session when the project has prior maker history', async () => {
-    setup({ messages: [], lastMakerMessageAt: iso(3 * HOUR) })
+    // Queued (pasted after the maker last spoke), so this is the model greeting.
+    setup({ messages: [], lastMakerMessageAt: iso(3 * HOUR), project: { payload_pasted_at: iso(HOUR) } })
     const res = await POST(makeRequest({ session_id: 'sess-1' }))
     expect(res.headers.get('Content-Type')).toBe('text/event-stream')
     await drain(res)
@@ -509,6 +510,61 @@ describe('POST /api/chat/kickoff', () => {
       await drain(await POST(makeRequest({ session_id: 'sess-1' })))
       expect(capturedStreamArgs).toBeNull()
       expect(addCalls.find((c) => c.collection === 'messages')!.data.kind).toBe('unqueued_greeting')
+    })
+
+    // Post-review ruling (2026-10-17): the canned greeting is for a return
+    // between rounds, never a ≥1h return mid-intake.
+    describe('only between rounds', () => {
+      const midRound = [msg('agent', 5 * HOUR), msg('user', 2 * HOUR), msg('agent', 2 * HOUR)]
+
+      it('(a) first session, maker messages, no paste stamp, 2h gap -> model path', async () => {
+        setup({ messages: midRound, lastMakerMessageAt: iso(2 * HOUR), project: { payload_pasted_at: undefined } })
+        await drain(await POST(makeRequest({ session_id: 'sess-1' })))
+        expect(capturedStreamArgs).not.toBeNull()
+        expect(addCalls.find((c) => c.collection === 'messages')!.data.kind).toBeUndefined()
+        expect(resendSend).not.toHaveBeenCalled()
+        expect(updateCalls.some((u) => 'maker_waiting_since' in u)).toBe(false)
+      })
+
+      it('(b) later round, maker messages, paste older than last maker message, no prep stamp -> model path', async () => {
+        setup({
+          messages: midRound,
+          lastMakerMessageAt: iso(2 * HOUR),
+          project: { payload_pasted_at: iso(6 * HOUR) },
+        })
+        await drain(await POST(makeRequest({ session_id: 'sess-1' })))
+        expect(capturedStreamArgs).not.toBeNull()
+        expect(addCalls.find((c) => c.collection === 'messages')!.data.kind).toBeUndefined()
+        expect(resendSend).not.toHaveBeenCalled()
+        expect(updateCalls.some((u) => 'maker_waiting_since' in u)).toBe(false)
+      })
+
+      it('(c) as (b) but the builder copied the prep after the maker last spoke -> canned', async () => {
+        setup({
+          messages: midRound,
+          lastMakerMessageAt: iso(2 * HOUR),
+          project: { payload_pasted_at: iso(6 * HOUR), prep_copied_at: iso(HOUR) },
+        })
+        const out = await drain(await POST(makeRequest({ session_id: 'sess-1' })))
+        expect(out).toContain("hasn't queued")
+        expect(capturedStreamArgs).toBeNull()
+        expect(addCalls.find((c) => c.collection === 'messages')!.data.kind).toBe('unqueued_greeting')
+        expect(resendSend).toHaveBeenCalledTimes(1)
+      })
+
+      it('(d) empty return session, no paste -> canned', async () => {
+        setup({ messages: [], lastMakerMessageAt: iso(2 * HOUR), project: { payload_pasted_at: undefined } })
+        const out = await drain(await POST(makeRequest({ session_id: 'sess-1' })))
+        expect(out).toContain("hasn't queued")
+        expect(capturedStreamArgs).toBeNull()
+      })
+
+      it('(e) empty return session, paste newer than the last maker message -> model', async () => {
+        setup({ messages: [], lastMakerMessageAt: iso(2 * HOUR), project: { payload_pasted_at: iso(HOUR) } })
+        await drain(await POST(makeRequest({ session_id: 'sess-1' })))
+        expect(capturedStreamArgs).not.toBeNull()
+        expect(addCalls.find((c) => c.collection === 'messages')!.data.kind).toBeUndefined()
+      })
     })
 
     it('still declines no_maker_history before the guard', async () => {

@@ -12,7 +12,7 @@ import { logAnthropicCall } from '@/lib/observability/anthropic'
 import { accumulateSessionUsage } from '@/lib/observability/session-cost'
 import Anthropic from '@anthropic-ai/sdk'
 import { isArchivedSession } from '@/lib/sessions/active'
-import { isPayloadQueued } from '@/lib/sessions/queued'
+import { isUnqueuedReturn } from '@/lib/sessions/queued'
 import { unqueuedGreeting, ownerFirstName } from '@/lib/sessions/unqueued-greeting'
 import { sendUnqueuedNotification } from '@/lib/email/unqueued-notify'
 import type { BriefContent, BriefRole } from '@/lib/types'
@@ -191,8 +191,10 @@ export async function POST(request: Request) {
     )
   }
 
-  // #214: nothing queued since the maker last spoke -> canned greeting, no model.
-  if (!isPayloadQueued(projectData)) {
+  // #214: a return between rounds with nothing queued -> canned greeting, no
+  // model. Mid-intake returns (the maker has spoken in this session and the
+  // builder has not harvested the round) keep the normal recap greeting.
+  if (isUnqueuedReturn({ project: projectData, sessionHasMakerMessage: makerMessages.length > 0 })) {
     return respondUnqueued()
   }
 

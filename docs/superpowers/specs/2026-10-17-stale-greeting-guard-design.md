@@ -22,11 +22,20 @@ queued = payload_pasted_at != null && payload_pasted_at > (last_maker_message_at
 
 The server computes this in one helper, `lib/sessions/queued.ts` `isPayloadQueued(project)`, used by the kickoff route, the chat route and the import PATCH. The client does not decide.
 
+**Post-review ruling (2026-10-17).** `!isPayloadQueued` alone is not enough for the kickoff: `last_maker_message_at` moves on every maker turn, so it holds for the rest of every round, and a maker back from lunch mid-intake would get the canned note. The canned greeting fires only on a return **between rounds**:
+
+```
+unqueuedReturn = !queued && (sessionHasNoMakerMessage || roundHarvested)
+roundHarvested = prep_copied_at != null && prep_copied_at > (last_maker_message_at ?? '')
+```
+
+`sessionHasNoMakerMessage`: the active session holds no `role: 'user'` message (an empty return session). `roundHarvested`: the builder copied the next-convo prep after the maker last spoke. Both live in `lib/sessions/queued.ts` as `isUnqueuedReturn({ project, sessionHasMakerMessage })`, which the kickoff route calls. A first session always holds the maker's own messages once they have spoken (before that, `no_maker_history` declines), so it never gets the note. The chat route's "Nothing queued" block is unchanged: it needs the greeting in history, which only exists if this rule fired.
+
 ## Behaviour
 
 ### 1. Kickoff with nothing queued
 
-In `/api/chat/kickoff`, after the existing guards pass, if `!isPayloadQueued(project)`:
+In `/api/chat/kickoff`, after the existing guards pass, if `isUnqueuedReturn(...)` (see the ruling above):
 
 - Do **not** call the model. Post a canned agent message instead and stream it back in the same SSE shape the client already consumes (one text chunk, then `[DONE]`), so the maker view needs no new code path. **(call)** Canned, not model-written: the content is a statement of fact about the builder, not conversation, and it must not drift.
 - Copy, in the brief's language, from `lib/copy.ts` (EN) and `lib/copy-maker.ts` (FR), `chat.nothingQueuedGreeting(builderFirstName)`:
