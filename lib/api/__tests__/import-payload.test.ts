@@ -3,6 +3,7 @@ import {
   parseNewProjectPayload,
   parseNextConvoPayload,
   NEXT_CONVO_IMPORT_FIELDS,
+  nextConvoImportWarnings,
 } from '../import-payload'
 
 // =============================================================================
@@ -138,5 +139,40 @@ describe('parseNextConvoPayload', () => {
     if (r.ok && r.value.mode === 'multi') {
       expect(r.value.projectUpdate.welcome_message).toBe('hi')
     }
+  })
+})
+
+describe('nextConvoImportWarnings', () => {
+  it('warns about seed_questions when the effective mode is converge', () => {
+    const w = nextConvoImportWarnings({ seed_questions: ['q'] }, 'converge')
+    expect(w).toHaveLength(1)
+    expect(w[0]).toMatch(/seed questions/i)
+    expect(w[0]).toMatch(/converge/i)
+  })
+  it('warns about builder_directives when the effective mode is discover', () => {
+    const w = nextConvoImportWarnings({ builder_directives: ['d'] }, 'discover')
+    expect(w).toHaveLength(1)
+    expect(w[0]).toMatch(/directives/i)
+    expect(w[0]).toMatch(/discover/i)
+  })
+  it('uses the payload session_mode over the current mode', () => {
+    const w = nextConvoImportWarnings({ session_mode: 'converge', seed_questions: ['q'] }, 'discover')
+    expect(w).toHaveLength(1)
+    expect(w[0]).toMatch(/seed questions/i)
+  })
+  it('defaults to discover when neither payload nor project has a mode', () => {
+    expect(nextConvoImportWarnings({ builder_directives: ['d'] }, undefined)).toHaveLength(1)
+    expect(nextConvoImportWarnings({ seed_questions: ['q'] }, undefined)).toHaveLength(0)
+  })
+  it('does not warn on empty arrays', () => {
+    expect(nextConvoImportWarnings({ seed_questions: [] }, 'converge')).toHaveLength(0)
+    expect(nextConvoImportWarnings({ builder_directives: [] }, 'discover')).toHaveLength(0)
+  })
+  it('warns once when both fields are present', () => {
+    expect(nextConvoImportWarnings({ seed_questions: ['q'], builder_directives: ['d'] }, 'converge')).toHaveLength(1)
+    expect(nextConvoImportWarnings({ seed_questions: ['q'], builder_directives: ['d'] }, 'discover')).toHaveLength(1)
+  })
+  it('returns nothing for a projectUpdate without either field', () => {
+    expect(nextConvoImportWarnings({ welcome_message: 'hi' }, 'converge')).toEqual([])
   })
 })

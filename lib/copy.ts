@@ -197,6 +197,11 @@ export const copy = {
     importPlaceholder:
       'Paste JSON here (multi-field with brief/session_opener/directives/mode, or brief-only)...',
     importButton: 'Import JSON',
+    importIgnoredSeedQuestions:
+      'This payload includes seed questions, but the brief is in converge mode — seed questions are only sent in discover mode. They were saved and will apply if the mode flips.',
+    importIgnoredDirectives:
+      'This payload includes builder directives, but the brief is in discover mode — directives are only sent in converge mode. They were saved and will apply if the mode flips.',
+    importStayHint: 'Brief updated. Open Conversations to continue.',
     emptyTitle: 'No brief yet',
     emptyDescription:
       'Copy the prep context for Claude and paste the response above, or use Generate via API.',

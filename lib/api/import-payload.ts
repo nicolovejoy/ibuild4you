@@ -1,4 +1,5 @@
 import type { BriefContent } from '@/lib/types'
+import { copy } from '@/lib/copy'
 import { parseLooseJson } from '@/lib/utils'
 
 // Pure parsers for the two pasted JSON payload shapes:
@@ -95,4 +96,31 @@ export function parseNextConvoPayload(raw: string): ParseResult<NextConvoPayload
 
   // Legacy: whole payload is brief content
   return { ok: true, value: { mode: 'brief-only', brief: obj } }
+}
+
+export type SessionMode = 'discover' | 'converge'
+
+// Warn about mode-scoped fields that the agent will ignore for the effective mode.
+// Effective mode: payload session_mode if valid, else the project's current mode, else discover.
+// Since #192, seed_questions only reach the agent in discover; builder_directives only in converge.
+// A field counts as present only when it is a non-empty array.
+export function nextConvoImportWarnings(
+  projectUpdate: Record<string, unknown>,
+  currentMode: SessionMode | undefined,
+): string[] {
+  const payloadMode = projectUpdate.session_mode
+  const effective: SessionMode =
+    payloadMode === 'discover' || payloadMode === 'converge'
+      ? payloadMode
+      : (currentMode ?? 'discover')
+
+  const isPresent = (value: unknown) => Array.isArray(value) && value.length > 0
+  const warnings: string[] = []
+  if (effective === 'converge' && isPresent(projectUpdate.seed_questions)) {
+    warnings.push(copy.brief.importIgnoredSeedQuestions)
+  }
+  if (effective === 'discover' && isPresent(projectUpdate.builder_directives)) {
+    warnings.push(copy.brief.importIgnoredDirectives)
+  }
+  return warnings
 }
