@@ -187,4 +187,9 @@ describe('FerryDesk', () => {
     expect(filled.onEscapeEmpty).not.toHaveBeenCalled()
     expect(document.activeElement).not.toBe(box)
   })
+
+  it('renders the openQuestions slot', () => {
+    renderDesk({ openQuestions: <div data-testid="oq-slot">questions</div> })
+    expect(screen.getByTestId('oq-slot')).toBeTruthy()
+  })
 })

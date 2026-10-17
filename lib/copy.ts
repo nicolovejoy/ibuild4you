@@ -211,6 +211,11 @@ export const copy = {
     details: 'Details',
     detailsHint: 'brief · history · regenerate · attachments',
     escHint: 'Esc back to dashboard',
+    openQuestionsTitle: (name: string, n: number) => `Open questions for ${name} (${n})`,
+    openQuestionsFallbackName: 'the maker',
+    openQuestionsCopy: 'Copy as markdown',
+    openQuestionsCopied: 'Copied!',
+    exportOpenRisks: 'Open risks',
     pastePlaceholder: 'Paste the JSON from your prep chat here…',
     pastedVersion: (v: number) => `v${v}`,
     versionLine: (version: number | null, sessions: number | undefined) =>

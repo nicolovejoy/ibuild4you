@@ -27,6 +27,7 @@ type FerryDeskProps = {
   onEscapeEmpty: () => void // parent navigates to /dashboard
   textareaRef?: React.Ref<HTMLTextAreaElement>
   notices?: React.ReactNode // post-import notes, shown right under the actions
+  openQuestions?: React.ReactNode // maker-owned open risks card (#220)
   children: React.ReactNode // Details body
 }
 
@@ -75,6 +76,7 @@ export function FerryDesk({
   onEscapeEmpty,
   textareaRef,
   notices,
+  openQuestions,
   children,
 }: FerryDeskProps) {
   // Collapsed by default: the ferry loop is the page; the brief, history,
@@ -174,6 +176,8 @@ export function FerryDesk({
       {/* Next to the Import button on purpose: after an import with ignored
           fields the box clears, and this is where the builder is looking. */}
       {notices && <div className="space-y-2">{notices}</div>}
+
+      {openQuestions}
 
       <div className="border-t border-gray-200 pt-3">
         <div className="flex items-baseline gap-3">
