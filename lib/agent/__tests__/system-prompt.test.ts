@@ -164,6 +164,22 @@ describe('buildSystemPrompt', () => {
     expect(regularBlock).not.toContain('Next.js, no Vue')
   })
 
+  it('marks a contested lock so the agent neither reopens nor adopts it (#197)', () => {
+    const result = buildSystemPrompt({
+      ...minimalInput,
+      briefContent: {
+        ...emptyBrief,
+        decisions: [
+          { topic: 'Payment', decision: 'Stripe only', locked: true, contested: { proposed: 'Square', reason: 'switched POS, confirmed in conversation 3' } },
+          { topic: 'Stack', decision: 'Next.js, no Vue', locked: true },
+        ],
+      },
+    })
+    expect(result).toContain('**Payment:** Stripe only — contested: the maker confirmed they want "Square" (switched POS, confirmed in conversation 3). A builder will decide; don\'t reopen it and don\'t treat it as changed.')
+    expect(result).toContain('**Stack:** Next.js, no Vue\n')
+    expect(result).not.toContain('**Stack:** Next.js, no Vue — contested')
+  })
+
   it('renders the prototype-feedback block when items are present (#72)', () => {
     const result = buildSystemPrompt({
       ...minimalInput,

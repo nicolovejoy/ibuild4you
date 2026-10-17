@@ -1,14 +1,15 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { Plus, X, Lock, Code2, LayoutList, Check, Copy, Pencil } from 'lucide-react'
+import { Plus, X, Lock, Code2, LayoutList, Check, Copy, Pencil, AlertTriangle } from 'lucide-react'
 import { Card, CardBody } from '@/components/ui/Card'
 import { LoadingButton } from '@/components/ui/LoadingButton'
 import { StatusMessage } from '@/components/ui/StatusMessage'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { useUpdateBrief } from '@/lib/query/hooks'
 import { parseBriefJson, serializeBriefContent, emptyBrief } from '@/lib/api/brief-json'
-import { lockedFirst } from '@/lib/api/brief-merge'
+import { lockedFirst, lostLocks, resolveContest, type ContestAction } from '@/lib/api/brief-merge'
+import { copy } from '@/lib/copy'
 import { sessionNumberById, decisionProvenanceSuffix } from '@/lib/builder/decision-provenance'
 import type { BriefContent, BriefDecision, Session } from '@/lib/types'
 import { BriefHistory } from './BriefHistory'
@@ -56,6 +57,10 @@ export function BriefEditor({
   const [rawText, setRawText] = useState<string>(() => serializeBriefContent(base))
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  // #197 Part B: a save that would drop a lock is held here until confirmed.
+  const [pendingSave, setPendingSave] = useState<{ content: BriefContent; lost: string[] } | null>(null)
+  // #197 Part A: error from resolving a contested lock (Accept/Dismiss).
+  const [resolveError, setResolveError] = useState<string | null>(null)
 
   // Collapsed-by-default read view (Nico 2026-07-11): a mature brief is a wall
   // of text; show the first few lines with a fade + "Show full brief". Only
@@ -76,6 +81,7 @@ export function BriefEditor({
     setDraft(base)
     setRawText(serializeBriefContent(base))
     setError(null)
+    setPendingSave(null)
     setMode('view')
     setExpanded(false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -85,6 +91,7 @@ export function BriefEditor({
     setDraft(base)
     setRawText(serializeBriefContent(base))
     setError(null)
+    setPendingSave(null)
     setEditView('structured')
     setMode('edit')
   }
@@ -94,11 +101,20 @@ export function BriefEditor({
     setDraft(base)
     setRawText(serializeBriefContent(base))
     setError(null)
+    setPendingSave(null)
     setMode('view')
+  }
+
+  // #197 Part B: any change to the working copy (or the view) makes a held
+  // lock-loss confirmation stale — drop it so Save re-checks the new draft.
+  const changeDraft = (next: BriefContent) => {
+    setDraft(next)
+    setPendingSave(null)
   }
 
   const switchTo = (next: EditView) => {
     if (next === editView) return
+    setPendingSave(null)
     if (next === 'raw') {
       setRawText(serializeBriefContent(draft))
       setError(null)
@@ -115,6 +131,12 @@ export function BriefEditor({
     }
   }
 
+  const submit = async (toSave: BriefContent) => {
+    setPendingSave(null)
+    await updateBrief.mutateAsync({ project_id: projectId, content: toSave })
+    setMode('view') // saved — back to the read view
+  }
+
   const handleSave = async () => {
     let toSave: BriefContent
     if (editView === 'raw') {
@@ -129,8 +151,32 @@ export function BriefEditor({
       toSave = draft
     }
     setError(null)
-    await updateBrief.mutateAsync({ project_id: projectId, content: toSave })
-    setMode('view') // saved — back to the read view
+    // #197 Part B: never drop a lock silently — ask first.
+    const lost = lostLocks(base.decisions, toSave.decisions)
+    if (lost.length > 0) {
+      setPendingSave({ content: toSave, lost })
+      return
+    }
+    await submit(toSave)
+  }
+
+  // #197 Part A: builder rules on a contested lock. Saves the whole brief with
+  // that one decision changed through the normal PUT (provenance stamps the
+  // accepted text as decided out-of-band; the outgoing version is archived).
+  // Deliberate, so it bypasses the lock-loss guard.
+  const resolve = async (topic: string, action: ContestAction) => {
+    setResolveError(null)
+    try {
+      await updateBrief.mutateAsync({
+        project_id: projectId,
+        content: {
+          ...base,
+          decisions: resolveContest(base.decisions ?? [], topic, action, new Date().toISOString()),
+        },
+      })
+    } catch {
+      setResolveError(copy.brief.contestError)
+    }
   }
 
   const copyRaw = async () => {
@@ -174,8 +220,14 @@ export function BriefEditor({
                   what a builder acts on — durable constraints + provenance —
                   and were buried under the ~4-line clamp with the rest of the
                   document. Compact by nature, so always show them. */}
-              <DecisionsSection decisions={base.decisions} sessions={sessions} />
-              <BriefHistory projectId={projectId} />
+              <DecisionsSection
+                decisions={base.decisions}
+                sessions={sessions}
+                onResolve={resolve}
+                resolving={updateBrief.isPending}
+                resolveError={resolveError}
+              />
+              <BriefHistory projectId={projectId} currentDecisions={base.decisions} />
             </>
           ) : loading ? (
             <div className="space-y-2 py-2">
@@ -225,13 +277,14 @@ export function BriefEditor({
         </div>
 
         {editView === 'structured' ? (
-          <StructuredEditor draft={draft} onChange={setDraft} />
+          <StructuredEditor draft={draft} onChange={changeDraft} />
         ) : (
           <textarea
             value={rawText}
             onChange={(e) => {
               setRawText(e.target.value)
               setError(null)
+              setPendingSave(null)
             }}
             rows={20}
             spellCheck={false}
@@ -241,25 +294,49 @@ export function BriefEditor({
 
         {error && <div className="mt-3"><StatusMessage type="error" message={error} /></div>}
 
-        <div className="mt-4 flex items-center gap-3 pt-3 border-t border-gray-100">
-          <LoadingButton
-            variant="primary"
-            size="sm"
-            loading={updateBrief.isPending}
-            loadingText="Saving…"
-            onClick={handleSave}
-          >
-            Save brief
-          </LoadingButton>
-          <button
-            onClick={cancelEdit}
-            disabled={updateBrief.isPending}
-            className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-800 disabled:opacity-40"
-          >
-            <X className="h-3.5 w-3.5" /> Cancel
-          </button>
-          {updateBrief.error && <span className="text-xs text-red-500">{updateBrief.error.message}</span>}
-        </div>
+        {pendingSave ? (
+          <div className="mt-4 flex flex-wrap items-center gap-3 pt-3 border-t border-gray-100 text-sm">
+            <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" aria-hidden />
+            <span className="text-gray-800">{copy.brief.lockLossWarning(pendingSave.lost)}</span>
+            <LoadingButton
+              variant="primary"
+              size="sm"
+              loading={updateBrief.isPending}
+              loadingText="Saving…"
+              onClick={() => submit(pendingSave.content)}
+            >
+              {copy.brief.lockLossConfirm}
+            </LoadingButton>
+            <button
+              onClick={() => setPendingSave(null)}
+              disabled={updateBrief.isPending}
+              className="text-xs text-gray-500 hover:text-gray-800 disabled:opacity-40"
+            >
+              {copy.brief.lockLossCancel}
+            </button>
+            {updateBrief.error && <span className="text-xs text-red-500">{updateBrief.error.message}</span>}
+          </div>
+        ) : (
+          <div className="mt-4 flex items-center gap-3 pt-3 border-t border-gray-100">
+            <LoadingButton
+              variant="primary"
+              size="sm"
+              loading={updateBrief.isPending}
+              loadingText="Saving…"
+              onClick={handleSave}
+            >
+              Save brief
+            </LoadingButton>
+            <button
+              onClick={cancelEdit}
+              disabled={updateBrief.isPending}
+              className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-800 disabled:opacity-40"
+            >
+              <X className="h-3.5 w-3.5" /> Cancel
+            </button>
+            {updateBrief.error && <span className="text-xs text-red-500">{updateBrief.error.message}</span>}
+          </div>
+        )}
       </CardBody>
     </Card>
   )
@@ -312,9 +389,16 @@ const DECISIONS_PREVIEW_COUNT = 6
 function DecisionsSection({
   decisions,
   sessions,
+  onResolve,
+  resolving,
+  resolveError,
 }: {
   decisions: BriefDecision[] | undefined
   sessions?: Session[]
+  // #197 Part A: rule on a contested lock (accept / accept and unlock / dismiss).
+  onResolve: (topic: string, action: ContestAction) => void
+  resolving: boolean
+  resolveError: string | null
 }) {
   const [showAll, setShowAll] = useState(false)
   const ordered = lockedFirst(decisions)
@@ -338,15 +422,59 @@ function DecisionsSection({
                     <Lock className="h-2.5 w-2.5" aria-hidden /> Locked
                   </span>
                 )}
+                {d.locked && d.contested && (
+                  <span
+                    className="inline-flex items-center mr-1.5 px-1 py-0.5 rounded bg-rose-100 text-rose-800 text-[10px] font-semibold uppercase tracking-wide align-middle"
+                    title={copy.brief.contestedTitle}
+                  >
+                    {copy.brief.contestedBadge}
+                  </span>
+                )}
                 <span className="font-medium text-gray-900">{d.topic}:</span>{' '}
                 <span className="text-gray-700">{d.decision}</span>
                 {suffix && (
                   <span className="text-xs text-gray-400 whitespace-nowrap"> · {suffix}</span>
                 )}
+                {d.locked && d.contested && (
+                  <div className="mt-1 ml-1 pl-2 border-l-2 border-rose-200 text-xs">
+                    <p className="text-gray-700">{copy.brief.contestedLine(d.contested.proposed, d.contested.reason)}</p>
+                    <div className="mt-1 flex flex-wrap gap-3">
+                      <button
+                        disabled={resolving}
+                        onClick={() => onResolve(d.topic, 'accept')}
+                        aria-label={`${copy.brief.contestAccept} — ${d.topic}`}
+                        className="font-medium text-brand-navy hover:underline disabled:opacity-40"
+                      >
+                        {copy.brief.contestAccept}
+                      </button>
+                      <button
+                        disabled={resolving}
+                        onClick={() => onResolve(d.topic, 'accept_unlock')}
+                        aria-label={`${copy.brief.contestAcceptUnlock} — ${d.topic}`}
+                        className="font-medium text-brand-navy hover:underline disabled:opacity-40"
+                      >
+                        {copy.brief.contestAcceptUnlock}
+                      </button>
+                      <button
+                        disabled={resolving}
+                        onClick={() => onResolve(d.topic, 'dismiss')}
+                        aria-label={`${copy.brief.contestDismiss} — ${d.topic}`}
+                        className="text-gray-500 hover:underline disabled:opacity-40"
+                      >
+                        {copy.brief.contestDismiss}
+                      </button>
+                    </div>
+                  </div>
+                )}
               </li>
             )
           })}
         </ul>
+        {resolveError && (
+          <p role="alert" className="mt-2 text-xs text-red-500">
+            {resolveError}
+          </p>
+        )}
         {ordered.length > DECISIONS_PREVIEW_COUNT && (
           <button
             onClick={() => setShowAll((v) => !v)}
@@ -495,7 +623,18 @@ function DecisionsField({
   // displayed order; map back to the same objects on change.
   const ordered = lockedFirst(decisions)
   const update = (i: number, patch: Partial<BriefDecision>) =>
-    onChange(ordered.map((d, idx) => (idx === i ? { ...d, ...patch } : d)))
+    onChange(ordered.map((d, idx) => (idx === i ? patchDecision(d, patch) : d)))
+
+  // Unlocking drops the field rather than storing `locked: false`.
+  const unlock = (i: number) =>
+    onChange(
+      ordered.map((d, idx) => {
+        if (idx !== i) return d
+        const rest = { ...d }
+        delete rest.locked
+        return rest
+      }),
+    )
 
   return (
     <div>
@@ -505,7 +644,7 @@ function DecisionsField({
           {ordered.map((d, i) => (
             <li key={i} className="flex items-start gap-2">
               <button
-                onClick={() => update(i, { locked: !d.locked })}
+                onClick={() => (d.locked ? unlock(i) : update(i, { locked: true }))}
                 title={
                   d.locked
                     ? 'Locked — a durable constraint the agent reconciles against instead of silently overwriting. Click to unlock.'
@@ -544,4 +683,15 @@ function DecisionsField({
       </button>
     </div>
   )
+}
+
+// #197: editing a contested decision's topic or text by hand settles the
+// contest — the builder decided — so `contested` is dropped from the result.
+function patchDecision(d: BriefDecision, patch: Partial<BriefDecision>): BriefDecision {
+  const next = { ...d, ...patch }
+  const settled =
+    (patch.topic !== undefined && patch.topic !== d.topic) ||
+    (patch.decision !== undefined && patch.decision !== d.decision)
+  if (settled && next.contested) delete next.contested
+  return next
 }

@@ -1,6 +1,7 @@
 import type { BriefContent, BriefDecision } from '@/lib/types'
 import type { ParseResult } from './import-payload'
 import { parseLooseJson } from '@/lib/utils'
+import { contestFor, dismissedFor } from './brief-merge'
 
 // Pure validation + (de)serialization for the brief-as-document editor (#19
 // Phase 3). The structured view and the raw-JSON view operate on ONE
@@ -53,10 +54,15 @@ export function normalizeBriefContent(input: unknown): ParseResult<BriefContent>
       if (typeof dd.topic !== 'string' || typeof dd.decision !== 'string') {
         return { ok: false, error: 'Each decision needs a string "topic" and "decision"' }
       }
+      // #197: a contest is kept only on a locked decision, only when well-formed.
+      const contested = contestFor(dd.locked === true, dd.contested)
+      const dismissed = dismissedFor(dd.locked === true, dd.contest_dismissed)
       decisions.push({
         topic: dd.topic,
         decision: dd.decision,
         ...(dd.locked === true ? { locked: true } : {}),
+        ...(contested ? { contested } : {}),
+        ...(dismissed ? { contest_dismissed: dismissed } : {}),
         // #121: provenance stamps must survive the raw-view round-trip — the
         // server would restore dropped ones via carry-forward, but the raw view
         // should show what's really stored.

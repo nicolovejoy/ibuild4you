@@ -5,12 +5,21 @@ import { History, ChevronDown, ChevronRight } from 'lucide-react'
 import { useBriefVersions, useUpdateBrief } from '@/lib/query/hooks'
 import { formatPacific } from '@/lib/email/format'
 import { copy } from '@/lib/copy'
+import { lostLocks } from '@/lib/api/brief-merge'
+import type { BriefContent, BriefDecision } from '@/lib/types'
 
 // #194: archived versions of the brief, under the read view. Collapsed by
 // default and fetched only when opened. Restore re-submits an archived version
 // through the normal PUT (source 'restore'), so locks and provenance behave as
 // a paste and the version being replaced is itself archived.
-export function BriefHistory({ projectId }: { projectId: string }) {
+export function BriefHistory({
+  projectId,
+  currentDecisions,
+}: {
+  projectId: string
+  // #197: the live brief's decisions, so Restore can name the locks it would drop.
+  currentDecisions?: BriefDecision[]
+}) {
   const c = copy.brief
   const [open, setOpen] = useState(false)
   const [confirming, setConfirming] = useState<number | null>(null)
@@ -20,6 +29,12 @@ export function BriefHistory({ projectId }: { projectId: string }) {
   const restore = (content: unknown) => {
     updateBrief.mutate({ project_id: projectId, content, source: 'restore' })
     setConfirming(null)
+  }
+
+  // #197: name the locks a restore would drop; otherwise the generic confirm.
+  const restoreConfirmCopy = (version: number, content: unknown) => {
+    const lost = lostLocks(currentDecisions, (content as BriefContent | undefined)?.decisions)
+    return lost.length > 0 ? c.confirmRestoreLockLoss(version, lost) : c.confirmRestore(version)
   }
 
   return (
@@ -47,7 +62,7 @@ export function BriefHistory({ projectId }: { projectId: string }) {
               <span className="text-gray-400">{c.sourceLabel(v.source)}</span>
               {confirming === v.version ? (
                 <span className="flex items-center gap-2">
-                  <span className="text-gray-700">{c.confirmRestore(v.version)}</span>
+                  <span className="text-gray-700">{restoreConfirmCopy(v.version, v.content)}</span>
                   <button
                     onClick={() => restore(v.content)}
                     disabled={updateBrief.isPending}

@@ -1,5 +1,5 @@
 import { toLocale } from '@/lib/locale'
-import type { BriefContent, BriefSource } from '@/lib/types'
+import type { BriefContent, BriefDecision, BriefSource } from '@/lib/types'
 import {
   NEXT_CONVO_SYSTEM_PROMPT,
   buildNextConvoUserContent,
@@ -7,6 +7,7 @@ import {
 import { BRIEF_MODEL, BRIEF_MAX_TOKENS, BRIEF_TEMPERATURE } from '@/lib/agent/constants'
 import { logAnthropicCall } from '@/lib/observability/anthropic'
 import {
+  contestFor,
   reconcileBrief,
   stampDecisionProvenance,
   stripDecisionProvenance,
@@ -43,6 +44,16 @@ const UPDATE_BRIEF_TOOL = {
               type: 'boolean',
               description:
                 'A locked decision is a durable constraint set by the builder. Carry it forward verbatim — never drop or reword it, and never lock a decision yourself.',
+            },
+            contested: {
+              type: 'object',
+              description:
+                'Only on a decision that is locked. Fill this when the maker explicitly confirmed, in the conversation, that they want the locked decision reversed: proposed = what they want instead, reason = why and when they confirmed it. Keep topic, decision and locked unchanged — never drop or reword a locked decision.',
+              properties: {
+                proposed: { type: 'string' },
+                reason: { type: 'string' },
+              },
+              required: ['proposed', 'reason'],
             },
           },
           required: ['topic', 'decision'],
@@ -203,13 +214,21 @@ export async function regenerateBriefForProject(
     decisions: Array.isArray(raw.decisions)
       ? raw.decisions
           .filter(
-            (d): d is { topic: string; decision: string } =>
+            (d): d is BriefDecision =>
               !!d && typeof d.topic === 'string' && typeof d.decision === 'string',
           )
           // Only builders set locks (#182). A `locked` flag the model emits is
           // dropped here; the locks that exist come back verbatim from the
-          // previous brief in reconcileBrief below.
-          .map((d) => ({ topic: d.topic, decision: d.decision }))
+          // previous brief in reconcileBrief below. A well-formed `contested`
+          // (#197) rides through; reconcileBrief keeps it only on a real lock.
+          // `contest_dismissed` is never taken from the model — the previous
+          // brief carries it.
+          .map((d) => {
+            // `locked: true` here only means "shape-check the contest"; the
+            // merge below keeps it solely on a decision that is really locked.
+            const contested = contestFor(true, d.contested)
+            return { topic: d.topic, decision: d.decision, ...(contested ? { contested } : {}) }
+          })
       : [],
     open_risks: Array.isArray(raw.open_risks)
       ? raw.open_risks.filter(

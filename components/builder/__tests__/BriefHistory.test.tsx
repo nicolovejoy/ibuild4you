@@ -75,4 +75,31 @@ describe('BriefHistory (#194)', () => {
     expect(screen.queryByText(/Restore v3\?/)).toBeNull()
     expect(mockMutate).not.toHaveBeenCalled()
   })
+
+  it('restore confirm names the locks that would be lost (#197)', () => {
+    render(
+      <BriefHistory
+        projectId="p1"
+        currentDecisions={[{ topic: 'Payment', decision: 'Stripe only', locked: true }]}
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: /History/ }))
+    fireEvent.click(screen.getAllByRole('button', { name: 'Restore' })[0])
+    expect(screen.getByText('Restore v3? This removes the lock on: Payment. The current brief is kept in history.')).toBeTruthy()
+  })
+
+  it('restore confirm stays generic when no lock would be lost (#197)', () => {
+    mockVersions = [
+      { version: 3, content: { problem: 'v3', decisions: [{ topic: 'Payment', decision: 'Stripe only', locked: true }] }, updated_at: '2026-10-10T19:12:00.000Z', source: 'regen', archived_at: '2026-10-11T00:00:00.000Z' },
+    ]
+    render(
+      <BriefHistory
+        projectId="p1"
+        currentDecisions={[{ topic: 'Payment', decision: 'Stripe only', locked: true }]}
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: /History/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Restore' }))
+    expect(screen.getByText(/Restore v3\? The current brief is kept in history/)).toBeTruthy()
+  })
 })
