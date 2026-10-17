@@ -190,7 +190,7 @@ export async function PATCH(request: Request) {
   // Only allow updating specific setup fields
   // #195 phase 2: `layout_mockups` was removed from this list; the PATCH ignores
   // unknown fields, so an older payload that still sends it gets a 200 and no write.
-  const allowed = ['welcome_message', 'nudge_message', 'voice_sample', 'seed_questions', 'context', 'title', 'builder_directives', 'session_mode', 'requester_first_name', 'requester_last_name', 'last_nudged_at', 'last_builder_activity_at', 'identity', 'github_repo', 'auto_reminders_enabled', 'feedback_requires_identity', 'language', 'hide_title_in_previews'] as const
+  const allowed = ['welcome_message', 'nudge_message', 'voice_sample', 'seed_questions', 'context', 'title', 'builder_directives', 'session_mode', 'requester_first_name', 'requester_last_name', 'last_nudged_at', 'prep_copied_at', 'payload_pasted_at', 'payload_pasted_version', 'last_builder_activity_at', 'identity', 'github_repo', 'auto_reminders_enabled', 'feedback_requires_identity', 'language', 'hide_title_in_previews'] as const
   if ('language' in updates && !isLocale(updates.language)) {
     return NextResponse.json({ error: 'language must be one of: en, fr' }, { status: 400 })
   }

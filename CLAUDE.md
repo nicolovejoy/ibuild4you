@@ -130,7 +130,7 @@ A decision may carry `"locked": true` — a durable constraint (locked conventio
 
 ### Update (PATCH /api/projects)
 
-Requires `project_id`. Only these fields are accepted: `title`, `context`, `welcome_message`, `nudge_message`, `voice_sample`, `session_mode`, `seed_questions`, `builder_directives`, `requester_first_name`, `requester_last_name`, `last_nudged_at`, `last_builder_activity_at`, `identity`, `github_repo`, `auto_reminders_enabled`, `feedback_requires_identity`, `language` (`en`|`fr`, else 400), `hide_title_in_previews` (boolean, else 400). Changing `title` regenerates the slug.
+Requires `project_id`. Only these fields are accepted: `title`, `context`, `welcome_message`, `nudge_message`, `voice_sample`, `session_mode`, `seed_questions`, `builder_directives`, `requester_first_name`, `requester_last_name`, `last_nudged_at`, `prep_copied_at`, `payload_pasted_at`, `payload_pasted_version`, `last_builder_activity_at`, `identity`, `github_repo`, `auto_reminders_enabled`, `feedback_requires_identity`, `language` (`en`|`fr`, else 400), `hide_title_in_previews` (boolean, else 400). Changing `title` regenerates the slug.
 
 ## Agent Behavior Rules
 
@@ -165,6 +165,8 @@ Keep the code approachable — clarity over cleverness. Code should be:
 ## Next Steps
 
 > Shipped history lives in `docs/changelog.md` (newest first). **Prepend an entry there at session end — routine `/handoff` no longer touches docs (it only saves the session row), so do it explicitly before closing.** This section is **live work only**. Canonical backlog: `gh issue list --state open`.
+
+**Brief tab ferry desk — PR #222 open 2026-10-17, verified on preview, awaiting merge** (stamps, big paste box, dashboard new-since-paste pill; `prep_copied_at`/`payload_pasted_at`/`payload_pasted_version` on projects). Spec: `docs/superpowers/specs/2026-10-17-brief-ferry-desk-design.md`.
 
 **2026-10-08 follow-through.** #190 (regen ignores a model-emitted lock) and #191 (Sonnet 5.5 chat trial behind `CHAT_MODEL`, 5.x price rows, refusal fallback, SDK 0.132.1) **MERGED by Nico 2026-10-08 08:11 PT**. `CHAT_MODEL=claude-sonnet-5-5` is now set on Vercel **Preview and Production** (Nico's call 2026-10-08 08:2x PT; prod redeployed `ibuild4you-bhopis7wf`, Ready + aliased). Chat + kickoff run on Sonnet 5.5; regen/welcome/prep stay on 4.6. **Reviewed 2026-10-15: keep it** — ~44% cheaper per chat turn, no refusals/empty responses, replies ~2x longer (mostly requested recaps; re-check once a second maker has used it). See `docs/changelog.md`. To revert: remove `CHAT_MODEL` from the Production env and redeploy. **#196 MERGED** (phase 1 of #195); **#195 phase 2 SHIPPED 2026-10-15** (wireframes removed end to end; #210 tracks dropping the accept-and-ignore of `layout_mockups` on create/PATCH after one release). Per-brief model dial: #189. Digest (#182) decisions filed as issues: #192 mode-scope seed questions/directives (Q3), #193 welcome_message as a kickoff style hint on session 2+ (Q4), #194 brief version history (Q5), #195 de-prioritize wireframes, phase 1 = drop the always-on layout block from the chat prompt (Q6). Digest Q1 decided → **#197**: regen may *contest* a lock (proposed change + reason) but never remove it; Brief tab gets accept/dismiss, and a confirm step before a paste drops a lock. Password-reset email link wrapping verified by Nico on iPhone Mail + Gmail 2026-10-08 (pass).
 

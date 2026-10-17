@@ -66,3 +66,4 @@ next-env.d.ts
 
 # Local brief/transcript exports (PII — never commit)
 exports/
+.superpowers/

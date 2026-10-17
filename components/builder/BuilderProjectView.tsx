@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import {
   ArrowLeft, MessageSquare, Send, FileText, Sparkles, Plus, X,
   Share2, ChevronDown, ChevronUp, Copy, Check, Mail, RotateCw,
-  Trash2, Settings, Upload, ClipboardCopy, Users, KeyRound, UserPlus,
+  Trash2, Settings, Upload, Users, KeyRound, UserPlus,
 } from 'lucide-react'
 import { BuildTimestamp } from '@/components/build-timestamp'
 import { Card, CardBody } from '@/components/ui/Card'
@@ -64,6 +64,8 @@ import { queryKeys } from '@/lib/query/keys'
 import { BuilderFilesTab } from './BuilderFilesTab'
 import { ProjectCostsCard } from './ProjectCostsCard'
 import { BriefEditor } from './BriefEditor'
+import { FerryDesk } from './FerryDesk'
+import { ferryStamps } from '@/lib/builder/ferry-stamps'
 import { serializeBriefContent } from '@/lib/api/brief-json'
 import { getTurnIndicator } from '@/lib/turn-indicator'
 import { TurnBadge } from '@/components/ui/TurnBadge'
@@ -486,6 +488,10 @@ function BriefTab({
   const queryClient = useQueryClient()
   const [generating, setGenerating] = useState(false)
   const [loadingPayload, setLoadingPayload] = useState(false)
+  // Covers the whole import (brief save + optional config PATCH + paste
+  // stamp), not just the brief mutation.
+  const [importing, setImporting] = useState(false)
+  const router = useRouter()
   const updateBrief = useUpdateBrief()
   const updateProject = useUpdateProject()
   // #121: session id → conversation number, for decision-provenance suffixes in
@@ -496,7 +502,7 @@ function BriefTab({
   const hasBrief = briefContent && hasBriefContent(briefContent)
 
   // Arriving via the dispatch modal's "load a payload" link (#115): scroll to
-  // the import card + focus its textarea, then consume the one-shot flag.
+  // the ferry desk + focus its paste box, then consume the one-shot flag.
   const importCardRef = useRef<HTMLDivElement>(null)
   const importTextareaRef = useRef<HTMLTextAreaElement>(null)
   useEffect(() => {
@@ -569,6 +575,12 @@ function BriefTab({
       await navigator.clipboard.writeText(prompt)
       setPayloadCopied(true)
       setTimeout(() => setPayloadCopied(false), 2000)
+      // "Prep copied" stamp. Fire-and-forget: a failed stamp write must not
+      // undo or hide a copy that already landed on the clipboard.
+      updateProject.mutate(
+        { project_id: projectId, prep_copied_at: new Date().toISOString() },
+        { onError: (err) => console.error('Failed to write prep_copied_at stamp:', err) }
+      )
     } catch (err) {
       console.error('Failed to copy payload:', err)
     } finally {
@@ -585,17 +597,42 @@ function BriefTab({
       return
     }
 
+    setImporting(true)
     try {
       let configUpdated = false
       let warnings: string[] = []
+      // "Payload pasted" stamp: written only once the brief save (and any
+      // config PATCH) succeeded — never on a failed path. When the payload
+      // carries config, it rides in that same PATCH; otherwise it is its own
+      // PATCH, whose failure is only logged: the brief is already saved, so
+      // a missing stamp must not read as a failed import.
+      // The stamp also records the brief version this paste produced (from
+      // the PUT /api/briefs result), so the desk shows "vN" for the paste
+      // itself even after a later regen moves the brief on.
+      const pastedAt = new Date().toISOString()
+      const stampPasted = async (pastedVersion: number | undefined) => {
+        try {
+          await updateProject.mutateAsync({
+            project_id: projectId,
+            payload_pasted_at: pastedAt,
+            payload_pasted_version: pastedVersion,
+          })
+        } catch (err) {
+          console.error('Failed to write payload_pasted_at stamp:', err)
+        }
+      }
       if (result.value.mode === 'multi') {
-        await updateBrief.mutateAsync({ project_id: projectId, content: result.value.brief })
+        const saved = await updateBrief.mutateAsync({ project_id: projectId, content: result.value.brief })
         if (Object.keys(result.value.projectUpdate).length > 0) {
           await updateProject.mutateAsync({
             project_id: projectId,
             ...result.value.projectUpdate,
+            payload_pasted_at: pastedAt,
+            payload_pasted_version: saved?.version,
           } as Parameters<typeof updateProject.mutateAsync>[0])
           configUpdated = true
+        } else {
+          await stampPasted(saved?.version)
         }
         // Skip while the project is unloaded: session_mode would default to
         // discover and could warn falsely.
@@ -604,7 +641,8 @@ function BriefTab({
             ? nextConvoImportWarnings(result.value.projectUpdate, project?.session_mode)
             : []
       } else {
-        await updateBrief.mutateAsync({ project_id: projectId, content: result.value.brief as BriefContent })
+        const saved = await updateBrief.mutateAsync({ project_id: projectId, content: result.value.brief as BriefContent })
+        await stampPasted(saved?.version)
       }
       setPasteJson('')
       // Ignored fields: stay on the Brief tab so the builder reads the warning.
@@ -617,6 +655,8 @@ function BriefTab({
       onImported?.({ configUpdated })
     } catch (err) {
       setPasteError(err instanceof Error ? err.message : 'Failed to save')
+    } finally {
+      setImporting(false)
     }
   }
 
@@ -649,110 +689,96 @@ function BriefTab({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <h2 className="text-sm font-semibold text-brand-slate uppercase tracking-wide">Brief</h2>
-          {brief && <span className="text-xs text-gray-400">v{brief.version}</span>}
-        </div>
-        {hasBrief && (
-          <button
-            onClick={async () => {
-              await navigator.clipboard.writeText(formatBrief())
-              setBriefCopied(true)
-              setTimeout(() => setBriefCopied(false), 2000)
-            }}
-            className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand-navy"
-          >
-            {briefCopied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
-            {briefCopied ? 'Copied!' : 'Copy markdown'}
-          </button>
-        )}
-      </div>
-
-      {/* Ferry controls. The copy-paste round-trip routes builder reasoning onto
-          the Max sub (cost model); the in-app "Update from conversation" is the
-          optional metered-API convenience, never the default. */}
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        {/* The project query can be loading or errored while the brief is already
-            shown; copying then produced `Title: Untitled` in the prep export (#215). */}
-        <LoadingButton
-          variant="ghost"
-          size="sm"
-          loading={loadingPayload}
-          loadingText="Loading..."
-          disabled={!project}
-          onClick={handleCopyPayload}
-          icon={ClipboardCopy}
+      {/* The ferry desk: stamps (prep copied / payload pasted / maker last
+          active), the big paste box, Import + Copy prep. The copy-paste
+          round-trip routes builder reasoning onto the Max sub (cost model);
+          the metered "Update from conversation" lives under Details. Stamps
+          are written in handleCopyPayload (prep_copied_at) and, on success
+          only, in handleImportJson (payload_pasted_at). importCardRef wraps
+          the desk so the dispatch modal's "load a payload" link (#115) still
+          scrolls here and focuses the paste box. Copy prep is disabled (and
+          handleCopyPayload no-ops) while the project is unloaded, so the
+          export never says `Title: Untitled` (#215). */}
+      <div ref={importCardRef}>
+        <FerryDesk
+          stamps={ferryStamps(project ?? {})}
+          briefVersion={brief?.version ?? null}
+          sessionCount={briefTabSessions?.length}
+          pasteValue={pasteJson}
+          onPasteChange={(v) => { setPasteJson(v); setPasteError(null); setImportWarnings(null) }}
+          pasteError={pasteError}
+          importing={importing}
+          onImport={handleImportJson}
+          copyingPrep={loadingPayload}
+          prepCopied={payloadCopied}
+          onCopyPrep={handleCopyPayload}
+          copyPrepDisabled={!project}
+          onEscapeEmpty={() => router.push('/dashboard')}
+          textareaRef={importTextareaRef}
+          notices={
+            // Import succeeded but some fields were ignored: stay on the
+            // Brief tab so the builder reads the note, then continue by hand.
+            importWarnings && (
+              <>
+                {importWarnings.messages.map((w) => (
+                  <StatusMessage key={w} type="warning" message={w} />
+                ))}
+                <div className="flex items-center gap-3">
+                  <p className="text-xs text-gray-500">{copy.brief.importStayHint}</p>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => {
+                      const { configUpdated } = importWarnings
+                      setImportWarnings(null)
+                      onImported?.({ configUpdated })
+                    }}
+                  >
+                    {copy.brief.importContinueButton}
+                  </Button>
+                </div>
+              </>
+            )
+          }
         >
-          {payloadCopied ? 'Copied!' : 'Copy next-convo prep'}
-        </LoadingButton>
-        <button
-          onClick={() => setShowGenConfirm(true)}
-          className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand-navy"
-        >
-          <Sparkles className="h-3.5 w-3.5" />
-          Update from conversation (uses API)
-        </button>
-      </div>
-
-      {/* Paste target for the next-convo payload — the ferry's landing spot,
-          so it gets first-class placement above the brief (was a fold at the
-          bottom; Nico 2026-07-11). Accepts the full payload (brief + agent
-          config) or brief-only JSON; the BriefEditor's raw view covers
-          in-place edits. */}
-      <Card hover={false}>
-        <CardBody>
-          <div ref={importCardRef} className="space-y-2">
-            <h3 className="text-sm font-semibold text-brand-slate uppercase tracking-wide flex items-center gap-1.5">
-              <Upload className="h-4 w-4" /> Paste next-convo payload
-            </h3>
-            <p className="text-xs text-gray-400">
-              The JSON from your prep chat — full payload (brief + agent config) or brief-only.
-            </p>
-            <textarea
-              ref={importTextareaRef}
-              value={pasteJson}
-              onChange={(e) => { setPasteJson(e.target.value); setPasteError(null); setImportWarnings(null) }}
-              placeholder='Paste the "next-convo" JSON here...'
-              rows={3}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm font-mono focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
-            />
-            {pasteError && <StatusMessage type="error" message={pasteError} />}
-            {importWarnings?.messages.map((w) => (
-              <StatusMessage key={w} type="warning" message={w} />
-            ))}
-            {importWarnings && (
-              <div className="flex items-center gap-3">
-                <p className="text-xs text-gray-500">{copy.brief.importStayHint}</p>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => {
-                    const { configUpdated } = importWarnings
-                    setImportWarnings(null)
-                    onImported?.({ configUpdated })
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+              {hasBrief && (
+                <button
+                  onClick={async () => {
+                    await navigator.clipboard.writeText(formatBrief())
+                    setBriefCopied(true)
+                    setTimeout(() => setBriefCopied(false), 2000)
                   }}
+                  className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand-navy"
                 >
-                  {copy.brief.importContinueButton}
-                </Button>
-              </div>
-            )}
-            <LoadingButton
-              variant="secondary"
-              size="sm"
-              loading={updateBrief.isPending}
-              loadingText="Importing..."
-              disabled={!pasteJson.trim()}
-              onClick={handleImportJson}
-              icon={Upload}
-            >
-              Import JSON
-            </LoadingButton>
-          </div>
-        </CardBody>
-      </Card>
+                  {briefCopied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+                  {briefCopied ? 'Copied!' : 'Copy markdown'}
+                </button>
+              )}
+              <button
+                onClick={() => setShowGenConfirm(true)}
+                className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand-navy"
+              >
+                <Sparkles className="h-3.5 w-3.5" />
+                Update from conversation (uses API)
+              </button>
+            </div>
 
-      <BriefEditor projectId={projectId} content={briefContent} version={brief?.version} loading={briefLoading} sessions={briefTabSessions} />
+            <BriefEditor projectId={projectId} content={briefContent} version={brief?.version} loading={briefLoading} sessions={briefTabSessions} />
+
+            {/* Attachments — Files folded into the Brief (#19 Phase 2). Anything
+                uploaded to the brief that Sam can reference. */}
+            <div className="pt-2">
+              <h3 className="text-sm font-semibold text-brand-slate uppercase tracking-wide mb-2 flex items-center gap-1.5">
+                <Upload className="h-4 w-4" />
+                Attachments{files.length ? ` (${files.length})` : ''}
+              </h3>
+              <BuilderFilesTab projectId={projectId} files={files} />
+            </div>
+          </div>
+        </FerryDesk>
+      </div>
 
       {/* Confirm the metered-API regen — it overwrites the brief (locked
           decisions survive). Offer a copy-first so no manual edit is lost. */}
@@ -784,16 +810,6 @@ function BriefTab({
           </div>
         </div>
       </Modal>
-
-      {/* Attachments — Files folded into the Brief (#19 Phase 2). Anything
-          uploaded to the brief that Sam can reference. */}
-      <div className="pt-2">
-        <h3 className="text-sm font-semibold text-brand-slate uppercase tracking-wide mb-2 flex items-center gap-1.5">
-          <Upload className="h-4 w-4" />
-          Attachments{files.length ? ` (${files.length})` : ''}
-        </h3>
-        <BuilderFilesTab projectId={projectId} files={files} />
-      </div>
     </div>
   )
 }

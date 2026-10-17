@@ -67,6 +67,9 @@ export interface Project extends BaseEntity {
   requester_last_name?: string
   shared_at?: string // when the project was shared with the maker
   last_nudged_at?: string // when the builder last copied a nudge message
+  prep_copied_at?: string // when the builder last copied the prep prompt (client-set, UTC ISO)
+  payload_pasted_at?: string // when the builder last pasted a brief payload (client-set, UTC ISO)
+  payload_pasted_version?: number // brief version that last paste produced (client-set, from the PUT /api/briefs result)
   welcome_message?: string // admin-reviewed welcome message for the maker
   nudge_message?: string // builder-authored outbound nudge; used verbatim when set
   voice_sample?: string // builder's voice anchor for AI-generated outbound copy

@@ -169,6 +169,22 @@ describe('PATCH /api/projects', () => {
     expect(data.voice_sample).toBe('Short. Direct. No filler.')
   })
 
+  it('persists prep_copied_at, payload_pasted_at and payload_pasted_version verbatim', async () => {
+    const res = await PATCH(
+      makePatchRequest({
+        project_id: 'proj-1',
+        prep_copied_at: '2026-10-17T16:14:00.000Z',
+        payload_pasted_at: '2026-10-17T16:20:00.000Z',
+        payload_pasted_version: 5,
+      })
+    )
+    expect(res.status).toBe(200)
+    const written = updatedDocs['projects'][0].data
+    expect(written.prep_copied_at).toBe('2026-10-17T16:14:00.000Z')
+    expect(written.payload_pasted_at).toBe('2026-10-17T16:20:00.000Z')
+    expect(written.payload_pasted_version).toBe(5)
+  })
+
   it('updates language and hide_title_in_previews', async () => {
     const res = await PATCH(
       makePatchRequest({ project_id: 'proj-1', language: 'fr', hide_title_in_previews: true })
