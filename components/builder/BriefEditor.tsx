@@ -11,8 +11,8 @@ import { parseBriefJson, serializeBriefContent, emptyBrief } from '@/lib/api/bri
 import { lockedFirst, lostLocks, resolveContest, type ContestAction } from '@/lib/api/brief-merge'
 import { copy } from '@/lib/copy'
 import { sessionNumberById, decisionProvenanceSuffix } from '@/lib/builder/decision-provenance'
-import type { BriefContent, BriefDecision, Session } from '@/lib/types'
-import { riskText } from '@/lib/brief/risks'
+import type { BriefContent, BriefDecision, BriefRisk, BriefRiskOwner, Session } from '@/lib/types'
+import { riskText, riskOwner } from '@/lib/brief/risks'
 import { BriefHistory } from './BriefHistory'
 
 // Brief-as-document editor (#19 Phase 3). Read-first: the brief renders as a
@@ -382,7 +382,20 @@ function BriefReadView({ content }: { content: BriefContent }) {
       {openRisks.length > 0 && (
         <Section label="Open risks">
           <ul className="list-disc list-inside space-y-1">
-            {openRisks.map((r, i) => <li key={i} className="text-gray-800 text-sm">{riskText(r)}</li>)}
+            {openRisks.map((r, i) => (
+              <li key={i} className="text-gray-800 text-sm">
+                {riskOwner(r) && (
+                  <span
+                    className={`inline-flex items-center mr-1.5 px-1.5 py-0.5 rounded text-[10px] font-semibold ${
+                      riskOwner(r) === 'maker' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-700'
+                    }`}
+                  >
+                    {riskOwner(r) === 'maker' ? copy.brief.riskOwnerMaker : copy.brief.riskOwnerBuilder}
+                  </span>
+                )}
+                {riskText(r)}
+              </li>
+            ))}
           </ul>
         </Section>
       )}
@@ -532,9 +545,9 @@ function StructuredEditor({
         decisions={draft.decisions || []}
         onChange={(decisions) => set({ decisions })}
       />
-      <StringListField
+      <RiskListField
         label="Open risks"
-        items={(draft.open_risks || []).map(riskText)}
+        items={draft.open_risks || []}
         onChange={(open_risks) => set({ open_risks })}
         placeholder="Add an open risk…"
       />
@@ -598,6 +611,74 @@ function StringListField({
                 onChange={(e) => onChange(items.map((it, idx) => (idx === i ? e.target.value : it)))}
                 className="flex-1 px-2.5 py-1.5 border border-gray-200 rounded text-sm focus:outline-none focus:ring-1 focus:ring-brand-navy"
               />
+              <button onClick={() => onChange(items.filter((_, idx) => idx !== i))} className="p-1 text-gray-400 hover:text-red-500 shrink-0">
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="flex gap-2">
+        <input
+          value={adding}
+          onChange={(e) => setAdding(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); add() } }}
+          placeholder={placeholder}
+          className="flex-1 px-2.5 py-1.5 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
+        />
+        <button onClick={add} disabled={!adding.trim()} className="p-1.5 text-gray-400 hover:text-brand-navy hover:bg-gray-100 rounded disabled:opacity-40">
+          <Plus className="h-4 w-4" />
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// Open risks: text plus an optional owner. Owner '' collapses to a plain
+// string (canonical form, lib/brief/risks.ts); the add row is text-only.
+function RiskListField({
+  label,
+  items,
+  onChange,
+  placeholder,
+}: {
+  label: string
+  items: Array<string | BriefRisk>
+  onChange: (items: Array<string | BriefRisk>) => void
+  placeholder: string
+}) {
+  const [adding, setAdding] = useState('')
+  const add = () => {
+    if (!adding.trim()) return
+    onChange([...items, adding.trim()])
+    setAdding('')
+  }
+  const build = (text: string, owner: BriefRiskOwner | undefined): string | BriefRisk =>
+    owner ? { text, owner } : text
+  return (
+    <div>
+      <label className="text-xs font-semibold text-brand-slate uppercase tracking-wide block mb-1.5">{label}</label>
+      {items.length > 0 && (
+        <ul className="space-y-1.5 mb-2">
+          {items.map((item, i) => (
+            <li key={i} className="flex items-center gap-2">
+              <input
+                value={riskText(item)}
+                onChange={(e) => onChange(items.map((it, idx) => (idx === i ? build(e.target.value, riskOwner(it)) : it)))}
+                className="flex-1 px-2.5 py-1.5 border border-gray-200 rounded text-sm focus:outline-none focus:ring-1 focus:ring-brand-navy"
+              />
+              <select
+                aria-label={copy.brief.riskOwnerLabel}
+                value={riskOwner(item) ?? ''}
+                onChange={(e) =>
+                  onChange(items.map((it, idx) => (idx === i ? build(riskText(it), (e.target.value || undefined) as BriefRiskOwner | undefined) : it)))
+                }
+                className="px-1.5 py-1.5 border border-gray-200 rounded text-sm"
+              >
+                <option value="">{copy.brief.riskOwnerNone}</option>
+                <option value="maker">{copy.brief.riskOwnerMaker}</option>
+                <option value="builder">{copy.brief.riskOwnerBuilder}</option>
+              </select>
               <button onClick={() => onChange(items.filter((_, idx) => idx !== i))} className="p-1 text-gray-400 hover:text-red-500 shrink-0">
                 <X className="h-3.5 w-3.5" />
               </button>

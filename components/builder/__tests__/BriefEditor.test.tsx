@@ -202,3 +202,53 @@ describe('BriefEditor — lock-loss guard (#197 Part B)', () => {
     expect(screen.queryByText(/removes the lock on/)).toBeNull()
   })
 })
+
+describe('BriefEditor — open risk owners (#220)', () => {
+  const withRisks = (): BriefContent => ({
+    ...base,
+    decisions: [],
+    open_risks: ['plain', { text: 'q', owner: 'maker' }, { text: 'b', owner: 'builder' }],
+  })
+  const renderRisks = () => render(<BriefEditor projectId="p1" content={withRisks()} version={3} />)
+  const savedRisks = () =>
+    (mockMutateAsync.mock.calls[0] as unknown as [{ content: BriefContent }])[0].content.open_risks
+
+  it('read view badges owned risks', () => {
+    renderRisks()
+    expect(screen.getAllByText('Maker')).toHaveLength(1)
+    expect(screen.getAllByText('Builder')).toHaveLength(1)
+    for (const t of ['plain', 'q', 'b']) expect(screen.getByText(t)).toBeTruthy()
+  })
+
+  it('owner select round-trips to canonical form on save', async () => {
+    renderRisks()
+    fireEvent.click(screen.getByRole('button', { name: /Edit brief/ }))
+    const selects = screen.getAllByLabelText('Owner') as HTMLSelectElement[]
+    expect(selects.map((s) => s.value)).toEqual(['', 'maker', 'builder'])
+    fireEvent.change(selects[0], { target: { value: 'maker' } })
+    fireEvent.change(selects[1], { target: { value: '' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save brief' }))
+    await waitFor(() => expect(mockMutateAsync).toHaveBeenCalledOnce())
+    expect(savedRisks()).toEqual([{ text: 'plain', owner: 'maker' }, 'q', { text: 'b', owner: 'builder' }])
+  })
+
+  it('editing text keeps the owner', async () => {
+    renderRisks()
+    fireEvent.click(screen.getByRole('button', { name: /Edit brief/ }))
+    fireEvent.change(screen.getByDisplayValue('q'), { target: { value: 'q2' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save brief' }))
+    await waitFor(() => expect(mockMutateAsync).toHaveBeenCalledOnce())
+    expect(savedRisks()).toEqual(['plain', { text: 'q2', owner: 'maker' }, { text: 'b', owner: 'builder' }])
+  })
+
+  it('adding a risk creates an unowned string', async () => {
+    renderRisks()
+    fireEvent.click(screen.getByRole('button', { name: /Edit brief/ }))
+    const input = screen.getByPlaceholderText('Add an open risk…')
+    fireEvent.change(input, { target: { value: 'new' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    fireEvent.click(screen.getByRole('button', { name: 'Save brief' }))
+    await waitFor(() => expect(mockMutateAsync).toHaveBeenCalledOnce())
+    expect(savedRisks()?.[3]).toBe('new')
+  })
+})
