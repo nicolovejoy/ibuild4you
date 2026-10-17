@@ -47,6 +47,7 @@ export interface Project extends BaseEntity {
   last_nudged_at?: string // when the builder last copied a nudge message
   prep_copied_at?: string // when the builder last copied the prep prompt (client-set, UTC ISO)
   payload_pasted_at?: string // when the builder last pasted a brief payload (client-set, UTC ISO)
+  maker_waiting_since?: string | null // set when the maker greeted/spoke into an unqueued session (#214); cleared when a payload is queued
   payload_pasted_version?: number // brief version that last paste produced (client-set, from the PUT /api/briefs result)
   welcome_message?: string // admin-reviewed welcome message for the maker
   nudge_message?: string // builder-authored outbound nudge; used verbatim when set
@@ -104,6 +105,8 @@ export interface Session extends BaseEntity {
   project_id: string
   status: 'active' | 'completed' | 'archived' // 'archived' = reversibly hidden (admin Brief-doctor, #105)
   archived_at?: string | null
+  last_kickoff_at?: string // when the agent last greeted this session via kickoff (#214)
+  unqueued_notified_at?: string // when the builder was last told the maker is waiting with nothing queued (#214)
   summary?: string
   // Agent config snapshot — captured when session is created
   session_mode?: 'discover' | 'converge'
@@ -129,6 +132,7 @@ export interface Message extends BaseEntity {
   sender_email?: string // who sent this message (for user messages)
   sender_display_name?: string // cached display name at write time
   file_ids?: string[] // attached file IDs
+  kind?: 'unqueued_greeting' // canned "nothing queued" greeting, not model output (#214)
   rating?: 'up' | 'down' | null // maker's 👍/👎 on an agent message (#130)
 }
 

@@ -128,6 +128,7 @@ export const copy = {
     emptyMaker: "You don't have any briefs yet. Check back soon!",
     turnAwaitingMaker: (name: string) => `Waiting on ${name}`,
     turnYourTurn: 'Your turn',
+    turnMakerWaiting: 'Maker waiting — nothing queued',
     activityAgent: (time: string) => `Agent responded ${time}`,
     activityMaker: (name: string, time: string) => `${name} messaged ${time}`,
     builderActivity: (time: string) => `You edited ${time}`,
@@ -224,6 +225,11 @@ export const copy = {
     // Shown in place of makerEmptyState when the agent's automatic greeting
     // (kickoff) failed — a blank chat otherwise reads as broken.
     makerKickoffFailed: "Sam couldn't start the conversation just now — say hello to begin.",
+    // Canned greeting when the maker returns but the builder has queued nothing
+    // new (#214). FR twin lives in makerCopy.fr.chat.
+    nothingQueuedGreeting: (builder: string) =>
+      `Hi — ${builder} hasn't queued our next conversation yet, so I don't have anything new to go through with you. If something's on your mind in the meantime, tell me and I'll keep notes for ${builder}.`,
+    builderFallbackName: 'your builder',
     defaultWelcomeMessage: (projectTitle: string) =>
       `Hey! Welcome to ${projectTitle}. I'm here to help figure out what you're looking for — just a casual conversation, no technical knowledge needed.\n\nWhat's the idea you have in mind?`,
   },

@@ -6,7 +6,7 @@ type ViewerRole = MemberRole | 'admin' | null
 
 // Machine-readable turn state, separate from the display strings. Lets the
 // dashboard group/sort by urgency without matching on `label`.
-export type TurnState = 'your_turn' | 'waiting' | 'needs_setup' | 'completed'
+export type TurnState = 'your_turn' | 'waiting' | 'needs_setup' | 'completed' | 'maker_waiting'
 
 interface TurnIndicator {
   state: TurnState
@@ -35,6 +35,12 @@ export function getTurnIndicator(
 
   const makerName = project.requester_first_name || project.requester_email.split('@')[0]
   const isMaker = viewerRole === 'maker'
+
+  // The maker opened a conversation and nothing was queued for them. Builder
+  // side only: the maker is looking at the chat itself.
+  if (!isMaker && project.maker_waiting_since) {
+    return { state: 'maker_waiting', label: t.makerWaiting, className: 'bg-rose-100 text-rose-700' }
+  }
 
   const makerMessagedInCurrentSession = project.last_maker_message_at
     && project.latest_session_created_at

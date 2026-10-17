@@ -626,6 +626,17 @@ describe('buildSystemPromptParts', () => {
     expect(parts.stable).toContain(DEFAULT_IDENTITY)
   })
 
+  it('adds the Nothing queued block to the volatile part when flagged', () => {
+    const parts = buildSystemPromptParts({ ...minimalInput, nothingQueued: true })
+    expect(parts.volatile).toContain('## Nothing queued')
+    expect(parts.volatile).toContain('The builder has not prepared this conversation yet.')
+    expect(parts.stable).not.toContain('## Nothing queued')
+  })
+
+  it('omits the Nothing queued block by default', () => {
+    expect(buildSystemPromptParts(minimalInput).volatile ?? '').not.toContain('Nothing queued')
+  })
+
   it('puts the gap block in volatile and keeps stable byte-identical across turn 1 (gap) and turn 2 (no gap)', () => {
     const turn1 = buildSystemPromptParts({ ...minimalInput, sessionNumber: 2, gapSinceLastMakerMessageMs: 3 * HOUR })
     const turn2 = buildSystemPromptParts({ ...minimalInput, sessionNumber: 2, gapSinceLastMakerMessageMs: 60 * 1000 })

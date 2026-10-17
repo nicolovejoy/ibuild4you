@@ -120,6 +120,22 @@ export async function POST(request: Request) {
     updated_at: now,
   })
 
+  // A session being completed here that the maker never spoke in has not
+  // "used" its welcome (#214): an import posts the new welcome into the open
+  // session, then the builder clicks Start. Without this the welcome would be
+  // stranded in a completed session and the new one would open empty. One
+  // query per active session (normally one).
+  const unusedSessionIds = new Set<string>()
+  for (const doc of activeSessions.docs) {
+    const makerSnap = await db
+      .collection('messages')
+      .where('session_id', '==', doc.id)
+      .where('role', '==', 'user')
+      .limit(1)
+      .get()
+    if (makerSnap.empty) unusedSessionIds.add(doc.id)
+  }
+
   // Open the conversation with the builder's welcome, word for word: always on
   // the first session (default copy if none is set), and on a return session
   // only when the welcome is new for this round. Archived sessions count as
@@ -127,7 +143,9 @@ export async function POST(request: Request) {
   const builderWelcome = welcomeToPost({
     isFirstSession,
     welcome: projectData.welcome_message as string | undefined,
-    earlierWelcomes: existingSessions.docs.map((d) => d.data().welcome_message as string | undefined),
+    earlierWelcomes: existingSessions.docs
+      .filter((d) => !unusedSessionIds.has(d.id))
+      .map((d) => d.data().welcome_message as string | undefined),
   })
   const welcomeMessage =
     builderWelcome ?? (isFirstSession ? copy.chat.defaultWelcomeMessage(projectData.title as string) : null)

@@ -182,6 +182,20 @@ describe('shouldFlatten', () => {
   })
 })
 
+describe('groupBriefs maker_waiting', () => {
+  it('groups with your_turn in Awaiting you, ahead of needs_setup', () => {
+    const out = groupBriefs([
+      brief({ id: 'setup', viewer_role: 'owner', session_count: 0 }),
+      brief({
+        id: 'mw',
+        viewer_role: 'owner',
+        maker_waiting_since: '2026-06-02T00:00:00.000Z',
+      }),
+    ])
+    expect(ids(out, 'awaiting')).toEqual(['mw', 'setup'])
+  })
+})
+
 describe('groupBriefs in French', () => {
   it('uses French section titles and hints', () => {
     const out = groupBriefs([], 'fr')

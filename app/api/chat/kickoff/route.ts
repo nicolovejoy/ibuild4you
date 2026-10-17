@@ -12,6 +12,9 @@ import { logAnthropicCall } from '@/lib/observability/anthropic'
 import { accumulateSessionUsage } from '@/lib/observability/session-cost'
 import Anthropic from '@anthropic-ai/sdk'
 import { isArchivedSession } from '@/lib/sessions/active'
+import { isUnqueuedReturn } from '@/lib/sessions/queued'
+import { unqueuedGreeting, ownerFirstName } from '@/lib/sessions/unqueued-greeting'
+import { sendUnqueuedNotification } from '@/lib/email/unqueued-notify'
 import type { BriefContent, BriefRole } from '@/lib/types'
 
 // Agent kickoff (#31). When a maker opens a stale session, the frontend calls
@@ -142,6 +145,58 @@ export async function POST(request: Request) {
   // refuses immediately instead of double-greeting.
   const now = new Date().toISOString()
   await db.collection('sessions').doc(session_id).update({ last_kickoff_at: now, updated_at: now })
+
+  // Nothing-queued path (#214): store + stream the canned greeting, flag the
+  // maker as waiting, and email the builder once per session. Never touches
+  // last_maker_message_at / notify_* (kickoff isn't maker activity).
+  async function respondUnqueued() {
+    const greeting = unqueuedGreeting(toLocale(projectData.language), await ownerFirstName(db, projectId))
+    await db.collection('messages').add({
+      session_id,
+      role: 'agent',
+      content: greeting,
+      kind: 'unqueued_greeting',
+      created_at: now,
+      updated_at: now,
+    })
+    await db
+      .collection('projects')
+      .doc(projectId)
+      .update({ maker_waiting_since: projectData.maker_waiting_since ?? now, updated_at: now })
+
+    if (!sessionData.unqueued_notified_at) {
+      await db.collection('sessions').doc(session_id).update({ unqueued_notified_at: now })
+      try {
+        await sendUnqueuedNotification({
+          makerName: (projectData.requester_first_name as string | undefined) || 'Your maker',
+          projectTitle: (projectData.title as string | undefined) || 'your brief',
+          slug: projectData.slug as string,
+          openedAt: now,
+        })
+      } catch (err) {
+        console.error('[kickoff] unqueued notification failed:', err)
+      }
+    }
+
+    const encoder = new TextEncoder()
+    return new Response(
+      new ReadableStream({
+        start(controller) {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: greeting })}\n\n`))
+          controller.enqueue(encoder.encode('data: [DONE]\n\n'))
+          controller.close()
+        },
+      }),
+      { headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' } },
+    )
+  }
+
+  // #214: a return between rounds with nothing queued -> canned greeting, no
+  // model. Mid-intake returns (the maker has spoken in this session and the
+  // builder has not harvested the round) keep the normal recap greeting.
+  if (isUnqueuedReturn({ project: projectData, sessionHasMakerMessage: makerMessages.length > 0 })) {
+    return respondUnqueued()
+  }
 
   // --- Build the Claude conversation (text-only history) ---
   // Multi-human: prefix user turns with the speaker's name so Claude can tell

@@ -112,6 +112,16 @@ vi.mock('@/lib/agent/system-prompt', () => ({
   buildSystemPromptParts: vi.fn(() => ({ stable: 'You are a helpful assistant', volatile: null })),
 }))
 
+const resendSend = vi.fn(async () => ({ id: 'e1' }))
+vi.mock('resend', () => ({ Resend: vi.fn(() => ({ emails: { send: resendSend } })) }))
+
+// Owner lookup uses a query chain this file's db mock does not model.
+let mockOwnerFirst: string | null = 'Nico'
+vi.mock('@/lib/sessions/unqueued-greeting', async (orig) => ({
+  ...(await orig<typeof import('@/lib/sessions/unqueued-greeting')>()),
+  ownerFirstName: vi.fn(async () => mockOwnerFirst),
+}))
+
 vi.mock('@/lib/observability/anthropic', () => ({
   logAnthropicCall: vi.fn(async () => {}),
 }))
@@ -126,11 +136,15 @@ function makeRequest(body: Record<string, unknown>) {
 
 async function drain(response: Response) {
   const reader = response.body?.getReader()
-  if (!reader) return
+  if (!reader) return ''
+  const decoder = new TextDecoder()
+  let out = ''
   while (true) {
-    const { done } = await reader.read()
+    const { done, value } = await reader.read()
     if (done) break
+    out += decoder.decode(value)
   }
+  return out
 }
 
 const HOUR = 60 * 60 * 1000
@@ -147,17 +161,25 @@ function setup(opts: {
   messages: { id: string; data: () => Record<string, unknown> }[]
   lastKickoffAt?: string | null
   lastMakerMessageAt?: string | null
+  session?: Record<string, unknown>
+  project?: Record<string, unknown>
 }) {
   docData = {
     sessions: {
       exists: true,
-      data: () => ({ project_id: 'proj-1', last_kickoff_at: opts.lastKickoffAt ?? null }),
+      data: () => ({ project_id: 'proj-1', last_kickoff_at: opts.lastKickoffAt ?? null, ...opts.session }),
     },
     projects: {
       exists: true,
       data: () => ({
         requester_first_name: 'Sam',
+        title: 'Cafe app',
+        slug: 'cafe-app',
         last_maker_message_at: opts.lastMakerMessageAt ?? null,
+        // No paste/prep stamps by default: a return-after-a-break with the
+        // maker's own messages in the session takes the model path under the
+        // #214 rule (isUnqueuedReturn). Tests that need a stamp set it.
+        ...opts.project,
       }),
     },
   }
@@ -179,6 +201,8 @@ describe('POST /api/chat/kickoff', () => {
     updateCalls.length = 0
     capturedStreamArgs = null
     mockGetProjectRole.mockResolvedValue('maker')
+    mockOwnerFirst = 'Nico'
+    vi.stubEnv('RESEND_API_KEY', 'k')
   })
 
   it('uses CHAT_MODEL with the 5.x request shape, like /api/chat (#184)', async () => {
@@ -373,7 +397,8 @@ describe('POST /api/chat/kickoff', () => {
   // #70: a return session now starts empty (no canned welcome). The agent should
   // still greet when the project has prior maker history.
   it('fires on an empty return session when the project has prior maker history', async () => {
-    setup({ messages: [], lastMakerMessageAt: iso(3 * HOUR) })
+    // Queued (pasted after the maker last spoke), so this is the model greeting.
+    setup({ messages: [], lastMakerMessageAt: iso(3 * HOUR), project: { payload_pasted_at: iso(HOUR) } })
     const res = await POST(makeRequest({ session_id: 'sess-1' }))
     expect(res.headers.get('Content-Type')).toBe('text/event-stream')
     await drain(res)
@@ -399,5 +424,157 @@ describe('POST /api/chat/kickoff', () => {
     const body = await res.json()
     expect(body.kicked_off).toBe(false)
     expect(body.reason).toBe('no_maker_history')
+  })
+
+  describe('nothing queued (#214)', () => {
+    const unqueued = (extra: Record<string, unknown> = {}) => ({
+      messages: [] as { id: string; data: () => Record<string, unknown> }[],
+      lastMakerMessageAt: iso(2 * HOUR),
+      project: { requester_first_name: 'Mara', payload_pasted_at: undefined },
+      ...extra,
+    })
+
+    it('posts the canned greeting, tags it, skips the model, stamps maker_waiting_since, emails once', async () => {
+      setup(unqueued())
+      const res = await POST(makeRequest({ session_id: 'sess-1' }))
+      expect(res.headers.get('Content-Type')).toBe('text/event-stream')
+      const out = await drain(res)
+      expect(out).toContain("hasn't queued our next conversation yet")
+      expect(out).toContain('Nico')
+      expect(out).toContain('data: [DONE]')
+      expect(capturedStreamArgs).toBeNull()
+      const stored = addCalls.find((c) => c.collection === 'messages')!
+      expect(stored.data.kind).toBe('unqueued_greeting')
+      expect(stored.data.role).toBe('agent')
+      expect(updateCalls.some((u) => typeof u.maker_waiting_since === 'string')).toBe(true)
+      // The once-per-session email gate is stamped on the first canned kickoff.
+      expect(updateCalls.some((u) => typeof u.unqueued_notified_at === 'string')).toBe(true)
+      expect(updateCalls.some((u) => 'last_maker_message_at' in u || 'notify_after' in u || 'notify_pending_since' in u)).toBe(false)
+      expect(resendSend).toHaveBeenCalledTimes(1)
+      expect((resendSend.mock.calls[0] as unknown[])[0]).toMatchObject({
+        subject: 'Mara opened "Cafe app" — nothing queued',
+      })
+    })
+
+    it('does not email again on a session already notified', async () => {
+      setup(unqueued({ session: { unqueued_notified_at: iso(HOUR) } }))
+      const out = await drain(await POST(makeRequest({ session_id: 'sess-1' })))
+      expect(out).toContain("hasn't queued")
+      expect(resendSend).not.toHaveBeenCalled()
+      expect(updateCalls.some((u) => 'unqueued_notified_at' in u)).toBe(false)
+    })
+
+    it('keeps the earlier maker_waiting_since', async () => {
+      const earlier = iso(HOUR)
+      setup(unqueued({ project: { requester_first_name: 'Mara', payload_pasted_at: undefined, maker_waiting_since: earlier } }))
+      await drain(await POST(makeRequest({ session_id: 'sess-1' })))
+      expect(updateCalls.find((u) => 'maker_waiting_since' in u)!.maker_waiting_since).toBe(earlier)
+    })
+
+    it('suppressed under FEEDBACK_NOTIFY_SUPPRESS=on', async () => {
+      vi.stubEnv('FEEDBACK_NOTIFY_SUPPRESS', 'on')
+      setup(unqueued())
+      const out = await drain(await POST(makeRequest({ session_id: 'sess-1' })))
+      expect(out).toContain("hasn't queued")
+      expect(resendSend).not.toHaveBeenCalled()
+    })
+
+    it('still greets when the email send fails', async () => {
+      resendSend.mockRejectedValueOnce(new Error('boom'))
+      const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+      setup(unqueued())
+      const out = await drain(await POST(makeRequest({ session_id: 'sess-1' })))
+      expect(out).toContain("hasn't queued")
+      err.mockRestore()
+    })
+
+    it('uses "your builder" when there is no owner first name', async () => {
+      mockOwnerFirst = null
+      setup(unqueued())
+      const out = await drain(await POST(makeRequest({ session_id: 'sess-1' })))
+      expect(out).toContain('your builder')
+    })
+
+    it('queued -> model path unchanged', async () => {
+      setup({
+        messages: [msg('user', 3 * HOUR), msg('agent', 3 * HOUR)],
+        lastMakerMessageAt: iso(3 * HOUR),
+        project: { payload_pasted_at: iso(HOUR) },
+      })
+      await drain(await POST(makeRequest({ session_id: 'sess-1' })))
+      expect(capturedStreamArgs).not.toBeNull()
+      expect(addCalls.find((c) => c.collection === 'messages')!.data.kind).toBeUndefined()
+      expect(resendSend).not.toHaveBeenCalled()
+    })
+
+    it('a paste equal to the last maker message counts as not queued', async () => {
+      const t = iso(2 * HOUR)
+      setup(unqueued({ lastMakerMessageAt: t, project: { requester_first_name: 'Mara', payload_pasted_at: t } }))
+      await drain(await POST(makeRequest({ session_id: 'sess-1' })))
+      expect(capturedStreamArgs).toBeNull()
+      expect(addCalls.find((c) => c.collection === 'messages')!.data.kind).toBe('unqueued_greeting')
+    })
+
+    // Post-review ruling (2026-10-17): the canned greeting is for a return
+    // between rounds, never a ≥1h return mid-intake.
+    describe('only between rounds', () => {
+      const midRound = [msg('agent', 5 * HOUR), msg('user', 2 * HOUR), msg('agent', 2 * HOUR)]
+
+      it('(a) first session, maker messages, no paste stamp, 2h gap -> model path', async () => {
+        setup({ messages: midRound, lastMakerMessageAt: iso(2 * HOUR), project: { payload_pasted_at: undefined } })
+        await drain(await POST(makeRequest({ session_id: 'sess-1' })))
+        expect(capturedStreamArgs).not.toBeNull()
+        expect(addCalls.find((c) => c.collection === 'messages')!.data.kind).toBeUndefined()
+        expect(resendSend).not.toHaveBeenCalled()
+        expect(updateCalls.some((u) => 'maker_waiting_since' in u)).toBe(false)
+      })
+
+      it('(b) later round, maker messages, paste older than last maker message, no prep stamp -> model path', async () => {
+        setup({
+          messages: midRound,
+          lastMakerMessageAt: iso(2 * HOUR),
+          project: { payload_pasted_at: iso(6 * HOUR) },
+        })
+        await drain(await POST(makeRequest({ session_id: 'sess-1' })))
+        expect(capturedStreamArgs).not.toBeNull()
+        expect(addCalls.find((c) => c.collection === 'messages')!.data.kind).toBeUndefined()
+        expect(resendSend).not.toHaveBeenCalled()
+        expect(updateCalls.some((u) => 'maker_waiting_since' in u)).toBe(false)
+      })
+
+      it('(c) as (b) but the builder copied the prep after the maker last spoke -> canned', async () => {
+        setup({
+          messages: midRound,
+          lastMakerMessageAt: iso(2 * HOUR),
+          project: { payload_pasted_at: iso(6 * HOUR), prep_copied_at: iso(HOUR) },
+        })
+        const out = await drain(await POST(makeRequest({ session_id: 'sess-1' })))
+        expect(out).toContain("hasn't queued")
+        expect(capturedStreamArgs).toBeNull()
+        expect(addCalls.find((c) => c.collection === 'messages')!.data.kind).toBe('unqueued_greeting')
+        expect(resendSend).toHaveBeenCalledTimes(1)
+      })
+
+      it('(d) empty return session, no paste -> canned', async () => {
+        setup({ messages: [], lastMakerMessageAt: iso(2 * HOUR), project: { payload_pasted_at: undefined } })
+        const out = await drain(await POST(makeRequest({ session_id: 'sess-1' })))
+        expect(out).toContain("hasn't queued")
+        expect(capturedStreamArgs).toBeNull()
+      })
+
+      it('(e) empty return session, paste newer than the last maker message -> model', async () => {
+        setup({ messages: [], lastMakerMessageAt: iso(2 * HOUR), project: { payload_pasted_at: iso(HOUR) } })
+        await drain(await POST(makeRequest({ session_id: 'sess-1' })))
+        expect(capturedStreamArgs).not.toBeNull()
+        expect(addCalls.find((c) => c.collection === 'messages')!.data.kind).toBeUndefined()
+      })
+    })
+
+    it('still declines no_maker_history before the guard', async () => {
+      setup({ messages: [], lastMakerMessageAt: null, project: { payload_pasted_at: undefined } })
+      const res = await POST(makeRequest({ session_id: 'sess-1' }))
+      expect((await res.json()).reason).toBe('no_maker_history')
+      expect(addCalls).toHaveLength(0)
+    })
   })
 })

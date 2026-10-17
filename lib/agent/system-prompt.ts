@@ -23,6 +23,9 @@ interface SystemPromptInput {
   makerFirstName?: string
   makerLastName?: string
   gapSinceLastMakerMessageMs?: number
+  // #214: the maker got the canned "nothing queued" greeting and the builder
+  // still hasn't prepared anything, so the agent listens instead of running discovery.
+  nothingQueued?: boolean
   // Multi-human brief: who has posted in this session, in speaking order.
   // When 2+, the prompt switches from single-maker framing to mediation.
   participants?: { name: string; brief_role: BriefRole | null }[]
@@ -69,7 +72,7 @@ function humanizeGap(ms: number): string {
 // cached prefix is what makes turn 2 a cache read instead of a second write.
 export type SystemPromptParts = { stable: string; volatile: string | null }
 
-export function buildSystemPromptParts({ briefContent, projectContext, sessionNumber, seedQuestions, builderDirectives, sessionMode, identity, makerFirstName, makerLastName, gapSinceLastMakerMessageMs, participants, prototypeFeedback, prototypeContext, pinnedArtifacts, siblingDecisions, language }: SystemPromptInput): SystemPromptParts {
+export function buildSystemPromptParts({ briefContent, projectContext, sessionNumber, seedQuestions, builderDirectives, sessionMode, identity, makerFirstName, makerLastName, gapSinceLastMakerMessageMs, nothingQueued, participants, prototypeFeedback, prototypeContext, pinnedArtifacts, siblingDecisions, language }: SystemPromptInput): SystemPromptParts {
   const parts: string[] = []
   const volatileParts: string[] = []
 
@@ -230,6 +233,14 @@ ${formatBrief(briefContent)}
 ## Returning after a break
 
 The user is coming back after a gap of ${humanizeGap(gapSinceLastMakerMessageMs)}. Before continuing, briefly recap where the conversation left off (1–2 sentences — what they were describing, what question was on the table), then ask what they want to focus on now. Don't recap the whole project, just the immediate thread.
+`.trim())
+  }
+
+  if (nothingQueued) {
+    volatileParts.push(`
+## Nothing queued
+
+The builder has not prepared this conversation yet. Do not run discovery or push toward decisions. Listen, take notes, reflect back what the maker says, and tell them the builder will pick it up. Keep it short.
 `.trim())
   }
 

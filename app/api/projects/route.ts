@@ -13,6 +13,7 @@ import { generateSlug } from '@/lib/utils'
 import { isLocale } from '@/lib/locale'
 import { resolveBriefRole, defaultBriefRole } from '@/lib/roles/brief-role'
 import { copy } from '@/lib/copy'
+import { applyImportToOpenSession } from '@/lib/sessions/apply-import'
 import { deleteS3Object } from '@/lib/s3/client'
 import { stampDecisionProvenance } from '@/lib/api/brief-merge'
 import { normalizeEmail, isValidEmail } from '@/lib/email/normalize'
@@ -208,6 +209,17 @@ export async function PATCH(request: Request) {
   }
 
   await db.collection('projects').doc(project_id).update(patch)
+
+  // A later payload import: clean and re-arm the open conversation (#214).
+  // Best effort; the project update above already succeeded.
+  if ('payload_pasted_at' in updates) {
+    try {
+      const result = await applyImportToOpenSession(db, project_id, { ...projectDoc.data(), ...patch }, patch.updated_at as string)
+      console.log('[projects] apply_import', { project_id, result })
+    } catch (err) {
+      console.error('[projects] apply_import_failed', err)
+    }
+  }
 
   return NextResponse.json({ id: project_id, ...patch })
 }

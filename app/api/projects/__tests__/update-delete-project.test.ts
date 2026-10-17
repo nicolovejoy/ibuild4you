@@ -2,6 +2,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { NextResponse } from 'next/server'
 import { PATCH, DELETE } from '../route'
 
+const mockApplyImport = vi.fn(async () => 'applied')
+vi.mock('@/lib/sessions/apply-import', () => ({
+  applyImportToOpenSession: (...args: unknown[]) => (mockApplyImport as (...a: unknown[]) => unknown)(...args),
+}))
+
 // =============================================================================
 // Tests for PATCH and DELETE /api/projects
 //
@@ -237,6 +242,47 @@ describe('PATCH /api/projects', () => {
     expect(data.status).toBeUndefined()
     expect(data.owner_id).toBeUndefined()
     expect(data.secret_field).toBeUndefined()
+  })
+
+  it('PATCH with payload_pasted_at calls applyImportToOpenSession with the merged project', async () => {
+    const res = await PATCH(
+      makePatchRequest({ project_id: 'proj-1', payload_pasted_at: '2026-10-17T00:00:00.000Z', welcome_message: 'New' })
+    )
+    expect(res.status).toBe(200)
+    const data = await res.json()
+    expect(mockApplyImport).toHaveBeenCalledTimes(1)
+    const [, projectId, merged, now] = mockApplyImport.mock.calls[0] as unknown as [unknown, string, Record<string, unknown>, string]
+    expect(projectId).toBe('proj-1')
+    expect(merged).toMatchObject({ title: 'Old Title', welcome_message: 'New', payload_pasted_at: '2026-10-17T00:00:00.000Z' })
+    expect(now).toBe(data.updated_at)
+  })
+
+  it('PATCH logs the import outcome (no emails, no content)', async () => {
+    mockApplyImport.mockResolvedValueOnce('maker_replied')
+    const spy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    await PATCH(makePatchRequest({ project_id: 'proj-1', payload_pasted_at: '2026-10-17T00:00:00.000Z' }))
+    expect(spy).toHaveBeenCalledWith('[projects] apply_import', { project_id: 'proj-1', result: 'maker_replied' })
+    spy.mockRestore()
+  })
+
+  it('PATCH still answers 200 when applyImportToOpenSession throws', async () => {
+    mockApplyImport.mockRejectedValueOnce(new Error('boom'))
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const res = await PATCH(makePatchRequest({ project_id: 'proj-1', payload_pasted_at: '2026-10-17T00:00:00.000Z' }))
+    expect(res.status).toBe(200)
+    expect(spy).toHaveBeenCalledWith('[projects] apply_import_failed', expect.any(Error))
+    spy.mockRestore()
+  })
+
+  it('PATCH without payload_pasted_at does not', async () => {
+    await PATCH(makePatchRequest({ project_id: 'proj-1', context: 'x' }))
+    expect(mockApplyImport).not.toHaveBeenCalled()
+  })
+
+  it('PATCH ignores maker_waiting_since from the client', async () => {
+    const res = await PATCH(makePatchRequest({ project_id: 'proj-1', maker_waiting_since: null, context: 'x' }))
+    const data = await res.json()
+    expect('maker_waiting_since' in data).toBe(false)
   })
 
   it('always adds updated_at', async () => {
