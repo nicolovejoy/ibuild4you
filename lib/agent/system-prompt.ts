@@ -5,6 +5,7 @@ import { renderPrototypeContextBlock, type PrototypeContextItem } from './protot
 import { renderArtifactContextBlock, type ArtifactContextItem } from './artifact-context'
 import { renderSiblingDecisionsBlock, type SiblingDecision } from './sibling-decisions'
 import type { BriefContent, BriefDecision, BriefRole } from '@/lib/types'
+import { riskText, riskOwner } from '@/lib/brief/risks'
 import { LOCALE_NAMES, type Locale } from '@/lib/locale'
 
 // Maker name and gap-since-last-message are read live per request (not
@@ -192,7 +193,7 @@ ${openDecisions.map((d) => `- **${d.topic}:** ${d.decision}`).join('\n')}
 
 These are unresolved or risky areas from prior sessions. Probe these when the opportunity arises — they're good candidates for Challenging or Deepening:
 
-${briefContent.open_risks.map((r) => `- ${r}`).join('\n')}
+${briefContent.open_risks.map(renderRisk).join('\n')}
 `.trim())
   }
 
@@ -311,4 +312,17 @@ export function buildFacilitatorSystemPrompt({ topicTitle, topicPrompt }: { topi
     `## Topic\n\n**${topicTitle}**\n\n${topicPrompt}`,
     FACILITATOR_RULES,
   ].join('\n\n')
+}
+
+// One open-risk line. Owned risks get a hint so the agent asks the maker
+// about theirs and leaves the builder's alone (#220).
+function renderRisk(r: NonNullable<BriefContent['open_risks']>[number]): string {
+  const owner = riskOwner(r)
+  const suffix =
+    owner === 'maker'
+      ? ' (the maker owes an answer — ask them when it fits)'
+      : owner === 'builder'
+        ? " (the builder's to resolve — don't push the maker on it)"
+        : ''
+  return `- ${riskText(r)}${suffix}`
 }
