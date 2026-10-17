@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { ArrowLeft, Copy, Check } from 'lucide-react'
 import { SiteHeader } from '@/components/site-header'
 
-// Shared layout for the two payload-reference pages under /about. Renders an
+// Shared layout for the two payload-reference pages under /dashboard/docs. Renders an
 // intro, a copy-pastable annotated JSON descriptor, and a short notes list.
 // The JSON descriptors mirror the schemas in lib/agent/new-project-prompt.ts
 // and lib/agent/next-convo-prompt.ts — keep them in sync if those change.

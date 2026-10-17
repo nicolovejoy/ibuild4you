@@ -89,7 +89,7 @@ if (!mainText.includes(`added ${TODAY_SHORT}`))
 else ok(`suffix renders for create stamp (added ${TODAY_SHORT})`)
 
 // --- 4. Paste with dropped stamps + one new decision ---
-const pasteBox = page.getByPlaceholder(/next-convo/)
+const pasteBox = page.getByPlaceholder(/prep chat/)
 await pasteBox.fill(
   JSON.stringify({
     ...briefFields,

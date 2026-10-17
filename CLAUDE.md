@@ -44,7 +44,7 @@ npm run test:watch   # Run tests in watch mode
 - `lib/firebase/` — Client SDK (`client.ts`), Admin SDK (`admin.ts`), `apiFetch()` helper
 - `lib/s3/` — S3 client for file storage (uploads go to `ibuild4you-files` bucket)
 - `lib/api/` — Server-side auth helpers (`getAuthenticatedUser`, `requireAdmin`)
-- `lib/hooks/` — React hooks (`useAuth`, `useDebounce`)
+- `lib/hooks/` — React hooks (`useAuth`)
 - `lib/query/` — React Query client config and hooks
 - `lib/types/` — TypeScript types for all entities
 - `lib/copy.ts` — All user-facing text centralized in one file for easy editing

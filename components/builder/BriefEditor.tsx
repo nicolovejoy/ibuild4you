@@ -71,7 +71,15 @@ export function BriefEditor({
   useEffect(() => {
     if (expanded) return // keep the last measurement so "Show less" stays offered
     const el = readRef.current
-    if (el) setOverflowing(el.scrollHeight > el.clientHeight + 4)
+    if (!el) return
+    const measure = () => setOverflowing(el.scrollHeight > el.clientHeight + 4)
+    measure()
+    // The ferry desk mounts this editor inside a hidden Details fold (#222), so
+    // the first measurement can be 0/0; re-measure when the box gets a size.
+    if (typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
   }, [expanded, version, mode, content])
 
   // Re-seed both working copies whenever the underlying brief changes (version

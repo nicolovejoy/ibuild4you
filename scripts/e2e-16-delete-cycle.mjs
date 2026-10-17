@@ -16,12 +16,12 @@ const page = await ctx.newPage()
 // Login
 await loginPage(page)
 
-// 1. Create a throwaway brief via the form.
+// 1. Create a throwaway brief via the import modal (import-only since the cleanup).
 await page.getByRole('button', { name: 'New brief' }).click()
 await page.waitForTimeout(600)
-await page.locator('#project-title').fill(TITLE)
+await page.locator('#project-json').fill(JSON.stringify({ title: TITLE }))
 const createResp = page.waitForResponse((r) => /\/api\/projects$/.test(r.url()) && r.request().method() === 'POST', { timeout: 15000 }).catch(() => null)
-await page.getByRole('button', { name: 'Create brief' }).click()
+await page.getByRole('button', { name: 'Import & create' }).click()
 await createResp
 // Create navigates straight to the new brief on the Conversations tab.
 await page.waitForURL(/\/projects\//, { timeout: 12000 }).catch(() => {})

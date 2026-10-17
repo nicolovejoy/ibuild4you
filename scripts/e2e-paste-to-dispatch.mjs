@@ -48,7 +48,7 @@ console.log(`created brief ${brief.id} (${brief.slug})`)
 const pasteOnBriefTab = async (json) => {
   await page.goto(`${BASE}/projects/${brief.slug}?tab=brief`, { waitUntil: 'domcontentloaded' })
   await page.waitForTimeout(2500)
-  await page.getByPlaceholder(/next-convo/).fill(JSON.stringify(json))
+  await page.getByPlaceholder(/prep chat/).fill(JSON.stringify(json))
   await page.getByRole('button', { name: 'Import JSON' }).click()
   await page.waitForTimeout(2500)
 }

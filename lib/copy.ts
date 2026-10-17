@@ -4,7 +4,7 @@
 export const copy = {
   // --- Invite & nudge messages ---
   invite: {
-    // Garm consumer plan Phase 1 / PR A (docs/garm-consumer-plan.md): link-first,
+    // Garm consumer plan Phase 1 / PR A (docs/archive/garm-consumer-plan.md): link-first,
     // not credential-first. resetLink is a Firebase password-setup link minted
     // server-side (lib/auth/ensure-invite-account.ts); it's null if minting
     // failed, which must never leave the recipient stuck — the last line always

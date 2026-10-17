@@ -169,7 +169,7 @@ describe('isApprovedEmail — preview fallback (VERCEL_ENV=preview, no Garm wiri
   })
 })
 
-// PR G cutover (docs/garm-consumer-plan.md Phase 5): Garm IS the sign-in gate.
+// PR G cutover (docs/archive/garm-consumer-plan.md Phase 5): Garm IS the sign-in gate.
 // Fail mode is closed per the ratified Q2 decision — there is no local-fallback
 // branch outside preview, deliberately. garmCheck is mocked; its own
 // fail-closed internals (timeout, non-200, missing env → allowed:false) are

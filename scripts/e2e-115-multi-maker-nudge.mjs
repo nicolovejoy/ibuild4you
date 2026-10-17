@@ -89,7 +89,7 @@ if (!(await startBtn.count())) {
     if (!page.url().includes('tab=brief')) fail(`import link didn't switch tab: ${page.url()}`)
     // The import target is a first-class card now (not a fold): assert the
     // paste textarea is visible and took focus.
-    const pasteBox = page.getByPlaceholder(/next-convo/)
+    const pasteBox = page.getByPlaceholder(/prep chat/)
     if (!(await pasteBox.isVisible().catch(() => false))) fail('import textarea not visible')
     else {
       const focused = await page.evaluate(() => document.activeElement?.tagName === 'TEXTAREA')

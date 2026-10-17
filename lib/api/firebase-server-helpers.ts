@@ -299,7 +299,7 @@ export async function getUserDisplayName(
   return email.split('@')[0]
 }
 
-// Garm cutover (docs/garm-consumer-plan.md Phase 5, PR G): Garm is the
+// Garm cutover (docs/archive/garm-consumer-plan.md Phase 5, PR G): Garm is the
 // authoritative sign-in gate. Fail mode is CLOSED — Nico's ratified Q2 call
 // (2026-07-29, handoff channel): Garm unreachable + cold cache → deny. There
 // is deliberately NO local-fallback branch in production; a consumer-side
