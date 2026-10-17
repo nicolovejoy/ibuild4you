@@ -23,8 +23,10 @@ type FerryDeskProps = {
   copyingPrep: boolean
   prepCopied: boolean // 2s "Copied!" flash state owned by parent
   onCopyPrep: () => void
+  copyPrepDisabled?: boolean // e.g. while the project is still loading (#215)
   onEscapeEmpty: () => void // parent navigates to /dashboard
   textareaRef?: React.Ref<HTMLTextAreaElement>
+  notices?: React.ReactNode // post-import notes, shown right under the actions
   children: React.ReactNode // Details body
 }
 
@@ -69,8 +71,10 @@ export function FerryDesk({
   copyingPrep,
   prepCopied,
   onCopyPrep,
+  copyPrepDisabled = false,
   onEscapeEmpty,
   textareaRef,
+  notices,
   children,
 }: FerryDeskProps) {
   // Collapsed by default: the ferry loop is the page; the brief, history,
@@ -155,6 +159,7 @@ export function FerryDesk({
           variant="secondary"
           icon={prepCopied ? Check : ClipboardCopy}
           loading={copyingPrep}
+          disabled={copyPrepDisabled}
           onClick={onCopyPrep}
         >
           {prepCopied ? copy.brief.copied : copy.brief.copyPrep}
@@ -163,6 +168,10 @@ export function FerryDesk({
           {copy.brief.versionLine(briefVersion, sessionCount)}
         </span>
       </div>
+
+      {/* Next to the Import button on purpose: after an import with ignored
+          fields the box clears, and this is where the builder is looking. */}
+      {notices && <div className="space-y-2">{notices}</div>}
 
       <div className="border-t border-gray-200 pt-3">
         <div className="flex items-baseline gap-3">

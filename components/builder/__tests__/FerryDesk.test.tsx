@@ -93,6 +93,29 @@ describe('FerryDesk', () => {
     expect(filled.onImport).toHaveBeenCalledTimes(1)
   })
 
+  it('Copy prep is disabled when copyPrepDisabled is set and enabled otherwise', () => {
+    const off = renderDesk({ copyPrepDisabled: true })
+    const btn = screen.getByRole('button', { name: /Copy next-convo prep/ }) as HTMLButtonElement
+    expect(btn.disabled).toBe(true)
+    fireEvent.click(btn)
+    expect(off.onCopyPrep).not.toHaveBeenCalled()
+    cleanup()
+
+    const on = renderDesk()
+    fireEvent.click(screen.getByRole('button', { name: /Copy next-convo prep/ }))
+    expect(on.onCopyPrep).toHaveBeenCalledTimes(1)
+  })
+
+  it('renders notices inside the desk, after Import and before the Details toggle', () => {
+    renderDesk({ notices: <p>ignored field note</p> })
+    const notice = screen.getByText('ignored field note')
+    const importBtn = screen.getByRole('button', { name: /Import JSON/ })
+    const details = screen.getByRole('button', { name: /Details/ })
+    // DOCUMENT_POSITION_FOLLOWING (4): the argument comes after the receiver.
+    expect(importBtn.compareDocumentPosition(notice) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(notice.compareDocumentPosition(details) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
   it('Escape in an empty box calls onEscapeEmpty; in a filled box it blurs and does not', () => {
     const empty = renderDesk({ pasteValue: '   ' })
     fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Escape' })

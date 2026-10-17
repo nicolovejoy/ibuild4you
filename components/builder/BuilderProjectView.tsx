@@ -502,7 +502,7 @@ function BriefTab({
   const hasBrief = briefContent && hasBriefContent(briefContent)
 
   // Arriving via the dispatch modal's "load a payload" link (#115): scroll to
-  // the import card + focus its textarea, then consume the one-shot flag.
+  // the ferry desk + focus its paste box, then consume the one-shot flag.
   const importCardRef = useRef<HTMLDivElement>(null)
   const importTextareaRef = useRef<HTMLTextAreaElement>(null)
   useEffect(() => {
@@ -685,9 +685,9 @@ function BriefTab({
           are written in handleCopyPayload (prep_copied_at) and, on success
           only, in handleImportJson (payload_pasted_at). importCardRef wraps
           the desk so the dispatch modal's "load a payload" link (#115) still
-          scrolls here and focuses the paste box. Copy prep no-ops while the
-          project is unloaded, so the export never says `Title: Untitled`
-          (#215). */}
+          scrolls here and focuses the paste box. Copy prep is disabled (and
+          handleCopyPayload no-ops) while the project is unloaded, so the
+          export never says `Title: Untitled` (#215). */}
       <div ref={importCardRef}>
         <FerryDesk
           stamps={ferryStamps(project ?? {})}
@@ -701,8 +701,34 @@ function BriefTab({
           copyingPrep={loadingPayload}
           prepCopied={payloadCopied}
           onCopyPrep={handleCopyPayload}
+          copyPrepDisabled={!project}
           onEscapeEmpty={() => router.push('/dashboard')}
           textareaRef={importTextareaRef}
+          notices={
+            // Import succeeded but some fields were ignored: stay on the
+            // Brief tab so the builder reads the note, then continue by hand.
+            importWarnings && (
+              <>
+                {importWarnings.messages.map((w) => (
+                  <StatusMessage key={w} type="warning" message={w} />
+                ))}
+                <div className="flex items-center gap-3">
+                  <p className="text-xs text-gray-500">{copy.brief.importStayHint}</p>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => {
+                      const { configUpdated } = importWarnings
+                      setImportWarnings(null)
+                      onImported?.({ configUpdated })
+                    }}
+                  >
+                    {copy.brief.importContinueButton}
+                  </Button>
+                </div>
+              </>
+            )
+          }
         >
           <div className="space-y-4">
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
@@ -743,31 +769,6 @@ function BriefTab({
         </FerryDesk>
       </div>
 
-      {/* Import succeeded but some fields were ignored: stay on the Brief tab
-          so the builder reads the note, then continue by hand. */}
-      {(importWarnings?.messages.length ?? 0) > 0 && (
-        <div className="space-y-2">
-          {importWarnings?.messages.map((w) => (
-            <StatusMessage key={w} type="warning" message={w} />
-          ))}
-        </div>
-      )}
-      {importWarnings && (
-        <div className="flex items-center gap-3">
-          <p className="text-xs text-gray-500">{copy.brief.importStayHint}</p>
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => {
-              const { configUpdated } = importWarnings
-              setImportWarnings(null)
-              onImported?.({ configUpdated })
-            }}
-          >
-            {copy.brief.importContinueButton}
-          </Button>
-        </div>
-      )}
 
       {/* Confirm the metered-API regen — it overwrites the brief (locked
           decisions survive). Offer a copy-first so no manual edit is lost. */}
