@@ -82,7 +82,7 @@ export function FerryDesk({
   const [detailsOpen, setDetailsOpen] = useState(false)
 
   const { copied, pasted, maker } = stamps
-  const pastedSub = [pasted.relative, pasted.version != null ? `v${pasted.version}` : '']
+  const pastedSub = [pasted.relative, pasted.version != null ? copy.brief.pastedVersion(pasted.version) : '']
     .filter(Boolean)
     .join(' · ')
   const makerSub = [

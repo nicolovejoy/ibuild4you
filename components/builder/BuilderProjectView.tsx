@@ -603,25 +603,33 @@ function BriefTab({
       // carries config, it rides in that same PATCH; otherwise it is its own
       // PATCH, whose failure is only logged: the brief is already saved, so
       // a missing stamp must not read as a failed import.
+      // The stamp also records the brief version this paste produced (from
+      // the PUT /api/briefs result), so the desk shows "vN" for the paste
+      // itself even after a later regen moves the brief on.
       const pastedAt = new Date().toISOString()
-      const stampPasted = async () => {
+      const stampPasted = async (pastedVersion: number | undefined) => {
         try {
-          await updateProject.mutateAsync({ project_id: projectId, payload_pasted_at: pastedAt })
+          await updateProject.mutateAsync({
+            project_id: projectId,
+            payload_pasted_at: pastedAt,
+            payload_pasted_version: pastedVersion,
+          })
         } catch (err) {
           console.error('Failed to write payload_pasted_at stamp:', err)
         }
       }
       if (result.value.mode === 'multi') {
-        await updateBrief.mutateAsync({ project_id: projectId, content: result.value.brief })
+        const saved = await updateBrief.mutateAsync({ project_id: projectId, content: result.value.brief })
         if (Object.keys(result.value.projectUpdate).length > 0) {
           await updateProject.mutateAsync({
             project_id: projectId,
             ...result.value.projectUpdate,
             payload_pasted_at: pastedAt,
+            payload_pasted_version: saved?.version,
           } as Parameters<typeof updateProject.mutateAsync>[0])
           configUpdated = true
         } else {
-          await stampPasted()
+          await stampPasted(saved?.version)
         }
         // Skip while the project is unloaded: session_mode would default to
         // discover and could warn falsely.
@@ -630,8 +638,8 @@ function BriefTab({
             ? nextConvoImportWarnings(result.value.projectUpdate, project?.session_mode)
             : []
       } else {
-        await updateBrief.mutateAsync({ project_id: projectId, content: result.value.brief as BriefContent })
-        await stampPasted()
+        const saved = await updateBrief.mutateAsync({ project_id: projectId, content: result.value.brief as BriefContent })
+        await stampPasted(saved?.version)
       }
       setPasteJson('')
       // Ignored fields: stay on the Brief tab so the builder reads the warning.

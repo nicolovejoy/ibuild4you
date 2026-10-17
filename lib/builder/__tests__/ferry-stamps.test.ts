@@ -47,7 +47,7 @@ describe('ferryStamps', () => {
         prep_copied_at: '2026-10-17T16:14:00.000Z',
         payload_pasted_at: '2026-10-17T16:20:00.000Z',
         last_maker_message_at: '2026-10-17T17:00:00.000Z',
-        brief_version: 4,
+        payload_pasted_version: 4,
         requester_first_name: 'Sam',
       },
       NOW
@@ -58,6 +58,21 @@ describe('ferryStamps', () => {
     expect(s.pasted.version).toBe(4)
     expect(s.maker.who).toBe('Sam')
     expect(s.maker.newerThanPaste).toBe(true)
+  })
+
+  it('pasted.version is the version the paste produced, not the current brief version', () => {
+    // brief_version (list-route enrichment) may have moved on since the paste
+    // (e.g. a regen); the stamp reports what the paste itself saved.
+    const s = ferryStamps(
+      {
+        payload_pasted_at: '2026-10-17T16:20:00.000Z',
+        payload_pasted_version: 3,
+        brief_version: 5,
+      } as Parameters<typeof ferryStamps>[0] & { brief_version: number },
+      NOW
+    )
+    expect(s.pasted.version).toBe(3)
+    expect(ferryStamps({ payload_pasted_at: '2026-10-17T16:20:00.000Z' }, NOW).pasted.version).toBeNull()
   })
 
   it('uses nulls and empty strings when a field is missing', () => {

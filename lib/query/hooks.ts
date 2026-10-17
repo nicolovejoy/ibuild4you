@@ -327,6 +327,7 @@ export function useUpdateProject() {
       last_nudged_at?: string
       prep_copied_at?: string
       payload_pasted_at?: string
+      payload_pasted_version?: number
       last_builder_activity_at?: string
       identity?: string
       auto_reminders_enabled?: boolean

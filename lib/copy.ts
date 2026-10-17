@@ -235,6 +235,7 @@ export const copy = {
     detailsHint: 'brief · history · regenerate · attachments',
     escHint: 'Esc back to dashboard',
     pastePlaceholder: 'Paste the JSON from your prep chat here…',
+    pastedVersion: (v: number) => `v${v}`,
     versionLine: (version: number | null, sessions: number) =>
       `${version == null ? 'No brief yet' : `Brief v${version}`} · session ${sessions}`,
   },

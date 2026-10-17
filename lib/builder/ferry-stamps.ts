@@ -50,7 +50,7 @@ export function ferryStamps(
     | 'prep_copied_at'
     | 'payload_pasted_at'
     | 'last_maker_message_at'
-    | 'brief_version'
+    | 'payload_pasted_version'
     | 'requester_first_name'
     | 'requester_email'
   >,
@@ -59,7 +59,7 @@ export function ferryStamps(
   const who = project.requester_first_name || project.requester_email?.split('@')[0] || null
   return {
     copied: stamp(project.prep_copied_at, now),
-    pasted: { ...stamp(project.payload_pasted_at, now), version: project.brief_version ?? null },
+    pasted: { ...stamp(project.payload_pasted_at, now), version: project.payload_pasted_version ?? null },
     maker: {
       ...stamp(project.last_maker_message_at, now),
       who,
