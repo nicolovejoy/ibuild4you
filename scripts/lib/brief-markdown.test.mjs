@@ -47,6 +47,7 @@ describe('renderBriefMd', () => {
       decisions: [
         { topic: 'Payment', decision: 'Stripe only', locked: true, decided_at: '2026-02-10T00:00:00Z', decided_in_session: 's2' },
         { topic: 'Hosting', decision: 'Vercel', decided_at: '2026-01-05T00:00:00Z' }, // no session → "added"
+        { topic: 'Auth', decision: 'Google + passcode', decided_at: '2026-01-05T00:00:00Z', decided_in_session: 's1', revised_at: '2026-02-10T00:00:00Z', revised_in_session: 's2' }, // #218
         { topic: 'Name', decision: 'Undecided' }, // no provenance
       ],
       open_risks: ['Payment fees'],
@@ -73,6 +74,7 @@ describe('renderBriefMd', () => {
         '\n## Decisions\n\n' +
         '- **Payment**: Stripe only _(locked)_ _(decided conv 2, 2026-02-10)_\n' +
         '- **Hosting**: Vercel _(added 2026-01-05)_\n' +
+        '- **Auth**: Google + passcode _(decided conv 1, 2026-01-05; revised conv 2, 2026-02-10)_\n' +
         '- **Name**: Undecided\n' +
         '\n## Open risks\n\n' +
         '- Payment fees\n' +

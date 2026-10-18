@@ -170,8 +170,9 @@ export function BriefEditor({
   }
 
   // #197 Part A: builder rules on a contested lock. Saves the whole brief with
-  // that one decision changed through the normal PUT (provenance stamps the
-  // accepted text as decided out-of-band; the outgoing version is archived).
+  // that one decision changed through the normal PUT (provenance keeps the
+  // lock's origin and stamps the accepted text as an out-of-band revision,
+  // #218; the outgoing version is archived).
   // Deliberate, so it bypasses the lock-loss guard.
   const resolve = async (topic: string, action: ContestAction) => {
     setResolveError(null)

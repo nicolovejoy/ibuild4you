@@ -65,6 +65,38 @@ describe('decisionProvenanceSuffix', () => {
   })
 })
 
+describe('decisionProvenanceSuffix — revisions (#218)', () => {
+  const numbers = sessionNumberById(sessions)
+  const origin = { decided_in_session: 's1', decided_at: '2026-06-02T00:00:00Z' }
+
+  it('appends the revision after the origin', () => {
+    expect(
+      decisionProvenanceSuffix(
+        { topic: 'A', decision: 'a', ...origin, revised_in_session: 's2', revised_at: '2026-07-11T20:00:00Z' },
+        numbers,
+      ),
+    ).toBe('conv 1 · Jun 2, revised conv 2 · Jul 11')
+  })
+
+  it('renders an out-of-band revision as "revised <date>"', () => {
+    expect(
+      decisionProvenanceSuffix(
+        { topic: 'A', decision: 'a', ...origin, revised_in_session: null, revised_at: '2026-07-11T20:00:00Z' },
+        numbers,
+      ),
+    ).toBe('conv 1 · Jun 2, revised Jul 11')
+  })
+
+  it('shows only the revision when there is no origin stamp', () => {
+    expect(
+      decisionProvenanceSuffix(
+        { topic: 'A', decision: 'a', revised_in_session: 's2', revised_at: '2026-07-11T20:00:00Z' },
+        numbers,
+      ),
+    ).toBe('revised conv 2 · Jul 11')
+  })
+})
+
 describe('decisionProvenanceMarkdown', () => {
   const numbers = sessionNumberById(sessions)
 
@@ -79,6 +111,21 @@ describe('decisionProvenanceMarkdown', () => {
         numbers,
       ),
     ).toBe(' (decided conv 2, 2026-07-11)')
+  })
+
+  it('appends "; revised conv N, date" for a revision (#218)', () => {
+    expect(
+      decisionProvenanceMarkdown(
+        { topic: 'A', decision: 'a', decided_in_session: 's1', decided_at: '2026-06-02T00:00:00Z', revised_in_session: 's2', revised_at: '2026-07-11T20:00:00Z' },
+        numbers,
+      ),
+    ).toBe(' (decided conv 1, 2026-06-02; revised conv 2, 2026-07-11)')
+    expect(
+      decisionProvenanceMarkdown(
+        { topic: 'A', decision: 'a', revised_in_session: null, revised_at: '2026-07-11T20:00:00Z' },
+        numbers,
+      ),
+    ).toBe(' (revised 2026-07-11)')
   })
 
   it('renders (added YYYY-MM-DD) when decided out-of-band', () => {

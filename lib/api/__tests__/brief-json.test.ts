@@ -111,6 +111,7 @@ describe('normalizeBriefContent', () => {
       decisions: [
         { topic: 't', decision: 'd', decided_in_session: 's1', decided_at: '2026-07-11T00:00:00Z' },
         { topic: 'u', decision: 'e', decided_in_session: null, decided_at: '2026-07-10T00:00:00Z' },
+        { topic: 'v', decision: 'f', decided_in_session: 's1', decided_at: '2026-07-10T00:00:00Z', revised_in_session: null, revised_at: '2026-07-12T00:00:00Z' },
       ],
     })
     expect(r.ok).toBe(true)
@@ -118,6 +119,7 @@ describe('normalizeBriefContent', () => {
       expect(r.value.decisions).toEqual([
         { topic: 't', decision: 'd', decided_in_session: 's1', decided_at: '2026-07-11T00:00:00Z' },
         { topic: 'u', decision: 'e', decided_in_session: null, decided_at: '2026-07-10T00:00:00Z' },
+        { topic: 'v', decision: 'f', decided_in_session: 's1', decided_at: '2026-07-10T00:00:00Z', revised_in_session: null, revised_at: '2026-07-12T00:00:00Z' },
       ])
   })
 

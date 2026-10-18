@@ -92,6 +92,10 @@ export async function PUT(request: Request) {
               ...((typeof d.decided_in_session === 'string' || d.decided_in_session === null) && {
                 decided_in_session: d.decided_in_session as string | null,
               }),
+              ...(typeof d.revised_at === 'string' && { revised_at: d.revised_at }),
+              ...((typeof d.revised_in_session === 'string' || d.revised_in_session === null) && {
+                revised_in_session: d.revised_in_session as string | null,
+              }),
             }
           })
       : [],

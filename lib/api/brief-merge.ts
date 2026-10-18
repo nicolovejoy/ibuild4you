@@ -167,10 +167,14 @@ function withoutProvenance(d: BriefDecision): BriefDecision {
   const rest = { ...d }
   delete rest.decided_in_session
   delete rest.decided_at
+  delete rest.revised_in_session
+  delete rest.revised_at
   return rest
 }
 
-// Remove decided_* everywhere. Regen callers run this over the model output
+const hasExplicitRevision = (d: BriefDecision): boolean => typeof d.revised_at === 'string'
+
+// Remove decided_* and revised_* everywhere. Regen callers run this over the model output
 // before stamping — prev-carry-forward is the only source of truth there.
 export function stripDecisionProvenance(decisions: BriefDecision[]): BriefDecision[] {
   return decisions.map(withoutProvenance)
@@ -184,8 +188,17 @@ export function stripDecisionProvenance(decisions: BriefDecision[]): BriefDecisi
 //      verbatim — including "no stamps"; never fabricate. Incoming stamps are
 //      ignored (prev is the source of truth). This also restores stamps an
 //      outside agent dropped when round-tripping the brief JSON.
-//   3. Changed (prev match, different text): restamp with current context —
-//      explicit incoming provenance wins (paste path), else sessionId + now.
+//   3. Changed (prev match, different text) — a revision (#218): the origin
+//      (prev decided_*) is kept verbatim, never overwritten by regen or paste,
+//      and revised_* is stamped with the current context — an incoming
+//      revised_* that differs from prev's wins (the paste path may know the
+//      real revision), while one that merely echoes prev's stamp (prep chat,
+//      the structured editor and contest-accept all copy the stored decision
+//      back) is replaced by sessionId + now. Only the latest revision is
+//      kept. A prev decision with no origin stamp gets revised_* only — the
+//      origin is not invented — unless the incoming decision supplies an
+//      explicit origin, which is honored. Incoming decided_* are otherwise
+//      ignored: prev's origin is the source of truth.
 // Idempotent: regenerating an unchanged brief never moves a stamp, so
 // decided_at means "decided", not "last regenerated".
 export function stampDecisionProvenance(args: {
@@ -204,10 +217,32 @@ export function stampDecisionProvenance(args: {
       const carried = withoutProvenance(n)
       if (p.decided_at !== undefined) carried.decided_at = p.decided_at
       if (p.decided_in_session !== undefined) carried.decided_in_session = p.decided_in_session
+      if (p.revised_at !== undefined) carried.revised_at = p.revised_at
+      if (p.revised_in_session !== undefined) carried.revised_in_session = p.revised_in_session
       return carried
     }
 
-    // Rules 1 & 3 — new or changed this round.
+    if (p) {
+      // Rule 3 — revised: keep the origin, stamp the revision.
+      const revised = withoutProvenance(n)
+      if (p.decided_at !== undefined) {
+        revised.decided_at = p.decided_at
+        if (p.decided_in_session !== undefined) revised.decided_in_session = p.decided_in_session
+      } else if (hasExplicitProvenance(n)) {
+        revised.decided_at = n.decided_at
+        revised.decided_in_session = n.decided_in_session ?? null
+      }
+      if (hasExplicitRevision(n) && n.revised_at !== p.revised_at) {
+        revised.revised_at = n.revised_at
+        revised.revised_in_session = n.revised_in_session ?? null
+      } else {
+        revised.revised_at = args.now
+        revised.revised_in_session = args.sessionId
+      }
+      return revised
+    }
+
+    // Rule 1 — new this round.
     if (hasExplicitProvenance(n)) {
       return { ...n, decided_in_session: n.decided_in_session ?? null }
     }

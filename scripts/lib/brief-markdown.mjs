@@ -56,12 +56,19 @@ export function renderBriefMd({ project, brief, sessions, reviews, files = [] })
       // and sorted oldest-first, so index+1 is the conversation number.
       const convNumber = new Map(sessions.map((s, i) => [s.id, i + 1]))
       for (const d of c.decisions) {
-        let prov = ''
+        // #218: a revision keeps the origin and appends "; revised …".
+        const parts = []
         if (d.decided_at) {
           const date = d.decided_at.slice(0, 10)
           const n = d.decided_in_session ? convNumber.get(d.decided_in_session) : undefined
-          prov = n ? ` _(decided conv ${n}, ${date})_` : ` _(added ${date})_`
+          parts.push(n ? `decided conv ${n}, ${date}` : `added ${date}`)
         }
+        if (d.revised_at) {
+          const date = d.revised_at.slice(0, 10)
+          const n = d.revised_in_session ? convNumber.get(d.revised_in_session) : undefined
+          parts.push(n ? `revised conv ${n}, ${date}` : `revised ${date}`)
+        }
+        const prov = parts.length ? ` _(${parts.join('; ')})_` : ''
         b.push(`- **${d.topic}**: ${d.decision}${d.locked ? ' _(locked)_' : ''}${prov}`)
       }
     }

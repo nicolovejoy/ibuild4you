@@ -249,7 +249,8 @@ describe('stampDecisionProvenance', () => {
     ])
   })
 
-  it('restamps with the current context when the decision text changed this round', () => {
+  // #218 — a changed decision is a revision: the origin stays, revised_* is stamped.
+  it('keeps the origin and stamps revised_* when the decision text changed this round', () => {
     const out = stampDecisionProvenance({
       prev: [
         {
@@ -264,11 +265,18 @@ describe('stampDecisionProvenance', () => {
       now: NOW,
     })
     expect(out).toEqual([
-      { topic: 'Auth', decision: 'Google + passcode', decided_in_session: 's3', decided_at: NOW },
+      {
+        topic: 'Auth',
+        decision: 'Google + passcode',
+        decided_in_session: 's1',
+        decided_at: '2026-07-01T00:00:00Z',
+        revised_in_session: 's3',
+        revised_at: NOW,
+      },
     ])
   })
 
-  it('honors explicit provenance on a changed decision (paste path)', () => {
+  it('never lets incoming decided_* overwrite the origin of a changed decision (paste path)', () => {
     const out = stampDecisionProvenance({
       prev: [
         {
@@ -293,9 +301,120 @@ describe('stampDecisionProvenance', () => {
       {
         topic: 'Auth',
         decision: 'Google + passcode',
-        decided_in_session: null,
-        decided_at: '2026-07-10T00:00:00Z',
+        decided_in_session: 's1',
+        decided_at: '2026-07-01T00:00:00Z',
+        revised_in_session: null,
+        revised_at: NOW,
       },
+    ])
+  })
+
+  it('honors explicit revised_* on a changed decision (paste path knows the real revision)', () => {
+    const out = stampDecisionProvenance({
+      prev: [{ topic: 'Auth', decision: 'Google only', decided_in_session: 's1', decided_at: '2026-07-01T00:00:00Z' }],
+      next: [{ topic: 'Auth', decision: 'Google + passcode', revised_in_session: 's2', revised_at: '2026-07-10T00:00:00Z' }],
+      sessionId: null,
+      now: NOW,
+    })
+    expect(out[0]).toMatchObject({
+      decided_in_session: 's1',
+      decided_at: '2026-07-01T00:00:00Z',
+      revised_in_session: 's2',
+      revised_at: '2026-07-10T00:00:00Z',
+    })
+  })
+
+  it('a second revision replaces the first; the origin still stands', () => {
+    const first = stampDecisionProvenance({
+      prev: [{ topic: 'Auth', decision: 'Google only', decided_in_session: 's1', decided_at: '2026-07-01T00:00:00Z' }],
+      next: [d('Auth', 'Google + passcode')],
+      sessionId: 's3',
+      now: NOW,
+    })
+    const second = stampDecisionProvenance({
+      prev: first,
+      next: [d('Auth', 'Passcode only')],
+      sessionId: 's5',
+      now: '2027-01-01T00:00:00Z',
+    })
+    expect(second).toEqual([
+      {
+        topic: 'Auth',
+        decision: 'Passcode only',
+        decided_in_session: 's1',
+        decided_at: '2026-07-01T00:00:00Z',
+        revised_in_session: 's5',
+        revised_at: '2027-01-01T00:00:00Z',
+      },
+    ])
+  })
+
+  it('carries revised_* forward verbatim when the text is unchanged, ignoring echoes', () => {
+    const prev: BriefDecision[] = [
+      { topic: 'Auth', decision: 'Google + passcode', decided_in_session: 's1', decided_at: '2026-07-01T00:00:00Z', revised_in_session: 's3', revised_at: NOW },
+    ]
+    const out = stampDecisionProvenance({
+      prev,
+      next: [{ topic: 'Auth', decision: 'Google + passcode', revised_in_session: 'echo', revised_at: '2099-01-01T00:00:00Z' }],
+      sessionId: 's9',
+      now: '2027-01-01T00:00:00Z',
+    })
+    expect(out).toEqual(prev)
+  })
+
+  it('an echoed revised_* (editor spread / prep chat / contest accept) is restamped, not frozen', () => {
+    const prev: BriefDecision[] = [
+      { topic: 'Auth', decision: 'Google + passcode', decided_in_session: 's1', decided_at: '2026-07-01T00:00:00Z', revised_in_session: 's3', revised_at: NOW },
+    ]
+    // The structured editor spreads the stored decision and changes only the text.
+    const out = stampDecisionProvenance({
+      prev,
+      next: [{ ...prev[0], decision: 'Passcode only' }],
+      sessionId: null,
+      now: '2027-01-01T00:00:00Z',
+    })
+    expect(out).toEqual([
+      {
+        topic: 'Auth',
+        decision: 'Passcode only',
+        decided_in_session: 's1',
+        decided_at: '2026-07-01T00:00:00Z',
+        revised_in_session: null,
+        revised_at: '2027-01-01T00:00:00Z',
+      },
+    ])
+  })
+
+  it('accepting a contest on a previously revised lock restamps the revision', () => {
+    const prev: BriefDecision[] = [
+      { topic: 'Stack', decision: 'Next.js', locked: true, decided_in_session: 's1', decided_at: '2026-07-01T00:00:00Z', revised_in_session: 's2', revised_at: NOW, contested: { proposed: 'Remix', reason: 'maker confirmed' } },
+    ]
+    const next = resolveContest(prev, 'Stack', 'accept', '2027-01-01T00:00:00Z')
+    const out = stampDecisionProvenance({ prev, next, sessionId: null, now: '2027-01-01T00:00:00Z' })
+    expect(out[0]).toMatchObject({ decision: 'Remix', locked: true, decided_at: '2026-07-01T00:00:00Z', revised_in_session: null, revised_at: '2027-01-01T00:00:00Z' })
+  })
+
+  it('honors an explicit origin on a changed decision whose prev had none', () => {
+    const out = stampDecisionProvenance({
+      prev: [d('Auth', 'Google only')],
+      next: [{ topic: 'Auth', decision: 'Google + passcode', decided_in_session: 's1', decided_at: '2026-07-01T00:00:00Z' }],
+      sessionId: 's3',
+      now: NOW,
+    })
+    expect(out).toEqual([
+      { topic: 'Auth', decision: 'Google + passcode', decided_in_session: 's1', decided_at: '2026-07-01T00:00:00Z', revised_in_session: 's3', revised_at: NOW },
+    ])
+  })
+
+  it('a changed decision with no origin stamp gets revised_* only — the origin is not invented', () => {
+    const out = stampDecisionProvenance({
+      prev: [d('Auth', 'Google only')],
+      next: [d('Auth', 'Google + passcode')],
+      sessionId: 's3',
+      now: NOW,
+    })
+    expect(out).toEqual([
+      { topic: 'Auth', decision: 'Google + passcode', revised_in_session: 's3', revised_at: NOW },
     ])
   })
 
@@ -350,6 +469,8 @@ describe('stripDecisionProvenance', () => {
         locked: true,
         decided_in_session: 's1',
         decided_at: '2026-07-01T00:00:00Z',
+        revised_in_session: 's2',
+        revised_at: '2026-07-02T00:00:00Z',
       },
       { topic: 'DB', decision: 'Firestore' },
     ]
