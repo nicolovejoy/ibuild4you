@@ -190,11 +190,15 @@ export function stripDecisionProvenance(decisions: BriefDecision[]): BriefDecisi
 //      outside agent dropped when round-tripping the brief JSON.
 //   3. Changed (prev match, different text) — a revision (#218): the origin
 //      (prev decided_*) is kept verbatim, never overwritten by regen or paste,
-//      and revised_* is stamped with the current context — explicit incoming
-//      revised_* wins (paste path), else sessionId + now. Only the latest
-//      revision is kept. A prev decision with no origin stamp gets revised_*
-//      only: the origin is unknown and is not invented. Incoming decided_* on
-//      a changed decision are ignored when prev has an origin.
+//      and revised_* is stamped with the current context — an incoming
+//      revised_* that differs from prev's wins (the paste path may know the
+//      real revision), while one that merely echoes prev's stamp (prep chat,
+//      the structured editor and contest-accept all copy the stored decision
+//      back) is replaced by sessionId + now. Only the latest revision is
+//      kept. A prev decision with no origin stamp gets revised_* only — the
+//      origin is not invented — unless the incoming decision supplies an
+//      explicit origin, which is honored. Incoming decided_* are otherwise
+//      ignored: prev's origin is the source of truth.
 // Idempotent: regenerating an unchanged brief never moves a stamp, so
 // decided_at means "decided", not "last regenerated".
 export function stampDecisionProvenance(args: {
@@ -221,9 +225,14 @@ export function stampDecisionProvenance(args: {
     if (p) {
       // Rule 3 — revised: keep the origin, stamp the revision.
       const revised = withoutProvenance(n)
-      if (p.decided_at !== undefined) revised.decided_at = p.decided_at
-      if (p.decided_in_session !== undefined) revised.decided_in_session = p.decided_in_session
-      if (hasExplicitRevision(n)) {
+      if (p.decided_at !== undefined) {
+        revised.decided_at = p.decided_at
+        if (p.decided_in_session !== undefined) revised.decided_in_session = p.decided_in_session
+      } else if (hasExplicitProvenance(n)) {
+        revised.decided_at = n.decided_at
+        revised.decided_in_session = n.decided_in_session ?? null
+      }
+      if (hasExplicitRevision(n) && n.revised_at !== p.revised_at) {
         revised.revised_at = n.revised_at
         revised.revised_in_session = n.revised_in_session ?? null
       } else {

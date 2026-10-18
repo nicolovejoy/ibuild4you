@@ -87,11 +87,26 @@ try {
 
   // --- 4. Brief tab suffix ---
   await page.goto(`${BASE}/projects/${brief.slug}?tab=brief`, { waitUntil: 'domcontentloaded' })
-  await page.waitForTimeout(3000)
-  const mainText = (await page.locator('main').innerText()).replace(/\s+/g, ' ')
+  // The read view sits inside the ferry desk's collapsed Details fold.
+  const details = page.getByRole('button', { name: /^Details$/ })
+  await details.waitFor({ timeout: 15000 })
+  await details.click()
   const expected = `added ${shortDate(ORIGIN_AT)}, revised ${shortDate(TODAY)}`
-  if (!mainText.includes(expected)) fail(`suffix "${expected}" not rendered`)
+  const found = await page.getByText(expected, { exact: false }).first().waitFor({ timeout: 15000 }).then(() => true).catch(() => false)
+  if (!found) fail(`suffix "${expected}" not rendered`)
   else ok(`Brief tab shows "${expected}"`)
+
+  // --- 5. Editor-style paste: the stored decision spread back with new text must restamp ---
+  const stored = await getAuthDecision()
+  const r5 = await page.request.put(`${BASE}/api/briefs`, {
+    headers: hdr,
+    data: { project_id: projectId, content: { ...briefFields, decisions: [{ ...stored, decision: 'Magic link' }] }, source: 'paste' },
+  })
+  if (r5.status() !== 200) fail(`PUT (spread) → ${r5.status()}`)
+  d = await getAuthDecision()
+  if (d?.decided_at !== ORIGIN_AT || !d?.revised_at || d.revised_at === stored?.revised_at)
+    fail(`echoed revised_* was not restamped: ${JSON.stringify(d)}`)
+  else ok('spread-back paste with new text restamps the revision')
 } catch (e) {
   if (e.message !== 'stop') { fail(e.message) }
 } finally {
@@ -101,4 +116,4 @@ try {
   }
   await browser.close()
 }
-console.log(process.exitCode ? 'FAILED' : 'PASS: decision revisions verified (5 checks)')
+console.log(process.exitCode ? 'FAILED' : 'PASS: decision revisions verified (6 checks)')
