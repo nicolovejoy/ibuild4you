@@ -81,6 +81,10 @@ export function normalizeBriefContent(input: unknown): ParseResult<BriefContent>
         ...(typeof dd.decided_in_session === 'string' || dd.decided_in_session === null
           ? { decided_in_session: dd.decided_in_session as string | null }
           : {}),
+        ...(typeof dd.revised_at === 'string' ? { revised_at: dd.revised_at } : {}),
+        ...(typeof dd.revised_in_session === 'string' || dd.revised_in_session === null
+          ? { revised_in_session: dd.revised_in_session as string | null }
+          : {}),
       })
     }
   }

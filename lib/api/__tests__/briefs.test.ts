@@ -619,6 +619,49 @@ describe('regenerateBriefForProject', () => {
     ])
   })
 
+  it('a refined decision keeps its origin and gets revised_* from the current session (#218)', async () => {
+    sessionsByProject.p1 = [{ id: 's1', data: () => ({ created_at: '2026-01-01T00:00:00Z' }) }]
+    messagesBySession.s1 = [{ id: 'm1', data: () => ({ role: 'user', content: 'hi' }) }]
+    projectDocs.p1 = { exists: true, data: () => ({ title: 'X' }) }
+    briefsByProject.p1 = [
+      {
+        id: 'brief-1',
+        data: () => ({
+          version: 1,
+          content: {
+            ...validBrief,
+            decisions: [
+              { topic: 'Payment', decision: 'Stripe', decided_in_session: 's0', decided_at: '2026-06-01T00:00:00Z' },
+            ],
+          },
+        }),
+        ref: briefRef,
+      },
+    ]
+    mockMessagesCreate.mockResolvedValue(
+      toolUseResponse({
+        ...validBrief,
+        decisions: [{ topic: 'Payment', decision: 'Stripe, cards only', decided_in_session: 'echo', decided_at: '2099-01-01T00:00:00Z' }],
+      }),
+    )
+
+    await regenerateBriefForProject(makeDb(), 'p1')
+
+    const updateArgs = mockBriefUpdate.mock.calls[0] as unknown as [
+      { content: { decisions: Record<string, unknown>[] } },
+    ]
+    expect(updateArgs[0].content.decisions).toEqual([
+      {
+        topic: 'Payment',
+        decision: 'Stripe, cards only',
+        decided_in_session: 's0',
+        decided_at: '2026-06-01T00:00:00Z',
+        revised_in_session: 's1',
+        revised_at: expect.any(String),
+      },
+    ])
+  })
+
   it('walks multiple sessions and concatenates messages in order', async () => {
     sessionsByProject.p1 = [
       { id: 's1', data: () => ({ created_at: '2026-01-01T00:00:00Z' }) },

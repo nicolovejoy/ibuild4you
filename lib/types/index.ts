@@ -308,4 +308,10 @@ export interface BriefDecision {
   // stamps stay unstamped — no backfill.
   decided_in_session?: string | null
   decided_at?: string // ISO timestamp
+  // #218: when the decision text changes on an already-stamped topic, the
+  // origin above stays and the latest revision is stamped here (code-side,
+  // same rules). Only the most recent revision is kept; the full trail is in
+  // the brief's version history (#194).
+  revised_in_session?: string | null
+  revised_at?: string // ISO timestamp
 }

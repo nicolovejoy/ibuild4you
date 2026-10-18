@@ -16,31 +16,47 @@ export function sessionNumberById(sessions: SessionLite[]): Map<string, number> 
   return new Map(ordered.map((s, i) => [s.id, i + 1]))
 }
 
+const shortDate = (iso: string) =>
+  new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
+
 // "conv 2 · Jul 11" when the session is known; "added Jul 11" when decided
-// out-of-band or the session is gone (archived/deleted). Null when unstamped —
-// old decisions render exactly as before.
+// out-of-band or the session is gone (archived/deleted). A revision (#218)
+// appends ", revised conv 4 · Oct 17" (or "revised Oct 17" out-of-band); a
+// decision with a revision but no origin shows only the revision. Null when
+// unstamped — old decisions render exactly as before.
 export function decisionProvenanceSuffix(
   d: BriefDecision,
   numbers: Map<string, number>,
 ): string | null {
-  if (!d.decided_at) return null
-  const date = new Date(d.decided_at).toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    timeZone: 'UTC',
-  })
-  const n = d.decided_in_session ? numbers.get(d.decided_in_session) : undefined
-  return n ? `conv ${n} · ${date}` : `added ${date}`
+  const parts: string[] = []
+  if (d.decided_at) {
+    const n = d.decided_in_session ? numbers.get(d.decided_in_session) : undefined
+    parts.push(n ? `conv ${n} · ${shortDate(d.decided_at)}` : `added ${shortDate(d.decided_at)}`)
+  }
+  if (d.revised_at) {
+    const n = d.revised_in_session ? numbers.get(d.revised_in_session) : undefined
+    parts.push(n ? `revised conv ${n} · ${shortDate(d.revised_at)}` : `revised ${shortDate(d.revised_at)}`)
+  }
+  return parts.length ? parts.join(', ') : null
 }
 
-// Markdown-export variant: " (decided conv 2, 2026-07-11)" / " (added 2026-07-11)".
-// Empty string when unstamped so callers can append unconditionally.
+// Markdown-export variant: " (decided conv 2, 2026-07-11)" / " (added 2026-07-11)",
+// with "; revised conv 4, 2026-10-17" / "; revised 2026-10-17" appended for a
+// revision. Empty string when unstamped so callers can append unconditionally.
 export function decisionProvenanceMarkdown(
   d: BriefDecision,
   numbers: Map<string, number>,
 ): string {
-  if (!d.decided_at) return ''
-  const date = d.decided_at.slice(0, 10)
-  const n = d.decided_in_session ? numbers.get(d.decided_in_session) : undefined
-  return n ? ` (decided conv ${n}, ${date})` : ` (added ${date})`
+  const parts: string[] = []
+  if (d.decided_at) {
+    const date = d.decided_at.slice(0, 10)
+    const n = d.decided_in_session ? numbers.get(d.decided_in_session) : undefined
+    parts.push(n ? `decided conv ${n}, ${date}` : `added ${date}`)
+  }
+  if (d.revised_at) {
+    const date = d.revised_at.slice(0, 10)
+    const n = d.revised_in_session ? numbers.get(d.revised_in_session) : undefined
+    parts.push(n ? `revised conv ${n}, ${date}` : `revised ${date}`)
+  }
+  return parts.length ? ` (${parts.join('; ')})` : ''
 }
