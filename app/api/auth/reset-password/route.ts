@@ -3,7 +3,8 @@ import { mintResetLinkForExistingAccount } from '@/lib/auth/reset-link'
 import { sendMakerEmail } from '@/lib/email/send-maker-email'
 import { checkRateLimit, getClientIp } from '@/lib/api/rate-limit'
 import { normalizeEmail } from '@/lib/email/normalize'
-import { copy } from '@/lib/copy'
+import { outboundCopyFor } from '@/lib/email/outbound-copy'
+import { toLocale } from '@/lib/locale'
 
 // Public, unauthenticated: the "Forgot password?" path.
 //
@@ -52,9 +53,12 @@ export async function POST(request: Request) {
   }
 
   let email = ''
+  // The sign-in page's locale; the email is written in it. Unknown → English.
+  let language = toLocale(undefined)
   try {
     const body = await request.json()
     email = normalizeEmail(typeof body?.email === 'string' ? body.email : '')
+    language = toLocale(body?.language)
   } catch {
     // Malformed JSON — answer like every other no-op so it isn't an oracle.
     return NextResponse.json(OK)
@@ -84,8 +88,8 @@ export async function POST(request: Request) {
     if (resetLink) {
       await sendMakerEmail({
         to: email,
-        subject: copy.email.subject.passwordReset,
-        text: copy.passwordResetEmail({ resetLink }),
+        subject: outboundCopyFor(language).subject.passwordReset,
+        text: outboundCopyFor(language).passwordResetEmail({ resetLink }),
       })
     }
   } catch (err) {

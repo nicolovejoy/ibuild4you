@@ -203,4 +203,13 @@ describe('POST /api/projects/[id]/prep/generate', () => {
     // No store → a later call retries.
     expect(projectUpdates).toHaveLength(0)
   })
+
+  it('the fallback nudge is in the brief language', async () => {
+    projectDocData = { title: 'Cafe App', session_mode: 'discover', seed_questions: ['Q1'], language: 'fr' }
+    mockGenerate.mockRejectedValue(new Error('boom'))
+    const res = await POST(makeReq(), ctx)
+    const data = await res.json()
+    expect(data.fallback).toBe(true)
+    expect(data.nudge_message).toMatch(/^Nouvelle conversation prête pour Cafe App\./)
+  })
 })

@@ -8,7 +8,7 @@ import {
 import { sendMakerEmail } from '@/lib/email/send-maker-email'
 import { getServerShareLink } from '@/lib/url'
 import { ensureInviteResetLink } from '@/lib/auth/ensure-invite-account'
-import { copy } from '@/lib/copy'
+import { outboundCopyFor } from '@/lib/email/outbound-copy'
 import { normalizeEmail } from '@/lib/email/normalize'
 
 const KINDS = ['invite', 'nudge', 'reminder'] as const
@@ -22,8 +22,9 @@ type Recipient = {
 // POST /api/projects/[id]/email — builder+ emails the maker(s) directly via
 // Resend (invite / new-conversation nudge / reminder). To: maker, BCC +
 // Reply-To: the builder, so a maker who replies reaches a human. Bodies/
-// subjects come from lib/copy so the email matches what the builder sees in
-// the UI. Invite fans out to every active maker on the brief (#115), one email
+// subjects come from lib/email/outbound-copy in the brief's language, so the
+// email matches what the builder sees in the UI and a French maker reads
+// French. Invite fans out to every active maker on the brief (#115), one email
 // per person (each carries its own fresh password-setup link); nudge is ONE
 // email addressed to all active makers; reminder stays a single send to the
 // requester (the cron path owns multi-recipient reminders if we ever want them).
@@ -100,6 +101,7 @@ export async function POST(
 
   const projectTitle = (project.title as string) || 'your brief'
   const shareLink = getServerShareLink((project.slug as string) || projectId)
+  const oc = outboundCopyFor(project.language)
   const now = new Date().toISOString()
 
   let subject: string
@@ -108,9 +110,9 @@ export async function POST(
   let sharedText: string | null = null
 
   if (kind === 'invite') {
-    subject = copy.email.subject.invite(projectTitle)
+    subject = oc.subject.invite(projectTitle)
   } else if (kind === 'nudge') {
-    subject = copy.email.subject.nudge(projectTitle)
+    subject = oc.subject.nudge(projectTitle)
     // Precedence: a saved nudge_message override wins verbatim; else the AI-prepped
     // nudge (slice 2); else the static template. The share link is appended the
     // same way in every case so it can't go stale.
@@ -119,15 +121,15 @@ export async function POST(
     const bodyText = override || prepped
     sharedText = bodyText
       ? [bodyText, '', shareLink].join('\n')
-      : copy.nudge.body({
+      : oc.nudge.body({
           projectTitle,
           shareLink,
           note,
           sessionMode: project.session_mode as 'discover' | 'converge' | undefined,
         })
   } else {
-    subject = copy.email.subject.reminder(projectTitle)
-    sharedText = copy.nudge.reminder({
+    subject = oc.subject.reminder(projectTitle)
+    sharedText = oc.nudge.reminder({
       firstName: (project.requester_first_name as string | undefined) || null,
       sessionNumber: (project.session_count as number | undefined) ?? null,
       shareLink,
@@ -151,7 +153,7 @@ export async function POST(
       // creation time) so the link is never stale by the time it's actually
       // delivered — reset links expire, invites can sit unsent for a while.
       const resetLink = await ensureInviteResetLink(r.email)
-      const text = copy.invite.body({ projectTitle, shareLink, resetLink })
+      const text = oc.invite.body({ projectTitle, shareLink, resetLink })
 
       const suppressed = !isProd && !allowlisted(r.email)
       let emailId = 'suppressed'

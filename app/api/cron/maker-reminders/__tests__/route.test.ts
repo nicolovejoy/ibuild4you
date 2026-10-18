@@ -103,6 +103,19 @@ describe('GET /api/cron/maker-reminders', () => {
     expect(typeof logged.decided_at).toBe('string')
   })
 
+  it('passes the brief language to the digest (French brief → fr; unset → en)', async () => {
+    mockProjects = [
+      makeProject({ id: 'fr1', latest_session_created_at: day(3), language: 'fr', requester_email: 'fr@example.com' }),
+      makeProject({ id: 'en1', latest_session_created_at: day(3), requester_email: 'en@example.com' }),
+    ]
+
+    await GET(makeReq())
+
+    const batches = mockSendDigest.mock.calls.map((c) => c[0] as { email: string; language: string })
+    expect(batches.find((b) => b.email === 'fr@example.com')?.language).toBe('fr')
+    expect(batches.find((b) => b.email === 'en@example.com')?.language).toBe('en')
+  })
+
   it('logs a skipped decision row (every decision is recorded)', async () => {
     mockProjects = [
       makeProject({

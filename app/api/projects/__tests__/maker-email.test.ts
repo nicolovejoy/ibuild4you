@@ -129,6 +129,27 @@ describe('POST /api/projects/[id]/email', () => {
     )
   })
 
+  it('writes the reminder, nudge and invite in French for a French brief', async () => {
+    projectData = { ...projectData, language: 'fr', requester_first_name: 'Mathilde', session_count: 1 }
+    memberSnap = { empty: false, docs: [{ data: () => ({ email: 'maker@example.com', role: 'maker' }), ref: { update: mockMemberUpdate } }] }
+    mockMemberGet.mockResolvedValue(memberSnap)
+
+    await POST(makeReq({ kind: 'reminder' }), { params })
+    const reminder = sendMakerEmailMock.mock.calls[0][0]
+    expect(reminder.subject).toBe('Votre conversation pour « BySide » est prête')
+    expect(reminder.text).toMatch(/^Mathilde, votre prochaine conversation \(nº 1\) vous attend :/)
+
+    await POST(makeReq({ kind: 'nudge' }), { params })
+    const nudge = sendMakerEmailMock.mock.calls[1][0]
+    expect(nudge.subject).toBe('Nouvelle conversation prête pour « BySide »')
+    expect(nudge.text).toMatch(/^Nouvelle conversation prête pour BySide\./)
+
+    await POST(makeReq({ kind: 'invite' }), { params })
+    const invite = sendMakerEmailMock.mock.calls[2][0]
+    expect(invite.subject).toBe('Votre brief pour « BySide »')
+    expect(invite.text).toContain('Mot de passe oublié')
+  })
+
   it('mints a password-setup link for the recipient, embeds it in the invite body, and stamps shared_at (Garm PR A)', async () => {
     const res = await POST(makeReq({ kind: 'invite' }), { params })
     expect(res.status).toBe(200)

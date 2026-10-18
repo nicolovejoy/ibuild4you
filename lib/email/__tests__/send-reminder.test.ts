@@ -30,6 +30,7 @@ describe('sendReminderDigest', () => {
     await sendReminderDigest({
       email: 'sam@example.com',
       firstName: 'Sam',
+      language: 'en',
       items: [
         {
           projectId: 'p1',
@@ -39,6 +40,7 @@ describe('sendReminderDigest', () => {
           shareLink: 'https://ibuild4you.com/projects/cafe',
           sessionNumber: 1,
           reminderNumber: 1,
+          language: 'en',
         },
       ],
     })
