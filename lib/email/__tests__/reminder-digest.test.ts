@@ -14,6 +14,7 @@ function pending(overrides: Partial<PendingReminder> = {}): PendingReminder {
     shareLink: 'https://ibuild4you.com/projects/sams-cafe',
     sessionNumber: 1,
     reminderNumber: 1,
+    language: 'en',
     ...overrides,
   }
 }
@@ -96,6 +97,43 @@ describe('buildReminderEmail', () => {
     ])[0]
     const { text } = buildReminderEmail(batch)
     expect(text).toMatch(/^Your conversations are waiting:/)
+  })
+
+  it('single brief in French uses the French reminder and subject', () => {
+    const batch = groupReminderSends([pending({ language: 'fr', sessionNumber: 1 })])[0]
+    const { subject, text } = buildReminderEmail(batch)
+    expect(subject).toBe('Votre conversation pour « Sam\'s Cafe » est prête')
+    expect(text).toBe(
+      [
+        'Sam, votre prochaine conversation (nº 1) vous attend :',
+        '',
+        'https://ibuild4you.com/projects/sams-cafe',
+        '',
+        '—',
+        'iBuild4you',
+      ].join('\n'),
+    )
+  })
+
+  it('2+ briefs in French: digest subject, lead and lines are French', () => {
+    const batch = groupReminderSends([
+      pending({ projectId: 'a', projectTitle: 'Alpha', sessionNumber: 2, shareLink: 'https://ibuild4you.com/projects/alpha', language: 'fr' }),
+      pending({ projectId: 'b', projectTitle: 'Beta', sessionNumber: null, shareLink: 'https://ibuild4you.com/projects/beta', language: 'fr' }),
+    ])[0]
+    const { subject, text } = buildReminderEmail(batch)
+    expect(subject).toBe('Vos conversations vous attendent (2 briefs)')
+    expect(text).toContain('Sam, vos conversations vous attendent :')
+    expect(text).toContain('- « Alpha » — conversation nº 2 : https://ibuild4you.com/projects/alpha')
+    expect(text).toContain('- « Beta » : https://ibuild4you.com/projects/beta')
+  })
+
+  it('a maker whose briefs disagree on language gets the first item\'s (title order)', () => {
+    const batch = groupReminderSends([
+      pending({ projectId: 'b', projectTitle: 'Beta', language: 'en' }),
+      pending({ projectId: 'a', projectTitle: 'Alpha', language: 'fr' }),
+    ])[0]
+    expect(batch.language).toBe('fr')
+    expect(buildReminderEmail(batch).subject).toBe('Vos conversations vous attendent (2 briefs)')
   })
 
   it('returns an HTML body whose share links are anchors (single and multi)', () => {

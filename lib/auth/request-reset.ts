@@ -8,17 +8,23 @@
 // Unauthenticated on purpose — no apiFetch, no Bearer token; the caller is by
 // definition someone who can't sign in.
 
+import type { Locale } from '@/lib/locale'
+
 export type RequestResetResult =
   | { ok: true }
   | { ok: false; rateLimited: true; message: string }
 
-export async function requestPasswordReset(email: string): Promise<RequestResetResult> {
+// `language` is the page's locale: the reset email is written in it.
+export async function requestPasswordReset(
+  email: string,
+  language: Locale = 'en',
+): Promise<RequestResetResult> {
   let res: Response
   try {
     res = await fetch('/api/auth/reset-password', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: email.trim() }),
+      body: JSON.stringify({ email: email.trim(), language }),
     })
   } catch {
     // Network failure. Report success anyway: the confirmation copy is

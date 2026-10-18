@@ -100,7 +100,7 @@ export default function LoginPage() {
     // of our mail, so it's less likely to land in spam. The route always
     // answers 200 whether or not the account exists, so there's nothing to
     // leak here; only a rate limit is worth surfacing.
-    const result = await requestPasswordReset(email)
+    const result = await requestPasswordReset(email, locale)
     if (!result.ok) {
       setError(result.rateLimited ? t.resetRateLimited : result.message)
       return

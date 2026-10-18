@@ -48,6 +48,7 @@ import {
 } from '@/lib/query/hooks'
 import { buildNextConvoPrompt } from '@/lib/agent/next-convo-prompt'
 import { copy } from '@/lib/copy'
+import { outboundCopyFor } from '@/lib/email/outbound-copy'
 import { formatCostUsd } from '@/lib/observability/session-cost'
 import { briefRoleLabel, briefRoleShort, viewerBriefRole } from '@/lib/roles/display'
 import { MEMBER_ROLES, memberRoleLabel } from '@/lib/roles/member-role'
@@ -1189,7 +1190,8 @@ function ShareModal({ project, onClose, mode = 'maker' }: { project: Project; on
 
   const resetLink = shareProject.data?.reset_link ?? null
   const garmSyncFailed = shareProject.data?.garm_sync === 'failed'
-  const inviteEmailBody = copy.invite.body({ projectTitle: project.title, shareLink, resetLink })
+  // Shown to the builder exactly as the maker will receive it: the brief's language.
+  const inviteEmailBody = outboundCopyFor(project.language).invite.body({ projectTitle: project.title, shareLink, resetLink })
 
   return (
     <Modal isOpen onClose={onClose} title={isAdd ? 'Invite someone to this brief' : justInvited ? 'Share with maker' : alreadyShared ? 'Maker access' : 'Share with maker'}>
@@ -2006,7 +2008,7 @@ function NudgeDispatch({
   const [sentTo, setSentTo] = useState<string | null>(null)
 
   const shareLink = getProjectShareLink(project.slug, projectId)
-  const reminderMessage = copy.nudge.reminder({
+  const reminderMessage = outboundCopyFor(project.language).nudge.reminder({
     firstName: project.requester_first_name || null,
     sessionNumber,
     shareLink,
@@ -2149,7 +2151,7 @@ function StartDispatch({
   const nudgeBodyText = override || prep?.nudge_message
   const nudgeMessage = nudgeBodyText
     ? [nudgeBodyText, '', shareLink].join('\n')
-    : copy.nudge.body({ projectTitle: project.title, shareLink, sessionMode })
+    : outboundCopyFor(project.language).nudge.body({ projectTitle: project.title, shareLink, sessionMode })
 
   // Config is saved separately (Agent setup tab); the dispatch just creates
   // the session + sends. Touch builder activity + refresh prep so a stale

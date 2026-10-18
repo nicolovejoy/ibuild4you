@@ -4,6 +4,7 @@ import { decideReminder } from '@/lib/api/reminder-cadence'
 import { sendReminderDigest } from '@/lib/email/send-reminder'
 import { groupReminderSends, type PendingReminder } from '@/lib/email/reminder-digest'
 import { isAuthorizedCron } from '@/lib/api/cron-auth'
+import { toLocale } from '@/lib/locale'
 
 // Daily cron (see vercel.json — "0 16 * * *" = 09:00 PT in summer).
 // For each project that's opted in to auto-reminders, check the cadence
@@ -143,6 +144,7 @@ export async function GET(request: Request) {
         shareLink: `https://ibuild4you.com/projects/${slug}`,
         sessionNumber: (project.session_count as number | undefined) ?? null,
         reminderNumber: decision.reminderNumber,
+        language: toLocale(project.language),
       })
       bookkeeping.set(projectId, {
         docRef: doc.ref,

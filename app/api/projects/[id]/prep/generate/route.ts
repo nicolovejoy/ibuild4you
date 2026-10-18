@@ -13,7 +13,7 @@ import {
   prepConfigHash,
   type PrepInput,
 } from '@/lib/agent/prep-outbound'
-import { copy } from '@/lib/copy'
+import { outboundCopyFor } from '@/lib/email/outbound-copy'
 import type { BriefContent } from '@/lib/types'
 
 // POST /api/projects/[id]/prep/generate — builder+. Eager "prep" call that drafts
@@ -153,7 +153,8 @@ export async function POST(
         ? ` · ${(input.sessionMode === 'converge' ? input.builderDirectives : input.seedQuestions)![0]}`
         : ''
     }`
-    const nudge_message = copy.nudge.bodyText({
+    // Static fallback in the brief's language, like the AI draft would be.
+    const nudge_message = outboundCopyFor(input.language).nudge.bodyText({
       projectTitle: input.projectTitle,
       sessionMode: input.sessionMode,
     })

@@ -21,11 +21,11 @@ vi.mock('@/lib/email/send-maker-email', () => ({
   sendMakerEmail: (input: unknown) => mockSendMakerEmail(input),
 }))
 
-function post(email: unknown, ip = '1.2.3.4') {
+function post(email: unknown, ip = '1.2.3.4', extra: Record<string, unknown> = {}) {
   return new Request('https://ibuild4you.com/api/auth/reset-password', {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-forwarded-for': ip },
-    body: JSON.stringify({ email }),
+    body: JSON.stringify({ email, ...extra }),
   })
 }
 
@@ -53,6 +53,18 @@ describe('POST /api/auth/reset-password', () => {
     const sent = mockSendMakerEmail.mock.calls[0][0]
     expect(sent.text.toLowerCase()).toContain('junk')
     expect(sent.text.toLowerCase()).toContain('inbox')
+  })
+
+  it('writes the email in French when the sign-in page says so, English for anything else', async () => {
+    await POST(post('maker@example.com', '1.2.3.4', { language: 'fr' }))
+    const fr = mockSendMakerEmail.mock.calls[0][0]
+    expect(fr.subject).toBe('Définir un nouveau mot de passe pour iBuild4you')
+    expect(fr.text).toContain('https://ibuild4you.com/reset?oobCode=abc')
+    expect(fr.text.toLowerCase()).toContain('indésirables')
+
+    await POST(post('maker@example.com', '1.2.3.4', { language: 'xx' }))
+    const en = mockSendMakerEmail.mock.calls[1][0]
+    expect(en.subject).toBe(copy.email.subject.passwordReset)
   })
 
   it('answers identically for an unknown address, and sends nothing', async () => {
