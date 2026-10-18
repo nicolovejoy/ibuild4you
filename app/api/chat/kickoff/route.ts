@@ -132,19 +132,26 @@ export async function POST(request: Request) {
   // round). That is the greeting; don't add a second.
   if (storedMessages.length > 0 && makerMessages.length === 0) return noop('opener_already_posted')
 
-  const lastKickoffAt = sessionData.last_kickoff_at as string | undefined | null
-  const lastKickoffMs = lastKickoffAt ? new Date(lastKickoffAt).getTime() : 0
-  // Already greeted this return — the maker hasn't spoken since our last
-  // kickoff. This is what kills the reload loop (gap is measured from the maker
-  // message, which doesn't move when we post a greeting).
-  if (lastKickoffMs && lastKickoffMs >= lastMakerAtMs) return noop('already_kicked_off')
-  // Multi-tab burst.
-  if (lastKickoffMs && Date.now() - lastKickoffMs < KICKOFF_DEBOUNCE_MS) return noop('debounced')
-
-  // Stamp last_kickoff_at NOW, before streaming, so a concurrent tab's request
-  // refuses immediately instead of double-greeting.
+  // Claim this return: read last_kickoff_at and stamp it in one transaction,
+  // before streaming. A plain read-then-write let two requests 68ms apart both
+  // pass the check and both greet (F4FC, 2026-10-17); inside a transaction the
+  // second one re-reads, sees the first one's stamp, and declines.
   const now = new Date().toISOString()
-  await db.collection('sessions').doc(session_id).update({ last_kickoff_at: now, updated_at: now })
+  const sessionRef = db.collection('sessions').doc(session_id)
+  const declined = await db.runTransaction(async (tx) => {
+    const fresh = (await tx.get(sessionRef)).data() || {}
+    const lastKickoffAt = fresh.last_kickoff_at as string | undefined | null
+    const lastKickoffMs = lastKickoffAt ? new Date(lastKickoffAt).getTime() : 0
+    // Already greeted this return — the maker hasn't spoken since our last
+    // kickoff. This is what kills the reload loop (gap is measured from the maker
+    // message, which doesn't move when we post a greeting).
+    if (lastKickoffMs && lastKickoffMs >= lastMakerAtMs) return 'already_kicked_off'
+    // Multi-tab burst.
+    if (lastKickoffMs && Date.now() - lastKickoffMs < KICKOFF_DEBOUNCE_MS) return 'debounced'
+    tx.update(sessionRef, { last_kickoff_at: now, updated_at: now })
+    return null
+  })
+  if (declined) return noop(declined)
 
   // Nothing-queued path (#214): store + stream the canned greeting, flag the
   // maker as waiting, and email the builder once per session. Never touches

@@ -27,6 +27,7 @@ const mockCollection = vi.fn((name: string) => ({
     return { id: `new-${name}-id` }
   }),
   doc: vi.fn(() => ({
+    __collection: name,
     get: vi.fn(async () => docData[name] || { exists: false, data: () => ({}) }),
     update: vi.fn(async (data: Record<string, unknown>) => {
       updateCalls.push(data)
@@ -52,6 +53,26 @@ const mockCollection = vi.fn((name: string) => ({
   })),
 }))
 
+// Transactions run one at a time (as Firestore's would serialize conflicting
+// ones), and a tx.update merges into docData so the next transaction sees it.
+// That is what lets the concurrent-kickoff test see a real race.
+let txChain: Promise<unknown> = Promise.resolve()
+type MockRef = { __collection: string; get: () => Promise<unknown>; update: (d: Record<string, unknown>) => Promise<void> }
+const mockRunTransaction = vi.fn(<T,>(fn: (tx: unknown) => Promise<T>): Promise<T> => {
+  const run = txChain.then(() =>
+    fn({
+      get: (ref: MockRef) => ref.get(),
+      update: (ref: MockRef, data: Record<string, unknown>) => {
+        const prev = docData[ref.__collection]?.data() || {}
+        docData[ref.__collection] = { exists: true, data: () => ({ ...prev, ...data }) }
+        void ref.update(data)
+      },
+    })
+  )
+  txChain = run.catch(() => {})
+  return run
+})
+
 vi.mock('@/lib/api/firebase-server-helpers', () => ({
   getAuthenticatedUser: vi.fn(async () => ({
     uid: 'user-123',
@@ -59,7 +80,7 @@ vi.mock('@/lib/api/firebase-server-helpers', () => ({
     error: null,
     systemRoles: [],
   })),
-  getAdminDb: vi.fn(() => ({ collection: mockCollection })),
+  getAdminDb: vi.fn(() => ({ collection: mockCollection, runTransaction: mockRunTransaction })),
   getProjectRole: (...args: unknown[]) => mockGetProjectRole(...args),
   // The opener (authenticated caller) — used to name them in a multi-human greeting.
   getUserDisplayName: vi.fn(async () => 'Tomas'),
@@ -384,6 +405,24 @@ describe('POST /api/chat/kickoff', () => {
     expect(body.kicked_off).toBe(false)
     expect(body.reason).toBe('already_kicked_off')
     expect(addCalls.filter((c) => c.collection === 'messages')).toHaveLength(0)
+  })
+
+  it('greets once when two kickoffs arrive together (two tabs, or the page firing twice)', async () => {
+    setup({
+      messages: [msg('user', 3 * HOUR), msg('agent', 3 * HOUR)],
+      lastMakerMessageAt: iso(3 * HOUR),
+    })
+    const [a, b] = await Promise.all([
+      POST(makeRequest({ session_id: 'sess-1' })),
+      POST(makeRequest({ session_id: 'sess-1' })),
+    ])
+    const streamed = [a, b].filter((r) => r.headers.get('Content-Type') === 'text/event-stream')
+    const declined = [a, b].filter((r) => r.headers.get('Content-Type') === 'application/json')
+    expect(streamed).toHaveLength(1)
+    expect(declined).toHaveLength(1)
+    await drain(streamed[0])
+    expect((await declined[0].json()).reason).toBe('already_kicked_off')
+    expect(addCalls.filter((c) => c.collection === 'messages')).toHaveLength(1)
   })
 
   it('declines a fresh session with no maker history anywhere (true first-ever)', async () => {

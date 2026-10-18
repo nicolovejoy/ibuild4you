@@ -84,6 +84,11 @@ export interface Project extends BaseEntity {
   auto_reminders_enabled?: boolean
   reminders_sent_count?: number
   last_reminder_sent_at?: string | null
+  // Written by the notify cron's brief regen (app/api/cron/notify). The error is
+  // cleared on the next successful update; the Brief tab shows it until then.
+  brief_regen_failures?: number
+  brief_regen_last_error?: string | null
+  brief_regen_last_error_at?: string | null
   // Enriched by GET /api/projects
   session_count?: number
   last_message_at?: string | null
@@ -92,6 +97,7 @@ export interface Project extends BaseEntity {
   last_builder_activity_at?: string
   latest_session_created_at?: string | null
   brief_version?: number | null
+  brief_updated_at?: string | null
   brief_decision_count?: number | null
   brief_feature_count?: number | null
   brief_maker_question_count?: number | null

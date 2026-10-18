@@ -16,6 +16,7 @@ import { LoadingButton } from '@/components/ui/LoadingButton'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { MessageContent } from '@/components/ui/MessageContent'
 import { parseNextConvoPayload, nextConvoImportWarnings } from '@/lib/api/import-payload'
+import { briefSizeWarning, regenFailureNotice } from '@/lib/agent/brief-size'
 import { nextReminderAt } from '@/lib/api/reminder-cadence'
 import { useEscapeBack } from '@/lib/hooks/useEscapeBack'
 import { useNudgeCopy } from '@/lib/hooks/useNudgeCopy'
@@ -472,7 +473,7 @@ function BriefTab({
   onAutoOpenConsumed,
 }: {
   projectId: string
-  brief: { version: number; content: BriefContent } | null | undefined
+  brief: { version: number; content: BriefContent; updated_at?: string } | null | undefined
   briefLoading?: boolean
   project: Project | undefined
   files?: ProjectFile[]
@@ -501,6 +502,7 @@ function BriefTab({
   const { data: briefTabSessions } = useSessions(projectId)
 
   const briefContent = brief?.content as BriefContent | undefined
+  const regenNotice = project ? regenFailureNotice(project, brief?.updated_at) : null
   const hasBrief = briefContent && hasBriefContent(briefContent)
 
   // Arriving via the dispatch modal's "load a payload" link (#115): scroll to
@@ -646,6 +648,10 @@ function BriefTab({
         const saved = await updateBrief.mutateAsync({ project_id: projectId, content: result.value.brief as BriefContent })
         await stampPasted(saved?.version)
       }
+      // A brief too big for one automatic update saves fine but stops updating
+      // from conversation (F4FC). Warn, never reject: the paste is the builder's call.
+      const sizeWarning = briefSizeWarning(result.value.brief)
+      if (sizeWarning) warnings = [...warnings, sizeWarning]
       setPasteJson('')
       // Ignored fields: stay on the Brief tab so the builder reads the warning.
       if (warnings.length > 0) {
@@ -734,27 +740,35 @@ function BriefTab({
             <OpenQuestionsCard title={project?.title ?? ''} makerName={makerName} questions={questions} />
           }
           notices={
-            // Import succeeded but some fields were ignored: stay on the
-            // Brief tab so the builder reads the note, then continue by hand.
-            importWarnings && (
+            (regenNotice || importWarnings) && (
               <>
-                {importWarnings.messages.map((w) => (
-                  <StatusMessage key={w} type="warning" message={w} />
-                ))}
-                <div className="flex items-center gap-3">
-                  <p className="text-xs text-gray-500">{copy.brief.importStayHint}</p>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => {
-                      const { configUpdated } = importWarnings
-                      setImportWarnings(null)
-                      onImported?.({ configUpdated })
-                    }}
-                  >
-                    {copy.brief.importContinueButton}
-                  </Button>
-                </div>
+                {/* The last automatic update failed and nothing has refreshed
+                    the brief since (lib/agent/brief-size.ts). */}
+                {regenNotice && <StatusMessage type="warning" message={regenNotice} />}
+                {/* Import succeeded but some fields were ignored (or the brief
+                    is near the size limit): stay on the Brief tab so the
+                    builder reads the note, then continue by hand. */}
+                {importWarnings && (
+                  <>
+                    {importWarnings.messages.map((w) => (
+                      <StatusMessage key={w} type="warning" message={w} />
+                    ))}
+                    <div className="flex items-center gap-3">
+                      <p className="text-xs text-gray-500">{copy.brief.importStayHint}</p>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => {
+                          const { configUpdated } = importWarnings
+                          setImportWarnings(null)
+                          onImported?.({ configUpdated })
+                        }}
+                      >
+                        {copy.brief.importContinueButton}
+                      </Button>
+                    </div>
+                  </>
+                )}
               </>
             )
           }

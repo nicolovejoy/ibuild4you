@@ -53,6 +53,7 @@ function makeFixture() {
     id: `${p.id}-brief-1`,
     project_id: p.id,
     version: 1,
+    updated_at: '2026-10-16T06:48:34.758Z',
     content: { features: ['a'], decisions: [], open_risks: ['x', { text: 'q', owner: 'maker' }] },
   }))
 
@@ -206,6 +207,8 @@ describe('enrichProjects read budget', () => {
     expect(first.brief_version).toBe(1)
     expect(first.brief_feature_count).toBe(1)
     expect(first.brief_maker_question_count).toBe(1)
+    // Lets the dashboard tell a failed regen from one a later paste superseded.
+    expect(first.brief_updated_at).toBe('2026-10-16T06:48:34.758Z')
   })
 
   it('carries viewer_role and viewer_brief_role from the supplied maps (zero extra reads)', async () => {
