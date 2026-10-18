@@ -3,7 +3,8 @@
 // Every email a maker receives — invite, new-conversation nudge, reminder,
 // the cron's reminder digest, password reset — reads from here, keyed by the
 // brief's `language` (or, for the password reset, the sign-in page's locale).
-// English is read from lib/copy.ts, which stays the source of truth for it;
+// English is read from lib/copy.ts, which stays the source of truth for it
+// (the cron digest strings, which had no copy key, live inline here);
 // `fr` is typed as `OutboundCopy`, so a key added to one language and missing
 // in the other fails type-check. Builder-facing email (the nothing-queued
 // note, feedback notifications) stays English and does not live here.
@@ -56,24 +57,24 @@ const fr: OutboundCopy = {
   invite: {
     body: ({ projectTitle, shareLink, resetLink }) =>
       [
-        `Je prépare un brief pour ${projectTitle} et j’aimerais votre avis pour le façonner.`,
+        `Je prépare un brief pour ${projectTitle} et j’aimerais avoir votre avis pour l’affiner.`,
         '',
-        `Le lien ci-dessous ouvre une conversation où vous pouvez partager vos idées. Nous reviendrons à ce lien pour d’autres conversations au fil du temps. L’idée : avec Sam, l’assistant IA d’ibuild4you, nous pouvons avoir des conversations asynchrones et productives. Vos retours sont les bienvenus.`,
+        `Le lien ci-dessous ouvre une conversation où vous pouvez partager vos idées. Ce même lien servira pour les conversations suivantes. L’idée : avec Sam, l’assistant IA d’iBuild4you, nous pouvons avoir des conversations asynchrones et productives. Vos retours sont les bienvenus.`,
         '',
         shareLink,
         '',
         `Connectez-vous avec Google, ou définissez un mot de passe :`,
         resetLink || `Utilisez « Mot de passe oublié ? » sur la page de connexion pour en définir un.`,
         '',
-        `(Lien expiré ? « Mot de passe oublié ? » sur la page de connexion fonctionne toujours — cet e-mail arrive souvent dans les courriers indésirables : vérifiez-y et déplacez-le dans votre boîte de réception.)`,
+        `(Lien expiré ? « Mot de passe oublié ? » sur la page de connexion fonctionne toujours. L’e-mail de réinitialisation arrive souvent dans les courriers indésirables : pensez à y regarder et à le déplacer dans votre boîte de réception.)`,
       ].join('\n'),
   },
   nudge: {
     bodyText: ({ projectTitle, note, sessionMode }) => {
       const modeHint =
         sessionMode === 'converge'
-          ? 'Il est temps de resserrer le sujet et de fixer quelques décisions.'
-          : 'J’aimerais creuser quelques points de la dernière fois.'
+          ? 'Il est temps d’affiner et d’arrêter quelques décisions.'
+          : 'J’aimerais revenir sur quelques points abordés la dernière fois.'
       return `Nouvelle conversation prête pour ${projectTitle}. ${note || modeHint}`
     },
     body: ({ projectTitle, shareLink, note, sessionMode }) =>
@@ -97,11 +98,11 @@ const fr: OutboundCopy = {
       'Définissez un nouveau mot de passe ici :',
       resetLink,
       '',
-      'Si le lien a expiré d’ici là, touchez de nouveau « Mot de passe oublié ? » sur la page de connexion — ça fonctionne toujours.',
+      'Si le lien a expiré d’ici là, touchez de nouveau « Mot de passe oublié ? » sur la page de connexion — cela fonctionne toujours.',
       '',
-      'Si vous n’êtes pas à l’origine de cette demande, ignorez cet e-mail. Rien ne change tant que vous ne définissez pas de nouveau mot de passe.',
+      'Si vous n’êtes pas à l’origine de cette demande, vous pouvez ignorer cet e-mail. Rien ne change tant que vous ne définissez pas de nouveau mot de passe.',
       '',
-      'PS — si cet e-mail est arrivé dans vos courriers indésirables, déplacez-le dans votre boîte de réception pour que nos prochains e-mails vous parviennent.',
+      'P.-S. — si cet e-mail est arrivé dans vos courriers indésirables, déplacez-le dans votre boîte de réception pour que nos prochains e-mails vous parviennent.',
     ].join('\n'),
   digest: {
     subject: (briefCount) => `Vos conversations vous attendent (${briefCount} briefs)`,

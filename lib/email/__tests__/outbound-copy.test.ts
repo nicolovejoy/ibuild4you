@@ -46,7 +46,7 @@ describe('outboundCopy.fr', () => {
     const withNote = outboundCopy.fr.nudge.body({ projectTitle: 'L’album', shareLink: link, note: 'Une question.' })
     expect(withNote).toBe(['Nouvelle conversation prête pour L’album. Une question.', '', link].join('\n'))
     const converge = outboundCopy.fr.nudge.bodyText({ projectTitle: 'L’album', sessionMode: 'converge' })
-    expect(converge).toContain('fixer quelques décisions')
+    expect(converge).toContain('arrêter quelques décisions')
   })
 
   it('invite falls back to the forgot-password hint when no reset link was minted', () => {
