@@ -136,6 +136,7 @@ export const copy = {
     prepCopiedAt: (time: string) => `Prep copied ${time}`,
     payloadPastedAt: (time: string) => `Pasted ${time}`,
     newerThanPaste: 'new since paste',
+    briefNotUpdating: 'brief not updating',
     sharedAt: (time: string) => `Shared ${time}`,
     // New-brief modal: link to the annotated create payload under /dashboard/docs.
     payloadReference: 'Payload reference',
@@ -174,6 +175,15 @@ export const copy = {
       'This payload includes seed questions, but the brief is in converge mode — seed questions are only sent in discover mode. They were saved and will apply if the mode flips.',
     importIgnoredDirectives:
       'This payload includes builder directives, but the brief is in discover mode — directives are only sent in converge mode. They were saved and will apply if the mode flips.',
+    // Brief size vs. what one automatic update can rewrite (lib/agent/brief-size.ts)
+    briefNearSizeLimit: (chars: number, budget: number) =>
+      `This brief is ${chars.toLocaleString('en-US')} characters. One automatic update can rewrite about ${budget.toLocaleString('en-US')}, so the next ones may fail. Consider merging or trimming decisions.`,
+    briefOverSizeLimit: (chars: number, budget: number) =>
+      `This brief is ${chars.toLocaleString('en-US')} characters, over the ${budget.toLocaleString('en-US')} one automatic update can rewrite. Automatic updates will fail until it is trimmed.`,
+    regenFailedTooLarge: (when: string) =>
+      `The brief has not updated automatically since ${when}: it is too large to rewrite in one pass. Paste an updated payload, or trim it.`,
+    regenFailed: (when: string) =>
+      `The last automatic brief update failed (${when}). Try "Update from conversation" under Details.`,
     importStayHint: 'Brief updated. Read the note above, then continue.',
     importContinueButton: 'Continue to Conversations',
     emptyTitle: 'No brief yet',

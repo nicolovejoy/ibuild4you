@@ -15,6 +15,7 @@ import { StatusMessage } from '@/components/ui/StatusMessage'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { Modal } from '@/components/ui/Modal'
 import type { Project } from '@/lib/types'
+import { regenFailureNotice } from '@/lib/agent/brief-size'
 import { getTurnIndicator } from '@/lib/turn-indicator'
 import { TurnBadge } from '@/components/ui/TurnBadge'
 import { BriefBadge } from '@/components/ui/BriefBadge'
@@ -339,6 +340,9 @@ function ProjectList({ isAdmin }: { isAdmin: boolean }) {
                       </>
                     )}
                   </span>
+                )}
+                {builderSide && regenFailureNotice(project, project.brief_updated_at) && (
+                  <span className="text-rose-600">{d.briefNotUpdating}</span>
                 )}
               </div>
               <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-gray-400 mt-1">

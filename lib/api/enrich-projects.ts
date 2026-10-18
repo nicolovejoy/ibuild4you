@@ -94,12 +94,14 @@ export async function enrichProjects(
         .get()
 
       let briefVersion: number | null = null
+      let briefUpdatedAt: string | null = null
       let briefDecisionCount: number | null = null
       let briefFeatureCount: number | null = null
       let briefMakerQuestionCount = 0
       if (!briefSnap.empty) {
         const briefData = briefSnap.docs[0].data()
         briefVersion = (briefData.version as number) || null
+        briefUpdatedAt = (briefData.updated_at as string | undefined) ?? null
         const content = briefData.content as { decisions?: unknown[]; features?: unknown[] } | undefined
         briefDecisionCount = Array.isArray(content?.decisions) ? content.decisions.length : 0
         briefFeatureCount = Array.isArray(content?.features) ? content.features.length : 0
@@ -127,6 +129,7 @@ export async function enrichProjects(
         last_maker_message_at: lastMakerMessageAt,
         latest_session_created_at: latestSessionCreatedAt,
         brief_version: briefVersion,
+        brief_updated_at: briefUpdatedAt,
         brief_decision_count: briefDecisionCount,
         brief_feature_count: briefFeatureCount,
         brief_maker_question_count: briefMakerQuestionCount,
