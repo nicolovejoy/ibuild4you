@@ -482,6 +482,62 @@ describe('regenerateBriefForProject', () => {
     expect(args.system[0].text).toMatch(/contested/)
   })
 
+  // #220 — open-question owners
+  function seedCurrentRisks(open_risks: unknown[]) {
+    sessionsByProject.p1 = [{ id: 's1', data: () => ({}) }]
+    messagesBySession.s1 = [{ id: 'm1', data: () => ({ role: 'user', content: 'hi' }) }]
+    projectDocs.p1 = { exists: true, data: () => ({ title: 'X' }) }
+    briefsByProject.p1 = [
+      {
+        id: 'brief-1',
+        data: () => ({ version: 2, content: { ...validBrief, open_risks } }),
+        ref: briefRef,
+      },
+    ]
+  }
+  const storedRisks = () =>
+    (mockBriefUpdate.mock.calls[0] as unknown as [{ content: { open_risks: unknown[] } }])[0].content
+      .open_risks
+
+  it('stores owned risks from the model and canonicalizes strings/ownerless objects (#220)', async () => {
+    seedCurrentRisks([])
+    mockMessagesCreate.mockResolvedValue(
+      toolUseResponse({
+        ...validBrief,
+        open_risks: [{ text: 'q', owner: 'maker' }, { text: 'p' }, 'plain', { text: '', owner: 'maker' }],
+      }),
+    )
+    await regenerateBriefForProject(makeDb(), 'p1')
+    expect(storedRisks()).toEqual([{ text: 'q', owner: 'maker' }, 'p', 'plain'])
+  })
+
+  it('restores an owner the model dropped when the text still matches (#220)', async () => {
+    seedCurrentRisks([{ text: 'Pricing model', owner: 'maker' }])
+    mockMessagesCreate.mockResolvedValue(
+      toolUseResponse({ ...validBrief, open_risks: ['pricing model'] }),
+    )
+    await regenerateBriefForProject(makeDb(), 'p1')
+    expect(storedRisks()).toEqual([{ text: 'pricing model', owner: 'maker' }])
+  })
+
+  it('does not carry an owner onto changed text (#220)', async () => {
+    seedCurrentRisks([{ text: 'Pricing model', owner: 'maker' }])
+    mockMessagesCreate.mockResolvedValue(
+      toolUseResponse({ ...validBrief, open_risks: ['Pricing model for teams'] }),
+    )
+    await regenerateBriefForProject(makeDb(), 'p1')
+    expect(storedRisks()).toEqual(['Pricing model for teams'])
+  })
+
+  it('tool schema open_risks items are objects with text + owner enum (#220)', async () => {
+    seedCurrentRisks([])
+    mockMessagesCreate.mockResolvedValue(toolUseResponse(validBrief))
+    await regenerateBriefForProject(makeDb(), 'p1')
+    const items = mockMessagesCreate.mock.calls[0][0].tools[0].input_schema.properties.open_risks.items
+    expect(items.properties.owner.enum).toEqual(['maker', 'builder'])
+    expect(items.required).toEqual(['text'])
+  })
+
   // #121 — provenance is stamped by code on regen: a decision new this round
   // gets the latest non-archived session that has messages; unchanged decisions
   // keep their prior stamps; model-echoed decided_* fields are stripped.

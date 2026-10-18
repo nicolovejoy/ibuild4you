@@ -13,7 +13,7 @@ const NEXT_CONVO_PAYLOAD = `{
     "constraints": "Any constraints, limitations, or things the user explicitly doesn't want",
     "additional_context": "Anything else that doesn't fit the categories above",
     "decisions": [{ "topic": "short label", "decision": "what was decided" }],
-    "open_risks": ["plain-language description of something unresolved, unclear, or risky"]
+    "open_risks": ["plain-language description of something unresolved, unclear, or risky", { "text": "a risk only one side can settle", "owner": "maker" }]
   },
   "welcome_message": "Posted word for word as the agent's first message when the maker opens the next session. Omit it to let the agent greet them itself.",
   "nudge_message": "Optional. Verbatim outbound nudge text used to invite the maker back. Omit to let the system auto-draft.",

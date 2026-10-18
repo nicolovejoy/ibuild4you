@@ -35,7 +35,7 @@ When I say "give me the output", produce ONLY valid JSON matching this schema (n
     "constraints": "Any constraints, limitations, or things the maker explicitly doesn't want",
     "additional_context": "Any other relevant information that doesn't fit the above categories",
     "decisions": [{ "topic": "short label", "decision": "what was decided" }],
-    "open_risks": ["plain-language description of something unresolved, unclear, or risky"]
+    "open_risks": ["plain-language description of something unresolved, unclear, or risky", { "text": "a risk only one side can settle", "owner": "maker" }]
   }
 }
 
@@ -48,5 +48,5 @@ Rules:
 - Extract brief content ONLY from what we discussed. Do not invent or assume.
 - Features should be distinct, actionable items (not vague goals).
 - A decision = the builder/maker committed to a specific choice (not just mentioned an option).
-- Open risks = things that are unresolved, unclear, or risky. Examples: "no plan for getting first users", "pricing model undecided".`
+- Open risks = things that are unresolved, unclear, or risky. Examples: "no plan for getting first users", "pricing model undecided". A risk may carry \`"owner": "maker"\` when only the maker can settle it (their preference, a fact about their world, a decision that is theirs to make) or \`"owner": "builder"\` when it is the builder's to resolve (technical, scheduling, something the builder said they would look into); omit \`owner\` when unclear.`
 }

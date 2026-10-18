@@ -306,6 +306,19 @@ describe('buildSystemPrompt', () => {
     expect(result).toContain('Pricing model undecided')
   })
 
+  it('marks maker- and builder-owned open risks', () => {
+    const result = buildSystemPrompt({
+      ...minimalInput,
+      briefContent: {
+        ...emptyBrief,
+        open_risks: ['plain', { text: 'q', owner: 'maker' }, { text: 'b', owner: 'builder' }],
+      },
+    })
+    expect(result).toContain('- plain\n')
+    expect(result).toContain('- q (the maker owes an answer — ask them when it fits)')
+    expect(result).toContain("- b (the builder's to resolve — don't push the maker on it)")
+  })
+
   it('omits open risks section when brief has none', () => {
     const result = buildSystemPrompt({
       ...minimalInput,

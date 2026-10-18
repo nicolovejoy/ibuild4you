@@ -94,6 +94,7 @@ export interface Project extends BaseEntity {
   brief_version?: number | null
   brief_decision_count?: number | null
   brief_feature_count?: number | null
+  brief_maker_question_count?: number | null
   viewer_role?: MemberRole | 'admin' | null
   viewer_brief_role?: BriefRole | null // viewer's stored brief_role (chrome badges)
   viewer_archived?: boolean // whether the viewer archived this brief (per-viewer, from their membership)
@@ -258,6 +259,13 @@ export interface FeedbackReply extends BaseEntity {
   via_email: boolean // true if this reply arrived via inbound mail
 }
 
+// An open risk may carry an owner (#220). Helpers live in lib/brief/risks.ts.
+export type BriefRiskOwner = 'maker' | 'builder'
+export interface BriefRisk {
+  text: string
+  owner?: BriefRiskOwner
+}
+
 // Structured brief content sections
 export interface BriefContent {
   problem: string
@@ -266,7 +274,7 @@ export interface BriefContent {
   constraints: string
   additional_context: string
   decisions?: BriefDecision[]
-  open_risks?: string[]
+  open_risks?: Array<string | BriefRisk> // string = unowned; see lib/brief/risks.ts, #220
 }
 
 export interface BriefDecisionContest {

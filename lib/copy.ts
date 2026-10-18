@@ -165,6 +165,10 @@ export const copy = {
 
   // --- Brief tab ---
   brief: {
+    riskOwnerMaker: 'Maker',
+    riskOwnerBuilder: 'Builder',
+    riskOwnerNone: '—',
+    riskOwnerLabel: 'Owner',
     importButton: 'Import JSON',
     importIgnoredSeedQuestions:
       'This payload includes seed questions, but the brief is in converge mode — seed questions are only sent in discover mode. They were saved and will apply if the mode flips.',
@@ -211,6 +215,11 @@ export const copy = {
     details: 'Details',
     detailsHint: 'brief · history · regenerate · attachments',
     escHint: 'Esc back to dashboard',
+    openQuestionsTitle: (name: string) => `Open questions for ${name}`,
+    openQuestionsFallbackName: 'the maker',
+    openQuestionsCopy: 'Copy as markdown',
+    openQuestionsCopied: 'Copied!',
+    exportOpenRisks: 'Open risks',
     pastePlaceholder: 'Paste the JSON from your prep chat here…',
     pastedVersion: (v: number) => `v${v}`,
     versionLine: (version: number | null, sessions: number | undefined) =>

@@ -64,6 +64,8 @@ import { queryKeys } from '@/lib/query/keys'
 import { BuilderFilesTab } from './BuilderFilesTab'
 import { BriefEditor } from './BriefEditor'
 import { FerryDesk } from './FerryDesk'
+import { OpenQuestionsCard } from './OpenQuestionsCard'
+import { makerQuestions, riskOwner, riskText } from '@/lib/brief/risks'
 import { ferryStamps } from '@/lib/builder/ferry-stamps'
 import { serializeBriefContent } from '@/lib/api/brief-json'
 import { getTurnIndicator } from '@/lib/turn-indicator'
@@ -659,6 +661,9 @@ function BriefTab({
     }
   }
 
+  const questions = makerQuestions(briefContent)
+  const makerName = project?.requester_first_name || copy.brief.openQuestionsFallbackName
+
   const formatBrief = () => {
     if (!briefContent) return ''
     const sections: string[] = [`# Brief`, '']
@@ -680,6 +685,16 @@ function BriefTab({
           (d) =>
             `- ${d.locked ? '🔒 ' : ''}**${d.topic}:** ${d.decision}${decisionProvenanceMarkdown(d, numbers)}`,
         ),
+        '',
+      )
+    }
+    if (briefContent.open_risks?.length) {
+      sections.push(
+        `## ${copy.brief.exportOpenRisks}`,
+        ...briefContent.open_risks.map((r) => {
+          const o = riskOwner(r)
+          return `- ${o ? `(${o}) ` : ''}${riskText(r)}`
+        }),
         '',
       )
     }
@@ -714,6 +729,9 @@ function BriefTab({
           copyPrepDisabled={!project}
           onEscapeEmpty={() => router.push('/dashboard')}
           textareaRef={importTextareaRef}
+          openQuestions={
+            <OpenQuestionsCard title={project?.title ?? ''} makerName={makerName} questions={questions} />
+          }
           notices={
             // Import succeeded but some fields were ignored: stay on the
             // Brief tab so the builder reads the note, then continue by hand.

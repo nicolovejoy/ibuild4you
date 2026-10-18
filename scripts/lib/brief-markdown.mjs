@@ -67,7 +67,11 @@ export function renderBriefMd({ project, brief, sessions, reviews, files = [] })
     }
     if ((c.open_risks || []).length) {
       b.push(`\n## Open risks\n`)
-      for (const r of c.open_risks) b.push(`- ${r}`)
+      for (const r of c.open_risks) {
+        // #220: an element is a plain string or { text, owner }.
+        if (typeof r === 'string') b.push(`- ${r}`)
+        else b.push(r.owner ? `- (${r.owner}) ${r.text}` : `- ${r.text}`)
+      }
     }
   }
   if (files.length) {

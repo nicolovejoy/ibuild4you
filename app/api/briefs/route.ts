@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { getAuthenticatedUser, getAdminDb, getProjectRole, requireRole } from '@/lib/api/firebase-server-helpers'
 import { upsertBrief } from '@/lib/api/briefs'
 import { contestFor, dismissedFor, stampDecisionProvenance } from '@/lib/api/brief-merge'
+import { normalizeRisks } from '@/lib/brief/risks'
 import type { BriefContent, BriefSource } from '@/lib/types'
 
 // GET /api/briefs?project_id=xxx — get the latest brief for a project
@@ -94,9 +95,7 @@ export async function PUT(request: Request) {
             }
           })
       : [],
-    open_risks: Array.isArray(content.open_risks)
-      ? content.open_risks.filter((r: unknown) => typeof r === 'string' && (r as string).trim())
-      : [],
+    open_risks: normalizeRisks(content.open_risks),
   }
 
   // #121: stamp decision provenance against the latest stored brief. Paste path

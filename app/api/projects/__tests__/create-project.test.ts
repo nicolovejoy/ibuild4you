@@ -591,4 +591,17 @@ describe('POST /api/projects', () => {
       open_risks: ['valid risk', 'another valid'],
     })
   })
+
+  it('seeds owned risks and canonicalizes (#220)', async () => {
+    await POST(makeRequest({
+      title: 'Owned Risks',
+      brief: {
+        problem: 'p',
+        open_risks: [{ text: 'q', owner: 'maker' }, { text: 'p' }, 'plain', 42],
+      },
+    }))
+
+    const briefs = addedDocs['briefs']
+    expect((briefs[0].content as { open_risks: unknown }).open_risks).toEqual([{ text: 'q', owner: 'maker' }, 'p', 'plain'])
+  })
 })
