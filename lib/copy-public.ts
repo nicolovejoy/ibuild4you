@@ -20,7 +20,7 @@ const en = {
   loading: 'Loading...',
   landing: {
     tagline:
-      'Have an idea for an app or website but not sure where to start? Our AI guides you through the details and turns your idea into a clear brief — no technical knowledge needed.',
+      'Have an idea for an app or website but not sure where to start? Our AI guides you through the details, and we turn your idea into a working web app in a few days — no technical knowledge needed.',
     signIn: 'Sign in',
     learnMore: 'Learn more about how it works',
     howItWorks: 'How it works',
@@ -78,7 +78,7 @@ const fr: PublicCopy = {
   loading: 'Chargement…',
   landing: {
     tagline:
-      'Vous avez une idée d’application ou de site web, sans savoir par où commencer ? Notre IA vous aide à préciser chaque détail et transforme votre idée en un brief clair — aucune connaissance technique requise.',
+      'Vous avez une idée d’application ou de site web, sans savoir par où commencer ? Notre IA vous aide à préciser chaque détail, et nous transformons votre idée en application web en quelques jours — aucune connaissance technique requise.',
     signIn: 'Se connecter',
     learnMore: 'En savoir plus sur le fonctionnement',
     howItWorks: 'Comment ça marche',
