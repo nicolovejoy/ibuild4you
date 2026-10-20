@@ -20,7 +20,7 @@ const briefFields = {
   additional_context: '',
 }
 const shortDate = (iso) =>
-  new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
+  new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'America/Los_Angeles' })
 const TODAY = new Date().toISOString()
 
 const fail = (msg) => { console.error(`FAIL: ${msg}`); process.exitCode = 1 }

@@ -16,8 +16,15 @@ export function sessionNumberById(sessions: SessionLite[]): Map<string, number> 
   return new Map(ordered.map((s, i) => [s.id, i + 1]))
 }
 
+// Timestamps are stored in UTC; a calendar day shown to a human is Pacific
+// (#228), so a decision stamped after 5pm PT does not read as tomorrow.
+const TZ = 'America/Los_Angeles'
+
 const shortDate = (iso: string) =>
-  new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
+  new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: TZ })
+
+// YYYY-MM-DD in Pacific ('en-CA' formats as ISO year-month-day).
+const isoDay = (iso: string) => new Date(iso).toLocaleDateString('en-CA', { timeZone: TZ })
 
 // "conv 2 · Jul 11" when the session is known; "added Jul 11" when decided
 // out-of-band or the session is gone (archived/deleted). A revision (#218)
@@ -49,12 +56,12 @@ export function decisionProvenanceMarkdown(
 ): string {
   const parts: string[] = []
   if (d.decided_at) {
-    const date = d.decided_at.slice(0, 10)
+    const date = isoDay(d.decided_at)
     const n = d.decided_in_session ? numbers.get(d.decided_in_session) : undefined
     parts.push(n ? `decided conv ${n}, ${date}` : `added ${date}`)
   }
   if (d.revised_at) {
-    const date = d.revised_at.slice(0, 10)
+    const date = isoDay(d.revised_at)
     const n = d.revised_in_session ? numbers.get(d.revised_in_session) : undefined
     parts.push(n ? `revised conv ${n}, ${date}` : `revised ${date}`)
   }
