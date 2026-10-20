@@ -25,6 +25,9 @@ export const repoMatches = (storedGithubRepo, wantRepo) => {
 
 const day = (iso) => (iso || '').slice(0, 10)
 
+// Decision provenance days are Pacific, not UTC (#228). 'en-CA' formats as YYYY-MM-DD.
+const pacificDay = (iso) => new Date(iso).toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' })
+
 // Render brief.md — project meta + latest brief + reviewer annotations.
 // `sessions` must already be archived-excluded and sorted oldest-first (so
 // index+1 is the conversation number for #121 decision provenance). Returns
@@ -59,12 +62,12 @@ export function renderBriefMd({ project, brief, sessions, reviews, files = [] })
         // #218: a revision keeps the origin and appends "; revised …".
         const parts = []
         if (d.decided_at) {
-          const date = d.decided_at.slice(0, 10)
+          const date = pacificDay(d.decided_at)
           const n = d.decided_in_session ? convNumber.get(d.decided_in_session) : undefined
           parts.push(n ? `decided conv ${n}, ${date}` : `added ${date}`)
         }
         if (d.revised_at) {
-          const date = d.revised_at.slice(0, 10)
+          const date = pacificDay(d.revised_at)
           const n = d.revised_in_session ? convNumber.get(d.revised_in_session) : undefined
           parts.push(n ? `revised conv ${n}, ${date}` : `revised ${date}`)
         }

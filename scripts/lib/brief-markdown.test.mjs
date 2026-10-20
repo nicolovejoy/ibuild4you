@@ -45,9 +45,9 @@ describe('renderBriefMd', () => {
       constraints: 'Mobile-first',
       additional_context: 'Peak is mornings',
       decisions: [
-        { topic: 'Payment', decision: 'Stripe only', locked: true, decided_at: '2026-02-10T00:00:00Z', decided_in_session: 's2' },
-        { topic: 'Hosting', decision: 'Vercel', decided_at: '2026-01-05T00:00:00Z' }, // no session → "added"
-        { topic: 'Auth', decision: 'Google + passcode', decided_at: '2026-01-05T00:00:00Z', decided_in_session: 's1', revised_at: '2026-02-10T00:00:00Z', revised_in_session: 's2' }, // #218
+        { topic: 'Payment', decision: 'Stripe only', locked: true, decided_at: '2026-02-10T12:00:00Z', decided_in_session: 's2' },
+        { topic: 'Hosting', decision: 'Vercel', decided_at: '2026-01-05T12:00:00Z' }, // no session → "added"
+        { topic: 'Auth', decision: 'Google + passcode', decided_at: '2026-01-05T12:00:00Z', decided_in_session: 's1', revised_at: '2026-02-10T12:00:00Z', revised_in_session: 's2' }, // #218
         { topic: 'Name', decision: 'Undecided' }, // no provenance
       ],
       open_risks: ['Payment fees'],

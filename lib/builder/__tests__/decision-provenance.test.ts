@@ -33,6 +33,13 @@ describe('sessionNumberById', () => {
 describe('decisionProvenanceSuffix', () => {
   const numbers = sessionNumberById(sessions)
 
+  it('shows the Pacific day, not the UTC day (#228)', () => {
+    // 2026-07-12T02:00Z is 7pm on Jul 11 in Pacific.
+    const d = { topic: 'A', decision: 'a', decided_in_session: 's2', decided_at: '2026-07-12T02:00:00Z' }
+    expect(decisionProvenanceSuffix(d, numbers)).toBe('conv 2 · Jul 11')
+    expect(decisionProvenanceMarkdown(d, numbers)).toBe(' (decided conv 2, 2026-07-11)')
+  })
+
   it('returns null for an unstamped decision', () => {
     expect(decisionProvenanceSuffix({ topic: 'A', decision: 'a' }, numbers)).toBeNull()
   })
@@ -67,7 +74,7 @@ describe('decisionProvenanceSuffix', () => {
 
 describe('decisionProvenanceSuffix — revisions (#218)', () => {
   const numbers = sessionNumberById(sessions)
-  const origin = { decided_in_session: 's1', decided_at: '2026-06-02T00:00:00Z' }
+  const origin = { decided_in_session: 's1', decided_at: '2026-06-02T12:00:00Z' }
 
   it('appends the revision after the origin', () => {
     expect(
@@ -116,7 +123,7 @@ describe('decisionProvenanceMarkdown', () => {
   it('appends "; revised conv N, date" for a revision (#218)', () => {
     expect(
       decisionProvenanceMarkdown(
-        { topic: 'A', decision: 'a', decided_in_session: 's1', decided_at: '2026-06-02T00:00:00Z', revised_in_session: 's2', revised_at: '2026-07-11T20:00:00Z' },
+        { topic: 'A', decision: 'a', decided_in_session: 's1', decided_at: '2026-06-02T12:00:00Z', revised_in_session: 's2', revised_at: '2026-07-11T20:00:00Z' },
         numbers,
       ),
     ).toBe(' (decided conv 1, 2026-06-02; revised conv 2, 2026-07-11)')

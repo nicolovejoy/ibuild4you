@@ -12,12 +12,12 @@ import { toLocale, type Locale } from '@/lib/locale'
 
 const en = {
   ogLocale: 'en_US',
-  siteDescription: 'AI-powered project intake — from idea to structured brief',
+  siteDescription: 'AI-powered project intake — from idea to a working web app in a few days',
   home: {
-    alt: 'iBuild4you — from idea to a clear brief',
-    headline: 'From an idea to a clear brief.',
-    sub: 'An AI guides you through the details — no technical knowledge needed.',
-    footer: 'AI-powered project intake',
+    alt: 'iBuild4you — from an idea to a working web app in a few days',
+    headline: 'From an idea to a working web app in a few days.',
+    sub: 'Talk your idea through with an AI, and we build it — no technical knowledge needed.',
+    footer: 'Iterative intake and development',
   },
   brief: {
     alt: 'A brief on iBuild4you',
@@ -32,12 +32,12 @@ type PreviewCopy = typeof en
 
 const fr: PreviewCopy = {
   ogLocale: 'fr_FR',
-  siteDescription: 'Accueil de projets assisté par IA — de l’idée à un brief structuré',
+  siteDescription: 'Accueil de projets assisté par IA — d’une idée à une application web en quelques jours',
   home: {
-    alt: 'iBuild4you — d’une idée à un brief clair',
-    headline: 'D’une idée à un brief clair.',
-    sub: 'Une IA vous guide dans les détails — aucune connaissance technique requise.',
-    footer: 'Accueil de projets assisté par IA',
+    alt: 'iBuild4you — d’une idée à une application web en quelques jours',
+    headline: 'D’une idée à une application web en quelques jours.',
+    sub: 'Racontez votre idée à une IA, et nous la réalisons — aucune connaissance technique requise.',
+    footer: 'Accueil et développement itératifs',
   },
   brief: {
     alt: 'Un brief sur iBuild4you',
