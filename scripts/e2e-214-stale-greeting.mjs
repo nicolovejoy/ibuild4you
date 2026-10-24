@@ -122,8 +122,8 @@ try {
   const after = await msgsOf(s2)
   const canned = after.filter((m) => m.kind === 'unqueued_greeting')
   grade(canned.length === 1 && canned[0].role === 'agent', 'kickoff stored one agent message with kind unqueued_greeting')
-  grade(canned.length === 1 && /hasn't queued our next conversation yet/.test(canned[0].content || ''),
-    'greeting says "hasn\'t queued our next conversation yet"')
+  grade(canned.length === 1 && /Nothing new from my side today/.test(canned[0].content || ''),
+    'greeting says "Nothing new from my side today"')
 
   p = await getProject()
   grade(typeof p.maker_waiting_since === 'string', 'projects.maker_waiting_since is set')

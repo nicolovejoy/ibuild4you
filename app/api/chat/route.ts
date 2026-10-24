@@ -6,6 +6,7 @@ import { fetchPrototypeFeedback } from '@/lib/api/prototype-feedback'
 import { fetchPrototypeContext } from '@/lib/api/prototype-context'
 import { fetchPinnedArtifacts } from '@/lib/api/artifact-context'
 import { fetchSiblingDecisions } from '@/lib/api/sibling-decisions'
+import { fetchPreviousConversations } from '@/lib/api/previous-conversations'
 import { loadAttachmentBlocks, type AttachmentBlock, type DroppedAttachment } from '@/lib/agent/attachments'
 import { applyPromptCaching } from '@/lib/agent/prompt-cache'
 import { AGENT_REFUSAL_FALLBACK, AGENT_EMPTY_FALLBACK } from '@/lib/agent/constants'
@@ -343,11 +344,14 @@ async function handleChat(
   // #72: ground Sam in what the maker actually reported from the running
   // prototype (Loop feedback, keyed by slug) instead of confabulating.
   // B2 adds structural page captures alongside the text feedback.
-  const [prototypeFeedback, prototypeContext, pinnedArtifacts, siblingDecisions] = await Promise.all([
+  // Earlier conversations on this brief, summarised, so Sam can place what
+  // the maker refers to instead of guessing they used a different brief.
+  const [prototypeFeedback, prototypeContext, pinnedArtifacts, siblingDecisions, previousConversations] = await Promise.all([
     fetchPrototypeFeedback(db, projectData.slug as string | undefined, Date.now()),
     fetchPrototypeContext(db, projectData.slug as string | undefined, Date.now()),
     fetchPinnedArtifacts(db, projectId),
     fetchSiblingDecisions(db, { id: projectId, github_repo: projectData.github_repo as string | undefined }),
+    fetchPreviousConversations(db, sessionIds, session_id),
   ])
 
   // #214: the maker was greeted with the canned "nothing queued" text and the
@@ -372,6 +376,7 @@ async function handleChat(
     prototypeContext,
     pinnedArtifacts,
     siblingDecisions,
+    previousConversations,
     // Read from the project (not the session snapshot) so a language set
     // after a session started still applies.
     language: toLocale(projectData.language),

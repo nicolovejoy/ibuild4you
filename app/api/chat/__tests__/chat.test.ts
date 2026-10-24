@@ -649,6 +649,32 @@ describe('POST /api/chat', () => {
     expect(contents).toContain('Tom: and online ordering')
   })
 
+  it('summarises earlier sessions into previousConversations for the system prompt', async () => {
+    // Two non-archived sessions before the current one (s1 is third); the
+    // messages mock answers every session query with the same two messages.
+    queryResults.sessions = [
+      { id: 'old-1', data: () => ({ created_at: '2026-10-01T00:00:00Z' }) },
+      { id: 'old-2', data: () => ({ created_at: '2026-10-05T00:00:00Z' }) },
+      { id: 's1', data: () => ({ created_at: '2026-10-10T00:00:00Z' }) },
+    ]
+    queryResults.messages = [
+      { id: 'm1', data: () => ({ role: 'user', content: 'hello', created_at: '2026-10-01T16:00:00Z' }) },
+      { id: 'm2', data: () => ({ role: 'agent', content: 'Welcome back. Where were we?', created_at: '2026-10-01T16:01:00Z' }) },
+    ]
+
+    await POST(makeRequest({ session_id: 's1', content: 'more' }))
+
+    expect(buildSystemPromptParts).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionNumber: 3,
+        previousConversations: [
+          { number: 1, dateRange: 'Oct 1, 2026', messageCount: 2, lastAgentMessage: 'Welcome back. Where were we?' },
+          { number: 2, dateRange: 'Oct 1, 2026', messageCount: 2, lastAgentMessage: 'Welcome back. Where were we?' },
+        ],
+      })
+    )
+  })
+
   it('passes a participant roster (name + brief_role) to the system prompt when multi-human', async () => {
     queryResults.messages = [
       {

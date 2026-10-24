@@ -4,6 +4,7 @@ import { renderPrototypeFeedbackBlock, type PrototypeFeedbackItem } from './prot
 import { renderPrototypeContextBlock, type PrototypeContextItem } from './prototype-context'
 import { renderArtifactContextBlock, type ArtifactContextItem } from './artifact-context'
 import { renderSiblingDecisionsBlock, type SiblingDecision } from './sibling-decisions'
+import { renderPreviousConversationsBlock, type PreviousConversation } from './previous-conversations'
 import type { BriefContent, BriefDecision, BriefRole } from '@/lib/types'
 import { riskText, riskOwner } from '@/lib/brief/risks'
 import { LOCALE_NAMES, type Locale } from '@/lib/locale'
@@ -42,6 +43,11 @@ interface SystemPromptInput {
   // #142: locked decisions settled in sibling briefs (same product/github_repo)
   // so Sam doesn't re-ask about things already decided in a related conversation.
   siblingDecisions?: SiblingDecision[]
+  // Earlier conversations on this brief as one-line summaries (dates, length,
+  // how the agent left things) so Sam can place what the maker refers to
+  // instead of guessing they used a different brief. Deterministic, so it
+  // lives in the stable block.
+  previousConversations?: PreviousConversation[]
   // The brief's language (projects.language). Non-English adds a block telling
   // Sam to use it from the very first message, before the maker has written.
   language?: Locale
@@ -73,7 +79,7 @@ function humanizeGap(ms: number): string {
 // cached prefix is what makes turn 2 a cache read instead of a second write.
 export type SystemPromptParts = { stable: string; volatile: string | null }
 
-export function buildSystemPromptParts({ briefContent, projectContext, sessionNumber, seedQuestions, builderDirectives, sessionMode, identity, makerFirstName, makerLastName, gapSinceLastMakerMessageMs, nothingQueued, participants, prototypeFeedback, prototypeContext, pinnedArtifacts, siblingDecisions, language }: SystemPromptInput): SystemPromptParts {
+export function buildSystemPromptParts({ briefContent, projectContext, sessionNumber, seedQuestions, builderDirectives, sessionMode, identity, makerFirstName, makerLastName, gapSinceLastMakerMessageMs, nothingQueued, participants, prototypeFeedback, prototypeContext, pinnedArtifacts, siblingDecisions, previousConversations, language }: SystemPromptInput): SystemPromptParts {
   const parts: string[] = []
   const volatileParts: string[] = []
 
@@ -207,6 +213,12 @@ ${formatBrief(briefContent)}
 `.trim())
   }
 
+  // Earlier conversations, right after the brief they were folded into.
+  if (previousConversations && previousConversations.length > 0) {
+    const block = renderPreviousConversationsBlock(previousConversations)
+    if (block) parts.push(block)
+  }
+
   // #142: locked decisions from sibling briefs — qualifies this brief, so it
   // sits right after the brief content.
   if (siblingDecisions && siblingDecisions.length > 0) {
@@ -241,7 +253,7 @@ The user is coming back after a gap of ${humanizeGap(gapSinceLastMakerMessageMs)
     volatileParts.push(`
 ## Nothing queued
 
-The builder has not prepared this conversation yet. Do not run discovery or push toward decisions. Listen, take notes, reflect back what the maker says, and tell them the builder will pick it up. Keep it short.
+The builder has not prepared this conversation yet. Do not run discovery or push toward decisions. Listen, take notes, reflect back what the maker says, and tell them it will be picked up. Keep it short.
 `.trim())
   }
 

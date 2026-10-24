@@ -136,7 +136,6 @@ const en = {
     emptyState: copy.chat.makerEmptyState,
     kickoffFailed: copy.chat.makerKickoffFailed,
     nothingQueuedGreeting: copy.chat.nothingQueuedGreeting,
-    builderFallbackName: copy.chat.builderFallbackName,
     removeRating: 'Remove rating',
     helpful: 'Helpful',
     notHelpful: 'Not helpful',
@@ -327,9 +326,8 @@ const fr: MakerCopy = {
     uploading: 'Envoi des fichiers…',
     emptyState: 'Envoyez un message pour commencer la conversation.',
     kickoffFailed: 'Sam n’a pas pu lancer la conversation — dites bonjour pour commencer.',
-    nothingQueuedGreeting: (builder: string) =>
-      `Bonjour — ${builder} n’a pas encore préparé notre prochaine conversation, alors je n’ai rien de nouveau à voir avec vous. Si quelque chose vous préoccupe d’ici là, dites-le-moi et je garderai des notes pour ${builder}.`,
-    builderFallbackName: 'votre développeur',
+    nothingQueuedGreeting: (makerFirstName: string | null) =>
+      `Bonjour${makerFirstName ? ` ${makerFirstName}` : ''}. Rien de nouveau de mon côté aujourd'hui. Si quelque chose vous préoccupe, dites-le-moi et je prendrai des notes pour que ce soit repris.`,
     removeRating: 'Retirer l’évaluation',
     helpful: 'Utile',
     notHelpful: 'Pas utile',

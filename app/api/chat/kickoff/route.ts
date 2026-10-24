@@ -6,6 +6,7 @@ import { fetchPrototypeFeedback } from '@/lib/api/prototype-feedback'
 import { fetchPrototypeContext } from '@/lib/api/prototype-context'
 import { fetchPinnedArtifacts } from '@/lib/api/artifact-context'
 import { fetchSiblingDecisions } from '@/lib/api/sibling-decisions'
+import { fetchPreviousConversations } from '@/lib/api/previous-conversations'
 import { cacheSystemPrompt } from '@/lib/agent/prompt-cache'
 import { resolveChatModel, chatModelOptions } from '@/lib/agent/model-config'
 import { logAnthropicCall } from '@/lib/observability/anthropic'
@@ -13,7 +14,7 @@ import { accumulateSessionUsage } from '@/lib/observability/session-cost'
 import Anthropic from '@anthropic-ai/sdk'
 import { isArchivedSession } from '@/lib/sessions/active'
 import { isUnqueuedReturn } from '@/lib/sessions/queued'
-import { unqueuedGreeting, ownerFirstName } from '@/lib/sessions/unqueued-greeting'
+import { unqueuedGreeting } from '@/lib/sessions/unqueued-greeting'
 import { sendUnqueuedNotification } from '@/lib/email/unqueued-notify'
 import type { BriefContent, BriefRole } from '@/lib/types'
 
@@ -157,7 +158,7 @@ export async function POST(request: Request) {
   // maker as waiting, and email the builder once per session. Never touches
   // last_maker_message_at / notify_* (kickoff isn't maker activity).
   async function respondUnqueued() {
-    const greeting = unqueuedGreeting(toLocale(projectData.language), await ownerFirstName(db, projectId))
+    const greeting = unqueuedGreeting(toLocale(projectData.language), projectData.requester_first_name as string | undefined)
     await db.collection('messages').add({
       session_id,
       role: 'agent',
@@ -247,11 +248,8 @@ export async function POST(request: Request) {
     .where('project_id', '==', projectId)
     .orderBy('created_at', 'asc')
     .get()
-  const sessionNumber =
-    sessionsSnap.docs
-      .filter((d) => !isArchivedSession(d.data()))
-      .map((d) => d.id)
-      .indexOf(session_id) + 1
+  const sessionIds = sessionsSnap.docs.filter((d) => !isArchivedSession(d.data())).map((d) => d.id)
+  const sessionNumber = sessionIds.indexOf(session_id) + 1
 
   let briefContent: BriefContent | null = null
   const briefSnap = await db
@@ -297,11 +295,14 @@ export async function POST(request: Request) {
 
   // #72: ground the kickoff recap in real prototype feedback + structural
   // page captures too.
-  const [prototypeFeedback, prototypeContext, pinnedArtifacts, siblingDecisions] = await Promise.all([
+  // Same block as /api/chat so the stable system prompt stays byte-identical
+  // between the kickoff and the maker's first turn (cache read, not a rewrite).
+  const [prototypeFeedback, prototypeContext, pinnedArtifacts, siblingDecisions, previousConversations] = await Promise.all([
     fetchPrototypeFeedback(db, projectData.slug as string | undefined, Date.now()),
     fetchPrototypeContext(db, projectData.slug as string | undefined, Date.now()),
     fetchPinnedArtifacts(db, projectId),
     fetchSiblingDecisions(db, { id: projectId, github_repo: projectData.github_repo as string | undefined }),
+    fetchPreviousConversations(db, sessionIds, session_id),
   ])
 
   const systemPrompt = buildSystemPromptParts({
@@ -320,6 +321,7 @@ export async function POST(request: Request) {
     prototypeContext,
     pinnedArtifacts,
     siblingDecisions,
+    previousConversations,
     // Read from the project (not the session snapshot) so a language set
     // after a session started still applies.
     language: toLocale(projectData.language),

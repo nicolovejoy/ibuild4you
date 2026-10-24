@@ -245,10 +245,10 @@ export const copy = {
     // (kickoff) failed — a blank chat otherwise reads as broken.
     makerKickoffFailed: "Sam couldn't start the conversation just now — say hello to begin.",
     // Canned greeting when the maker returns but the builder has queued nothing
-    // new (#214). FR twin lives in makerCopy.fr.chat.
-    nothingQueuedGreeting: (builder: string) =>
-      `Hi — ${builder} hasn't queued our next conversation yet, so I don't have anything new to go through with you. If something's on your mind in the meantime, tell me and I'll keep notes for ${builder}.`,
-    builderFallbackName: 'your builder',
+    // new (#214). Addressed to the maker by first name; names nobody else.
+    // Without a name the greeting is just "Hi." FR twin lives in makerCopy.fr.chat.
+    nothingQueuedGreeting: (makerFirstName: string | null) =>
+      `Hi${makerFirstName ? ` ${makerFirstName}` : ''}. Nothing new from my side today. If something's on your mind, tell me and I'll take notes so it gets picked up.`,
     defaultWelcomeMessage: (projectTitle: string) =>
       `Hey! Welcome to ${projectTitle}. I'm here to help figure out what you're looking for — just a casual conversation, no technical knowledge needed.\n\nWhat's the idea you have in mind?`,
   },

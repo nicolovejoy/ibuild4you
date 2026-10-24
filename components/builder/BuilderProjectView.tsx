@@ -503,6 +503,10 @@ function BriefTab({
 
   const briefContent = brief?.content as BriefContent | undefined
   const regenNotice = project ? regenFailureNotice(project, brief?.updated_at) : null
+  // The live brief is close to (or over) what one automatic update can rewrite
+  // (lib/agent/brief-size.ts). Shown whenever the tab is open, not only right
+  // after a paste: F4FC crossed the line through regens, with nothing pasted.
+  const sizeNotice = briefContent ? briefSizeWarning(briefContent) : null
   const hasBrief = briefContent && hasBriefContent(briefContent)
 
   // Arriving via the dispatch modal's "load a payload" link (#115): scroll to
@@ -740,11 +744,16 @@ function BriefTab({
             <OpenQuestionsCard title={project?.title ?? ''} makerName={makerName} questions={questions} />
           }
           notices={
-            (regenNotice || importWarnings) && (
+            (regenNotice || sizeNotice || importWarnings) && (
               <>
                 {/* The last automatic update failed and nothing has refreshed
                     the brief since (lib/agent/brief-size.ts). */}
                 {regenNotice && <StatusMessage type="warning" message={regenNotice} />}
+                {/* Brief size vs. the regen budget; skipped when the paste
+                    warnings below already carry the same line. */}
+                {sizeNotice && !importWarnings?.messages.includes(sizeNotice) && (
+                  <StatusMessage type="warning" message={sizeNotice} />
+                )}
                 {/* Import succeeded but some fields were ignored (or the brief
                     is near the size limit): stay on the Brief tab so the
                     builder reads the note, then continue by hand. */}
