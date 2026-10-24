@@ -99,6 +99,28 @@ describe('buildSystemPrompt', () => {
     )
   })
 
+  it('renders the previous-conversations block in the stable part, after the brief', () => {
+    const parts = buildSystemPromptParts({
+      ...minimalInput,
+      briefContent: { ...emptyBrief, problem: 'Kids need a shapes game' },
+      sessionNumber: 3,
+      previousConversations: [
+        { number: 1, dateRange: 'Oct 3, 2026', messageCount: 3, lastAgentMessage: 'Who else would play it?' },
+        { number: 2, dateRange: 'Oct 10, 2026 to Oct 11, 2026', messageCount: 2, lastAgentMessage: null },
+      ],
+    })
+    expect(parts.stable).toContain('## Previous conversations')
+    expect(parts.stable).toContain('**Conversation 1** (Oct 3, 2026, 3 messages). Your last message: "Who else would play it?"')
+    expect(parts.stable).toContain('**Conversation 2** (Oct 10, 2026 to Oct 11, 2026, 2 messages).')
+    expect(parts.stable.indexOf('## Current brief')).toBeLessThan(parts.stable.indexOf('## Previous conversations'))
+    expect(parts.volatile ?? '').not.toContain('Previous conversations')
+  })
+
+  it('omits the previous-conversations block when empty or absent', () => {
+    expect(buildSystemPrompt(minimalInput)).not.toContain('## Previous conversations')
+    expect(buildSystemPrompt({ ...minimalInput, previousConversations: [] })).not.toContain('## Previous conversations')
+  })
+
   it('includes numbered builder directives', () => {
     const result = buildSystemPrompt({
       ...minimalInput,
