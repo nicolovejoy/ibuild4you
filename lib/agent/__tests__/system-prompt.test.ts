@@ -502,6 +502,17 @@ describe('buildSystemPrompt', () => {
     expect(converge).toContain("intake, not the builder")
   })
 
+  it('guardrails tell Sam to say when something is not in front of it, never to blame a different brief (F4FC session 7)', () => {
+    for (const mode of ['discover', 'converge'] as const) {
+      const { stable } = buildSystemPromptParts({ ...minimalInput, sessionMode: mode })
+      expect(stable).toContain("**If it's not in front of you, say so.**")
+      expect(stable).toContain('ask them to describe it again')
+      expect(stable).toContain('Never suggest they used a different brief, chat or project')
+      expect(stable).toContain('never say messages may have been lost')
+      expect(stable).toContain('everything said in this brief is kept')
+    }
+  })
+
   it('guardrails tell Sam to admit it cannot see the running app, in both modes', () => {
     const discover = buildSystemPrompt(minimalInput)
     const converge = buildSystemPrompt({ ...minimalInput, sessionMode: 'converge' })
