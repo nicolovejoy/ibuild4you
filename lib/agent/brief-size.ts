@@ -3,17 +3,20 @@ import { BRIEF_MAX_TOKENS } from '@/lib/agent/constants'
 
 // An automatic brief update (regenerateBriefForProject) has the model write the
 // WHOLE brief back out as tool input, so the brief's size is capped by the
-// output budget. Measured on F4FC 2026-10-16: a 25,040-char brief took 8,067
-// output tokens, about 3.1 chars per token. 3 keeps a little margin.
-const CHARS_PER_TOKEN = 3
+// output budget. Measured on F4FC: 2026-10-16 a 25,040-char brief took 8,067
+// output tokens (3.10 chars per token); 2026-10-19 a 34,726-char brief took
+// 11,903 (2.92). The ratio falls as the brief grows, so 2.9 is the working
+// estimate; 3 was optimistic by about a round of regen.
+const CHARS_PER_TOKEN = 2.9
 // Warn the builder once a brief is past this share of the budget.
 const WARN_SHARE = 0.8
 
 export function briefRegenCharBudget(maxTokens: number = BRIEF_MAX_TOKENS): number {
-  return maxTokens * CHARS_PER_TOKEN
+  return Math.floor(maxTokens * CHARS_PER_TOKEN)
 }
 
-// Shown after a paste: null while the brief comfortably fits.
+// Shown on the Brief tab whenever the live brief is close to the budget, and
+// after a paste: null while the brief comfortably fits.
 export function briefSizeWarning(content: unknown, maxTokens: number = BRIEF_MAX_TOKENS): string | null {
   const chars = JSON.stringify(content ?? {}).length
   const budget = briefRegenCharBudget(maxTokens)
