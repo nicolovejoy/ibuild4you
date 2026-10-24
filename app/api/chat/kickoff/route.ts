@@ -14,7 +14,7 @@ import { accumulateSessionUsage } from '@/lib/observability/session-cost'
 import Anthropic from '@anthropic-ai/sdk'
 import { isArchivedSession } from '@/lib/sessions/active'
 import { isUnqueuedReturn } from '@/lib/sessions/queued'
-import { unqueuedGreeting, ownerFirstName } from '@/lib/sessions/unqueued-greeting'
+import { unqueuedGreeting } from '@/lib/sessions/unqueued-greeting'
 import { sendUnqueuedNotification } from '@/lib/email/unqueued-notify'
 import type { BriefContent, BriefRole } from '@/lib/types'
 
@@ -158,7 +158,7 @@ export async function POST(request: Request) {
   // maker as waiting, and email the builder once per session. Never touches
   // last_maker_message_at / notify_* (kickoff isn't maker activity).
   async function respondUnqueued() {
-    const greeting = unqueuedGreeting(toLocale(projectData.language), await ownerFirstName(db, projectId))
+    const greeting = unqueuedGreeting(toLocale(projectData.language), projectData.requester_first_name as string | undefined)
     await db.collection('messages').add({
       session_id,
       role: 'agent',

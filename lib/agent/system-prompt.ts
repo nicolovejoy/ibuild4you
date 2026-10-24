@@ -253,7 +253,7 @@ The user is coming back after a gap of ${humanizeGap(gapSinceLastMakerMessageMs)
     volatileParts.push(`
 ## Nothing queued
 
-The builder has not prepared this conversation yet. Do not run discovery or push toward decisions. Listen, take notes, reflect back what the maker says, and tell them the builder will pick it up. Keep it short.
+The builder has not prepared this conversation yet. Do not run discovery or push toward decisions. Listen, take notes, reflect back what the maker says, and tell them it will be picked up. Keep it short.
 `.trim())
   }
 

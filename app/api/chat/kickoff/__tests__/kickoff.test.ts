@@ -136,13 +136,6 @@ vi.mock('@/lib/agent/system-prompt', () => ({
 const resendSend = vi.fn(async () => ({ id: 'e1' }))
 vi.mock('resend', () => ({ Resend: vi.fn(() => ({ emails: { send: resendSend } })) }))
 
-// Owner lookup uses a query chain this file's db mock does not model.
-let mockOwnerFirst: string | null = 'Nico'
-vi.mock('@/lib/sessions/unqueued-greeting', async (orig) => ({
-  ...(await orig<typeof import('@/lib/sessions/unqueued-greeting')>()),
-  ownerFirstName: vi.fn(async () => mockOwnerFirst),
-}))
-
 vi.mock('@/lib/observability/anthropic', () => ({
   logAnthropicCall: vi.fn(async () => {}),
 }))
@@ -222,7 +215,6 @@ describe('POST /api/chat/kickoff', () => {
     updateCalls.length = 0
     capturedStreamArgs = null
     mockGetProjectRole.mockResolvedValue('maker')
-    mockOwnerFirst = 'Nico'
     vi.stubEnv('RESEND_API_KEY', 'k')
   })
 
@@ -478,8 +470,8 @@ describe('POST /api/chat/kickoff', () => {
       const res = await POST(makeRequest({ session_id: 'sess-1' }))
       expect(res.headers.get('Content-Type')).toBe('text/event-stream')
       const out = await drain(res)
-      expect(out).toContain("hasn't queued our next conversation yet")
-      expect(out).toContain('Nico')
+      expect(out).toContain('Hi Mara. Nothing new from my side today.')
+      expect(out).not.toMatch(/builder/i)
       expect(out).toContain('data: [DONE]')
       expect(capturedStreamArgs).toBeNull()
       const stored = addCalls.find((c) => c.collection === 'messages')!
@@ -498,7 +490,7 @@ describe('POST /api/chat/kickoff', () => {
     it('does not email again on a session already notified', async () => {
       setup(unqueued({ session: { unqueued_notified_at: iso(HOUR) } }))
       const out = await drain(await POST(makeRequest({ session_id: 'sess-1' })))
-      expect(out).toContain("hasn't queued")
+      expect(out).toContain('Nothing new from my side today')
       expect(resendSend).not.toHaveBeenCalled()
       expect(updateCalls.some((u) => 'unqueued_notified_at' in u)).toBe(false)
     })
@@ -514,7 +506,7 @@ describe('POST /api/chat/kickoff', () => {
       vi.stubEnv('FEEDBACK_NOTIFY_SUPPRESS', 'on')
       setup(unqueued())
       const out = await drain(await POST(makeRequest({ session_id: 'sess-1' })))
-      expect(out).toContain("hasn't queued")
+      expect(out).toContain('Nothing new from my side today')
       expect(resendSend).not.toHaveBeenCalled()
     })
 
@@ -523,15 +515,14 @@ describe('POST /api/chat/kickoff', () => {
       const err = vi.spyOn(console, 'error').mockImplementation(() => {})
       setup(unqueued())
       const out = await drain(await POST(makeRequest({ session_id: 'sess-1' })))
-      expect(out).toContain("hasn't queued")
+      expect(out).toContain('Nothing new from my side today')
       err.mockRestore()
     })
 
-    it('uses "your builder" when there is no owner first name', async () => {
-      mockOwnerFirst = null
-      setup(unqueued())
+    it('drops the name when the brief has no maker first name', async () => {
+      setup(unqueued({ project: { requester_first_name: null, payload_pasted_at: undefined } }))
       const out = await drain(await POST(makeRequest({ session_id: 'sess-1' })))
-      expect(out).toContain('your builder')
+      expect(out).toContain('Hi. Nothing new from my side today.')
     })
 
     it('queued -> model path unchanged', async () => {
@@ -588,7 +579,7 @@ describe('POST /api/chat/kickoff', () => {
           project: { payload_pasted_at: iso(6 * HOUR), prep_copied_at: iso(HOUR) },
         })
         const out = await drain(await POST(makeRequest({ session_id: 'sess-1' })))
-        expect(out).toContain("hasn't queued")
+        expect(out).toContain('Nothing new from my side today')
         expect(capturedStreamArgs).toBeNull()
         expect(addCalls.find((c) => c.collection === 'messages')!.data.kind).toBe('unqueued_greeting')
         expect(resendSend).toHaveBeenCalledTimes(1)
@@ -597,7 +588,7 @@ describe('POST /api/chat/kickoff', () => {
       it('(d) empty return session, no paste -> canned', async () => {
         setup({ messages: [], lastMakerMessageAt: iso(2 * HOUR), project: { payload_pasted_at: undefined } })
         const out = await drain(await POST(makeRequest({ session_id: 'sess-1' })))
-        expect(out).toContain("hasn't queued")
+        expect(out).toContain('Nothing new from my side today')
         expect(capturedStreamArgs).toBeNull()
       })
 
