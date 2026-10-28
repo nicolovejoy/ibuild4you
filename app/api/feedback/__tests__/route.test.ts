@@ -344,6 +344,8 @@ describe('POST /api/feedback — rate limiting', () => {
     const res = await POST(makeRequest(validPayload(), { headers }))
     expect(res.status).toBe(429)
     expect(res.headers.get('Retry-After')).toBeTruthy()
+    // A cross-origin widget can only read Retry-After if it is exposed.
+    expect(res.headers.get('Access-Control-Expose-Headers')).toContain('Retry-After')
     // Did not write or notify on the rate-limited call.
     expect(mockAdd).toHaveBeenCalledTimes(RATE_LIMIT_PER_HOUR)
   })
