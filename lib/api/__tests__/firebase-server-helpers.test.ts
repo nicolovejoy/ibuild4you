@@ -61,9 +61,14 @@ function authedRequest() {
 }
 
 describe('isAdminEmail', () => {
-  it('returns true for known admin emails', () => {
-    expect(isAdminEmail('nicholas.lovejoy@gmail.com')).toBe(true)
-    expect(isAdminEmail('mlovejoy@scu.edu')).toBe(true)
+  it('returns true for the admin email', () => {
+    expect(isAdminEmail('nlovejoy@me.com')).toBe(true)
+  })
+
+  // 2026-10-28: one admin account; the other two addresses are retired.
+  it('returns false for the retired admin addresses', () => {
+    expect(isAdminEmail('nicholas.lovejoy@gmail.com')).toBe(false)
+    expect(isAdminEmail('mlovejoy@scu.edu')).toBe(false)
   })
 
   it('returns false for non-admin emails', () => {
@@ -223,7 +228,7 @@ describe('isApprovedEmail — Garm authoritative', () => {
   })
 
   it('admin break-glass approves without consulting Garm (ADMIN_EMAILS)', async () => {
-    expect(await isApprovedEmail('nicholas.lovejoy@gmail.com')).toBe(true)
+    expect(await isApprovedEmail('nlovejoy@me.com')).toBe(true)
     expect(garmCheck).not.toHaveBeenCalled()
   })
 
@@ -588,11 +593,11 @@ describe('getAuthenticatedUser', () => {
   })
 
   it('falls back to ADMIN_EMAILS when users doc has no system_roles', async () => {
-    mockToken({ uid: 'admin-uid', email: 'nicholas.lovejoy@gmail.com' })
+    mockToken({ uid: 'admin-uid', email: 'nlovejoy@me.com' })
     // Doc exists but without system_roles field
     mockUserDoc = {
       exists: true,
-      data: () => ({ email: 'nicholas.lovejoy@gmail.com' }),
+      data: () => ({ email: 'nlovejoy@me.com' }),
     }
 
     const result = await getAuthenticatedUser(authedRequest())
@@ -603,7 +608,7 @@ describe('getAuthenticatedUser', () => {
   })
 
   it('falls back to ADMIN_EMAILS when users doc does not exist', async () => {
-    mockToken({ uid: 'admin-uid', email: 'mlovejoy@scu.edu' })
+    mockToken({ uid: 'admin-uid', email: 'nlovejoy@me.com' })
     // No users doc at all
 
     const result = await getAuthenticatedUser(authedRequest())
@@ -625,10 +630,10 @@ describe('getAuthenticatedUser', () => {
 
   it('ignores system_roles from doc once backfilled, not ADMIN_EMAILS', async () => {
     // User is in ADMIN_EMAILS but doc has system_roles set — doc wins
-    mockToken({ uid: 'admin-uid', email: 'nicholas.lovejoy@gmail.com' })
+    mockToken({ uid: 'admin-uid', email: 'nlovejoy@me.com' })
     mockUserDoc = {
       exists: true,
-      data: () => ({ email: 'nicholas.lovejoy@gmail.com', system_roles: ['support'] }),
+      data: () => ({ email: 'nlovejoy@me.com', system_roles: ['support'] }),
     }
 
     const result = await getAuthenticatedUser(authedRequest())

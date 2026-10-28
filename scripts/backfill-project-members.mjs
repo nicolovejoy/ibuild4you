@@ -20,7 +20,7 @@ import { getFirestore } from 'firebase-admin/firestore'
 
 const DRY_RUN = process.argv.includes('--dry-run')
 
-const ADMIN_EMAILS = ['nlovejoy@me.com', 'nicholas.lovejoy@gmail.com', 'mlovejoy@scu.edu']
+const ADMIN_EMAILS = ['nlovejoy@me.com']
 
 function initAdmin() {
   if (getApps().length === 0) {
