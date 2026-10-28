@@ -142,7 +142,7 @@ export async function POST(
   const isProd = process.env.VERCEL_ENV === 'production'
   const allowlisted = (email: string) =>
     email.endsWith('@ibuild4you.com') ||
-    ['nlovejoy@me.com', 'nicholas.lovejoy@gmail.com'].includes(normalizeEmail(email))
+    normalizeEmail(email) === 'nlovejoy@me.com'
 
   const results: Array<{ to: string; emailId: string; suppressed: boolean }> = []
   if (kind === 'invite') {

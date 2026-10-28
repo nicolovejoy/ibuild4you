@@ -1,5 +1,5 @@
 /**
- * Backfill system_roles on the two admin users.
+ * Backfill system_roles on the admin user.
  *
  * Usage:
  *   node --env-file=.env.local scripts/backfill-system-roles.mjs --dry-run
@@ -11,7 +11,7 @@ import { getFirestore } from 'firebase-admin/firestore'
 
 const DRY_RUN = process.argv.includes('--dry-run')
 
-const ADMIN_EMAILS = ['nicholas.lovejoy@gmail.com', 'mlovejoy@scu.edu']
+const ADMIN_EMAILS = ['nlovejoy@me.com']
 
 function initAdmin() {
   if (getApps().length === 0) {
