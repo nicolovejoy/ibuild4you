@@ -220,6 +220,8 @@ export const copy = {
     stampMaker: 'Last maker activity',
     never: 'never',
     newerThanPaste: 'newer than your paste',
+    // Recency dot on each ferry stamp (also its accessible label)
+    recency: { newest: 'Most recent', middle: 'In between', oldest: 'Oldest' },
     copyPrep: 'Copy next-convo prep',
     copied: 'Copied!',
     details: 'Details',

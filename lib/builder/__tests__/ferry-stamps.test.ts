@@ -77,9 +77,9 @@ describe('ferryStamps', () => {
 
   it('uses nulls and empty strings when a field is missing', () => {
     const s = ferryStamps({}, NOW)
-    expect(s.copied).toEqual({ at: null, absolute: '', relative: '' })
-    expect(s.pasted).toEqual({ at: null, absolute: '', relative: '', version: null })
-    expect(s.maker).toEqual({ at: null, absolute: '', relative: '', who: null, newerThanPaste: false })
+    expect(s.copied).toEqual({ at: null, absolute: '', relative: '', recency: null })
+    expect(s.pasted).toEqual({ at: null, absolute: '', relative: '', recency: null, version: null })
+    expect(s.maker).toEqual({ at: null, absolute: '', relative: '', recency: null, who: null, newerThanPaste: false })
   })
 
   it('never yields "Invalid Date" for garbage input', () => {
@@ -97,5 +97,52 @@ describe('ferryStamps', () => {
     expect(ferryStamps({ requester_first_name: 'Sam', requester_email: 'x@y.com' }, NOW).maker.who).toBe('Sam')
     expect(ferryStamps({ requester_email: 'dana.lee@y.com' }, NOW).maker.who).toBe('dana.lee')
     expect(ferryStamps({}, NOW).maker.who).toBeNull()
+  })
+})
+
+describe('ferryStamps recency', () => {
+  const T1 = '2026-10-15T16:00:00.000Z'
+  const T2 = '2026-10-16T16:00:00.000Z'
+  const T3 = '2026-10-17T16:00:00.000Z'
+
+  it('ranks all three stamps newest, middle, oldest', () => {
+    const s = ferryStamps(
+      { prep_copied_at: T1, payload_pasted_at: T2, last_maker_message_at: T3 },
+      NOW
+    )
+    expect(s.maker.recency).toBe('newest')
+    expect(s.pasted.recency).toBe('middle')
+    expect(s.copied.recency).toBe('oldest')
+  })
+
+  it('ranks by time, not by card position', () => {
+    const s = ferryStamps(
+      { prep_copied_at: T3, payload_pasted_at: T1, last_maker_message_at: T2 },
+      NOW
+    )
+    expect(s.copied.recency).toBe('newest')
+    expect(s.maker.recency).toBe('middle')
+    expect(s.pasted.recency).toBe('oldest')
+  })
+
+  it('with two stamps, one is newest and the other oldest; the missing one has none', () => {
+    const s = ferryStamps({ prep_copied_at: T2, last_maker_message_at: T1 }, NOW)
+    expect(s.copied.recency).toBe('newest')
+    expect(s.maker.recency).toBe('oldest')
+    expect(s.pasted.recency).toBeNull()
+  })
+
+  it('a lone stamp is newest', () => {
+    const s = ferryStamps({ payload_pasted_at: T1 }, NOW)
+    expect(s.pasted.recency).toBe('newest')
+    expect(s.copied.recency).toBeNull()
+    expect(s.maker.recency).toBeNull()
+  })
+
+  it('ignores unparseable timestamps', () => {
+    const s = ferryStamps({ prep_copied_at: 'garbage', payload_pasted_at: T1, last_maker_message_at: T2 }, NOW)
+    expect(s.copied.recency).toBeNull()
+    expect(s.maker.recency).toBe('newest')
+    expect(s.pasted.recency).toBe('oldest')
   })
 })
