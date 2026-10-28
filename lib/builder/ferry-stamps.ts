@@ -4,7 +4,16 @@ import type { Project } from '@/lib/types'
 // Stamp model for the Brief tab "ferry desk": when the prep prompt was copied,
 // when a payload was pasted back, and the maker's last activity.
 
-export type FerryStamp = { at: string | null; absolute: string; relative: string }
+// Where a stamp sits in time among the three, so the desk can colour the
+// order at a glance (newest green → oldest red). null when the stamp is missing.
+export type StampRecency = 'newest' | 'middle' | 'oldest'
+
+export type FerryStamp = {
+  at: string | null
+  absolute: string
+  relative: string
+  recency: StampRecency | null
+}
 export type FerryStamps = {
   copied: FerryStamp
   pasted: FerryStamp & { version: number | null }
@@ -40,8 +49,26 @@ export function makerNewerThanPaste(p: {
 }
 
 function stamp(iso: string | null | undefined, now: Date): FerryStamp {
-  if (!isValid(iso)) return { at: null, absolute: '', relative: '' }
-  return { at: iso, absolute: formatStampPacific(iso), relative: formatRelativeTime(iso, 'en', now) }
+  if (!isValid(iso)) return { at: null, absolute: '', relative: '', recency: null }
+  return {
+    at: iso,
+    absolute: formatStampPacific(iso),
+    relative: formatRelativeTime(iso, 'en', now),
+    recency: null, // filled in by rankRecency once all three exist
+  }
+}
+
+// Rank the present stamps by time: the latest is 'newest', the earliest
+// 'oldest', anything between 'middle'. A lone stamp is 'newest'.
+function rankRecency(stamps: FerryStamp[]): void {
+  const present = stamps
+    .filter((s) => s.at !== null)
+    .sort((a, b) => new Date(b.at!).getTime() - new Date(a.at!).getTime())
+  present.forEach((s, i) => {
+    if (i === 0) s.recency = 'newest'
+    else if (i === present.length - 1) s.recency = 'oldest'
+    else s.recency = 'middle'
+  })
 }
 
 export function ferryStamps(
@@ -57,7 +84,7 @@ export function ferryStamps(
   now: Date = new Date()
 ): FerryStamps {
   const who = project.requester_first_name || project.requester_email?.split('@')[0] || null
-  return {
+  const stamps: FerryStamps = {
     copied: stamp(project.prep_copied_at, now),
     pasted: { ...stamp(project.payload_pasted_at, now), version: project.payload_pasted_version ?? null },
     maker: {
@@ -66,4 +93,6 @@ export function ferryStamps(
       newerThanPaste: makerNewerThanPaste(project),
     },
   }
+  rankRecency([stamps.copied, stamps.pasted, stamps.maker])
+  return stamps
 }

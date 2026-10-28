@@ -5,7 +5,7 @@ import { Upload, ClipboardCopy, Check, ChevronRight, ChevronDown } from 'lucide-
 import { LoadingButton } from '@/components/ui/LoadingButton'
 import { StatusMessage } from '@/components/ui/StatusMessage'
 import { copy } from '@/lib/copy'
-import type { FerryStamp, FerryStamps } from '@/lib/builder/ferry-stamps'
+import type { FerryStamp, FerryStamps, StampRecency } from '@/lib/builder/ferry-stamps'
 
 // The Brief tab's "ferry desk": copy the prep out, paste the payload back,
 // Import. Purely presentational — BriefTab owns data, mutations and the
@@ -31,6 +31,14 @@ type FerryDeskProps = {
   children: React.ReactNode // Details body
 }
 
+// Newest green → oldest red, so the order of the three reads at a glance.
+// Full class names (not built from parts) so Tailwind keeps them.
+const RECENCY_STYLE: Record<StampRecency, { border: string; dot: string }> = {
+  newest: { border: 'border-l-emerald-500', dot: 'bg-emerald-500' },
+  middle: { border: 'border-l-amber-500', dot: 'bg-amber-500' },
+  oldest: { border: 'border-l-red-500', dot: 'bg-red-500' },
+}
+
 function StampCard({
   testId,
   label,
@@ -44,12 +52,23 @@ function StampCard({
   subLine?: string
   hot?: boolean
 }) {
+  const recency = stamp.recency ? RECENCY_STYLE[stamp.recency] : null
   return (
     <div
       data-testid={testId}
-      className={`rounded-lg border bg-white px-3 py-2 ${hot ? 'border-brand-navy' : 'border-gray-200'}`}
+      className={`rounded-lg border border-l-4 border-gray-200 bg-white px-3 py-2 ${recency?.border ?? ''}`}
     >
-      <div className="text-xs text-gray-500">{label}</div>
+      <div className="flex items-center gap-1.5 text-xs text-gray-500">
+        {stamp.recency && recency && (
+          <span
+            role="img"
+            aria-label={copy.brief.recency[stamp.recency]}
+            title={copy.brief.recency[stamp.recency]}
+            className={`inline-block h-2 w-2 rounded-full ${recency.dot}`}
+          />
+        )}
+        {label}
+      </div>
       <div className="text-sm font-medium text-brand-navy">
         {stamp.absolute || copy.brief.never}
       </div>

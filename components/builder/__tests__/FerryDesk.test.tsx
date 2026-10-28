@@ -8,12 +8,18 @@ import type { FerryStamps } from '@/lib/builder/ferry-stamps'
 afterEach(cleanup)
 
 const stamps = (overrides: Partial<FerryStamps> = {}): FerryStamps => ({
-  copied: { at: '2026-10-17T16:14:00.000Z', absolute: 'Oct 17, 9:14 AM', relative: '2 hours ago' },
-  pasted: { at: null, absolute: '', relative: '', version: null },
+  copied: {
+    at: '2026-10-17T16:14:00.000Z',
+    absolute: 'Oct 17, 9:14 AM',
+    relative: '2 hours ago',
+    recency: 'newest',
+  },
+  pasted: { at: null, absolute: '', relative: '', recency: null, version: null },
   maker: {
     at: '2026-10-16T20:00:00.000Z',
     absolute: 'Oct 16, 1:00 PM',
     relative: 'yesterday',
+    recency: 'oldest',
     who: 'Sam',
     newerThanPaste: false,
   },
@@ -58,17 +64,33 @@ describe('FerryDesk', () => {
     expect(screen.getByText('Brief v4 · session 3')).toBeTruthy()
   })
 
-  it('marks the maker stamp when newerThanPaste is true', () => {
+  it('notes on the maker stamp when it is newer than the paste', () => {
     renderDesk()
-    expect(screen.getByTestId('stamp-maker').className).not.toContain('border-brand-navy')
     expect(screen.queryByText(/newer than your paste/)).toBeNull()
     cleanup()
 
     const hot = stamps()
     hot.maker.newerThanPaste = true
     renderDesk({ stamps: hot })
-    expect(screen.getByTestId('stamp-maker').className).toContain('border-brand-navy')
     expect(screen.getByText(/newer than your paste/)).toBeTruthy()
+  })
+
+  it('colours each stamp by recency: newest green, middle amber, oldest red, missing grey', () => {
+    const s = stamps()
+    s.copied.recency = 'middle'
+    s.pasted = { ...s.pasted, at: '2026-10-17T17:00:00.000Z', absolute: 'Oct 17, 10:00 AM', recency: 'newest' }
+    renderDesk({ stamps: s })
+    expect(screen.getByTestId('stamp-pasted').className).toContain('border-l-emerald-500')
+    expect(screen.getByTestId('stamp-copied').className).toContain('border-l-amber-500')
+    expect(screen.getByTestId('stamp-maker').className).toContain('border-l-red-500')
+    // Colour is not the only signal: the dot carries the order in words.
+    expect(screen.getByLabelText('Most recent')).toBeTruthy()
+    expect(screen.getByLabelText('In between')).toBeTruthy()
+    expect(screen.getByLabelText('Oldest')).toBeTruthy()
+    cleanup()
+
+    renderDesk() // pasted is missing in the default fixture
+    expect(screen.getByTestId('stamp-pasted').className).not.toMatch(/border-l-(emerald|amber|red)/)
   })
 
   it('Details is collapsed by default, shows the hint, and reveals children on click', () => {
@@ -131,7 +153,7 @@ describe('FerryDesk', () => {
   it('suffixes the pasted stamp with the version the paste produced', () => {
     renderDesk({
       stamps: stamps({
-        pasted: { at: '2026-10-17T16:20:00.000Z', absolute: 'Oct 17, 9:20 AM', relative: '2 hours ago', version: 3 },
+        pasted: { at: '2026-10-17T16:20:00.000Z', absolute: 'Oct 17, 9:20 AM', relative: '2 hours ago', recency: 'newest', version: 3 },
       }),
     })
     expect(screen.getByTestId('stamp-pasted').textContent).toContain('2 hours ago · v3')
