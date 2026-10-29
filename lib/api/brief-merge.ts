@@ -21,7 +21,7 @@ import type {
 // Decisions are identified by their topic label (case-insensitive, trimmed).
 // Two decisions with the same topic are "the same decision"; regen reusing a
 // topic but changing the text counts as an alteration we must revert when locked.
-function topicKey(d: BriefDecision): string {
+export function topicKey(d: BriefDecision): string {
   return d.topic.trim().toLowerCase()
 }
 
@@ -159,6 +159,13 @@ export function resolveContest(
 // mergeLockedDecisions so locked decisions arrive verbatim from prev and rule 2
 // preserves their stamps automatically.
 
+// Text comparison for "did this decision actually change?" (#228 part 2):
+// lowercase, drop all Unicode punctuation (quotes, dashes, .,;:!?()[]-),
+// collapse whitespace. Rewording that only touches these is not a revision.
+export function normalizeDecisionText(s: string): string {
+  return s.toLowerCase().replace(/\p{P}/gu, '').replace(/\s+/g, ' ').trim()
+}
+
 const hasExplicitProvenance = (d: BriefDecision): boolean => typeof d.decided_at === 'string'
 
 // A decision without its decided_* fields — for stripping model echo and for
@@ -183,8 +190,11 @@ export function stripDecisionProvenance(decisions: BriefDecision[]): BriefDecisi
 // Stamp provenance onto the post-reconcile decision list:
 //   1. New topic (no prev match): stamp { decided_in_session: sessionId,
 //      decided_at: now } — unless the incoming decision already carries
-//      explicit provenance (the paste path may legitimately supply it).
-//   2. Unchanged (prev match, same decision text): carry prev stamps forward
+//      explicit provenance (the paste path may legitimately supply it). When
+//      `originByTopic` has the topic (a note introduced it), that note's
+//      session and time are used instead of sessionId/now (#229).
+//   2. Unchanged (prev match, same decision text after normalizeDecisionText,
+//      so case/punctuation/whitespace rewording does not count, #228 pt 2): carry prev stamps forward
 //      verbatim — including "no stamps"; never fabricate. Incoming stamps are
 //      ignored (prev is the source of truth). This also restores stamps an
 //      outside agent dropped when round-tripping the brief JSON.
@@ -206,13 +216,16 @@ export function stampDecisionProvenance(args: {
   next: BriefDecision[] // post-reconcile list about to be persisted
   sessionId: string | null // stamping context (null on paste path)
   now: string // ISO
+  // #229: where a new topic first came from, keyed by topicKey (trimmed,
+  // lowercased topic); built from the notes a paste folds.
+  originByTopic?: Map<string, { session_id: string | null; at: string }>
 }): BriefDecision[] {
   const prevByKey = new Map((args.prev ?? []).map((d) => [topicKey(d), d]))
 
   return args.next.map((n) => {
     const p = prevByKey.get(topicKey(n))
 
-    if (p && p.decision === n.decision) {
+    if (p && normalizeDecisionText(p.decision) === normalizeDecisionText(n.decision)) {
       // Rule 2 — unchanged: prev stamps verbatim (or none at all).
       const carried = withoutProvenance(n)
       if (p.decided_at !== undefined) carried.decided_at = p.decided_at
@@ -246,6 +259,8 @@ export function stampDecisionProvenance(args: {
     if (hasExplicitProvenance(n)) {
       return { ...n, decided_in_session: n.decided_in_session ?? null }
     }
+    const origin = args.originByTopic?.get(topicKey(n))
+    if (origin) return { ...n, decided_in_session: origin.session_id, decided_at: origin.at }
     return { ...n, decided_in_session: args.sessionId, decided_at: args.now }
   })
 }
