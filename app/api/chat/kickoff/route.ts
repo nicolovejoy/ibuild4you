@@ -298,8 +298,8 @@ export async function POST(request: Request) {
   // Same block as /api/chat so the stable system prompt stays byte-identical
   // between the kickoff and the maker's first turn (cache read, not a rewrite).
   const [prototypeFeedback, prototypeContext, pinnedArtifacts, siblingDecisions, previousConversations] = await Promise.all([
-    fetchPrototypeFeedback(db, projectData.slug as string | undefined, Date.now()),
-    fetchPrototypeContext(db, projectData.slug as string | undefined, Date.now()),
+    fetchPrototypeFeedback(db, projectId, projectData.slug as string | undefined, Date.now()),
+    fetchPrototypeContext(db, projectId, projectData.slug as string | undefined, Date.now()),
     fetchPinnedArtifacts(db, projectId),
     fetchSiblingDecisions(db, { id: projectId, github_repo: projectData.github_repo as string | undefined }),
     fetchPreviousConversations(db, sessionIds, session_id),

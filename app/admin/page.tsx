@@ -4,9 +4,10 @@ import { useAuth } from '@/lib/hooks/useAuth'
 import { useApproval } from '@/lib/hooks/useApproval'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
-import { Check, Save, Inbox, MessageSquare, DollarSign, BellRing, Stethoscope, ShieldOff } from 'lucide-react'
+import { Check, Save, Inbox, MessageSquare, DollarSign, BellRing, Stethoscope, ShieldOff, AppWindow } from 'lucide-react'
 import Link from 'next/link'
 import { useCurrentUser } from '@/lib/query/hooks'
+import { copy } from '@/lib/copy'
 import { apiFetch } from '@/lib/firebase/api-fetch'
 import { useEscapeBack } from '@/lib/hooks/useEscapeBack'
 import { SectionHeader } from '@/components/section-header'
@@ -77,6 +78,13 @@ export default function AdminPage() {
           >
             <MessageSquare className="h-4 w-4" />
             Feedback inbox
+          </Link>
+          <Link
+            href="/admin/apps"
+            className="inline-flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm text-brand-charcoal hover:border-brand-navy hover:text-brand-navy transition-colors"
+          >
+            <AppWindow className="h-4 w-4" />
+            {copy.adminApps.cardLabel}
           </Link>
           <Link
             href="/admin/usage"

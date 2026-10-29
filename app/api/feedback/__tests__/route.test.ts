@@ -8,7 +8,7 @@ import { signIdentityAssertion } from '@/lib/feedback/identity'
 // Tests for POST /api/feedback — the public widget submission endpoint.
 //
 // Covers: CORS preflight, honeypot, render-time check, required-field validation,
-// projectId-must-exist gate, happy path, and rate limiting.
+// projectId-must-resolve-to-an-app gate, happy path, and rate limiting.
 //
 // Firebase Admin SDK and Resend are mocked so tests run without secrets.
 // =============================================================================
@@ -22,15 +22,29 @@ const mockFeedbackWhereGet = vi.fn(async () => ({ docs: [] as Array<{ data: () =
 const mockContextAdd = vi.fn<(doc: Record<string, unknown>) => Promise<{ id: string }>>(
   async () => ({ id: 'context-1' })
 )
-const mockProjectsGet = vi.fn(async () => ({
-  empty: false,
-  docs: [{ id: 'project-1', data: () => ({ title: 'Sample Cafe', slug: 'sample-cafe' }) }],
+// Loop apps: apps/{slug}.get() for a canonical slug, then
+// apps.where('legacy_slugs','array-contains',x).limit(1).get() for a legacy one.
+// Default: one app, slug 'sample-cafe', no legacy slugs.
+type AppDoc = { id: string; data: () => Record<string, unknown> }
+const SAMPLE_APP: Record<string, unknown> = { slug: 'sample-cafe', name: 'Sample Cafe' }
+let appsStore: Record<string, Record<string, unknown>> = {}
+const mockAppDocGet = vi.fn(async (id: string) => ({
+  exists: id in appsStore,
+  id,
+  data: () => appsStore[id],
 }))
+const mockAppLegacyGet = vi.fn(async (legacy: string) => {
+  const hit = Object.entries(appsStore).find(([, a]) =>
+    ((a.legacy_slugs as string[] | undefined) ?? []).includes(legacy)
+  )
+  const docs: AppDoc[] = hit ? [{ id: hit[0], data: () => hit[1] }] : []
+  return { empty: docs.length === 0, docs }
+})
 const mockVerifyIdToken = vi.fn<(token: string) => Promise<{ uid: string }>>(async () => ({ uid: 'user-1' }))
 const mockResendSend = vi.fn<(payload: Record<string, unknown>) => Promise<{ id: string }>>(
   async () => ({ id: 'email-1' })
 )
-// #149: loop_signing_secrets/{projectDocId}. Default: no secret configured
+// #149: loop_signing_secrets/{app slug}. Default: no secret configured
 // (doc doesn't exist) — every test that exercises a real identityAssertion
 // overrides this to return the secret it signed the token with.
 const mockSecretGet = vi.fn<
@@ -40,9 +54,16 @@ const mockSecretGet = vi.fn<
 vi.mock('@/lib/firebase/admin', () => ({
   getAdminDb: vi.fn(() => ({
     collection: vi.fn((name: string) => {
-      if (name === 'projects') {
+      if (name === 'apps') {
         return {
-          where: () => ({ limit: () => ({ get: mockProjectsGet }) }),
+          doc: (id: string) => {
+            // Real Firestore throws synchronously on these ids.
+            if (id.includes('/') || /^__.*__$/.test(id)) throw new Error(`invalid doc id ${id}`)
+            return { get: () => mockAppDocGet(id) }
+          },
+          where: (_f: string, _op: string, v: string) => ({
+            limit: () => ({ get: () => mockAppLegacyGet(v) }),
+          }),
         }
       }
       if (name === 'prototype_context') {
@@ -91,10 +112,7 @@ function validPayload(overrides: Record<string, unknown> = {}) {
 beforeEach(() => {
   vi.clearAllMocks()
   _resetRateLimit()
-  mockProjectsGet.mockResolvedValue({
-    empty: false,
-    docs: [{ id: 'project-1', data: () => ({ title: 'Sample Cafe', slug: 'sample-cafe' }) }],
-  })
+  appsStore = { 'sample-cafe': { ...SAMPLE_APP } }
   mockFeedbackWhereGet.mockResolvedValue({ docs: [] })
   mockSecretGet.mockResolvedValue({ exists: false, data: () => undefined })
 })
@@ -229,11 +247,28 @@ describe('POST /api/feedback — validation', () => {
     expect(res.status).toBe(400)
   })
 
-  it('returns 404 when projectId does not match any project slug', async () => {
-    mockProjectsGet.mockResolvedValueOnce({ empty: true, docs: [] })
+  it('404 Unknown project when the slug matches no app and no legacy slug', async () => {
     const res = await POST(makeRequest(validPayload({ projectId: 'no-such-project' })))
     expect(res.status).toBe(404)
+    expect(await res.json()).toEqual({ error: 'Unknown project' })
     expect(mockAdd).not.toHaveBeenCalled()
+  })
+
+  it('404 Unknown project for a projectId that is not a valid slug (no 500)', async () => {
+    const res = await POST(makeRequest(validPayload({ projectId: 'a/b' })))
+    expect(res.status).toBe(404)
+    expect(await res.json()).toEqual({ error: 'Unknown project' })
+  })
+
+  it('stores project_id as the canonical slug when posted under a legacy slug', async () => {
+    appsStore = {
+      byside: { slug: 'byside', name: 'Byside', legacy_slugs: ['byside-old-brief-slug'] },
+    }
+    const res = await POST(makeRequest(validPayload({ projectId: 'byside-old-brief-slug' })))
+    expect(res.status).toBe(201)
+    expect(mockAdd.mock.calls[0][0].project_id).toBe('byside')
+    const email = mockResendSend.mock.calls[0][0]
+    expect(email.subject).toContain('Byside')
   })
 
   it('resolves submitter_uid from a valid Bearer token', async () => {
@@ -425,6 +460,69 @@ describe('POST /api/feedback — identity relay (#149) and requires-identity (#1
     expect(written.submitter_email_verified).toBeUndefined()
   })
 
+  it('reads loop_signing_secrets by the canonical slug', async () => {
+    appsStore = {
+      'sample-cafe': { slug: 'sample-cafe', name: 'Sample Cafe', legacy_slugs: ['old-brief'] },
+    }
+    const secretDoc = vi.fn(() => ({ get: mockSecretGet }))
+    const { getAdminDb } = await import('@/lib/firebase/admin')
+    const base = (getAdminDb as unknown as () => { collection: (n: string) => unknown })()
+    vi.mocked(getAdminDb).mockReturnValueOnce({
+      collection: (n: string) => (n === 'loop_signing_secrets' ? { doc: secretDoc } : base.collection(n)),
+    } as unknown as ReturnType<typeof getAdminDb>)
+    configureSecret()
+    // Posted under the legacy slug; assertion signed for the canonical one.
+    const res = await POST(
+      makeRequest(validPayload({ projectId: 'old-brief', identityAssertion: signToken() }))
+    )
+    expect(res.status).toBe(201)
+    expect(secretDoc).toHaveBeenCalledWith('sample-cafe')
+    expect(mockAdd.mock.calls[0][0].submitter_email_verified).toBe(true)
+  })
+
+  it('verifies an assertion signed with a legacy slug of the same app', async () => {
+    appsStore = {
+      'sample-cafe': { slug: 'sample-cafe', name: 'Sample Cafe', legacy_slugs: ['old-brief'] },
+    }
+    configureSecret()
+    const res = await POST(
+      makeRequest(
+        validPayload({
+          projectId: 'old-brief',
+          submitterEmail: '',
+          identityAssertion: signToken({ project: 'old-brief' }),
+        })
+      )
+    )
+    expect(res.status).toBe(201)
+    const written = mockAdd.mock.calls[0][0]
+    expect(written.project_id).toBe('sample-cafe')
+    expect(written.submitter_email_verified).toBe(true)
+    expect(written.submitter_email).toBe('verified@example.com')
+  })
+
+  it("does not verify a token signed for another app's slug posted under a different app's legacy id", async () => {
+    appsStore = {
+      byside: { slug: 'byside', name: 'Byside', legacy_slugs: ['byside-old-brief-slug'] },
+      musicforge: { slug: 'musicforge', name: 'MusicForge' },
+    }
+    configureSecret()
+    const res = await POST(
+      makeRequest(
+        validPayload({
+          projectId: 'byside-old-brief-slug',
+          submitterEmail: '',
+          identityAssertion: signToken({ project: 'musicforge' }),
+        })
+      )
+    )
+    expect(res.status).toBe(201)
+    const written = mockAdd.mock.calls[0][0]
+    expect(written.project_id).toBe('byside')
+    expect(written.submitter_email_verified).toBeUndefined()
+    expect(written.submitter_email).toBeNull()
+  })
+
   it('no secret configured for the project → assertion silently ignored', async () => {
     // mockSecretGet default (from beforeEach) is exists:false.
     const res = await POST(makeRequest(validPayload({ identityAssertion: signToken() })))
@@ -461,49 +559,34 @@ describe('POST /api/feedback — identity relay (#149) and requires-identity (#1
   })
 
   it('403s an unverified submission when feedback_requires_identity is true', async () => {
-    mockProjectsGet.mockResolvedValueOnce({
-      empty: false,
-      docs: [
-        {
-          id: 'project-1',
-          data: () => ({ title: 'Sample Cafe', slug: 'sample-cafe', feedback_requires_identity: true }),
-        },
-      ],
-    })
+    appsStore['sample-cafe'].feedback_requires_identity = true
     const res = await POST(makeRequest(validPayload({ submitterEmail: 'typed@example.com' })))
     expect(res.status).toBe(403)
     expect(mockAdd).not.toHaveBeenCalled()
   })
 
   it('201s a verified (assertion) submission when feedback_requires_identity is true', async () => {
-    mockProjectsGet.mockResolvedValueOnce({
-      empty: false,
-      docs: [
-        {
-          id: 'project-1',
-          data: () => ({ title: 'Sample Cafe', slug: 'sample-cafe', feedback_requires_identity: true }),
-        },
-      ],
-    })
+    appsStore['sample-cafe'].feedback_requires_identity = true
     configureSecret()
     const res = await POST(makeRequest(validPayload({ identityAssertion: signToken() })))
     expect(res.status).toBe(201)
   })
 
   it('a valid Bearer satisfies feedback_requires_identity even without an assertion', async () => {
-    mockProjectsGet.mockResolvedValueOnce({
-      empty: false,
-      docs: [
-        {
-          id: 'project-1',
-          data: () => ({ title: 'Sample Cafe', slug: 'sample-cafe', feedback_requires_identity: true }),
-        },
-      ],
-    })
+    appsStore['sample-cafe'].feedback_requires_identity = true
     const res = await POST(
       makeRequest(validPayload(), { headers: { Authorization: 'Bearer good-token' } })
     )
     expect(res.status).toBe(201)
+  })
+
+  it('honours apps.feedback_requires_identity', async () => {
+    appsStore['sample-cafe'].feedback_requires_identity = true
+    const anon = await POST(makeRequest(validPayload({ submitterEmail: '' })))
+    expect(anon.status).toBe(403)
+    appsStore['sample-cafe'].feedback_requires_identity = false
+    const open = await POST(makeRequest(validPayload({ submitterEmail: '' })))
+    expect(open.status).toBe(201)
   })
 
   it('feedback_requires_identity absent (flag off) leaves anonymous submissions unchanged', async () => {

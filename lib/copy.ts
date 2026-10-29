@@ -373,6 +373,43 @@ export const copy = {
     requiresIdentity: 'This app requires you to be signed in before sending feedback.',
   },
 
+  // --- Admin: Loop apps (/admin/apps). Admin screens are English only; the
+  // French twins in lib/copy-maker.ts cover maker-facing text, not admin. ---
+  adminApps: {
+    cardLabel: 'Loop apps',
+    pageTitle: 'Loop apps',
+    appFilter: 'App',
+    allApps: 'All apps',
+    newApp: 'New app',
+    slugLabel: 'Slug',
+    slugHint: 'Kebab-case, e.g. byside. This is the projectId the widget sends.',
+    nameLabel: 'Name',
+    repoLabel: 'GitHub repo (optional)',
+    repoHint: 'owner/name, used when converting feedback to an issue.',
+    create: 'Create app',
+    creating: 'Creating…',
+    errorInvalidSlug: 'That slug is not valid. Use lowercase letters, digits and single dashes, up to 64 characters.',
+    errorSlugTaken: 'That slug is already in use by another app (as its slug or a legacy slug).',
+    errorGeneric: 'Could not create the app.',
+    noApps: 'No apps yet.',
+    colName: 'Name',
+    colSlug: 'Slug',
+    colLegacy: 'Legacy slugs',
+    colRepo: 'GitHub repo',
+    colIdentity: 'Identity required',
+    yes: 'yes',
+    no: 'no',
+    open: 'Open',
+    settings: 'Settings',
+    requiresIdentity: 'Require a verified identity to send feedback',
+    save: 'Save',
+    saving: 'Saving…',
+    saved: 'Saved',
+    saveFailed: 'Save failed.',
+    feedbackHeading: 'Feedback',
+    notFound: 'App not found.',
+  },
+
   // --- General ---
   loading: 'Loading...',
 }

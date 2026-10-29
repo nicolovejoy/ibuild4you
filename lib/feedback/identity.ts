@@ -5,7 +5,7 @@
 // feedback_requires_identity flag).
 //
 // Pure, server-only, no I/O — the caller (app/api/feedback/route.ts) owns
-// loading the per-project secret(s) from Firestore and passing them in.
+// loading the per-app secret(s) from Firestore and passing them in.
 //
 // SECURITY NOTE (replay): this module only checks freshness (ts window), not
 // single-use. A captured token stays valid for the whole freshness window
@@ -25,7 +25,7 @@ export const MAX_AGE_SECONDS = 12 * 60 * 60 // 12h
 export interface IdentityAssertionPayload {
   v: 1
   email: string
-  project: string // projects.slug
+  project: string // apps.slug (canonical, or a legacy slug of the same app)
   ts: number // unix seconds
   kid: string
 }

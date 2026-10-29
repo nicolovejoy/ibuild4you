@@ -347,8 +347,8 @@ async function handleChat(
   // Earlier conversations on this brief, summarised, so Sam can place what
   // the maker refers to instead of guessing they used a different brief.
   const [prototypeFeedback, prototypeContext, pinnedArtifacts, siblingDecisions, previousConversations] = await Promise.all([
-    fetchPrototypeFeedback(db, projectData.slug as string | undefined, Date.now()),
-    fetchPrototypeContext(db, projectData.slug as string | undefined, Date.now()),
+    fetchPrototypeFeedback(db, projectId, projectData.slug as string | undefined, Date.now()),
+    fetchPrototypeContext(db, projectId, projectData.slug as string | undefined, Date.now()),
     fetchPinnedArtifacts(db, projectId),
     fetchSiblingDecisions(db, { id: projectId, github_repo: projectData.github_repo as string | undefined }),
     fetchPreviousConversations(db, sessionIds, session_id),

@@ -21,7 +21,7 @@ how-to-embed or triage story changes.
 | Launcher (corner button) | `components/feedback-launcher.tsx` *(in host apps; see below)* |
 | Payload builder + validation | `lib/feedback/payload.ts` |
 | Ingestion endpoint | `app/api/feedback/route.ts` (public, CORS-open) |
-| Admin inbox | `app/admin/feedback/` |
+| Admin inbox | `app/admin/feedback/` (all apps) and `app/admin/apps/` (app list, New app, per-app settings + inbox; deep link `/admin/apps/<slug>?id=<feedbackId>`) |
 | Convert to GitHub issue | `app/api/admin/feedback/[id]/to-github/route.ts` |
 
 ## Embedding Loop in a host app
@@ -36,7 +36,7 @@ files travel together:
    `normalizeEmail` from `@/lib/email/normalize` (inline a trim + lowercase).
    `capture.ts` is the #72 structural page snapshot — plain DOM APIs, zero
    deps. `'use client'` is a Next directive; drop it outside Next.
-2. Render it, pointing `projectId` at an existing iBuild4you `projects.slug`:
+2. Render it, pointing `projectId` at an iBuild4you app slug (`apps.slug`, or one of its `legacy_slugs`):
 
    ```tsx
    <FeedbackWidget
@@ -59,9 +59,10 @@ and responses are all in the [wire contract](../lib/feedback/README.md).
 ### The slug must exist
 
 `/api/feedback` returns `404 Unknown project` unless `projectId` exactly matches
-a `projects.slug` in iBuild4you. Slugs are kebab-case (e.g.
-`prntd-mobile-flow-rethink`, not `prntd`). Confirm the real slug with
-`node scripts/with-prod-env-ro.mjs node scripts/list-projects.mjs --grep <term>`.
+an app slug in iBuild4you (`apps.slug`, or one of that app's `legacy_slugs`, which
+older widgets keep posting). Feedback is always stored under the app's canonical
+slug. Slugs are kebab-case (e.g. `byside`). Create the app at `/admin/apps` (New app) before the widget goes live. Confirm the real slug with
+`node scripts/with-prod-env-ro.mjs node scripts/list-apps.mjs`.
 
 ### Verified identity (#149) — host recipe lands in a follow-up PR
 
@@ -70,7 +71,7 @@ or nothing). If a host app has real login and wants attributed feedback, its
 **server** can sign a short-lived assertion vouching for the logged-in user's
 email and hand it to the widget as the `identityAssertion` prop/field — the
 widget never signs anything itself. Verified submissions bypass the rate
-limit and, if the project turns on `feedback_requires_identity` (#150),
+limit and, if the app turns on `feedback_requires_identity` (#150; `apps.feedback_requires_identity`, set at `/admin/apps/<slug>`),
 unverified submissions are rejected outright.
 
 The token format, freshness rules, and verification contract are documented

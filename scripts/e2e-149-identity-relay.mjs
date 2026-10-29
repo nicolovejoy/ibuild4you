@@ -1,15 +1,15 @@
 #!/usr/bin/env node
 // #149/#150 verification — the host-app identity relay end-to-end against a
-// real deploy: mint a per-project signing secret, sign identityAssertion
+// real deploy: mint a per-app signing secret, sign identityAssertion
 // tokens IN this script (mirroring lib/feedback/identity.ts — scripts in this
 // repo are plain JS, no ts-node, so the signing logic is reimplemented here
 // rather than imported), and drive POST /api/feedback through the full route.
 //
 // Covers: a valid assertion verifies + overrides the typed email; a tampered
-// token silently falls back to anonymous; PATCH feedback_requires_identity=
+// token silently falls back to anonymous; PATCH /api/admin/apps/<slug> feedback_requires_identity=
 // true then confirm an unsigned POST 403s and a signed POST still 201s; 25
 // signed POSTs all succeed despite the 20/hr rate limit (verified bypasses
-// it). Cleans up every row + the minted secret + the flag.
+// it). Cleans up every row + the minted secret + the throwaway app.
 //
 // Ordering note: on a live Vercel deploy, x-forwarded-for is set by the edge
 // from the real connecting client and ignores whatever this script forges —
@@ -24,14 +24,15 @@
 //
 // Requires .ibuild4you-bypass (Vercel Protection Bypass token) + a preview
 // .env.preview.local (for initFixtureDb's write guard) + .test-admin-password
-// (admin login, to exercise the real PATCH /api/projects route for the flag).
+// (admin login, to exercise the real PATCH /api/admin/apps route for the flag).
 
 import { createHmac, randomBytes } from 'node:crypto'
 import { initFixtureDb } from './fixtures/db.mjs'
 import { readToken, launchLoggedIn } from './lib/preview-login.mjs'
 
 const BASE = process.env.E2E_BASE || 'https://preview.ibuild4you.com'
-const SLUG = 'test-cast-cafe' // existing seeded fixture project (reused by e2e-72b)
+// Throwaway app (feedback belongs to the app, not a brief). Slug is unique per run.
+const SLUG = `e2e-149-${Date.now()}`
 const bypassToken = readToken()
 
 const { db, firebaseProjectId } = initFixtureDb({ requireWrite: true })
@@ -85,19 +86,14 @@ function basePayload(overrides = {}) {
   }
 }
 
-// --- Setup: resolve the project + mint a secret ---
-const projectSnap = await db.collection('projects').where('slug', '==', SLUG).limit(1).get()
-if (projectSnap.empty) {
-  console.error(`FAIL: no project with slug "${SLUG}" — seed it first (see e2e-72b-capture-wire.mjs header).`)
-  process.exit(1)
-}
-const projectDoc = projectSnap.docs[0]
-const projectId = projectDoc.id
+// --- Setup: create a throwaway app + mint a secret (keyed by app slug) ---
 const SECRET = randomBytes(32).toString('base64url')
-const secretRef = db.collection('loop_signing_secrets').doc(projectId)
 const now = new Date().toISOString()
+const appRef = db.collection('apps').doc(SLUG)
+await appRef.set({ slug: SLUG, name: 'E2E 149', created_by: 'e2e-149', created_at: now, updated_at: now })
+const secretRef = db.collection('loop_signing_secrets').doc(SLUG)
 await secretRef.set({ keys: { k1: SECRET }, active_kid: 'k1', created_at: now, updated_at: now })
-console.log(`Minted secret for "${SLUG}" (project ${projectId})`)
+console.log(`Created app "${SLUG}" + minted its secret`)
 
 const createdFeedbackIds = []
 
@@ -161,10 +157,10 @@ const createdFeedbackIds = []
   if (!bearer) {
     check('captured an admin Bearer token', false, 'never saw one — login failed?')
   } else {
-    const patchRes = await page.request.fetch(`${BASE}/api/projects`, {
+    const patchRes = await page.request.fetch(`${BASE}/api/admin/apps/${SLUG}`, {
       method: 'PATCH',
       headers: { authorization: bearer, 'content-type': 'application/json' },
-      data: JSON.stringify({ project_id: projectId, feedback_requires_identity: true }),
+      data: JSON.stringify({ feedback_requires_identity: true }),
     })
     check('PATCH feedback_requires_identity=true → 200', patchRes.ok(), `status ${patchRes.status()}`)
 
@@ -180,11 +176,11 @@ const createdFeedbackIds = []
     check('signed POST when flag is on → 201', signed.status === 201, `got ${signed.status}`)
     if (signed.data.id) createdFeedbackIds.push(signed.data.id)
 
-    // Reset the flag so the shared fixture project doesn't stay locked down.
-    const resetRes = await page.request.fetch(`${BASE}/api/projects`, {
+    // Reset the flag (the app is deleted at the end regardless).
+    const resetRes = await page.request.fetch(`${BASE}/api/admin/apps/${SLUG}`, {
       method: 'PATCH',
       headers: { authorization: bearer, 'content-type': 'application/json' },
-      data: JSON.stringify({ project_id: projectId, feedback_requires_identity: false }),
+      data: JSON.stringify({ feedback_requires_identity: false }),
     })
     check('reset feedback_requires_identity=false → 200', resetRes.ok(), `status ${resetRes.status()}`)
   }
@@ -218,6 +214,7 @@ for (const id of createdFeedbackIds) {
   await db.collection('feedback').doc(id).delete()
 }
 await secretRef.delete()
-console.log(`cleaned up ${createdFeedbackIds.length} feedback row(s) + the minted secret`)
+await appRef.delete()
+console.log(`cleaned up ${createdFeedbackIds.length} feedback row(s) + the minted secret + the throwaway app`)
 
 process.exit(failed ? 1 : 0)

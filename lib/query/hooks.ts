@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiFetch } from '@/lib/firebase/api-fetch'
 import { queryKeys } from './keys'
-import type { Project, Session, Message, Brief, BriefVersion, SystemRole, ProjectFile, FileFolder, ProjectMemberSummary } from '@/lib/types'
+import type { App, Project, Session, Message, Brief, BriefVersion, SystemRole, ProjectFile, FileFolder, ProjectMemberSummary } from '@/lib/types'
 import type { GarmSyncOutcome } from '@/lib/garm-grants'
 
 // --- Current user ---
@@ -331,7 +331,6 @@ export function useUpdateProject() {
       identity?: string
       auto_reminders_enabled?: boolean
       github_repo?: string
-      feedback_requires_identity?: boolean
       language?: import('@/lib/locale').Locale
       hide_title_in_previews?: boolean
     }) => {
@@ -919,5 +918,84 @@ export function useFileUrl(fileId: string | undefined) {
     },
     enabled: !!fileId,
     staleTime: 1000 * 60 * 30, // 30 min — file content doesn't change
+  })
+}
+
+// --- Loop apps (admin) ---
+
+export function useApps() {
+  return useQuery<App[]>({
+    queryKey: queryKeys.apps(),
+    queryFn: async () => {
+      const res = await apiFetch('/api/admin/apps')
+      if (!res.ok) throw new Error('Failed to load apps')
+      return (await res.json()).apps
+    },
+    staleTime: 60 * 1000,
+  })
+}
+
+export function useApp(slug: string | undefined) {
+  return useQuery<App>({
+    queryKey: queryKeys.app(slug),
+    queryFn: async () => {
+      const res = await apiFetch(`/api/admin/apps/${slug}`)
+      if (!res.ok) throw new Error('Failed to load app')
+      return (await res.json()).app
+    },
+    enabled: !!slug,
+    staleTime: 60 * 1000,
+  })
+}
+
+export function useCreateApp() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (payload: {
+      slug: string
+      name: string
+      github_repo?: string
+      feedback_requires_identity?: boolean
+    }): Promise<App> => {
+      const res = await apiFetch('/api/admin/apps', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.error || `Create failed (${res.status})`)
+      return data.app
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.apps() })
+    },
+  })
+}
+
+export function useUpdateApp() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({
+      slug,
+      ...patch
+    }: {
+      slug: string
+      name?: string
+      github_repo?: string
+      feedback_requires_identity?: boolean
+    }): Promise<App> => {
+      const res = await apiFetch(`/api/admin/apps/${slug}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.error || `Update failed (${res.status})`)
+      return data.app
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.apps() })
+      queryClient.invalidateQueries({ queryKey: queryKeys.app(variables.slug) })
+    },
   })
 }

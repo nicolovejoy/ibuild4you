@@ -1620,9 +1620,6 @@ function AgentConfigCard({ project }: { project: Project }) {
   const [voiceSample, setVoiceSample] = useState(project.voice_sample || '')
   const [autoReminders, setAutoReminders] = useState(project.auto_reminders_enabled === true)
   const [githubRepo, setGithubRepo] = useState(project.github_repo || '')
-  const [feedbackRequiresIdentity, setFeedbackRequiresIdentity] = useState(
-    project.feedback_requires_identity === true
-  )
   const [language, setLanguage] = useState<Locale>(toLocale(project.language))
   const [hideTitleInPreviews, setHideTitleInPreviews] = useState(project.hide_title_in_previews === true)
   const [saved, setSaved] = useState(false)
@@ -1646,10 +1643,9 @@ function AgentConfigCard({ project }: { project: Project }) {
     setVoiceSample(project.voice_sample || '')
     setAutoReminders(project.auto_reminders_enabled === true)
     setGithubRepo(project.github_repo || '')
-    setFeedbackRequiresIdentity(project.feedback_requires_identity === true)
     setLanguage(toLocale(project.language))
     setHideTitleInPreviews(project.hide_title_in_previews === true)
-  }, [project.welcome_message, project.seed_questions, project.session_mode, project.builder_directives, project.identity, project.nudge_message, project.voice_sample, project.auto_reminders_enabled, project.github_repo, project.feedback_requires_identity, project.language, project.hide_title_in_previews])
+  }, [project.welcome_message, project.seed_questions, project.session_mode, project.builder_directives, project.identity, project.nudge_message, project.voice_sample, project.auto_reminders_enabled, project.github_repo, project.language, project.hide_title_in_previews])
 
   const handleSave = async () => {
     await updateProject.mutateAsync({
@@ -1663,7 +1659,6 @@ function AgentConfigCard({ project }: { project: Project }) {
       voice_sample: voiceSample || undefined,
       auto_reminders_enabled: autoReminders,
       github_repo: githubRepo.trim() || undefined,
-      feedback_requires_identity: feedbackRequiresIdentity,
       language,
       hide_title_in_previews: hideTitleInPreviews,
       last_builder_activity_at: new Date().toISOString(),
@@ -1793,8 +1788,8 @@ function AgentConfigCard({ project }: { project: Project }) {
             </div>
           )}
 
-          {/* Advanced — rarely touched: agent persona + the Loop/feedback repo
-              destination (not maker-send config; lives here so it isn't stranded
+          {/* Advanced — rarely touched: agent persona + the codebase link
+              for sibling decisions (not maker-send config; lives here so it isn't stranded
               while the eventual "Brief settings" home is built — #19 Phase 4). */}
           <details className="group">
             <summary className="cursor-pointer text-xs font-medium text-gray-400 hover:text-gray-600 list-none">Advanced</summary>
@@ -1813,25 +1808,13 @@ function AgentConfigCard({ project }: { project: Project }) {
                   placeholder="owner/name — e.g. nicolovejoy/prntd"
                   className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
                 />
-                <p className="text-xs text-gray-400 mt-1">Where feedback gets sent when you click &quot;Convert to GitHub issue&quot;. The server&apos;s GITHUB_TOKEN must have access to this repo.</p>
+                <p className="text-xs text-gray-400 mt-1">Links this brief to its codebase so decisions can be shared with sibling briefs. Loop feedback uses the app&apos;s own repo, set at /admin/apps.</p>
               </div>
               <div>
                 <label className="text-sm font-medium text-gray-700 block mb-1.5">Voice sample (optional)</label>
                 <textarea value={voiceSample} onChange={(e) => setVoiceSample(e.target.value)} placeholder="One paragraph showing how you'd text this person by hand." rows={3} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy" />
                 <p className="text-xs text-gray-400 mt-1">Anchors the AI-drafted nudge to your voice. Ignored when a nudge override is set.</p>
               </div>
-              <label className="flex items-start gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={feedbackRequiresIdentity}
-                  onChange={(e) => setFeedbackRequiresIdentity(e.target.checked)}
-                  className="mt-0.5 h-4 w-4 rounded border-gray-300 text-brand-navy focus:ring-brand-navy"
-                />
-                <div>
-                  <div className="text-sm font-medium text-gray-700">Require a verified sign-in to send feedback</div>
-                  <p className="text-xs text-gray-400">Rejects Loop widget submissions unless the host app vouches for the sender&apos;s email. Off by default — leave off unless the host embeds a signed identity assertion (#149).</p>
-                </div>
-              </label>
               {isAdmin && (
                 <div className="pt-4 border-t border-red-100">
                   <label className="text-sm font-medium text-red-700 block mb-1.5">Danger zone</label>

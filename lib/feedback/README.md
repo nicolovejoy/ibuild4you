@@ -32,7 +32,7 @@ honeypot, render-time check, and rate limit, not in an origin allowlist.
 
 ```jsonc
 {
-  "projectId": "sample-cafe",          // string, required, must match an existing projects.slug
+  "projectId": "sample-cafe",          // string, required, must match an app slug (apps.slug or one of its legacy_slugs)
   "type": "bug",                       // "bug" | "idea" | "other", required
   "body": "Footer link 404s",          // string, required, max 5000 chars
   "submitterEmail": "j@example.com",   // string, optional, lowercased server-side
@@ -62,8 +62,8 @@ string to the widget to attach; the widget itself never signs anything.
 **Token shape.** `payloadB64url + "." + sigB64url`:
 
 - `payloadB64url` = base64url(UTF-8 JSON of `{ v: 1, email, project, ts, kid }`)
-  — `project` must equal the submission's `projectId` (this repo's `projects.slug`);
-  `ts` is unix **seconds**; `kid` names which per-project secret signed it.
+  — `project` must be the app's canonical `apps.slug`, or one of that same app's legacy slugs (an assertion naming a different app's slug does not verify);
+  `ts` is unix **seconds**; `kid` names which per-app secret signed it.
 - `sig` = base64url(HMAC-SHA256(UTF-8 bytes of the `payloadB64url` string, secret))
   — the HMAC is computed over the *string*, not a re-serialization of the
   parsed JSON. Verifiers must do the same: recompute over the exact received
@@ -73,7 +73,7 @@ string to the widget to attach; the widget itself never signs anything.
 more than **12 hours** old. Sign the token right before the request, don't
 cache it.
 
-**Secrets.** Per-project HMAC secret(s) live in `loop_signing_secrets/{projectDocId}`
+**Secrets.** Per-app HMAC secret(s) live in `loop_signing_secrets/{appSlug}`
 (`{ keys: { k1: "..." }, active_kid: "k1" }`), minted via
 `scripts/loop-secret.mjs <slug> [--rotate] [--prune]`. Never exposed by any
 GET/API response — the mint script is the only reveal path (deliberately no
@@ -88,8 +88,8 @@ present in the body. On failure (bad signature, expired, wrong project,
 unknown kid, malformed) the assertion is silently ignored — the submission
 falls back to whatever `submitterEmail` was typed (or anonymous) and is
 **not** treated as verified. An invalid token never fails the submission by
-itself, EXCEPT when the target project has `feedback_requires_identity: true`
-(#150) — then an unverified submission (typed email or none) is rejected
+itself, EXCEPT when the target app has `feedback_requires_identity: true`
+(`apps.feedback_requires_identity`, set at `/admin/apps/<slug>`; #150) — then an unverified submission (typed email or none) is rejected
 with `403`.
 
 **Rate-limit bypass.** A *verified* submission (valid token, or a valid
@@ -128,7 +128,7 @@ that predate it ignore it.
    keep this window in mind if you cache the form HTML.
 3. **Rate limit.** 20 submissions per IP per hour. Exceeded →
    `429 Too many submissions` with a `Retry-After` header in seconds.
-4. **Slug gate.** `projectId` must match an existing `projects.slug`.
+4. **Slug gate.** `projectId` must match an app (`apps.slug`, or one of its `legacy_slugs`; stored canonically).
    Unknown slug → `404 Unknown project`.
 5. **Optional auth.** A `Bearer` token in the `Authorization` header is
    accepted but not required. If present and valid, the resulting feedback
@@ -136,8 +136,8 @@ that predate it ignore it.
    anonymous — they don't fail the submission. A valid Bearer counts as
    "verified" for both the rate-limit bypass and #150's
    `feedback_requires_identity` gate — same as a valid `identityAssertion`.
-6. **`feedback_requires_identity` (#150).** When the target project has this
-   flag set `true`, a submission that isn't verified (no valid
+6. **`feedback_requires_identity` (#150).** When the target app has this
+   flag set `true` (`apps.feedback_requires_identity`, set at `/admin/apps/<slug>`), a submission that isn't verified (no valid
    `identityAssertion` and no valid Bearer — a merely-typed
    `submitterEmail` does not count) is rejected with `403`. Default (flag
    absent) is unchanged behavior — anonymous submissions allowed.
@@ -149,8 +149,8 @@ that predate it ignore it.
 | 201    | `{ "id": "<feedback-id>" }`                       | Created                                    |
 | 200    | `{ "ok": true }`                                  | Honeypot tripped (silently dropped)        |
 | 400    | `{ "error": "<reason>" }`                         | Validation failure, see `<reason>`         |
-| 403    | `{ "error": "<copy.feedback.requiresIdentity>" }` | Project requires identity, submission unverified (#150) |
-| 404    | `{ "error": "Unknown project" }`                  | `projectId` doesn't match any slug         |
+| 403    | `{ "error": "<copy.feedback.requiresIdentity>" }` | App requires identity, submission unverified (#150) |
+| 404    | `{ "error": "Unknown project" }`                  | `projectId` doesn't match any app slug     |
 | 429    | `{ "error": "Too many submissions, ..." }`        | Rate limit; respect `Retry-After` (skipped for verified submissions) |
 
 ## Side effects on success
@@ -165,7 +165,7 @@ that predate it ignore it.
   (form was cached or pre-rendered too long ago, or rendered after a clock
   skew). Always set `_ts` from `Date.now()` at *render time*, not at submit
   time.
-- **404 Unknown project.** Slug mismatch. Project slugs are kebab-case and
+- **404 Unknown project.** Slug mismatch. App slugs are kebab-case and
   must match exactly — `sample-cafe`, not `samplecafe` or
   `sample-cafe-v1`.
 - **Drifting field names.** Don't rename. The server enforces exact field

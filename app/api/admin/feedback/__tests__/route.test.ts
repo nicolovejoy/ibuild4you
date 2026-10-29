@@ -37,6 +37,11 @@ vi.mock('@/lib/api/firebase-server-helpers', () => ({
   }),
 }))
 
+const mockFindAppBySlug = vi.fn()
+vi.mock('@/lib/api/apps', () => ({
+  findAppBySlug: (...args: unknown[]) => mockFindAppBySlug(...args),
+}))
+
 const adminAuth = { uid: 'u1', email: 'admin@x.com', systemRoles: ['admin'], error: null }
 
 beforeEach(() => {
@@ -45,6 +50,7 @@ beforeEach(() => {
   orderByCall = null
   mockGetAuthenticatedUser.mockResolvedValue(adminAuth)
   mockHasSystemRole.mockReturnValue(true)
+  mockFindAppBySlug.mockResolvedValue(null)
 })
 
 function makeReq(qs = '') {
@@ -139,5 +145,25 @@ describe('GET /api/admin/feedback', () => {
     const res = await GET(makeReq('?status=spam'))
     expect(res.status).toBe(200)
     expect(whereCalls).toContainEqual({ field: 'status', op: '==', value: 'spam' })
+  })
+
+  it('projectId filter also returns rows stored under that app’s legacy slug', async () => {
+    mockFindAppBySlug.mockResolvedValueOnce({ id: 'byside', slug: 'byside', legacy_slugs: ['byside-old-brief'] })
+    mockGet
+      .mockResolvedValueOnce({
+        docs: [{ id: 'new1', data: () => ({ project_id: 'byside', type: 'bug', status: 'new', created_at: '2026-10-29T10:00:00Z' }) }],
+      })
+      .mockResolvedValueOnce({
+        docs: [
+          { id: 'old1', data: () => ({ project_id: 'byside-old-brief', type: 'bug', status: 'new', created_at: '2026-10-30T10:00:00Z' }) },
+          { id: 'old0', data: () => ({ project_id: 'byside-old-brief', type: 'bug', status: 'new', created_at: '2026-10-01T10:00:00Z' }) },
+        ],
+      })
+    const res = await GET(makeReq('?projectId=byside-old-brief'))
+    const rows = await res.json()
+    expect(whereCalls).toContainEqual({ field: 'project_id', op: '==', value: 'byside' })
+    expect(whereCalls).toContainEqual({ field: 'project_id', op: '==', value: 'byside-old-brief' })
+    // merged newest first
+    expect(rows.map((r: { id: string }) => r.id)).toEqual(['old1', 'new1', 'old0'])
   })
 })

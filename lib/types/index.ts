@@ -63,11 +63,7 @@ export interface Project extends BaseEntity {
   session_mode?: 'discover' | 'converge' // current operating mode (default: discover)
   slug?: string // URL-friendly identifier derived from title
   identity?: string // custom agent identity/persona (overrides default)
-  github_repo?: string // "owner/name" — destination for FeedbackWidget "Convert to GitHub Issue"
-  // #150: reject fully-anonymous widget submissions when true. Default (undefined)
-  // = off, existing behavior. "Verified" = a valid #149 host identityAssertion OR
-  // a valid ibuild4you Firebase Bearer — a merely-typed email never satisfies this.
-  feedback_requires_identity?: boolean
+  github_repo?: string // "owner/name" — the brief's codebase, for sibling decisions (#142)
   // Language the maker is addressed in (agent replies, outbound copy, link
   // previews). Absent = English. The brief content itself stays English.
   language?: Locale
@@ -229,14 +225,26 @@ export interface InterestSubmission extends BaseEntity {
   what_for: string
 }
 
+// A host app that embeds the Loop widget. Document id == slug. Feedback belongs
+// to the app, not to a brief. No admin list lives here (created_by is provenance only).
+export interface App extends BaseEntity {
+  slug: string
+  name: string
+  github_repo?: string
+  feedback_requires_identity?: boolean
+  brief_id?: string | null // optional link to a projects doc
+  legacy_slugs?: string[] // old widget slugs still accepted (resolve to this app)
+  created_by: string
+}
+
 // Feedback submissions from the FeedbackWidget embedded on client sites.
-// projectId is the slug of a `projects` doc — widget submissions are rejected
-// when the slug doesn't match an existing project.
+// projectId on the wire is an app slug (or one of its legacy slugs); widget
+// submissions are rejected when it doesn't match an app.
 export type FeedbackType = 'bug' | 'idea' | 'other'
 export type FeedbackStatus = 'new' | 'acknowledged' | 'in_progress' | 'done' | 'wontfix' | 'spam'
 
 export interface Feedback extends BaseEntity {
-  project_id: string // matches projects.slug
+  project_id: string // app slug (canonical)
   type: FeedbackType
   body: string
   submitter_email: string | null
