@@ -229,14 +229,26 @@ export interface InterestSubmission extends BaseEntity {
   what_for: string
 }
 
+// A host app that embeds the Loop widget. Document id == slug. Feedback belongs
+// to the app, not to a brief. No admin list lives here (created_by is provenance only).
+export interface App extends BaseEntity {
+  slug: string
+  name: string
+  github_repo?: string
+  feedback_requires_identity?: boolean
+  brief_id?: string | null // optional link to a projects doc
+  legacy_slugs?: string[] // old widget slugs still accepted (resolve to this app)
+  created_by: string
+}
+
 // Feedback submissions from the FeedbackWidget embedded on client sites.
-// projectId is the slug of a `projects` doc — widget submissions are rejected
-// when the slug doesn't match an existing project.
+// projectId on the wire is an app slug (or one of its legacy slugs); widget
+// submissions are rejected when it doesn't match an app.
 export type FeedbackType = 'bug' | 'idea' | 'other'
 export type FeedbackStatus = 'new' | 'acknowledged' | 'in_progress' | 'done' | 'wontfix' | 'spam'
 
 export interface Feedback extends BaseEntity {
-  project_id: string // matches projects.slug
+  project_id: string // app slug (canonical)
   type: FeedbackType
   body: string
   submitter_email: string | null
