@@ -62,7 +62,7 @@ string to the widget to attach; the widget itself never signs anything.
 **Token shape.** `payloadB64url + "." + sigB64url`:
 
 - `payloadB64url` = base64url(UTF-8 JSON of `{ v: 1, email, project, ts, kid }`)
-  — `project` must equal the app's canonical `apps.slug` (an assertion signed with a legacy slug does not verify, even if the widget posts that legacy `projectId`);
+  — `project` must be the app's canonical `apps.slug`, or one of that same app's legacy slugs (an assertion naming a different app's slug does not verify);
   `ts` is unix **seconds**; `kid` names which per-app secret signed it.
 - `sig` = base64url(HMAC-SHA256(UTF-8 bytes of the `payloadB64url` string, secret))
   — the HMAC is computed over the *string*, not a re-serialization of the

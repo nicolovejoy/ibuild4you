@@ -56,7 +56,11 @@ vi.mock('@/lib/firebase/admin', () => ({
     collection: vi.fn((name: string) => {
       if (name === 'apps') {
         return {
-          doc: (id: string) => ({ get: () => mockAppDocGet(id) }),
+          doc: (id: string) => {
+            // Real Firestore throws synchronously on these ids.
+            if (id.includes('/') || /^__.*__$/.test(id)) throw new Error(`invalid doc id ${id}`)
+            return { get: () => mockAppDocGet(id) }
+          },
           where: (_f: string, _op: string, v: string) => ({
             limit: () => ({ get: () => mockAppLegacyGet(v) }),
           }),
@@ -248,6 +252,12 @@ describe('POST /api/feedback — validation', () => {
     expect(res.status).toBe(404)
     expect(await res.json()).toEqual({ error: 'Unknown project' })
     expect(mockAdd).not.toHaveBeenCalled()
+  })
+
+  it('404 Unknown project for a projectId that is not a valid slug (no 500)', async () => {
+    const res = await POST(makeRequest(validPayload({ projectId: 'a/b' })))
+    expect(res.status).toBe(404)
+    expect(await res.json()).toEqual({ error: 'Unknown project' })
   })
 
   it('stores project_id as the canonical slug when posted under a legacy slug', async () => {
@@ -470,7 +480,7 @@ describe('POST /api/feedback — identity relay (#149) and requires-identity (#1
     expect(mockAdd.mock.calls[0][0].submitter_email_verified).toBe(true)
   })
 
-  it('does not verify an assertion whose project is the legacy slug (must be canonical)', async () => {
+  it('verifies an assertion signed with a legacy slug of the same app', async () => {
     appsStore = {
       'sample-cafe': { slug: 'sample-cafe', name: 'Sample Cafe', legacy_slugs: ['old-brief'] },
     }
@@ -487,6 +497,28 @@ describe('POST /api/feedback — identity relay (#149) and requires-identity (#1
     expect(res.status).toBe(201)
     const written = mockAdd.mock.calls[0][0]
     expect(written.project_id).toBe('sample-cafe')
+    expect(written.submitter_email_verified).toBe(true)
+    expect(written.submitter_email).toBe('verified@example.com')
+  })
+
+  it("does not verify a token signed for another app's slug posted under a different app's legacy id", async () => {
+    appsStore = {
+      byside: { slug: 'byside', name: 'Byside', legacy_slugs: ['byside-old-brief-slug'] },
+      musicforge: { slug: 'musicforge', name: 'MusicForge' },
+    }
+    configureSecret()
+    const res = await POST(
+      makeRequest(
+        validPayload({
+          projectId: 'byside-old-brief-slug',
+          submitterEmail: '',
+          identityAssertion: signToken({ project: 'musicforge' }),
+        })
+      )
+    )
+    expect(res.status).toBe(201)
+    const written = mockAdd.mock.calls[0][0]
+    expect(written.project_id).toBe('byside')
     expect(written.submitter_email_verified).toBeUndefined()
     expect(written.submitter_email).toBeNull()
   })

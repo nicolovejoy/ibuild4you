@@ -197,7 +197,7 @@ export async function POST(request: Request) {
         if (Object.keys(keys).length > 0 && activeKid) {
           const nowSeconds = Math.floor(Date.now() / 1000)
           const result = verifyIdentityAssertion(identityAssertion, keys, activeKid, nowSeconds)
-          if (result.ok && result.project === slug) {
+          if (result.ok && [app.slug, ...(app.legacy_slugs ?? [])].includes(result.project)) {
             submitterEmail = result.email
             verifiedByAssertion = true
           }
