@@ -21,7 +21,7 @@ how-to-embed or triage story changes.
 | Launcher (corner button) | `components/feedback-launcher.tsx` *(in host apps; see below)* |
 | Payload builder + validation | `lib/feedback/payload.ts` |
 | Ingestion endpoint | `app/api/feedback/route.ts` (public, CORS-open) |
-| Admin inbox | `app/admin/feedback/` |
+| Admin inbox | `app/admin/feedback/` (all apps) and `app/admin/apps/` (app list, New app, per-app settings + inbox; deep link `/admin/apps/<slug>?id=<feedbackId>`) |
 | Convert to GitHub issue | `app/api/admin/feedback/[id]/to-github/route.ts` |
 
 ## Embedding Loop in a host app
@@ -61,7 +61,7 @@ and responses are all in the [wire contract](../lib/feedback/README.md).
 `/api/feedback` returns `404 Unknown project` unless `projectId` exactly matches
 an app slug in iBuild4you (`apps.slug`, or one of that app's `legacy_slugs`, which
 older widgets keep posting). Feedback is always stored under the app's canonical
-slug. Slugs are kebab-case (e.g. `byside`). Confirm the real slug with
+slug. Slugs are kebab-case (e.g. `byside`). Create the app at `/admin/apps` (New app) before the widget goes live. Confirm the real slug with
 `node scripts/with-prod-env-ro.mjs node scripts/list-apps.mjs`.
 
 ### Verified identity (#149) — host recipe lands in a follow-up PR
