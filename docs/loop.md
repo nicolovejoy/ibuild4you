@@ -36,7 +36,7 @@ files travel together:
    `normalizeEmail` from `@/lib/email/normalize` (inline a trim + lowercase).
    `capture.ts` is the #72 structural page snapshot — plain DOM APIs, zero
    deps. `'use client'` is a Next directive; drop it outside Next.
-2. Render it, pointing `projectId` at an existing iBuild4you `projects.slug`:
+2. Render it, pointing `projectId` at an iBuild4you app slug (`apps.slug`, or one of its `legacy_slugs`):
 
    ```tsx
    <FeedbackWidget
@@ -59,9 +59,10 @@ and responses are all in the [wire contract](../lib/feedback/README.md).
 ### The slug must exist
 
 `/api/feedback` returns `404 Unknown project` unless `projectId` exactly matches
-a `projects.slug` in iBuild4you. Slugs are kebab-case (e.g.
-`prntd-mobile-flow-rethink`, not `prntd`). Confirm the real slug with
-`node scripts/with-prod-env-ro.mjs node scripts/list-projects.mjs --grep <term>`.
+an app slug in iBuild4you (`apps.slug`, or one of that app's `legacy_slugs`, which
+older widgets keep posting). Feedback is always stored under the app's canonical
+slug. Slugs are kebab-case (e.g. `byside`). Confirm the real slug with
+`node scripts/with-prod-env-ro.mjs node scripts/list-apps.mjs`.
 
 ### Verified identity (#149) — host recipe lands in a follow-up PR
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// Mint / rotate the per-project Loop identity-relay signing secret (#149).
+// Mint / rotate the per-app Loop identity-relay signing secret (#149).
 //
-// loop_signing_secrets/{projectDocId} holds { keys: { k1: "...", ... },
+// loop_signing_secrets/{appSlug} holds { keys: { k1: "...", ... },
 // active_kid: "k1" } — never returned by any GET/API response. This script
 // is the ONLY way to see a secret's value (deliberately no admin-UI reveal
 // button, per the #149 design). The host app's server copies the printed
@@ -32,7 +32,7 @@ const ROTATE = args.includes('--rotate')
 const PRUNE = args.includes('--prune')
 
 if (!slug) {
-  console.error('Usage: node scripts/loop-secret.mjs <projectSlug> [--rotate] [--prune]')
+  console.error('Usage: node scripts/loop-secret.mjs <appSlug> [--rotate] [--prune]')
   process.exit(1)
 }
 if (PRUNE && !ROTATE) {
@@ -52,14 +52,23 @@ function nextKid(keys) {
   return `k${maxN + 1}`
 }
 
-const projectSnap = await db.collection('projects').where('slug', '==', slug).limit(1).get()
-if (projectSnap.empty) {
-  console.error(`No project with slug "${slug}"`)
+// The secret doc id is the app's canonical slug. Legacy slugs are not
+// accepted here: say which canonical slug to use instead.
+const appSnap = await db.collection('apps').doc(slug).get()
+if (!appSnap.exists) {
+  console.error(`No app with slug "${slug}"`)
+  const legacy = await db
+    .collection('apps')
+    .where('legacy_slugs', 'array-contains', slug)
+    .limit(1)
+    .get()
+  if (!legacy.empty) {
+    console.error(`"${slug}" is a legacy slug of app "${legacy.docs[0].id}" — use "${legacy.docs[0].id}".`)
+  }
   process.exit(1)
 }
-const projectId = projectSnap.docs[0].id
 
-const secretRef = db.collection('loop_signing_secrets').doc(projectId)
+const secretRef = db.collection('loop_signing_secrets').doc(slug)
 const existing = await secretRef.get()
 const now = new Date().toISOString()
 
@@ -75,7 +84,7 @@ if (!existing.exists) {
     created_at: now,
     updated_at: now,
   })
-  console.log(`Minted secret for "${slug}" (project ${projectId})`)
+  console.log(`Minted secret for "${slug}"`)
   console.log(`  kid: k1`)
   console.log(`  secret: ${secret}`)
   process.exit(0)
@@ -99,7 +108,7 @@ await secretRef.set(
   { merge: false }
 )
 
-console.log(`Rotated secret for "${slug}" (project ${projectId})`)
+console.log(`Rotated secret for "${slug}"`)
 console.log(`  new active kid: ${newKid}`)
 console.log(`  secret: ${secret}`)
 if (PRUNE) {

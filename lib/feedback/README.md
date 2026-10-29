@@ -32,7 +32,7 @@ honeypot, render-time check, and rate limit, not in an origin allowlist.
 
 ```jsonc
 {
-  "projectId": "sample-cafe",          // string, required, must match an existing projects.slug
+  "projectId": "sample-cafe",          // string, required, must match an app slug (apps.slug or one of its legacy_slugs)
   "type": "bug",                       // "bug" | "idea" | "other", required
   "body": "Footer link 404s",          // string, required, max 5000 chars
   "submitterEmail": "j@example.com",   // string, optional, lowercased server-side
@@ -62,8 +62,8 @@ string to the widget to attach; the widget itself never signs anything.
 **Token shape.** `payloadB64url + "." + sigB64url`:
 
 - `payloadB64url` = base64url(UTF-8 JSON of `{ v: 1, email, project, ts, kid }`)
-  — `project` must equal the submission's `projectId` (this repo's `projects.slug`);
-  `ts` is unix **seconds**; `kid` names which per-project secret signed it.
+  — `project` must equal the app's canonical `apps.slug` (an assertion signed with a legacy slug does not verify, even if the widget posts that legacy `projectId`);
+  `ts` is unix **seconds**; `kid` names which per-app secret signed it.
 - `sig` = base64url(HMAC-SHA256(UTF-8 bytes of the `payloadB64url` string, secret))
   — the HMAC is computed over the *string*, not a re-serialization of the
   parsed JSON. Verifiers must do the same: recompute over the exact received
@@ -73,7 +73,7 @@ string to the widget to attach; the widget itself never signs anything.
 more than **12 hours** old. Sign the token right before the request, don't
 cache it.
 
-**Secrets.** Per-project HMAC secret(s) live in `loop_signing_secrets/{projectDocId}`
+**Secrets.** Per-app HMAC secret(s) live in `loop_signing_secrets/{appSlug}`
 (`{ keys: { k1: "..." }, active_kid: "k1" }`), minted via
 `scripts/loop-secret.mjs <slug> [--rotate] [--prune]`. Never exposed by any
 GET/API response — the mint script is the only reveal path (deliberately no
@@ -128,7 +128,7 @@ that predate it ignore it.
    keep this window in mind if you cache the form HTML.
 3. **Rate limit.** 20 submissions per IP per hour. Exceeded →
    `429 Too many submissions` with a `Retry-After` header in seconds.
-4. **Slug gate.** `projectId` must match an existing `projects.slug`.
+4. **Slug gate.** `projectId` must match an app (`apps.slug`, or one of its `legacy_slugs`; stored canonically).
    Unknown slug → `404 Unknown project`.
 5. **Optional auth.** A `Bearer` token in the `Authorization` header is
    accepted but not required. If present and valid, the resulting feedback
@@ -165,7 +165,7 @@ that predate it ignore it.
   (form was cached or pre-rendered too long ago, or rendered after a clock
   skew). Always set `_ts` from `Date.now()` at *render time*, not at submit
   time.
-- **404 Unknown project.** Slug mismatch. Project slugs are kebab-case and
+- **404 Unknown project.** Slug mismatch. App slugs are kebab-case and
   must match exactly — `sample-cafe`, not `samplecafe` or
   `sample-cafe-v1`.
 - **Drifting field names.** Don't rename. The server enforces exact field

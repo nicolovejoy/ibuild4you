@@ -8,14 +8,16 @@ import { buildFeedbackEmail } from '@/lib/feedback/notify-email'
 import { verifyIdentityAssertion } from '@/lib/feedback/identity'
 import { normalizeEmail } from '@/lib/email/normalize'
 import { copy } from '@/lib/copy'
+import { findAppBySlug } from '@/lib/api/apps'
 import type { FeedbackType } from '@/lib/types'
 
 // Public endpoint: receives submissions from <FeedbackWidget> embedded on
 // ibuild4you-hosted client sites. Anti-abuse via honeypot, render-time check,
-// and per-IP rate limit. projectId must match an existing `projects.slug` —
-// the widget can't write to arbitrary buckets. #149/#150: an optional
+// and per-IP rate limit. projectId must resolve to an app (`apps.slug`, or one
+// of its `legacy_slugs`) — the widget can't write to arbitrary buckets. The
+// row is always stored under the app's canonical slug. #149/#150: an optional
 // host-signed identityAssertion can verify the submitter's email, bypassing
-// the rate limit and satisfying a project's feedback_requires_identity gate.
+// the rate limit and satisfying an app's feedback_requires_identity gate.
 
 const ALLOWED_TYPES: FeedbackType[] = ['bug', 'idea', 'other']
 const MAX_BODY_CHARS = 5000
@@ -168,20 +170,16 @@ export async function POST(request: Request) {
 
   const db = getAdminDb()
 
-  // Confirm projectId maps to an existing project. Reject otherwise so the
-  // widget can't write feedback into a slug we don't own.
-  const projectSnap = await db
-    .collection('projects')
-    .where('slug', '==', projectId)
-    .limit(1)
-    .get()
-  if (projectSnap.empty) {
+  // Resolve projectId to an app (canonical slug, else a legacy slug). Reject
+  // otherwise so the widget can't write feedback into a slug we don't own.
+  // From here on `slug` is the canonical one, whatever the widget sent.
+  const app = await findAppBySlug(db, projectId)
+  if (!app) {
     return json({ error: 'Unknown project' }, { status: 404 })
   }
-  const project = projectSnap.docs[0]
-  const projectData = project.data()
-  const projectTitle = (projectData.title as string) || projectId
-  const requiresIdentity = projectData.feedback_requires_identity === true
+  const slug = app.slug
+  const projectTitle = app.name || slug
+  const requiresIdentity = app.feedback_requires_identity === true
 
   // #149: verify the identity assertion, if present. A failure of any kind
   // (bad signature, expired, wrong project, unknown kid, malformed) is
@@ -191,7 +189,7 @@ export async function POST(request: Request) {
   let verifiedByAssertion = false
   if (identityAssertion) {
     try {
-      const secretDoc = await db.collection('loop_signing_secrets').doc(project.id).get()
+      const secretDoc = await db.collection('loop_signing_secrets').doc(slug).get()
       if (secretDoc.exists) {
         const secretData = secretDoc.data() as { keys?: Record<string, string>; active_kid?: string }
         const keys = secretData.keys ?? {}
@@ -199,7 +197,7 @@ export async function POST(request: Request) {
         if (Object.keys(keys).length > 0 && activeKid) {
           const nowSeconds = Math.floor(Date.now() / 1000)
           const result = verifyIdentityAssertion(identityAssertion, keys, activeKid, nowSeconds)
-          if (result.ok && result.project === projectId) {
+          if (result.ok && result.project === slug) {
             submitterEmail = result.email
             verifiedByAssertion = true
           }
@@ -237,7 +235,7 @@ export async function POST(request: Request) {
   let burstIndex = 1
   try {
     const cutoff = new Date(Date.now() - 15 * 60 * 1000).toISOString()
-    const recent = await db.collection('feedback').where('project_id', '==', projectId).get()
+    const recent = await db.collection('feedback').where('project_id', '==', slug).get()
     const priorInWindow = recent.docs.filter(
       (d) => ((d.data().created_at as string) ?? '') > cutoff
     ).length
@@ -254,7 +252,7 @@ export async function POST(request: Request) {
 
   const now = new Date().toISOString()
   const docRef = await db.collection('feedback').add({
-    project_id: projectId,
+    project_id: slug,
     type,
     body: bodyRaw.trim(),
     submitter_email: submitterEmail,
@@ -274,7 +272,7 @@ export async function POST(request: Request) {
   if (capture) {
     try {
       await db.collection('prototype_context').add({
-        project_id: projectId,
+        project_id: slug,
         feedback_id: docRef.id,
         source: 'loop-widget',
         capture_version: 1,
