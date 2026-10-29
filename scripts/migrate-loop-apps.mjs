@@ -67,9 +67,31 @@ let planned = 0
 let wrote = 0
 let skipped = 0
 let refused = 0
+let failed = 0
 const cruftReport = []
 
-for (const row of APPS) {
+// Signing secret: copy only if the source exists and the target does not.
+// Returns the status text plus the data to write (null when nothing to copy).
+// Secret values are never printed.
+async function secretStatus(brief, slug) {
+  if (!brief) return { action: 'no secret', data: null }
+  const [src, dst] = await Promise.all([
+    db.collection('loop_signing_secrets').doc(brief.id).get(),
+    db.collection('loop_signing_secrets').doc(slug).get(),
+  ])
+  if (dst.exists) return { action: 'secret already present', data: null }
+  if (src.exists) return { action: 'secret copied', data: src.data() }
+  return { action: 'no secret', data: null }
+}
+
+// Print the status, and write the secret when applying. Dry run says "would be copied".
+async function handleSecret(brief, slug) {
+  const { action, data } = await secretStatus(brief, slug)
+  console.log(`  signing secret: ${APPLY ? action : action.replace('copied', 'would be copied')}`)
+  if (APPLY && data) await db.collection('loop_signing_secrets').doc(slug).set(data)
+}
+
+async function processRow(row) {
   const sourceSlug = row.cruftBrief ?? row.legacy
   const brief = await findProjectBySlug(db, sourceSlug)
   const briefData = brief ? brief.data() : null
@@ -83,17 +105,18 @@ for (const row of APPS) {
   // Slug validity (defensive; the map is fixed).
   const badSlug = [row.slug, row.legacy].filter(Boolean).find((id) => !validSlug(id))
   if (badSlug) {
-    console.log(`  REFUSED: invalid slug "${badSlug}"\n`)
+    console.log(`  REFUSED: invalid slug "${badSlug}"`)
     refused++
-    continue
+    return
   }
 
-  // Existing app under the same slug -> idempotent skip.
+  // Existing app under the same slug -> idempotent skip, but still heal a
+  // missing signing secret (an earlier run may have died between the writes).
   if (claims.get(row.slug) === row.slug) {
     console.log('  exists, skipped')
+    await handleSecret(brief, row.slug)
     skipped++
-    console.log('')
-    continue
+    return
   }
 
   // Uniqueness: slug or legacy slug held by a DIFFERENT app.
@@ -101,8 +124,7 @@ for (const row of APPS) {
   if (conflicts.length) {
     console.log(`  REFUSED: ${conflicts.map((c) => `"${c}" already claimed by app "${claims.get(c)}"`).join('; ')}`)
     refused++
-    console.log('')
-    continue
+    return
   }
 
   // Build the doc. No undefined values (Firestore rejects them).
@@ -121,40 +143,34 @@ for (const row of APPS) {
   }
   if (row.legacy) doc.legacy_slugs = [row.legacy]
 
-  // Signing secret: copy only if the source exists and the target does not.
-  let secretAction = 'no secret'
-  let secretData = null
-  if (brief) {
-    const [src, dst] = await Promise.all([
-      db.collection('loop_signing_secrets').doc(brief.id).get(),
-      db.collection('loop_signing_secrets').doc(row.slug).get(),
-    ])
-    if (dst.exists) secretAction = 'secret already present'
-    else if (src.exists) {
-      secretAction = 'secret copied'
-      secretData = src.data()
-    }
-  }
-
-  const { created_at, updated_at, ...shown } = doc
-  console.log(`  ${APPLY ? 'writing' : 'would write'} apps/${row.slug}: ${JSON.stringify(shown)}`)
-  console.log(`  signing secret: ${APPLY ? secretAction : secretAction.replace('copied', 'would be copied')}`)
+  console.log(`  ${APPLY ? 'writing' : 'would write'} apps/${row.slug}: ${JSON.stringify(doc)}`)
   planned++
 
+  // Secret first, then the app: the app doc is the idempotency marker, so a
+  // failure between the two writes leaves no app and the re-run retries both.
+  await handleSecret(brief, row.slug)
   if (APPLY) {
     await db.collection('apps').doc(row.slug).set(doc)
-    if (secretData) await db.collection('loop_signing_secrets').doc(row.slug).set(secretData)
     claims.set(row.slug, row.slug)
     if (row.legacy) claims.set(row.legacy, row.slug)
     wrote++
+  }
+}
+
+for (const row of APPS) {
+  try {
+    await processRow(row)
+  } catch (err) {
+    failed++
+    console.log(`  FAILED: ${err instanceof Error ? err.message : String(err)}`)
   }
   console.log('')
 }
 
 console.log(
   APPLY
-    ? `Done: ${wrote} written, ${skipped} exists/skipped, ${refused} refused.`
-    : `Dry run: ${planned} planned write(s), ${skipped} exists/skipped, ${refused} refused. Nothing written.`,
+    ? `Done: ${wrote} written, ${skipped} exists/skipped, ${refused} refused, ${failed} failed.`
+    : `Dry run: ${planned} planned write(s), ${skipped} exists/skipped, ${refused} refused, ${failed} failed. Nothing written.`,
 )
 
 console.log('\nDelete by hand (Nico):')
@@ -168,4 +184,4 @@ if (!APPLY) {
   console.log('  apply:   FIREBASE_SERVICE_ACCOUNT="$(op document get ibuild4you-firestore-admin --vault dev-secrets)" node scripts/migrate-loop-apps.mjs --apply')
 }
 
-if (refused) process.exit(1)
+if (refused || failed) process.exit(1)
