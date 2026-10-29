@@ -776,3 +776,84 @@ describe('mode-scoped seed questions and directives (#192)', () => {
     expect(result).not.toContain('What does the app do?')
   })
 })
+
+describe('unfolded notes block (#229)', () => {
+  const brief = { ...emptyBrief, problem: 'Orders are slow' }
+  const note = (over: Partial<import('@/lib/types').BriefNote> = {}): import('@/lib/types').BriefNote => ({
+    id: 'n1',
+    session_id: 's1',
+    created_at: '2026-10-28T20:00:00Z',
+    folded_at: null,
+    text: 'Sam wants pickup slots.',
+    decisions: [],
+    risks_added: [],
+    risks_resolved: [],
+    lock_reversals: [],
+    ...over,
+  })
+
+  it('renders notes oldest first under the brief, in the stable part', () => {
+    const { stable, volatile } = buildSystemPromptParts({
+      ...minimalInput,
+      briefContent: brief,
+      unfoldedNotes: [note({ text: 'FIRST NOTE' }), note({ id: 'n2', text: 'SECOND NOTE' })],
+    })
+    expect(stable).toContain('## New since the brief was last curated')
+    expect(stable.indexOf('## Current brief')).toBeLessThan(stable.indexOf('## New since the brief was last curated'))
+    expect(stable.indexOf('FIRST NOTE')).toBeLessThan(stable.indexOf('SECOND NOTE'))
+    expect(volatile ?? '').not.toContain('FIRST NOTE')
+  })
+
+  it('omits the block when there are no notes', () => {
+    const { stable } = buildSystemPromptParts({ ...minimalInput, briefContent: brief, unfoldedNotes: [] })
+    expect(stable).not.toContain('New since the brief was last curated')
+  })
+
+  it('omits empty sub-lists', () => {
+    const { stable } = buildSystemPromptParts({ ...minimalInput, briefContent: brief, unfoldedNotes: [note()] })
+    expect(stable).not.toContain('Decisions:')
+    expect(stable).not.toContain('New open questions:')
+    expect(stable).not.toContain('Settled:')
+    expect(stable).not.toContain('Maker asked to reverse')
+  })
+
+  it('renders every sub-list with risk owners', () => {
+    const { stable } = buildSystemPromptParts({
+      ...minimalInput,
+      briefContent: brief,
+      unfoldedNotes: [
+        note({
+          decisions: [{ topic: 'Payment', decision: 'Stripe' }],
+          risks_added: ['Plain risk', { text: 'Maker risk', owner: 'maker' }, { text: 'Builder risk', owner: 'builder' }],
+          risks_resolved: ['Old risk'],
+          lock_reversals: [{ topic: 'Hosting', proposed: 'Self-host', reason: 'cost' }],
+        }),
+      ],
+    })
+    expect(stable).toContain('Decisions:\n- Payment: Stripe')
+    expect(stable).toContain('- Plain risk\n')
+    expect(stable).toContain('- Maker risk (maker)')
+    expect(stable).toContain('- Builder risk (builder)')
+    expect(stable).toContain('Settled:\n- Old risk')
+    expect(stable).toContain('Maker asked to reverse a locked decision:\n- Hosting → Self-host')
+  })
+
+  it('heads each note with its Pacific day', () => {
+    const { stable } = buildSystemPromptParts({
+      ...minimalInput,
+      briefContent: brief,
+      unfoldedNotes: [note({ created_at: '2026-10-29T05:00:00Z' })],
+    })
+    expect(stable).toContain('### Conversation of Oct 28')
+  })
+
+  it('still renders with no brief content', () => {
+    const { stable } = buildSystemPromptParts({ ...minimalInput, unfoldedNotes: [note()] })
+    expect(stable).toContain('## New since the brief was last curated')
+  })
+
+  it('the stable part is byte-identical for the same notes across two calls', () => {
+    const input = { ...minimalInput, briefContent: brief, unfoldedNotes: [note()] }
+    expect(buildSystemPromptParts(input).stable).toBe(buildSystemPromptParts(input).stable)
+  })
+})

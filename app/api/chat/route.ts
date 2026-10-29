@@ -2,6 +2,7 @@ import { toLocale } from '@/lib/locale'
 import { getAuthenticatedUser, getAdminDb, getProjectRole, getUserDisplayName } from '@/lib/api/firebase-server-helpers'
 import { countsAsMakerActivity } from '@/lib/projects/project-view'
 import { buildSystemPromptParts } from '@/lib/agent/system-prompt'
+import { listUnfoldedNotes } from '@/lib/api/brief-notes'
 import { fetchPrototypeFeedback } from '@/lib/api/prototype-feedback'
 import { fetchPrototypeContext } from '@/lib/api/prototype-context'
 import { fetchPinnedArtifacts } from '@/lib/api/artifact-context'
@@ -346,12 +347,13 @@ async function handleChat(
   // B2 adds structural page captures alongside the text feedback.
   // Earlier conversations on this brief, summarised, so Sam can place what
   // the maker refers to instead of guessing they used a different brief.
-  const [prototypeFeedback, prototypeContext, pinnedArtifacts, siblingDecisions, previousConversations] = await Promise.all([
+  const [prototypeFeedback, prototypeContext, pinnedArtifacts, siblingDecisions, previousConversations, unfoldedNotes] = await Promise.all([
     fetchPrototypeFeedback(db, projectId, projectData.slug as string | undefined, Date.now()),
     fetchPrototypeContext(db, projectId, projectData.slug as string | undefined, Date.now()),
     fetchPinnedArtifacts(db, projectId),
     fetchSiblingDecisions(db, { id: projectId, github_repo: projectData.github_repo as string | undefined }),
     fetchPreviousConversations(db, sessionIds, session_id),
+    briefSnap.empty ? Promise.resolve([]) : listUnfoldedNotes(db, briefSnap.docs[0].id),
   ])
 
   // #214: the maker was greeted with the canned "nothing queued" text and the
@@ -377,6 +379,7 @@ async function handleChat(
     pinnedArtifacts,
     siblingDecisions,
     previousConversations,
+    unfoldedNotes,
     // Read from the project (not the session snapshot) so a language set
     // after a session started still applies.
     language: toLocale(projectData.language),

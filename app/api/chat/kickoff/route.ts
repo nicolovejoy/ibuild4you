@@ -2,6 +2,7 @@ import { toLocale } from '@/lib/locale'
 import { getAuthenticatedUser, getAdminDb, getProjectRole, getUserDisplayName } from '@/lib/api/firebase-server-helpers'
 import { countsAsMakerActivity } from '@/lib/projects/project-view'
 import { buildSystemPromptParts } from '@/lib/agent/system-prompt'
+import { listUnfoldedNotes } from '@/lib/api/brief-notes'
 import { fetchPrototypeFeedback } from '@/lib/api/prototype-feedback'
 import { fetchPrototypeContext } from '@/lib/api/prototype-context'
 import { fetchPinnedArtifacts } from '@/lib/api/artifact-context'
@@ -297,12 +298,13 @@ export async function POST(request: Request) {
   // page captures too.
   // Same block as /api/chat so the stable system prompt stays byte-identical
   // between the kickoff and the maker's first turn (cache read, not a rewrite).
-  const [prototypeFeedback, prototypeContext, pinnedArtifacts, siblingDecisions, previousConversations] = await Promise.all([
+  const [prototypeFeedback, prototypeContext, pinnedArtifacts, siblingDecisions, previousConversations, unfoldedNotes] = await Promise.all([
     fetchPrototypeFeedback(db, projectId, projectData.slug as string | undefined, Date.now()),
     fetchPrototypeContext(db, projectId, projectData.slug as string | undefined, Date.now()),
     fetchPinnedArtifacts(db, projectId),
     fetchSiblingDecisions(db, { id: projectId, github_repo: projectData.github_repo as string | undefined }),
     fetchPreviousConversations(db, sessionIds, session_id),
+    briefSnap.empty ? Promise.resolve([]) : listUnfoldedNotes(db, briefSnap.docs[0].id),
   ])
 
   const systemPrompt = buildSystemPromptParts({
@@ -322,6 +324,7 @@ export async function POST(request: Request) {
     pinnedArtifacts,
     siblingDecisions,
     previousConversations,
+    unfoldedNotes,
     // Read from the project (not the session snapshot) so a language set
     // after a session started still applies.
     language: toLocale(projectData.language),

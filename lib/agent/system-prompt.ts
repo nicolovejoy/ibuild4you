@@ -5,7 +5,7 @@ import { renderPrototypeContextBlock, type PrototypeContextItem } from './protot
 import { renderArtifactContextBlock, type ArtifactContextItem } from './artifact-context'
 import { renderSiblingDecisionsBlock, type SiblingDecision } from './sibling-decisions'
 import { renderPreviousConversationsBlock, type PreviousConversation } from './previous-conversations'
-import type { BriefContent, BriefDecision, BriefRole } from '@/lib/types'
+import type { BriefContent, BriefDecision, BriefNote, BriefRole } from '@/lib/types'
 import { riskText, riskOwner } from '@/lib/brief/risks'
 import { LOCALE_NAMES, type Locale } from '@/lib/locale'
 
@@ -48,6 +48,9 @@ interface SystemPromptInput {
   // instead of guessing they used a different brief. Deterministic, so it
   // lives in the stable block.
   previousConversations?: PreviousConversation[]
+  // #229: notes written after each conversation that are not yet folded into
+  // the brief (oldest first). Deterministic, so they live in the stable block.
+  unfoldedNotes?: BriefNote[]
   // The brief's language (projects.language). Non-English adds a block telling
   // Sam to use it from the very first message, before the maker has written.
   language?: Locale
@@ -70,6 +73,45 @@ function humanizeGap(ms: number): string {
   return 'over a week'
 }
 
+const noteDayFormat = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Los_Angeles', month: 'short', day: 'numeric' })
+
+// #229: per-conversation notes not yet folded into the brief. The day comes
+// from each note's created_at (Pacific), never the clock, so the block is
+// byte-stable between turns.
+export function renderUnfoldedNotesBlock(notes: BriefNote[]): string | null {
+  if (notes.length === 0) return null
+  const sections = notes.map((n) => {
+    const lines = [`### Conversation of ${noteDayFormat.format(new Date(n.created_at))}`, n.text]
+    if (n.decisions.length > 0) {
+      lines.push('Decisions:', ...n.decisions.map((d) => `- ${d.topic}: ${d.decision}`))
+    }
+    if (n.risks_added.length > 0) {
+      lines.push(
+        'New open questions:',
+        ...n.risks_added.map((r) => {
+          const owner = riskOwner(r)
+          return `- ${riskText(r)}${owner ? ` (${owner})` : ''}`
+        })
+      )
+    }
+    if (n.risks_resolved.length > 0) {
+      lines.push('Settled:', ...n.risks_resolved.map((t) => `- ${t}`))
+    }
+    if (n.lock_reversals.length > 0) {
+      lines.push(
+        'Maker asked to reverse a locked decision:',
+        ...n.lock_reversals.map((l) => `- ${l.topic} → ${l.proposed}`)
+      )
+    }
+    return lines.join('\n')
+  })
+  return `## New since the brief was last curated
+
+These notes were written after each conversation and are not yet folded into the brief above. Treat them as part of what we know; where a note and the brief disagree, the note is newer.
+
+${sections.join('\n\n')}`
+}
+
 // The prompt is sent as two system blocks (lib/agent/prompt-cache.ts):
 // `stable` is cache-marked and must be byte-identical from one turn to the
 // next; `volatile` is sent uncached and holds the parts that legitimately
@@ -79,7 +121,7 @@ function humanizeGap(ms: number): string {
 // cached prefix is what makes turn 2 a cache read instead of a second write.
 export type SystemPromptParts = { stable: string; volatile: string | null }
 
-export function buildSystemPromptParts({ briefContent, projectContext, sessionNumber, seedQuestions, builderDirectives, sessionMode, identity, makerFirstName, makerLastName, gapSinceLastMakerMessageMs, nothingQueued, participants, prototypeFeedback, prototypeContext, pinnedArtifacts, siblingDecisions, previousConversations, language }: SystemPromptInput): SystemPromptParts {
+export function buildSystemPromptParts({ briefContent, projectContext, sessionNumber, seedQuestions, builderDirectives, sessionMode, identity, makerFirstName, makerLastName, gapSinceLastMakerMessageMs, nothingQueued, participants, prototypeFeedback, prototypeContext, pinnedArtifacts, siblingDecisions, previousConversations, unfoldedNotes, language }: SystemPromptInput): SystemPromptParts {
   const parts: string[] = []
   const volatileParts: string[] = []
 
@@ -211,6 +253,12 @@ Here's what we know so far. Use this to avoid re-asking things they've already t
 
 ${formatBrief(briefContent)}
 `.trim())
+  }
+
+  // #229: notes newer than the brief, right after it (also when the brief is empty).
+  if (unfoldedNotes && unfoldedNotes.length > 0) {
+    const block = renderUnfoldedNotesBlock(unfoldedNotes)
+    if (block) parts.push(block)
   }
 
   // Earlier conversations, right after the brief they were folded into.
