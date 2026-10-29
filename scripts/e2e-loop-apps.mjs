@@ -7,7 +7,7 @@
 // Cleans up the app + its feedback rows (via the preview-guarded fixture db) in
 // a finally block.
 //
-// Usage: node scripts/with-preview-env.mjs node scripts/e2e-loop-apps.mjs
+// Usage: op run --env-file=.env.preview.tpl -- node scripts/with-preview-env.mjs node scripts/e2e-loop-apps.mjs
 //        (E2E_BASE overrides the target, defaults to preview)
 //
 // Requires .ibuild4you-bypass, .test-admin-password, a preview .env.preview.local

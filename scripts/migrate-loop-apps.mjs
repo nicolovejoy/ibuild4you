@@ -30,6 +30,8 @@
 //
 // Production (Nico runs these after the PR merges):
 //   dry run: op run --env-file=.env.ops.tpl -- node scripts/with-prod-env-ro.mjs node scripts/migrate-loop-apps.mjs
+//            (with-prod-env-ro.mjs needs FIREBASE_SERVICE_ACCOUNT_RO, which .env.ops.tpl
+//            supplies through op run; without op run the dry run cannot reach prod)
 //   apply:   FIREBASE_SERVICE_ACCOUNT="$(op document get ibuild4you-firestore-admin --vault dev-secrets)" node scripts/migrate-loop-apps.mjs --apply
 
 import { initAdminDb, findProjectBySlug } from './fixtures/db.mjs'

@@ -175,7 +175,7 @@ function AppsTable() {
                 {(a.legacy_slugs ?? []).join(', ') || '—'}
               </td>
               <td className="px-3 py-2 text-xs">{a.github_repo || '—'}</td>
-              <td className="px-3 py-2 text-xs">{a.feedback_requires_identity ? 'yes' : 'no'}</td>
+              <td className="px-3 py-2 text-xs">{a.feedback_requires_identity ? t.yes : t.no}</td>
               <td className="px-3 py-2 text-right">
                 <Link href={`/admin/apps/${a.slug}`} className="text-brand-navy hover:underline">
                   {t.open}

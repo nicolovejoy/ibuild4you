@@ -397,6 +397,8 @@ export const copy = {
     colLegacy: 'Legacy slugs',
     colRepo: 'GitHub repo',
     colIdentity: 'Identity required',
+    yes: 'yes',
+    no: 'no',
     open: 'Open',
     settings: 'Settings',
     requiresIdentity: 'Require a verified identity to send feedback',
