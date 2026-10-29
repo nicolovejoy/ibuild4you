@@ -8,6 +8,7 @@ export const queryKeys = {
   resolveProject: (slugOrId: string | undefined) => ['resolveProject', slugOrId] as const,
   brief: (projectId: string | undefined) => ['brief', projectId] as const,
   briefVersions: (projectId: string | undefined) => ['briefVersions', projectId] as const,
+  briefNotes: (projectId: string | undefined) => ['briefNotes', projectId] as const,
   sessions: (projectId: string | undefined) => ['sessions', projectId] as const,
   members: (projectId: string | undefined) => ['members', projectId] as const,
   messages: (sessionId: string | undefined) => ['messages', sessionId] as const,

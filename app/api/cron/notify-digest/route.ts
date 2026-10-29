@@ -14,8 +14,8 @@ function getResend() {
 // Daily cron (see vercel.json). Sends ONE cross-brief digest listing every
 // brief with maker activity waiting on the builder, then clears the pending
 // markers — replacing the old per-brief-per-burst spam (#65). The */5
-// /api/cron/notify cron no longer emails; it only sets these markers (via
-// /api/chat) and runs idle brief regen.
+// /api/cron/notify cron no longer emails (the markers are set by /api/chat);
+// it only writes idle per-conversation brief notes (#229).
 //
 // "Pending" = notify_pending_since is set (cleared once a digest goes out).
 // We query on that rather than the old notify_after debounce window so a daily

@@ -1,10 +1,12 @@
 #!/usr/bin/env node
 // Roll up api_usage by project_id to find which projects are burning cost.
-// Helps identify runaway loops (one project regenerating its brief forever).
+// Helps identify runaway loops (one project's idle note writer retrying
+// forever). The note writer logs route brief.note (#229); older rows from the
+// retired whole-brief regen are brief.generate.
 //
 // Usage:
 //   export FIREBASE_SERVICE_ACCOUNT=$(grep '^FIREBASE_SERVICE_ACCOUNT=' .env.local | cut -d= -f2-)
-//   node scripts/api-usage-by-project.mjs --route brief.generate --days 3
+//   node scripts/api-usage-by-project.mjs --route brief.note --days 3
 
 import { initializeApp, cert } from 'firebase-admin/app'
 import { getFirestore } from 'firebase-admin/firestore'

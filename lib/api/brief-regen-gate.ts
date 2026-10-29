@@ -1,9 +1,11 @@
-// Pure helpers for the notify cron's brief-regeneration circuit breaker. Kept
+// Pure helpers for the notify cron's circuit breaker (now guarding the note
+// writer, #229; the field names kept their brief_regen_ prefix).
+// Originally written for the notify cron's brief-regeneration breaker. Kept
 // separate from the route so the (historically buggy) breaker math is unit
 // testable without a Firestore mock.
 //
 // Background — the cost runaway (2026-06-15, and a similar May incident): a brief
-// that always fails to regenerate (e.g. payload exceeds BRIEF_MAX_TOKENS) gets
+// that always fails to regenerate (e.g. a whole-brief rewrite over its token cap) gets
 // retried by the 5-min cron forever, billing a Sonnet call each tick. The breaker
 // is meant to stop that after a few failures. The old inline version cleared the
 // failure COUNTER when the maker messaged after the streak began, but rewrote

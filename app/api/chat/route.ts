@@ -2,6 +2,7 @@ import { toLocale } from '@/lib/locale'
 import { getAuthenticatedUser, getAdminDb, getProjectRole, getUserDisplayName } from '@/lib/api/firebase-server-helpers'
 import { countsAsMakerActivity } from '@/lib/projects/project-view'
 import { buildSystemPromptParts } from '@/lib/agent/system-prompt'
+import { fetchUnfoldedNotes } from '@/lib/api/brief-notes'
 import { fetchPrototypeFeedback } from '@/lib/api/prototype-feedback'
 import { fetchPrototypeContext } from '@/lib/api/prototype-context'
 import { fetchPinnedArtifacts } from '@/lib/api/artifact-context'
@@ -138,11 +139,10 @@ async function handleChat(
   // welcome-back recap (#26). Otherwise the gap would always be ~0.
   const previousMakerMessageAt = projectData.last_maker_message_at as string | undefined | null
 
-  // Queue a debounced notification + record the maker timestamp for idle-based
-  // brief regeneration. The cron at /api/cron/notify picks up projects where
-  // notify_after has passed and sends a single digest email; the same cron
-  // also auto-regenerates the brief when last_maker_message_at is older than
-  // 10 minutes and the brief is stale.
+  // Queue a notification + record the maker timestamp. The daily
+  // /api/cron/notify-digest sends one digest email for pending projects; the
+  // */5 /api/cron/notify writes a per-conversation brief note (#229) once
+  // last_maker_message_at is over 10 minutes old and no note covers it yet.
   // Maker-side senders only (#110): a builder/owner/admin joining the chat
   // must not silence reminder nudges or move the turn indicator.
   if (countsAsMakerActivity(role)) {
@@ -346,12 +346,13 @@ async function handleChat(
   // B2 adds structural page captures alongside the text feedback.
   // Earlier conversations on this brief, summarised, so Sam can place what
   // the maker refers to instead of guessing they used a different brief.
-  const [prototypeFeedback, prototypeContext, pinnedArtifacts, siblingDecisions, previousConversations] = await Promise.all([
+  const [prototypeFeedback, prototypeContext, pinnedArtifacts, siblingDecisions, previousConversations, unfoldedNotes] = await Promise.all([
     fetchPrototypeFeedback(db, projectId, projectData.slug as string | undefined, Date.now()),
     fetchPrototypeContext(db, projectId, projectData.slug as string | undefined, Date.now()),
     fetchPinnedArtifacts(db, projectId),
     fetchSiblingDecisions(db, { id: projectId, github_repo: projectData.github_repo as string | undefined }),
     fetchPreviousConversations(db, sessionIds, session_id),
+    fetchUnfoldedNotes(db, briefSnap.empty ? null : briefSnap.docs[0].id),
   ])
 
   // #214: the maker was greeted with the canned "nothing queued" text and the
@@ -377,6 +378,7 @@ async function handleChat(
     pinnedArtifacts,
     siblingDecisions,
     previousConversations,
+    unfoldedNotes,
     // Read from the project (not the session snapshot) so a language set
     // after a session started still applies.
     language: toLocale(projectData.language),

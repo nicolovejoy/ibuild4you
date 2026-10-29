@@ -36,6 +36,10 @@ let docData: Record<string, { exists: boolean; data: () => Record<string, unknow
 // Configurable query results keyed by collection name
 let queryResults: Record<string, { id: string; data: () => Record<string, unknown> }[]>
 
+// briefs/{id}/notes read: 'ok' returns noteDocs, 'fail' rejects
+let notesMode: 'ok' | 'fail' = 'ok'
+let noteDocs: { id: string; data: () => Record<string, unknown> }[] = []
+
 const mockCollection = vi.fn((name: string) => ({
   add: vi.fn(async (data: Record<string, unknown>) => {
     addCalls.push({ collection: name, data })
@@ -44,6 +48,14 @@ const mockCollection = vi.fn((name: string) => ({
   doc: vi.fn(() => ({
     get: vi.fn(async () => docData[name] || { exists: false, data: () => ({}) }),
     update: mockUpdate,
+    collection: vi.fn(() => ({
+      orderBy: vi.fn(() => ({
+        get: vi.fn(async () => {
+          if (notesMode === 'fail') throw new Error('firestore down')
+          return { docs: noteDocs }
+        }),
+      })),
+    })),
   })),
   where: vi.fn(() => ({
     // Direct .where().limit().get() — the apps lookup (feedbackIdsForBrief).
@@ -178,6 +190,8 @@ describe('POST /api/chat', () => {
     vi.clearAllMocks()
     addCalls.length = 0
     capturedStreamArgs = null
+    notesMode = 'ok'
+    noteDocs = []
     mockFinalMessage = { usage: { input_tokens: 100, output_tokens: 50 } }
     vi.unstubAllEnvs()
     mockGetProjectRole.mockResolvedValue('maker')
@@ -654,6 +668,35 @@ describe('POST /api/chat', () => {
     )
     expect(contents).toContain('Maria: I want a cafe app')
     expect(contents).toContain('Tom: and online ordering')
+  })
+
+  const briefDoc = { id: 'brief-1', data: () => ({ content: { problem: 'p' }, version: 1 }) }
+  const noteDoc = {
+    id: 'n1',
+    data: () => ({
+      session_id: 's0', created_at: '2026-10-28T20:00:00Z', folded_at: null, text: 'NOTE TEXT',
+      decisions: [], risks_added: [], risks_resolved: [], lock_reversals: [],
+    }),
+  }
+
+  it('passes unfolded notes to the system prompt when the brief has them (#229)', async () => {
+    queryResults.briefs = [briefDoc]
+    noteDocs = [noteDoc]
+    await POST(makeRequest({ session_id: 's1', content: 'hi' }))
+    expect(buildSystemPromptParts).toHaveBeenCalledWith(
+      expect.objectContaining({ unfoldedNotes: [expect.objectContaining({ id: 'n1', text: 'NOTE TEXT' })] })
+    )
+  })
+
+  it('still answers the turn when the notes read fails (#229)', async () => {
+    queryResults.briefs = [briefDoc]
+    notesMode = 'fail'
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const res = await POST(makeRequest({ session_id: 's1', content: 'hi' }))
+    await res.text()
+    expect(res.status).toBe(200)
+    expect(buildSystemPromptParts).toHaveBeenCalledWith(expect.objectContaining({ unfoldedNotes: [] }))
+    errSpy.mockRestore()
   })
 
   it('summarises earlier sessions into previousConversations for the system prompt', async () => {

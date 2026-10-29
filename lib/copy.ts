@@ -175,21 +175,52 @@ export const copy = {
       'This payload includes seed questions, but the brief is in converge mode — seed questions are only sent in discover mode. They were saved and will apply if the mode flips.',
     importIgnoredDirectives:
       'This payload includes builder directives, but the brief is in discover mode — directives are only sent in converge mode. They were saved and will apply if the mode flips.',
-    // Brief size vs. what one automatic update can rewrite (lib/agent/brief-size.ts)
+    // Brief size vs. the curation budget the comms agent works to (lib/agent/brief-size.ts)
     briefNearSizeLimit: (chars: number, budget: number) =>
-      `This brief is ${chars.toLocaleString('en-US')} characters. One automatic update can rewrite about ${budget.toLocaleString('en-US')}, so the next ones may fail. Consider merging or trimming decisions.`,
+      `This brief is ${chars.toLocaleString('en-US')} characters, close to the ${budget.toLocaleString('en-US')} curation budget. Trim or merge decisions when you next curate it.`,
     briefOverSizeLimit: (chars: number, budget: number) =>
-      `This brief is ${chars.toLocaleString('en-US')} characters, over the ${budget.toLocaleString('en-US')} one automatic update can rewrite. Automatic updates will fail until it is trimmed.`,
+      `This brief is ${chars.toLocaleString('en-US')} characters, over the ${budget.toLocaleString('en-US')} curation budget. It still saves. Trim or merge decisions when you can.`,
     regenFailedTooLarge: (when: string) =>
-      `The brief has not updated automatically since ${when}: it is too large to rewrite in one pass. Paste an updated payload, or trim it.`,
+      `The note from the last conversation failed on ${when}: the model ran out of room writing it. Try "Write note now" under Details.`,
     regenFailed: (when: string) =>
-      `The last automatic brief update failed (${when}). Try "Update from conversation" under Details.`,
+      `The note from the last conversation failed on ${when}. Try "Write note now" under Details.`,
+    // #229 paste guard and notes
+    pasteNotFromPrep:
+      'This paste was not made from a prep, so no notes were folded. They stay visible to Sam and in the next prep.',
+    stalePrepTitle: 'This prep is out of date',
+    stalePrepNote: (count: number, liveVersion: number, prepVersion: number) => {
+      const parts: string[] = []
+      if (count > 0) parts.push(`${count} note${count === 1 ? ' was' : 's were'} written after the prep was copied`)
+      if (liveVersion > prepVersion) parts.push(`the brief is now v${liveVersion}, the prep was made from v${prepVersion}`)
+      return `${parts.join(', and ')}. Nothing was saved. Save anyway keeps your paste; missed notes stay unfolded, so Sam and the next prep still see them.`
+    },
+    stalePrepMissedNote: (day: string) => `Note from ${day}`,
+    saveAnyway: 'Save anyway',
+    savingAnyway: 'Saving…',
+    writeNoteNow: 'Write note now',
+    writeNoteConfirm:
+      'This reads the conversation since the last note and writes a short note of what changed (uses metered API). The brief is not rewritten; the note is folded in at your next curated paste.',
+    writeNoteSubmit: 'Write note',
+    writeNoteWriting: 'Writing…',
+    writeNoteCancel: 'Cancel',
+    writeNoteNothingNew: 'Nothing new since the last note.',
+    writeNoteFailed: "Couldn't write the note — try again.",
+    // Copy prep (#229) failed: nothing reached the clipboard.
+    copyPrepBriefChanged: "Couldn't copy the prep — the brief changed while loading. Try again.",
+    copyPrepFailed: "Couldn't copy the prep — try again.",
+    newSinceCuration: (n: number) => `New since last curation (${n})`,
+    noteHeading: (day: string) => `Conversation of ${day}`,
+    noteDecision: (topic: string, decision: string) => `Decision: ${topic}: ${decision}`,
+    noteRiskAdded: (text: string, owner?: string) => `Open risk${owner ? ` (${owner})` : ''}: ${text}`,
+    noteRiskResolved: (text: string) => `Resolved: ${text}`,
+    noteLockReversal: (topic: string, proposed: string, reason: string) =>
+      `Wants to change locked ${topic}: ${proposed} (${reason})`,
     importStayHint: 'Brief updated. Read the note above, then continue.',
     importContinueButton: 'Continue to Conversations',
     emptyTitle: 'No brief yet',
     // #194 — version history on the Brief tab
     history: 'History',
-    historyEmpty: 'No earlier versions yet — the first regen or save will create one.',
+    historyEmpty: 'No earlier versions yet. The first save will create one.',
     historyLoading: 'Loading history…',
     historyError: "Couldn't load history — try again.",
     restore: 'Restore',
@@ -211,7 +242,7 @@ export const copy = {
     lockLossConfirm: 'Yes, save',
     lockLossCancel: 'Cancel',
     sourceLabel: (source: string | null) =>
-      ({ create: 'created', paste: 'saved by hand', regen: 'regenerated', restore: 'restored' } as Record<string, string>)[
+      ({ create: 'created', paste: 'saved by hand', regen: 'regenerated', restore: 'restored', note: 'contest from conversation' } as Record<string, string>)[
         source ?? ''
       ] ?? 'unknown source',
     // Ferry desk — the copy/paste loop that fronts the Brief tab
@@ -225,7 +256,7 @@ export const copy = {
     copyPrep: 'Copy next-convo prep',
     copied: 'Copied!',
     details: 'Details',
-    detailsHint: 'brief · history · regenerate · attachments',
+    detailsHint: 'brief · history · write note · attachments',
     escHint: 'Esc back to dashboard',
     openQuestionsTitle: (name: string) => `Open questions for ${name}`,
     openQuestionsFallbackName: 'the maker',

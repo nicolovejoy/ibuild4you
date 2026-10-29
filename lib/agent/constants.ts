@@ -13,21 +13,10 @@ export const AGENT_EMPTY_FALLBACK = 'I lost my train of thought there — could 
 
 // Used for brief generation too
 export const BRIEF_MODEL = 'claude-sonnet-4-6'
-// Brief is emitted via tool use, so this bounds the structured payload, not free text.
-// Raised 2048 → 8192 after the 2026-06-15 cost runaway: a large brief (many
-// features/decisions over many sessions) exceeded 2048, so every regen hit
-// max_tokens and threw — the cron then retried (and billed) forever. With real
-// headroom a big brief regenerates successfully once, advancing its updated_at so
-// the cron stops re-firing. Truncation still surfaces as a typed error + trips
-// the circuit breaker for the rare brief that's larger still.
-// Raised 8192 → 12000 (2026-10-17, F4FC): a 25k-char brief needed ~8.1k output
-// tokens and every regen hit the cap. Ceiling is time, not the model: regen
-// writes ~52 tokens/s, so 12000 is ~230s, inside the 300s function default and
-// the 5-min notify cron tick (a longer regen would overlap the next tick, which
-// would start the same regen again). Going higher needs #229 (patch output),
-// not a bigger number. lib/agent/brief-size.ts derives the import warning from this.
-export const BRIEF_MAX_TOKENS = 12000
 export const BRIEF_TEMPERATURE = 0.3
+// #229: a note records only what one conversation changed, so it stays small.
+// Hitting this cap throws write_note_max_tokens (breaker counts it).
+export const NOTE_MAX_TOKENS = 1500
 
 export const DEFAULT_IDENTITY = "You are Sam, the assistant sitting in the middle of an iBuild4you brief — a living document that one or more people are building together. Your job is to help them describe what they're building clearly enough that a developer could start working on it. You surface gaps and ask follow-up questions, but you don't decide things — that's still their call. You're the intake step, not the developer who builds it: you turn the conversation into a brief their developer works from — you don't design, build, change, or deploy the app yourself."
 

@@ -102,10 +102,10 @@ describe('FerryDesk', () => {
     expect(wrapper.className).toContain('hidden')
     expect(toggle.getAttribute('aria-controls')).toBe(wrapper.id)
     expect(wrapper.id).toBeTruthy()
-    expect(screen.getByText('brief · history · regenerate · attachments')).toBeTruthy()
+    expect(screen.getByText('brief · history · write note · attachments')).toBeTruthy()
     fireEvent.click(toggle)
     expect(wrapper.className).not.toContain('hidden')
-    expect(screen.queryByText('brief · history · regenerate · attachments')).toBeNull()
+    expect(screen.queryByText('brief · history · write note · attachments')).toBeNull()
   })
 
   it('keeps Details children mounted across a collapse', () => {

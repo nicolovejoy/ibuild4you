@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Verify #19 Phase 3 brief editor on preview: structured + raw-JSON views,
-// lock toggle, save, the "Update from conversation" confirm, and the demoted
+// lock toggle, save, the "Write note now" confirm (under Details), and the demoted
 // full-payload import. Retries to wait out a fresh deploy.
 
 import { chromium } from 'playwright'
@@ -23,7 +23,10 @@ async function checkOnce() {
   r.structuredToggle = (await page.getByRole('button', { name: 'Structured', exact: true }).count()) > 0
   r.rawToggle = (await page.getByRole('button', { name: 'Raw JSON', exact: true }).count()) > 0
   r.saveBtn = (await page.getByRole('button', { name: /Save brief/ }).count()) > 0
-  r.updateFromConvo = (await page.getByText('Update from conversation (uses API)').count()) > 0
+  // "Write note now" lives behind the ferry desk's Details fold (#229).
+  await page.getByRole('button', { name: /^Details/ }).first().click().catch(() => {})
+  await page.waitForTimeout(400)
+  r.updateFromConvo = (await page.getByText('Write note now').count()) > 0
   r.importDisclosure = (await page.getByText(/Import full payload/).count()) > 0
   // structured fields
   r.decisionsLabel = (await page.getByText('Decisions', { exact: true }).count()) > 0
@@ -50,16 +53,16 @@ if (r && r.rawToggle) {
   await page.screenshot({ path: `${shotDir}/p3-raw.png` })
 }
 
-// Open the "Update from conversation" confirm and check copy-first affordance.
+// Open the "Write note now" confirm and check it says the brief is not rewritten.
 let confirmOk = false
 await page.getByRole('button', { name: 'Structured', exact: true }).first().click().catch(() => {})
 await page.waitForTimeout(400)
 if (r && r.updateFromConvo) {
-  await page.getByText('Update from conversation (uses API)').first().click()
+  await page.getByText('Write note now').first().click()
   await page.waitForTimeout(700)
   confirmOk =
-    (await page.getByText(/replaces the current brief/).count()) > 0 &&
-    (await page.getByText(/Copy current brief first/).count()) > 0
+    (await page.getByText(/The brief is not rewritten/).count()) > 0 &&
+    (await page.getByRole('button', { name: 'Write note', exact: true }).count()) > 0
   await page.screenshot({ path: `${shotDir}/p3-confirm.png` })
 }
 

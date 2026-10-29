@@ -6,6 +6,7 @@ import { PayloadDoc } from '@/components/payload-doc'
 // the schema in lib/agent/next-convo-prompt.ts (keep in sync).
 const NEXT_CONVO_PAYLOAD = `{
   "_payload_type": "next-convo",
+  "_prep_stamp": { "brief_version": 7, "note_ids": ["noteId1", "noteId2"] },
   "brief": {
     "problem": "What problem the user is trying to solve",
     "target_users": "Who the intended users are",
@@ -28,6 +29,7 @@ const NEXT_CONVO_PAYLOAD = `{
 const NOTES = [
   'Paste this into the Brief tab inside an existing project (not the Dashboard’s Import JSON modal).',
   '"_payload_type" must be the first key. Do NOT include title, requester_email, or maker names — those are create-only fields.',
+  '"_prep_stamp" is copied back unchanged from the next-convo prep, so the paste folds exactly the notes that prep carried (hand-written JSON leaves it out).',
   'Include the "brief" object to save a new brief revision; the other fields update the project and steer the next session.',
   'Only include fields the conversation actually addressed — omit the rest rather than inventing them.',
   'session_opener is accepted as a legacy alias for welcome_message — prefer welcome_message.',

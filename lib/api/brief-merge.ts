@@ -1,15 +1,17 @@
-// Pure helpers for reconciling a freshly-regenerated brief against the prior
-// one. Kept separate from lib/api/briefs.ts so the merge logic is unit-testable
-// without an Anthropic or Firestore mock.
+// Pure helpers for reconciling an incoming brief (a stamped ferry-desk paste,
+// #229; formerly the whole-brief regen) against the prior one. Kept separate
+// from lib/api/briefs.ts so the merge logic is unit-testable without an
+// Anthropic or Firestore mock.
 //
 // Background — issue #71 (brief↔build reconciliation): a *locked* decision is a
 // durable constraint (the build's "do-not-use" / locked-convention list). The
-// regen model is told to preserve locked decisions, but a model can always drop
-// or reword one — and across many sessions that silent loss is exactly the bug.
-// So durability can't depend on the model: this code re-injects every locked
-// decision the regen output dropped or altered, verbatim, before the brief is
-// persisted. Locked decisions are immutable through regen; only an explicit
-// maker confirm (a separate, deliberate flow) ever changes one.
+// comms agent that curates the brief is told to keep locked decisions, but a
+// model can always drop or reword one — and across many sessions that silent
+// loss is exactly the bug. So durability can't depend on the model: on a
+// stamped paste, PUT /api/briefs re-injects every locked decision the paste
+// dropped or altered, verbatim, with its contest state (restoreLocksOnPaste).
+// Only a builder's deliberate, unstamped save (the structured editor,
+// Accept/Dismiss, Restore) ever unlocks or rewrites one.
 
 import type {
   BriefContent,
@@ -21,7 +23,7 @@ import type {
 // Decisions are identified by their topic label (case-insensitive, trimmed).
 // Two decisions with the same topic are "the same decision"; regen reusing a
 // topic but changing the text counts as an alteration we must revert when locked.
-function topicKey(d: BriefDecision): string {
+export function topicKey(d: BriefDecision): string {
   return d.topic.trim().toLowerCase()
 }
 
@@ -75,6 +77,20 @@ export function mergeLockedDecisions(
   ]
 }
 
+// #229: a stamped ferry-desk paste (the comms agent rewrote the brief) can't
+// drop a lock, reword one, or change its contest state. Same as
+// mergeLockedDecisions except the paste's own `contested` is ignored: prev is
+// the authority for contest state (the note writer sets `contested` on the
+// live brief; only the Brief tab's Accept/Dismiss, an unstamped save, clears
+// it), so every lock comes back with prev's `contested`/`contest_dismissed`.
+// Pasted non-locked decisions pass through with contest fields stripped.
+export function restoreLocksOnPaste(
+  prev: BriefDecision[] | undefined,
+  next: BriefDecision[] | undefined
+): BriefDecision[] {
+  return mergeLockedDecisions(prev, (next ?? []).map(withoutContestFields))
+}
+
 // Contest state (`contested`, `contest_dismissed`) only lives on a lock; strip
 // both from anything else.
 function withoutContestFields(d: BriefDecision): BriefDecision {
@@ -99,7 +115,7 @@ export function lostLocks(
 
 // Accept a `contested` value only when it is well-formed AND the decision is
 // locked (#197). Used by every write path that takes decisions from outside
-// (regen coercion, PUT /api/briefs, the raw-JSON normaliser).
+// (the note writer's lock reversals, PUT /api/briefs, the raw-JSON normaliser).
 export function contestFor(locked: boolean, raw: unknown): BriefDecisionContest | undefined {
   if (!locked || !raw || typeof raw !== 'object') return undefined
   const c = raw as Record<string, unknown>
@@ -154,10 +170,17 @@ export function resolveContest(
 //
 // Every decision carries where it came from (`decided_in_session` +
 // `decided_at`), stamped HERE by code — never trusted from the model, which
-// sees stamps in its prompt and will echo or hallucinate them. One function
-// serves both write paths (regen and the paste/import PUT), run AFTER
-// mergeLockedDecisions so locked decisions arrive verbatim from prev and rule 2
+// sees stamps in its prompt and will echo or hallucinate them. Since #229 the
+// paste/import PUT is the only write path; on a stamped paste it runs AFTER
+// restoreLocksOnPaste, so locked decisions arrive verbatim from prev and rule 2
 // preserves their stamps automatically.
+
+// Text comparison for "did this decision actually change?" (#228 part 2):
+// lowercase, drop all Unicode punctuation (quotes, dashes, .,;:!?()[]-),
+// collapse whitespace. Rewording that only touches these is not a revision.
+export function normalizeDecisionText(s: string): string {
+  return s.toLowerCase().replace(/\p{P}/gu, '').replace(/\s+/g, ' ').trim()
+}
 
 const hasExplicitProvenance = (d: BriefDecision): boolean => typeof d.decided_at === 'string'
 
@@ -183,8 +206,11 @@ export function stripDecisionProvenance(decisions: BriefDecision[]): BriefDecisi
 // Stamp provenance onto the post-reconcile decision list:
 //   1. New topic (no prev match): stamp { decided_in_session: sessionId,
 //      decided_at: now } — unless the incoming decision already carries
-//      explicit provenance (the paste path may legitimately supply it).
-//   2. Unchanged (prev match, same decision text): carry prev stamps forward
+//      explicit provenance (the paste path may legitimately supply it). When
+//      `originByTopic` has the topic (a note introduced it), that note's
+//      session and time are used instead of sessionId/now (#229).
+//   2. Unchanged (prev match, same decision text after normalizeDecisionText,
+//      so case/punctuation/whitespace rewording does not count, #228 pt 2): carry prev stamps forward
 //      verbatim — including "no stamps"; never fabricate. Incoming stamps are
 //      ignored (prev is the source of truth). This also restores stamps an
 //      outside agent dropped when round-tripping the brief JSON.
@@ -198,7 +224,10 @@ export function stripDecisionProvenance(decisions: BriefDecision[]): BriefDecisi
 //      kept. A prev decision with no origin stamp gets revised_* only — the
 //      origin is not invented — unless the incoming decision supplies an
 //      explicit origin, which is honored. Incoming decided_* are otherwise
-//      ignored: prev's origin is the source of truth.
+//      ignored: prev's origin is the source of truth. When `originByTopic`
+//      has the topic (a folded note revised it, #229), that note's session
+//      and time stamp the revision instead of sessionId + now; an explicit
+//      differing revised_* still wins.
 // Idempotent: regenerating an unchanged brief never moves a stamp, so
 // decided_at means "decided", not "last regenerated".
 export function stampDecisionProvenance(args: {
@@ -206,13 +235,16 @@ export function stampDecisionProvenance(args: {
   next: BriefDecision[] // post-reconcile list about to be persisted
   sessionId: string | null // stamping context (null on paste path)
   now: string // ISO
+  // #229: where a new topic first came from, keyed by topicKey (trimmed,
+  // lowercased topic); built from the notes a paste folds.
+  originByTopic?: Map<string, { session_id: string | null; at: string }>
 }): BriefDecision[] {
   const prevByKey = new Map((args.prev ?? []).map((d) => [topicKey(d), d]))
 
   return args.next.map((n) => {
     const p = prevByKey.get(topicKey(n))
 
-    if (p && p.decision === n.decision) {
+    if (p && normalizeDecisionText(p.decision) === normalizeDecisionText(n.decision)) {
       // Rule 2 — unchanged: prev stamps verbatim (or none at all).
       const carried = withoutProvenance(n)
       if (p.decided_at !== undefined) carried.decided_at = p.decided_at
@@ -232,9 +264,15 @@ export function stampDecisionProvenance(args: {
         revised.decided_at = n.decided_at
         revised.decided_in_session = n.decided_in_session ?? null
       }
+      const noteOrigin = args.originByTopic?.get(topicKey(n))
       if (hasExplicitRevision(n) && n.revised_at !== p.revised_at) {
         revised.revised_at = n.revised_at
         revised.revised_in_session = n.revised_in_session ?? null
+      } else if (noteOrigin) {
+        // #229: a folded note revised this topic; the revision happened in
+        // that note's conversation, not at paste time.
+        revised.revised_at = noteOrigin.at
+        revised.revised_in_session = noteOrigin.session_id
       } else {
         revised.revised_at = args.now
         revised.revised_in_session = args.sessionId
@@ -246,6 +284,8 @@ export function stampDecisionProvenance(args: {
     if (hasExplicitProvenance(n)) {
       return { ...n, decided_in_session: n.decided_in_session ?? null }
     }
+    const origin = args.originByTopic?.get(topicKey(n))
+    if (origin) return { ...n, decided_in_session: origin.session_id, decided_at: origin.at }
     return { ...n, decided_in_session: args.sessionId, decided_at: args.now }
   })
 }

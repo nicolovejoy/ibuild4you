@@ -1,27 +1,18 @@
 import { copy } from '@/lib/copy'
-import { BRIEF_MAX_TOKENS } from '@/lib/agent/constants'
 
-// An automatic brief update (regenerateBriefForProject) has the model write the
-// WHOLE brief back out as tool input, so the brief's size is capped by the
-// output budget. Measured on F4FC: 2026-10-16 a 25,040-char brief took 8,067
-// output tokens (3.10 chars per token); 2026-10-19 a 34,726-char brief took
-// 11,903 (2.92). The ratio falls as the brief grows, so 2.9 is the working
-// estimate; 3 was optimistic by about a round of regen.
-const CHARS_PER_TOKEN = 2.9
+// The comms agent curates the brief by hand (#229), so the brief is no longer
+// capped by one model output. This is the size a curated brief should stay
+// under so it stays cheap and quick to read into every chat turn.
+export const BRIEF_CHAR_BUDGET = 20000
 // Warn the builder once a brief is past this share of the budget.
 const WARN_SHARE = 0.8
 
-export function briefRegenCharBudget(maxTokens: number = BRIEF_MAX_TOKENS): number {
-  return Math.floor(maxTokens * CHARS_PER_TOKEN)
-}
-
 // Shown on the Brief tab whenever the live brief is close to the budget, and
-// after a paste: null while the brief comfortably fits.
-export function briefSizeWarning(content: unknown, maxTokens: number = BRIEF_MAX_TOKENS): string | null {
+// after a paste: null while the brief comfortably fits. Warns, never refuses.
+export function briefSizeWarning(content: unknown): string | null {
   const chars = JSON.stringify(content ?? {}).length
-  const budget = briefRegenCharBudget(maxTokens)
-  if (chars > budget) return copy.brief.briefOverSizeLimit(chars, budget)
-  if (chars >= budget * WARN_SHARE) return copy.brief.briefNearSizeLimit(chars, budget)
+  if (chars > BRIEF_CHAR_BUDGET) return copy.brief.briefOverSizeLimit(chars, BRIEF_CHAR_BUDGET)
+  if (chars >= BRIEF_CHAR_BUDGET * WARN_SHARE) return copy.brief.briefNearSizeLimit(chars, BRIEF_CHAR_BUDGET)
   return null
 }
 
@@ -30,7 +21,7 @@ interface RegenState {
   brief_regen_last_error_at?: string | null
 }
 
-// The cron records a failed update on the project but nobody saw it (F4FC went
+// The cron records a failed note on the project but nobody saw it (F4FC went
 // two days stale). Show it on the Brief tab while it is still the latest word,
 // i.e. no paste or successful update has refreshed the brief since.
 export function regenFailureNotice(project: RegenState, briefUpdatedAt: string | null | undefined): string | null {
@@ -42,8 +33,8 @@ export function regenFailureNotice(project: RegenState, briefUpdatedAt: string |
     new Intl.DateTimeFormat('en-US', { timeZone: 'America/Los_Angeles', month: 'short', day: 'numeric' }).format(
       new Date(iso),
     )
-  if (err === 'regenerate_brief_max_tokens') {
-    return copy.brief.regenFailedTooLarge(briefUpdatedAt ? day(briefUpdatedAt) : 'it was created')
+  if (err === 'write_note_max_tokens') {
+    return copy.brief.regenFailedTooLarge(day(at))
   }
   return copy.brief.regenFailed(day(at))
 }

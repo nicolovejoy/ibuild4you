@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// One-off: figure out why brief.generate keeps firing for given project ids.
+// One-off: figure out why the idle brief cron keeps firing for given project
+// ids (brief.note since #229; brief.generate before).
 // Compares last_maker_message_at vs latest brief.updated_at and prints the
 // circuit-breaker fields. If updated_at < last_maker_message_at after a
 // successful regen, the upsert path has a bug.
