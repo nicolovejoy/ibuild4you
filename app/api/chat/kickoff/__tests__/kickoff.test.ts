@@ -34,6 +34,13 @@ const mockCollection = vi.fn((name: string) => ({
     }),
   })),
   where: vi.fn(() => ({
+    // Direct .where().limit().get() — the apps lookup (feedbackIdsForBrief).
+    limit: vi.fn(() => ({
+      get: vi.fn(async () => {
+        const docs = queryResults[name] || []
+        return { docs, empty: docs.length === 0, size: docs.length }
+      }),
+    })),
     get: vi.fn(async () => {
       const docs = queryResults[name] || []
       return { docs, empty: docs.length === 0, size: docs.length }

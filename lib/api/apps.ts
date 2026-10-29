@@ -44,6 +44,21 @@ export async function findAppBySlug(db: Firestore, slugOrLegacy: string): Promis
   return { id: doc.id, ...(doc.data() as Omit<App, 'id'>) }
 }
 
+// Which feedback / prototype_context `project_id` values belong to a brief?
+// Rows are stored under the linked app's canonical slug, and older rows (or
+// un-migrated widgets) may sit under its legacy slugs. With no linked app the
+// brief's own slug is the only id, as before.
+export async function feedbackIdsForBrief(
+  db: Firestore,
+  briefDocId: string,
+  briefSlug: string
+): Promise<string[]> {
+  const snap = await db.collection('apps').where('brief_id', '==', briefDocId).limit(1).get()
+  if (snap.empty) return [briefSlug]
+  const app = snap.docs[0].data() as Omit<App, 'id'>
+  return [app.slug, ...(app.legacy_slugs ?? [])]
+}
+
 // True when the slug is any app's canonical slug or appears in any legacy_slugs.
 export async function isSlugTaken(db: Firestore, slug: string): Promise<boolean> {
   return (await findAppBySlug(db, slug)) !== null
