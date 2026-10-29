@@ -184,6 +184,34 @@ export const copy = {
       `The note from the last conversation failed on ${when}: the model ran out of room writing it. Try "Write note now" under Details.`,
     regenFailed: (when: string) =>
       `The note from the last conversation failed on ${when}. Try "Write note now" under Details.`,
+    // #229 paste guard and notes
+    pasteNotFromPrep:
+      'This paste was not made from a prep, so no notes were folded. They stay visible to Sam and in the next prep.',
+    stalePrepTitle: 'This prep is out of date',
+    stalePrepNote: (count: number, liveVersion: number, prepVersion: number) => {
+      const parts: string[] = []
+      if (count > 0) parts.push(`${count} note${count === 1 ? ' was' : 's were'} written after the prep was copied`)
+      if (liveVersion > prepVersion) parts.push(`the brief is now v${liveVersion}, the prep was made from v${prepVersion}`)
+      return `${parts.join(', and ')}. Nothing was saved. Save anyway keeps your paste; missed notes stay unfolded, so Sam and the next prep still see them.`
+    },
+    stalePrepMissedNote: (day: string) => `Note from ${day}`,
+    saveAnyway: 'Save anyway',
+    savingAnyway: 'Saving…',
+    writeNoteNow: 'Write note now',
+    writeNoteConfirm:
+      'This reads the conversation since the last note and writes a short note of what changed (uses metered API). The brief is not rewritten; the note is folded in at your next curated paste.',
+    writeNoteSubmit: 'Write note',
+    writeNoteWriting: 'Writing…',
+    writeNoteCancel: 'Cancel',
+    writeNoteNothingNew: 'Nothing new since the last note.',
+    writeNoteFailed: "Couldn't write the note — try again.",
+    newSinceCuration: (n: number) => `New since last curation (${n})`,
+    noteHeading: (day: string) => `Conversation of ${day}`,
+    noteDecision: (topic: string, decision: string) => `Decision: ${topic}: ${decision}`,
+    noteRiskAdded: (text: string, owner?: string) => `Open risk${owner ? ` (${owner})` : ''}: ${text}`,
+    noteRiskResolved: (text: string) => `Resolved: ${text}`,
+    noteLockReversal: (topic: string, proposed: string, reason: string) =>
+      `Wants to change locked ${topic}: ${proposed} (${reason})`,
     importStayHint: 'Brief updated. Read the note above, then continue.',
     importContinueButton: 'Continue to Conversations',
     emptyTitle: 'No brief yet',

@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import {
   ArrowLeft, MessageSquare, Send, FileText, Sparkles, Plus, X,
   Share2, ChevronDown, ChevronUp, Copy, Check, Mail, RotateCw,
-  Trash2, Settings, Upload, Users, UserPlus,
+  Trash2, Settings, Upload, Users, UserPlus, NotebookPen,
 } from 'lucide-react'
 import { BuildTimestamp } from '@/components/build-timestamp'
 import { Card, CardBody } from '@/components/ui/Card'
@@ -15,7 +15,7 @@ import { Button } from '@/components/ui/Button'
 import { LoadingButton } from '@/components/ui/LoadingButton'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { MessageContent } from '@/components/ui/MessageContent'
-import { parseNextConvoPayload, nextConvoImportWarnings } from '@/lib/api/import-payload'
+import { parseNextConvoPayload, nextConvoImportWarnings, type NextConvoPayload } from '@/lib/api/import-payload'
 import { briefSizeWarning, regenFailureNotice } from '@/lib/agent/brief-size'
 import { nextReminderAt } from '@/lib/api/reminder-cadence'
 import { useEscapeBack } from '@/lib/hooks/useEscapeBack'
@@ -46,6 +46,9 @@ import {
   useGeneratePrep,
   useDeleteProject,
   useCurrentUser,
+  useBriefNotes,
+  StalePrepError,
+  type StalePrepInfo,
 } from '@/lib/query/hooks'
 import { buildNextConvoPrompt } from '@/lib/agent/next-convo-prompt'
 import { copy } from '@/lib/copy'
@@ -67,9 +70,9 @@ import { BuilderFilesTab } from './BuilderFilesTab'
 import { BriefEditor } from './BriefEditor'
 import { FerryDesk } from './FerryDesk'
 import { OpenQuestionsCard } from './OpenQuestionsCard'
+import { StalePrepNotice, UnfoldedNotesList } from './BriefNotes'
 import { makerQuestions, riskOwner, riskText } from '@/lib/brief/risks'
 import { ferryStamps } from '@/lib/builder/ferry-stamps'
-import { serializeBriefContent } from '@/lib/api/brief-json'
 import { getTurnIndicator } from '@/lib/turn-indicator'
 import { TurnBadge } from '@/components/ui/TurnBadge'
 import { BriefSwitcher } from '@/components/brief-switcher'
@@ -483,13 +486,17 @@ function BriefTab({
 }) {
   const [payloadCopied, setPayloadCopied] = useState(false)
   const [briefCopied, setBriefCopied] = useState(false)
-  const [jsonCopied, setJsonCopied] = useState(false)
   const [pasteJson, setPasteJson] = useState('')
   const [pasteError, setPasteError] = useState<string | null>(null)
   const [importWarnings, setImportWarnings] = useState<{ messages: string[]; configUpdated: boolean } | null>(null)
   const [showGenConfirm, setShowGenConfirm] = useState(false)
   const queryClient = useQueryClient()
   const [generating, setGenerating] = useState(false)
+  const [genError, setGenError] = useState<string | null>(null)
+  // #229: a paste the server refused as a stale prep (409). Keeps the payload
+  // as parsed, so Save anyway resends exactly that with force: true.
+  const [stalePrep, setStalePrep] = useState<{ info: StalePrepInfo; payload: NextConvoPayload } | null>(null)
+  const { data: briefNotes } = useBriefNotes(projectId)
   const [loadingPayload, setLoadingPayload] = useState(false)
   // Covers the whole import (brief save + optional config PATCH + paste
   // stamp), not just the brief mutation.
@@ -522,19 +529,27 @@ function BriefTab({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoOpenImport])
 
+  // "Write note now" (#229): runs the note writer over the conversation since
+  // the last note. It writes a note, not the brief (except a lock contest).
   const handleGenerate = async () => {
     setGenerating(true)
+    setGenError(null)
     try {
-      await apiFetch('/api/briefs/notes', {
+      const res = await apiFetch('/api/briefs/notes', {
         method: 'POST',
         body: JSON.stringify({ project_id: projectId }),
       })
-      queryClient.invalidateQueries({ queryKey: ['brief', projectId] })
+      if (!res.ok) {
+        setGenError(res.status === 400 ? copy.brief.writeNoteNothingNew : copy.brief.writeNoteFailed)
+        return
+      }
+      queryClient.invalidateQueries({ queryKey: queryKeys.brief(projectId) })
       queryClient.invalidateQueries({ queryKey: queryKeys.briefVersions(projectId) })
-      queryClient.invalidateQueries({ queryKey: ['briefNotes', projectId] })
+      queryClient.invalidateQueries({ queryKey: queryKeys.briefNotes(projectId) })
       setShowGenConfirm(false)
     } catch (err) {
       console.error('Writing the note failed:', err)
+      setGenError(copy.brief.writeNoteFailed)
     } finally {
       setGenerating(false)
     }
@@ -597,12 +612,18 @@ function BriefTab({
   const handleImportJson = async () => {
     setPasteError(null)
     setImportWarnings(null)
+    setStalePrep(null)
     const result = parseNextConvoPayload(pasteJson)
     if (!result.ok) {
       setPasteError(result.error)
       return
     }
+    await savePayload(result.value, false)
+  }
 
+  // Save a parsed payload. `force` is the stale-prep 409's Save anyway: the
+  // same payload and stamp, resent so the server saves despite missed notes.
+  const savePayload = async (payload: NextConvoPayload, force: boolean) => {
     setImporting(true)
     try {
       let configUpdated = false
@@ -627,12 +648,15 @@ function BriefTab({
           console.error('Failed to write payload_pasted_at stamp:', err)
         }
       }
-      if (result.value.mode === 'multi') {
-        const saved = await updateBrief.mutateAsync({ project_id: projectId, content: result.value.brief })
-        if (Object.keys(result.value.projectUpdate).length > 0) {
+      // #229: the prep stamp rides along so the server can fold the notes the
+      // comms agent saw, or refuse a stale prep (409 → StalePrepError).
+      const guard = { prep_stamp: payload.stamp, force }
+      if (payload.mode === 'multi') {
+        const saved = await updateBrief.mutateAsync({ project_id: projectId, content: payload.brief, ...guard })
+        if (Object.keys(payload.projectUpdate).length > 0) {
           await updateProject.mutateAsync({
             project_id: projectId,
-            ...result.value.projectUpdate,
+            ...payload.projectUpdate,
             payload_pasted_at: pastedAt,
             payload_pasted_version: saved?.version,
           } as Parameters<typeof updateProject.mutateAsync>[0])
@@ -643,18 +667,22 @@ function BriefTab({
         // Skip while the project is unloaded: session_mode would default to
         // discover and could warn falsely.
         warnings =
-          project || result.value.projectUpdate.session_mode !== undefined
-            ? nextConvoImportWarnings(result.value.projectUpdate, project?.session_mode)
+          project || payload.projectUpdate.session_mode !== undefined
+            ? nextConvoImportWarnings(payload.projectUpdate, project?.session_mode)
             : []
       } else {
-        const saved = await updateBrief.mutateAsync({ project_id: projectId, content: result.value.brief as BriefContent })
+        const saved = await updateBrief.mutateAsync({ project_id: projectId, content: payload.brief as BriefContent, ...guard })
         await stampPasted(saved?.version)
       }
+      // A payload without a prep stamp (old prep, hand-written JSON) folds no
+      // notes. Say so here only: the structured editor and Restore don't warn.
+      if (payload.stamp === null) warnings = [...warnings, copy.brief.pasteNotFromPrep]
       // A brief too big for one automatic update saves fine but stops updating
       // from conversation (F4FC). Warn, never reject: the paste is the builder's call.
-      const sizeWarning = briefSizeWarning(result.value.brief)
+      const sizeWarning = briefSizeWarning(payload.brief)
       if (sizeWarning) warnings = [...warnings, sizeWarning]
       setPasteJson('')
+      setStalePrep(null)
       // Ignored fields: stay on the Brief tab so the builder reads the warning.
       if (warnings.length > 0) {
         setImportWarnings({ messages: warnings, configUpdated })
@@ -664,6 +692,10 @@ function BriefTab({
       // them staring at the updated brief with no cue (#25).
       onImported?.({ configUpdated })
     } catch (err) {
+      if (err instanceof StalePrepError) {
+        setStalePrep({ info: err.info, payload })
+        return
+      }
       setPasteError(err instanceof Error ? err.message : 'Failed to save')
     } finally {
       setImporting(false)
@@ -715,7 +747,7 @@ function BriefTab({
       {/* The ferry desk: stamps (prep copied / payload pasted / maker last
           active), the big paste box, Import + Copy prep. The copy-paste
           round-trip routes builder reasoning onto the Max sub (cost model);
-          the metered "Update from conversation" lives under Details. Stamps
+          the metered "Write note now" lives under Details. Stamps
           are written in handleCopyPayload (prep_copied_at) and, on success
           only, in handleImportJson (payload_pasted_at). importCardRef wraps
           the desk so the dispatch modal's "load a payload" link (#115) still
@@ -728,7 +760,7 @@ function BriefTab({
           briefVersion={brief?.version ?? null}
           sessionCount={briefTabSessions?.length}
           pasteValue={pasteJson}
-          onPasteChange={(v) => { setPasteJson(v); setPasteError(null); setImportWarnings(null) }}
+          onPasteChange={(v) => { setPasteJson(v); setPasteError(null); setImportWarnings(null); setStalePrep(null) }}
           pasteError={pasteError}
           importing={importing}
           onImport={handleImportJson}
@@ -742,8 +774,17 @@ function BriefTab({
             <OpenQuestionsCard title={project?.title ?? ''} makerName={makerName} questions={questions} />
           }
           notices={
-            (regenNotice || sizeNotice || importWarnings) && (
+            (regenNotice || sizeNotice || importWarnings || stalePrep) && (
               <>
+                {/* #229: the server refused a stale prep; nothing was saved.
+                    Save anyway resends the same parsed payload with force. */}
+                {stalePrep && (
+                  <StalePrepNotice
+                    info={stalePrep.info}
+                    saving={importing}
+                    onSaveAnyway={() => savePayload(stalePrep.payload, true)}
+                  />
+                )}
                 {/* The last automatic update failed and nothing has refreshed
                     the brief since (lib/agent/brief-size.ts). */}
                 {regenNotice && <StatusMessage type="warning" message={regenNotice} />}
@@ -796,15 +837,19 @@ function BriefTab({
                 </button>
               )}
               <button
-                onClick={() => setShowGenConfirm(true)}
+                onClick={() => { setGenError(null); setShowGenConfirm(true) }}
                 className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand-navy"
               >
-                <Sparkles className="h-3.5 w-3.5" />
-                Update from conversation (uses API)
+                <NotebookPen className="h-3.5 w-3.5" />
+                {copy.brief.writeNoteNow}
               </button>
             </div>
 
             <BriefEditor projectId={projectId} content={briefContent} version={brief?.version} loading={briefLoading} sessions={briefTabSessions} />
+
+            {/* #229: notes written since the last curated paste, read-only.
+                The next prep carries them; a stamped paste folds them. */}
+            <UnfoldedNotesList notes={briefNotes?.notes} />
 
             {/* Attachments — Files folded into the Brief (#19 Phase 2). Anything
                 uploaded to the brief that Sam can reference. */}
@@ -819,32 +864,18 @@ function BriefTab({
         </FerryDesk>
       </div>
 
-      {/* Confirm the metered-API regen — it overwrites the brief (locked
-          decisions survive). Offer a copy-first so no manual edit is lost. */}
-      <Modal isOpen={showGenConfirm} onClose={() => { if (!generating) setShowGenConfirm(false) }} title="Update brief from conversation?" size="sm">
+      {/* Confirm the metered-API note writer (#229). It writes a note, not a
+          new brief, so there is nothing to copy first. */}
+      <Modal isOpen={showGenConfirm} onClose={() => { if (!generating) setShowGenConfirm(false) }} title={`${copy.brief.writeNoteNow}?`} size="sm">
         <div className="space-y-4">
-          <p className="text-sm text-gray-600">
-            This runs a fresh AI pass over the conversation and <span className="font-medium text-gray-900">replaces the current brief</span> (uses metered API). Locked decisions are kept. Any unsaved manual edits to other fields will be overwritten.
-          </p>
-          {hasBrief && (
-            <button
-              onClick={async () => {
-                await navigator.clipboard.writeText(serializeBriefContent(briefContent!))
-                setJsonCopied(true)
-                setTimeout(() => setJsonCopied(false), 2000)
-              }}
-              className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand-navy"
-            >
-              {jsonCopied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
-              {jsonCopied ? 'Copied current brief' : 'Copy current brief first (JSON)'}
-            </button>
-          )}
+          <p className="text-sm text-gray-600">{copy.brief.writeNoteConfirm}</p>
+          {genError && <StatusMessage type="error" message={genError} />}
           <div className="flex justify-end gap-2">
             <button type="button" onClick={() => setShowGenConfirm(false)} disabled={generating} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 disabled:opacity-50">
-              Cancel
+              {copy.brief.writeNoteCancel}
             </button>
-            <LoadingButton variant="primary" loading={generating} loadingText="Updating…" icon={Sparkles} onClick={handleGenerate}>
-              Update brief
+            <LoadingButton variant="primary" loading={generating} loadingText={copy.brief.writeNoteWriting} icon={NotebookPen} onClick={handleGenerate}>
+              {copy.brief.writeNoteSubmit}
             </LoadingButton>
           </div>
         </div>

@@ -52,6 +52,18 @@ vi.mock('@/lib/api/briefs', () => ({
   upsertBrief: (...args: unknown[]) => mockUpsertBrief(...args),
 }))
 
+// #229: the paste guard reads unfolded notes and folds the stamped ones.
+const mockListUnfoldedNotes = vi.fn()
+const mockFoldNotes = vi.fn()
+vi.mock('@/lib/api/brief-notes', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/api/brief-notes')>()
+  return {
+    ...actual,
+    listUnfoldedNotes: (...args: unknown[]) => mockListUnfoldedNotes(...args),
+    foldNotes: (...args: unknown[]) => mockFoldNotes(...args),
+  }
+})
+
 // --- Helpers ---
 
 const validContent = {
@@ -137,6 +149,8 @@ describe('PUT /api/briefs', () => {
       version: 1,
       content: validContent,
     })
+    mockListUnfoldedNotes.mockResolvedValue([])
+    mockFoldNotes.mockResolvedValue(undefined)
   })
 
   function makePutRequest(body: Record<string, unknown>) {
@@ -242,7 +256,7 @@ describe('PUT /api/briefs', () => {
     expect(contentArg.features).toEqual(['Valid', 'Also valid'])
   })
 
-  it('normalizes open_risks and carries no owner from the stored brief', async () => {
+  it('normalizes open_risks and carries an owner forward from the stored brief (#229 Q3)', async () => {
     mockGet.mockResolvedValue({
       empty: false,
       docs: [{ data: () => ({ version: 3, content: { ...validContent, open_risks: [{ text: 'bad', owner: 'maker' }] } }) }],
@@ -255,7 +269,9 @@ describe('PUT /api/briefs', () => {
       },
     }))
     const contentArg = mockUpsertBrief.mock.calls[0][2]
-    expect(contentArg.open_risks).toEqual([{ text: 'q', owner: 'maker' }, 'bad', 'plain'])
+    // 'bad' arrives with an invalid owner (collapses to a string), then takes
+    // the stored brief's owner by text match.
+    expect(contentArg.open_risks).toEqual([{ text: 'q', owner: 'maker' }, { text: 'bad', owner: 'maker' }, 'plain'])
   })
 
   it('normalizes content — filters invalid decisions', async () => {
@@ -463,5 +479,210 @@ describe('PUT /api/briefs', () => {
     expect(contentArg.constraints).toBe('')
     expect(contentArg.additional_context).toBe('')
     expect(contentArg.features).toEqual([])
+  })
+})
+
+// =============================================================================
+// #229 PASTE GUARD
+//
+// A prep carries `_prep_stamp { brief_version, note_ids }`; the Brief tab sends
+// it back as `prep_stamp`. The route folds the listed notes, or answers 409
+// when the prep is stale (a note it did not list, or a newer live brief).
+// =============================================================================
+
+describe('PUT /api/briefs — paste guard (#229)', () => {
+  const note = (id: string, over: Record<string, unknown> = {}) => ({
+    id,
+    session_id: `sess-${id}`,
+    created_at: `2026-10-2${id.length}T18:00:00.000Z`,
+    folded_at: null,
+    text: '',
+    decisions: [],
+    risks_added: [],
+    risks_resolved: [],
+    lock_reversals: [],
+    ...over,
+  })
+
+  // The live brief: id brief-1 at the given version.
+  function liveBrief(version: number, content: Record<string, unknown> = { problem: 'p' }) {
+    mockGet.mockResolvedValue({
+      empty: false,
+      docs: [{ id: 'brief-1', data: () => ({ version, content }) }],
+    })
+  }
+
+  function put(body: Record<string, unknown>) {
+    return PUT(
+      new Request('http://localhost/api/briefs', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ project_id: 'proj1', content: validContent, ...body }),
+      })
+    )
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockGetProjectRole.mockResolvedValue('builder')
+    mockUpsertBrief.mockResolvedValue({ id: 'brief-1', project_id: 'proj1', version: 4, content: validContent })
+    mockListUnfoldedNotes.mockResolvedValue([])
+    mockFoldNotes.mockResolvedValue(undefined)
+  })
+
+  it('no stamp saves and folds nothing', async () => {
+    liveBrief(3)
+    mockListUnfoldedNotes.mockResolvedValue([note('aaa')])
+    const res = await put({})
+    expect(res.status).toBe(200)
+    expect(mockUpsertBrief).toHaveBeenCalledTimes(1)
+    expect(mockFoldNotes).not.toHaveBeenCalled()
+    const data = await res.json()
+    expect(data.folded).toEqual([])
+    expect(data.size_warning).toBeNull()
+  })
+
+  it('stamp listing every unfolded note at the live version saves and folds them', async () => {
+    liveBrief(3)
+    mockListUnfoldedNotes.mockResolvedValue([note('aaa'), note('bbbb')])
+    const res = await put({ prep_stamp: { brief_version: 3, note_ids: ['aaa', 'bbbb'] } })
+    expect(res.status).toBe(200)
+    expect(mockListUnfoldedNotes).toHaveBeenCalledWith(expect.anything(), 'brief-1')
+    expect(mockFoldNotes).toHaveBeenCalledWith(expect.anything(), 'brief-1', ['aaa', 'bbbb'], expect.any(String))
+    expect((await res.json()).folded).toEqual(['aaa', 'bbbb'])
+  })
+
+  it('409 when an unfolded note is not in the stamp', async () => {
+    liveBrief(3)
+    mockListUnfoldedNotes.mockResolvedValue([note('aaa'), note('bbbb')])
+    const res = await put({ prep_stamp: { brief_version: 3, note_ids: ['aaa'] } })
+    expect(res.status).toBe(409)
+    expect(await res.json()).toEqual({
+      error: 'stale_prep',
+      unlisted_notes: [{ id: 'bbbb', created_at: '2026-10-24T18:00:00.000Z' }],
+      live_version: 3,
+      prep_version: 3,
+    })
+    expect(mockUpsertBrief).not.toHaveBeenCalled()
+    expect(mockFoldNotes).not.toHaveBeenCalled()
+  })
+
+  it('409 when the live version is newer than the stamp', async () => {
+    liveBrief(5)
+    mockListUnfoldedNotes.mockResolvedValue([note('aaa')])
+    const res = await put({ prep_stamp: { brief_version: 3, note_ids: ['aaa'] } })
+    expect(res.status).toBe(409)
+    expect(await res.json()).toEqual({ error: 'stale_prep', unlisted_notes: [], live_version: 5, prep_version: 3 })
+    expect(mockUpsertBrief).not.toHaveBeenCalled()
+  })
+
+  it('a stamp against no brief yet compares with live version 0', async () => {
+    mockGet.mockResolvedValue({ empty: true, docs: [] })
+    const ok = await put({ prep_stamp: { brief_version: 0, note_ids: [] } })
+    expect(ok.status).toBe(200)
+    expect(mockListUnfoldedNotes).not.toHaveBeenCalled()
+  })
+
+  it('force saves, folds only listed notes, leaves the unlisted one unfolded', async () => {
+    liveBrief(5)
+    mockListUnfoldedNotes.mockResolvedValue([note('aaa'), note('bbbb')])
+    const res = await put({ prep_stamp: { brief_version: 3, note_ids: ['aaa'] }, force: true })
+    expect(res.status).toBe(200)
+    expect(mockUpsertBrief).toHaveBeenCalledTimes(1)
+    expect(mockFoldNotes).toHaveBeenCalledWith(expect.anything(), 'brief-1', ['aaa'], expect.any(String))
+    expect((await res.json()).folded).toEqual(['aaa'])
+  })
+
+  it('a stamped id that is not an unfolded note is not reported as folded', async () => {
+    liveBrief(3)
+    mockListUnfoldedNotes.mockResolvedValue([note('aaa')])
+    const res = await put({ prep_stamp: { brief_version: 3, note_ids: ['aaa', 'gone'] } })
+    expect(res.status).toBe(200)
+    expect(mockFoldNotes).toHaveBeenCalledWith(expect.anything(), 'brief-1', ['aaa'], expect.any(String))
+  })
+
+  it('a new topic with no provenance takes its origin from the note that introduced it', async () => {
+    liveBrief(3)
+    mockListUnfoldedNotes.mockResolvedValue([
+      note('aaa', { session_id: 's7', created_at: '2026-10-20T18:00:00.000Z', decisions: [{ topic: 'Payment', decision: 'Stripe' }] }),
+      note('bbbb', { session_id: 's8', created_at: '2026-10-22T18:00:00.000Z', decisions: [{ topic: ' payment ', decision: 'Square' }] }),
+    ])
+    await put({
+      content: { problem: 'p', decisions: [{ topic: 'Payment', decision: 'Square' }, { topic: 'Hosting', decision: 'Vercel' }] },
+      prep_stamp: { brief_version: 3, note_ids: ['aaa', 'bbbb'] },
+    })
+    const decisions = mockUpsertBrief.mock.calls[0][2].decisions
+    // Later note wins.
+    expect(decisions[0]).toEqual({
+      topic: 'Payment',
+      decision: 'Square',
+      decided_in_session: 's8',
+      decided_at: '2026-10-22T18:00:00.000Z',
+    })
+    // Not in any note: out-of-band stamp as before.
+    expect(decisions[1]).toEqual(expect.objectContaining({ topic: 'Hosting', decided_in_session: null }))
+    expect(decisions[1].decided_at).not.toBe('2026-10-22T18:00:00.000Z')
+  })
+
+  it('an unlisted note gives no origin even on a forced paste', async () => {
+    liveBrief(3)
+    mockListUnfoldedNotes.mockResolvedValue([
+      note('aaa', { session_id: 's7', created_at: '2026-10-20T18:00:00.000Z', decisions: [{ topic: 'Payment', decision: 'Stripe' }] }),
+    ])
+    await put({
+      content: { problem: 'p', decisions: [{ topic: 'Payment', decision: 'Stripe' }] },
+      prep_stamp: { brief_version: 3, note_ids: [] },
+      force: true,
+    })
+    expect(mockUpsertBrief.mock.calls[0][2].decisions[0].decided_in_session).toBeNull()
+  })
+
+  it("an ownerless risk gets its owner from a folded note's risks_added", async () => {
+    liveBrief(3)
+    mockListUnfoldedNotes.mockResolvedValue([
+      note('aaa', { risks_added: [{ text: 'Who prints the menus?', owner: 'maker' }, 'Unowned one'] }),
+    ])
+    await put({
+      content: { problem: 'p', open_risks: ['who prints the menus?', 'Unowned one'] },
+      prep_stamp: { brief_version: 3, note_ids: ['aaa'] },
+    })
+    expect(mockUpsertBrief.mock.calls[0][2].open_risks).toEqual([
+      { text: 'who prints the menus?', owner: 'maker' },
+      'Unowned one',
+    ])
+  })
+
+  it('restore ignores any stamp', async () => {
+    liveBrief(5)
+    mockListUnfoldedNotes.mockResolvedValue([note('aaa'), note('bbbb')])
+    const res = await put({ source: 'restore', prep_stamp: { brief_version: 1, note_ids: ['aaa'] } })
+    expect(res.status).toBe(200)
+    expect(mockUpsertBrief).toHaveBeenCalledWith(expect.anything(), 'proj1', expect.anything(), 'restore')
+    expect(mockFoldNotes).not.toHaveBeenCalled()
+    expect((await res.json()).folded).toEqual([])
+  })
+
+  it('400 on a malformed stamp', async () => {
+    liveBrief(3)
+    const res = await put({ prep_stamp: { brief_version: 'three', note_ids: [] } })
+    expect(res.status).toBe(400)
+    expect(mockUpsertBrief).not.toHaveBeenCalled()
+  })
+
+  it('a fold failure still answers 200 with folded: []', async () => {
+    liveBrief(3)
+    mockListUnfoldedNotes.mockResolvedValue([note('aaa')])
+    mockFoldNotes.mockRejectedValue(new Error('firestore down'))
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const res = await put({ prep_stamp: { brief_version: 3, note_ids: ['aaa'] } })
+    expect(res.status).toBe(200)
+    expect((await res.json()).folded).toEqual([])
+    errSpy.mockRestore()
+  })
+
+  it('returns a size warning when the saved brief is over budget', async () => {
+    liveBrief(3)
+    const res = await put({ content: { problem: 'x'.repeat(21000) } })
+    expect((await res.json()).size_warning).toMatch(/over the 20,000/)
   })
 })

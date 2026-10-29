@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiFetch } from '@/lib/firebase/api-fetch'
 import { queryKeys } from './keys'
-import type { App, Project, Session, Message, Brief, BriefVersion, SystemRole, ProjectFile, FileFolder, ProjectMemberSummary } from '@/lib/types'
+import type { App, Project, Session, Message, Brief, BriefNote, BriefVersion, PrepStamp, SystemRole, ProjectFile, FileFolder, ProjectMemberSummary } from '@/lib/types'
 import type { GarmSyncOutcome } from '@/lib/garm-grants'
 
 // --- Current user ---
@@ -514,6 +514,25 @@ export function useBriefVersions(projectId: string | undefined, enabled: boolean
   })
 }
 
+// #229: PUT /api/briefs answers 409 when a pasted prep is stale (a note
+// written after the prep was copied, or a newer brief). The Brief tab catches
+// this to list the missed notes and offer Save anyway.
+export interface StalePrepInfo {
+  error: 'stale_prep'
+  unlisted_notes: { id: string; created_at: string }[]
+  live_version: number
+  prep_version: number
+}
+
+export class StalePrepError extends Error {
+  info: StalePrepInfo
+  constructor(info: StalePrepInfo) {
+    super('stale_prep')
+    this.name = 'StalePrepError'
+    this.info = info
+  }
+}
+
 export function useUpdateBrief() {
   const queryClient = useQueryClient()
 
@@ -522,25 +541,51 @@ export function useUpdateBrief() {
       project_id,
       content,
       source,
+      prep_stamp,
+      force,
     }: {
       project_id: string
       content: unknown
       source?: 'restore'
+      prep_stamp?: PrepStamp | null
+      force?: boolean
     }) => {
       const res = await apiFetch('/api/briefs', {
         method: 'PUT',
-        body: JSON.stringify({ project_id, content, ...(source && { source }) }),
+        body: JSON.stringify({
+          project_id,
+          content,
+          ...(source && { source }),
+          ...(prep_stamp && { prep_stamp }),
+          ...(force && { force: true }),
+        }),
       })
       if (!res.ok) {
         const data = await res.json()
+        if (res.status === 409 && data?.error === 'stale_prep') throw new StalePrepError(data as StalePrepInfo)
         throw new Error(data.error || 'Failed to update brief')
       }
-      return res.json()
+      return res.json() as Promise<Brief & { folded?: string[]; size_warning?: string | null }>
     },
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.brief(variables.project_id) })
       queryClient.invalidateQueries({ queryKey: queryKeys.briefVersions(variables.project_id) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.briefNotes(variables.project_id) })
       queryClient.invalidateQueries({ queryKey: queryKeys.projects() })
+    },
+  })
+}
+
+// #229: notes not yet folded into the brief, for the Brief tab's read-only
+// "New since last curation" list (builder+).
+export function useBriefNotes(projectId: string | undefined) {
+  return useQuery<{ brief_id: string | null; brief_version: number; notes: BriefNote[] }>({
+    queryKey: queryKeys.briefNotes(projectId),
+    enabled: !!projectId,
+    queryFn: async () => {
+      const res = await apiFetch(`/api/briefs/notes?project_id=${projectId}`)
+      if (!res.ok) throw new Error('Failed to load brief notes')
+      return res.json()
     },
   })
 }
