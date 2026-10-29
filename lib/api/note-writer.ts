@@ -214,17 +214,11 @@ export async function writeNoteForProject(
     }
   }
 
-  // Notes need a parent brief doc.
-  let briefId: string
-  let currentBrief: BriefContent
-  if (briefDoc) {
-    briefId = briefDoc.id
-    currentBrief = (briefDoc.data().content as BriefContent) ?? EMPTY_BRIEF
-  } else {
-    const created = await upsertBrief(db, projectId, EMPTY_BRIEF, 'create')
-    briefId = created.id
-    currentBrief = EMPTY_BRIEF
-  }
+  // The brief as the model sees it. With no brief doc yet, the model is told
+  // so; an empty brief is created later only if a note needs a parent.
+  const currentBrief: BriefContent | null = briefDoc
+    ? ((briefDoc.data().content as BriefContent) ?? EMPTY_BRIEF)
+    : null
 
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
   const callStart = Date.now()
@@ -274,10 +268,17 @@ export async function writeNoteForProject(
 
   const body = coerceNote((toolUse.input ?? {}) as Record<string, unknown>)
 
-  // Persist: note → brief contest → notes_through_at. A throw before the last
-  // step leaves notes_through_at where it was, so the next run retries.
+  // Persist: note → notes_through_at → brief contest. A throw before
+  // notes_through_at moves leaves it where it was, so the next run retries
+  // the same window. The contest step runs after the window has advanced and
+  // is best-effort: if it threw after the note was saved, a retry would write
+  // a second note over the same messages.
   let noteId: string | null = null
   if (!isEmptyNote(body)) {
+    // Notes need a parent brief doc.
+    const briefId = briefDoc
+      ? briefDoc.id
+      : (await upsertBrief(db, projectId, EMPTY_BRIEF, 'create')).id
     const note: Omit<BriefNote, 'id'> = {
       session_id: sessionId,
       created_at: new Date().toISOString(),
@@ -287,12 +288,40 @@ export async function writeNoteForProject(
     noteId = await addNote(db, briefId, note)
   }
 
-  if (body.lock_reversals.length > 0) {
-    const decisions = applyLockReversals(currentBrief.decisions ?? [], body.lock_reversals)
-    if (decisions) await upsertBrief(db, projectId, { ...currentBrief, decisions }, 'note')
-  }
-
   await projectRef.update({ notes_through_at: through })
 
+  if (body.lock_reversals.length > 0) {
+    try {
+      await applyContests(db, projectId, body.lock_reversals)
+    } catch (err) {
+      // No brief content in the log: ids and the error message only.
+      console.error('write_note_contest_failed', {
+        project_id: projectId,
+        note_id: noteId,
+        error: err instanceof Error ? err.message : String(err),
+      })
+    }
+  }
+
   return { note_id: noteId, covered: newMessages.length, through }
+}
+
+// Re-read the live brief right before writing (the model call is slow and the
+// builder may have saved in the meantime), apply the reversals to that fresh
+// content, and save a version with source 'note' only if something changed.
+async function applyContests(
+  db: FirebaseFirestore.Firestore,
+  projectId: string,
+  reversals: BriefNoteLockReversal[]
+): Promise<void> {
+  const snap = await db
+    .collection('briefs')
+    .where('project_id', '==', projectId)
+    .orderBy('version', 'desc')
+    .limit(1)
+    .get()
+  if (snap.empty) return // no brief, so no locked decisions to contest
+  const live = (snap.docs[0].data().content as BriefContent) ?? EMPTY_BRIEF
+  const decisions = applyLockReversals(live.decisions ?? [], reversals)
+  if (decisions) await upsertBrief(db, projectId, { ...live, decisions }, 'note')
 }

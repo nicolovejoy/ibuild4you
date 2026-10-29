@@ -21,6 +21,8 @@ type Data = Record<string, unknown>
 // path ("briefs" or "briefs/b1/notes") → id → data
 let store: Map<string, Map<string, Data>>
 let autoId: number
+// When set, any update to a top-level brief doc throws (simulates a failed contest write).
+let failBriefUpdate: boolean
 
 function coll(path: string): Map<string, Data> {
   if (!store.has(path)) store.set(path, new Map())
@@ -33,6 +35,7 @@ function docRef(path: string, id: string) {
     get: async () => ({ id, exists: coll(path).has(id), data: () => coll(path).get(id) }),
     set: async (d: Data) => void coll(path).set(id, { ...d }),
     update: async (patch: Data) => {
+      if (failBriefUpdate && path === 'briefs') throw new Error('brief write failed')
       if (!coll(path).has(id)) throw new Error(`NOT_FOUND ${path}/${id}`)
       coll(path).set(id, { ...coll(path).get(id), ...patch })
     },
@@ -149,6 +152,7 @@ const notes = () => {
 beforeEach(() => {
   store = new Map()
   autoId = 0
+  failBriefUpdate = false
   mockMessagesCreate.mockReset()
   process.env.ANTHROPIC_API_KEY = 'test-key'
 })
@@ -420,5 +424,111 @@ describe('writeNoteForProject', () => {
 
     await expect(writeNoteForProject(db, 'p1')).rejects.toThrow('write_note_no_tool_use')
     expect(coll('projects').get('p1')!.notes_through_at).toBeUndefined()
+  })
+
+  it('a failed contest write still resolves, keeps one note and advances notes_through_at', async () => {
+    seedProject()
+    seedBrief(
+      { ...emptyBrief, decisions: [{ topic: 'Payment', decision: 'Stripe only', locked: true }] },
+      '2026-09-01T00:00:00Z'
+    )
+    seedSession('s1', '2026-10-01T00:00:00Z')
+    seedMessage('m1', 's1', '2026-10-01T00:00:01Z', 'Yes, switch to Square')
+    mockMessagesCreate.mockResolvedValue(
+      noteResponse({
+        ...someNote,
+        lock_reversals: [{ topic: 'Payment', proposed: 'Square', reason: 'confirmed' }],
+      })
+    )
+    failBriefUpdate = true
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    const res = await writeNoteForProject(db, 'p1')
+
+    expect(res.note_id).toBeTruthy()
+    expect(notes()).toHaveLength(1)
+    expect(coll('projects').get('p1')!.notes_through_at).toBe('2026-10-01T00:00:01Z')
+    expect(coll('briefs').get('b1')!.version).toBe(3)
+    expect(errSpy).toHaveBeenCalledWith('write_note_contest_failed', expect.anything())
+    errSpy.mockRestore()
+  })
+
+  it('applies the contest to the brief as it is after the model call, not before', async () => {
+    seedProject()
+    seedBrief(
+      { ...emptyBrief, decisions: [{ topic: 'Payment', decision: 'Stripe only', locked: true }] },
+      '2026-09-01T00:00:00Z'
+    )
+    seedSession('s1', '2026-10-01T00:00:00Z')
+    seedMessage('m1', 's1', '2026-10-01T00:00:01Z', 'Yes, switch to Square')
+    mockMessagesCreate.mockImplementation(async () => {
+      // The builder saves a new version while the model is writing.
+      coll('briefs').set('b1', {
+        project_id: 'p1',
+        version: 4,
+        updated_at: '2026-10-01T00:00:02Z',
+        source: 'paste',
+        content: {
+          ...emptyBrief,
+          problem: 'Fresh problem',
+          decisions: [{ topic: 'Payment', decision: 'Stripe only', locked: true }],
+        },
+      })
+      return noteResponse({
+        ...someNote,
+        lock_reversals: [{ topic: 'Payment', proposed: 'Square', reason: 'confirmed' }],
+      })
+    })
+
+    await writeNoteForProject(db, 'p1')
+
+    const brief = coll('briefs').get('b1')!
+    expect(brief.version).toBe(5)
+    expect(brief.source).toBe('note')
+    const content = brief.content as { problem: string; decisions: Data[] }
+    expect(content.problem).toBe('Fresh problem')
+    expect(content.decisions[0].contested).toEqual({ proposed: 'Square', reason: 'confirmed' })
+  })
+
+  it('writes a note whose only content is a lock reversal', async () => {
+    seedProject()
+    seedBrief(emptyBrief, '2026-09-01T00:00:00Z')
+    seedSession('s1', '2026-10-01T00:00:00Z')
+    seedMessage('m1', 's1', '2026-10-01T00:00:01Z', 'change it')
+    mockMessagesCreate.mockResolvedValue(
+      noteResponse({
+        text: '',
+        decisions: [],
+        risks_added: [],
+        risks_resolved: [],
+        lock_reversals: [{ topic: 'Payment', proposed: 'Square', reason: 'confirmed' }],
+      })
+    )
+
+    const res = await writeNoteForProject(db, 'p1')
+
+    expect(res.note_id).toBeTruthy()
+    expect(notes()).toHaveLength(1)
+    expect(notes()[0].lock_reversals).toHaveLength(1)
+  })
+
+  it('creates no brief when there is none and the note is empty', async () => {
+    seedProject()
+    seedSession('s1', '2026-10-01T00:00:00Z')
+    seedMessage('m1', 's1', '2026-10-01T00:00:01Z', 'hi')
+    mockMessagesCreate.mockResolvedValue(
+      noteResponse({
+        text: '',
+        decisions: [],
+        risks_added: [],
+        risks_resolved: [],
+        lock_reversals: [],
+      })
+    )
+
+    await writeNoteForProject(db, 'p1')
+
+    expect(coll('briefs').size).toBe(0)
+    expect(coll('projects').get('p1')!.notes_through_at).toBe('2026-10-01T00:00:01Z')
   })
 })
