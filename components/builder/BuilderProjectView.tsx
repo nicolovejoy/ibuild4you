@@ -75,7 +75,7 @@ import { TurnBadge } from '@/components/ui/TurnBadge'
 import { BriefSwitcher } from '@/components/brief-switcher'
 import { toLocale, type Locale } from '@/lib/locale'
 import { resolveBuilderTab, DEFAULT_BUILDER_TAB, type BuilderTabId } from '@/lib/projects/project-view'
-import type { Project, Session, BriefContent, ProjectFile } from '@/lib/types'
+import type { Project, Session, BriefContent, BriefNote, ProjectFile } from '@/lib/types'
 
 // Builder nav is Brief · Conversations · People · Agent setup. #120 made
 // Conversations reader-first (the transcript is the page), which pushed agent
@@ -545,39 +545,36 @@ function BriefTab({
     if (!project) return
     setLoadingPayload(true)
     try {
-      // Fetch all sessions for the project
-      const sessionsRes = await apiFetch(`/api/sessions?project_id=${projectId}`)
-      if (!sessionsRes.ok) throw new Error('Failed to load sessions')
-      const sessions = await sessionsRes.json()
-
-      // Sort by created_at ascending
-      sessions.sort((a: { created_at: string }, b: { created_at: string }) =>
-        a.created_at.localeCompare(b.created_at)
-      )
-
-      // Fetch messages for each session
-      const allMessages: { role: string; content: string }[] = []
-      for (const session of sessions) {
-        const msgRes = await apiFetch(`/api/messages?session_id=${session.id}`)
-        if (!msgRes.ok) continue
-        const messages = await msgRes.json()
-        for (const msg of messages) {
-          allMessages.push({ role: msg.role, content: msg.content })
-        }
+      // #229: the prep carries the brief plus the notes not yet folded into
+      // it (no transcript), and a stamp the paste guard checks on the way back.
+      const notesRes = await apiFetch(`/api/briefs/notes?project_id=${projectId}`)
+      if (!notesRes.ok) throw new Error('Failed to load brief notes')
+      const { brief_version, notes } = (await notesRes.json()) as {
+        brief_version: number
+        notes: BriefNote[]
       }
 
-      // Build current brief if it exists
-      let currentBrief: BriefContent | null = null
-      if (briefContent && hasBrief) {
-        currentBrief = briefContent
+      // The stamp's version must describe the brief text in the prep. If the
+      // live brief moved on since the tab loaded it (e.g. a note contested a
+      // lock), read the live one rather than stamp old text with a new version.
+      let liveContent = briefContent
+      if (brief_version !== (brief?.version ?? 0)) {
+        const briefRes = await apiFetch(`/api/briefs?project_id=${projectId}`)
+        if (!briefRes.ok) throw new Error('Failed to load brief')
+        const live = (await briefRes.json()) as { version: number; content: BriefContent } | null
+        if ((live?.version ?? 0) !== brief_version) throw new Error('Brief changed while copying the prep; try again')
+        liveContent = live?.content
+        queryClient.invalidateQueries({ queryKey: ['brief', projectId] })
       }
+      const currentBrief: BriefContent | null =
+        liveContent && hasBriefContent(liveContent) ? liveContent : null
 
-      // Build the prompt
       const prompt = buildNextConvoPrompt({
         currentBrief,
-        conversationHistory: allMessages,
+        notes,
+        stamp: { brief_version, note_ids: notes.map((n) => n.id) },
         projectTitle: project.title,
-        sessionCount: sessions?.length || 0,
+        sessionCount: briefTabSessions?.length ?? 0,
         language: project.language,
       })
 

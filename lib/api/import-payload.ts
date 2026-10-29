@@ -1,4 +1,5 @@
-import type { BriefContent } from '@/lib/types'
+import type { BriefContent, PrepStamp } from '@/lib/types'
+import { parsePrepStamp } from '@/lib/api/brief-notes'
 import { copy } from '@/lib/copy'
 import { parseLooseJson } from '@/lib/utils'
 
@@ -19,9 +20,11 @@ export interface NewProjectPayload {
   [key: string]: unknown
 }
 
+// `stamp` is the `_prep_stamp` the comms agent copied back from the prep
+// (#229), or null when absent or malformed (old prep, hand-written JSON).
 export type NextConvoPayload =
-  | { mode: 'multi'; brief: BriefContent; projectUpdate: Record<string, unknown> }
-  | { mode: 'brief-only'; brief: unknown }
+  | { mode: 'multi'; brief: BriefContent; projectUpdate: Record<string, unknown>; stamp: PrepStamp | null }
+  | { mode: 'brief-only'; brief: unknown; stamp: PrepStamp | null }
 
 // Fields the next-convo import handler accepts and forwards to PATCH /api/projects.
 // Kept here as a constant so tests can lockstep-check the prompt schema against this.
@@ -80,6 +83,9 @@ export function parseNextConvoPayload(raw: string): ParseResult<NextConvoPayload
     }
   }
   delete obj._payload_type
+  // Pulled off before either mode so it never lands in the brief content.
+  const stamp = parsePrepStamp(obj._prep_stamp)
+  delete obj._prep_stamp
 
   if (obj.brief) {
     const projectUpdate: Record<string, unknown> = {}
@@ -90,12 +96,12 @@ export function parseNextConvoPayload(raw: string): ParseResult<NextConvoPayload
     }
     return {
       ok: true,
-      value: { mode: 'multi', brief: obj.brief as BriefContent, projectUpdate },
+      value: { mode: 'multi', brief: obj.brief as BriefContent, projectUpdate, stamp },
     }
   }
 
   // Legacy: whole payload is brief content
-  return { ok: true, value: { mode: 'brief-only', brief: obj } }
+  return { ok: true, value: { mode: 'brief-only', brief: obj, stamp } }
 }
 
 export type SessionMode = 'discover' | 'converge'

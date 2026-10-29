@@ -141,6 +141,51 @@ describe('parseNextConvoPayload', () => {
       expect(r.value.projectUpdate.welcome_message).toBe('hi')
     }
   })
+
+  // #229: the prep stamp is copied back by the comms agent and read by the paste guard.
+  describe('_prep_stamp', () => {
+    const stamp = { brief_version: 4, note_ids: ['abc123', 'def456'] }
+
+    it('parseNextConvoPayload returns the stamp and strips _prep_stamp from the brief (multi mode)', () => {
+      const r = parseNextConvoPayload(
+        JSON.stringify({ _payload_type: 'next-convo', _prep_stamp: stamp, brief: { problem: 'p' }, welcome_message: 'hi' })
+      )
+      expect(r.ok).toBe(true)
+      if (!r.ok || r.value.mode !== 'multi') throw new Error('expected multi')
+      expect(r.value.stamp).toEqual(stamp)
+      expect(r.value.projectUpdate).not.toHaveProperty('_prep_stamp')
+      expect(r.value.brief).not.toHaveProperty('_prep_stamp')
+    })
+
+    it('parseNextConvoPayload returns the stamp and strips _prep_stamp from the brief (brief-only mode)', () => {
+      const r = parseNextConvoPayload(JSON.stringify({ _prep_stamp: stamp, problem: 'raw problem' }))
+      expect(r.ok).toBe(true)
+      if (!r.ok || r.value.mode !== 'brief-only') throw new Error('expected brief-only')
+      expect(r.value.stamp).toEqual(stamp)
+      expect(r.value.brief).toEqual({ problem: 'raw problem' })
+    })
+
+    it('returns stamp null when absent or malformed', () => {
+      const absent = parseNextConvoPayload('{"brief":{"problem":"p"}}')
+      expect(absent.ok).toBe(true)
+      if (absent.ok) expect(absent.value.stamp).toBeNull()
+
+      const malformed = parseNextConvoPayload(
+        JSON.stringify({ _prep_stamp: { brief_version: 'x', note_ids: [] }, brief: { problem: 'p' } })
+      )
+      expect(malformed.ok).toBe(true)
+      if (!malformed.ok || malformed.value.mode !== 'multi') throw new Error('expected multi')
+      expect(malformed.value.stamp).toBeNull()
+
+      // A malformed stamp on a legacy paste is still stripped from the brief.
+      const legacy = parseNextConvoPayload(JSON.stringify({ _prep_stamp: 'nope', problem: 'p' }))
+      expect(legacy.ok).toBe(true)
+      if (legacy.ok) {
+        expect(legacy.value.stamp).toBeNull()
+        expect(legacy.value.brief).toEqual({ problem: 'p' })
+      }
+    })
+  })
 })
 
 describe('nextConvoImportWarnings', () => {

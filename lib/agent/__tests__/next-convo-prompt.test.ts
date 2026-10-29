@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import { buildNextConvoPrompt, NEXT_CONVO_SYSTEM_PROMPT } from '../next-convo-prompt'
 import { NEXT_CONVO_IMPORT_FIELDS } from '@/lib/api/import-payload'
+import { BRIEF_CURATION_GUIDE } from '../curation-guide'
+import type { BriefContent, BriefNote } from '@/lib/types'
 
 // =============================================================================
 // NEXT-CONVO PREP PROMPT TESTS
@@ -12,7 +14,8 @@ import { NEXT_CONVO_IMPORT_FIELDS } from '@/lib/api/import-payload'
 
 const emptyInput = {
   currentBrief: null,
-  conversationHistory: [],
+  notes: [],
+  stamp: { brief_version: 0, note_ids: [] },
   projectTitle: 'Test',
   sessionCount: 1,
 }
@@ -120,5 +123,102 @@ describe('decision scope', () => {
   it('tells the model about risk owners (#220)', () => {
     expect(NEXT_CONVO_SYSTEM_PROMPT).toContain('"owner": "maker"')
     expect(NEXT_CONVO_SYSTEM_PROMPT).toContain('Carry an existing owner forward')
+  })
+})
+
+// =============================================================================
+// #229: the prep asks the comms agent to CURATE the brief from the live brief
+// plus the per-conversation notes, inside a size budget, and to copy back a
+// _prep_stamp the paste guard reads.
+// =============================================================================
+
+const brief: BriefContent = {
+  problem: 'Customers cannot order online',
+  target_users: 'Cafe regulars',
+  features: ['Online ordering'],
+  constraints: '',
+  additional_context: '',
+  decisions: [{ topic: 'Payments', decision: 'Stripe only', locked: true }],
+  open_risks: [{ text: 'Opening hours unclear', owner: 'maker' }],
+}
+
+const note = (over: Partial<BriefNote>): BriefNote => ({
+  id: 'noteA1',
+  session_id: 'sess1',
+  created_at: '2026-10-28T03:30:00.000Z', // Oct 27 in Pacific
+  folded_at: null,
+  text: 'Maker wants gift cards.',
+  decisions: [{ topic: 'Gift cards', decision: 'Sell gift cards online' }],
+  risks_added: [{ text: 'Gift-card fraud path undefined', owner: 'builder' }],
+  risks_resolved: ['Opening hours unclear'],
+  lock_reversals: [{ topic: 'Payments', proposed: 'Add PayPal', reason: 'confirmed twice on Oct 27' }],
+  ...over,
+})
+
+describe('curation prep (#229)', () => {
+  const input = {
+    currentBrief: brief,
+    notes: [note({}), note({ id: 'noteB2', created_at: '2026-10-29T18:00:00.000Z', text: 'Second chat.', decisions: [], risks_added: [], risks_resolved: [], lock_reversals: [] })],
+    stamp: { brief_version: 7, note_ids: ['noteA1', 'noteB2'] },
+    projectTitle: "Sam's Cafe",
+    sessionCount: 3,
+  }
+
+  it('prep carries the brief, every unfolded note and the stamp JSON', () => {
+    const p = buildNextConvoPrompt(input)
+    expect(p).toContain('<current_brief version="7"')
+    expect(p).toContain('Customers cannot order online')
+    // Each note with its id, Pacific day and fields
+    expect(p).toContain('<note id="noteA1" day="Oct 27">')
+    expect(p).toContain('<note id="noteB2" day="Oct 29">')
+    expect(p).toContain('Maker wants gift cards.')
+    expect(p).toContain('Gift cards: Sell gift cards online')
+    expect(p).toContain('Gift-card fraud path undefined (owner: builder)')
+    expect(p).toContain('Opening hours unclear')
+    expect(p).toContain('Payments')
+    expect(p).toContain('Add PayPal')
+    // The stamp, verbatim, in its own block and named in the schema
+    expect(p).toContain('<prep_stamp>\n{"brief_version":7,"note_ids":["noteA1","noteB2"]}\n</prep_stamp>')
+    expect(p).toMatch(/"_prep_stamp"\s*:/)
+  })
+
+  it('renders a placeholder when there are no notes', () => {
+    const p = buildNextConvoPrompt(emptyInput)
+    expect(p).toMatch(/<notes>\s*No new notes/)
+  })
+
+  it('prep no longer carries conversation history', () => {
+    const p = buildNextConvoPrompt(input)
+    expect(p).not.toContain('<conversation_history>')
+    expect(p).not.toMatch(/^User: /m)
+  })
+
+  it('prep states the 20000 char budget and the current brief size', () => {
+    const p = buildNextConvoPrompt(input)
+    expect(p).toContain('20,000')
+    expect(p).toContain(`Current size: ${JSON.stringify(brief).length.toLocaleString('en-US')} characters`)
+    expect(buildNextConvoPrompt(emptyInput)).toContain('Current size: 0 characters')
+  })
+
+  it('prep says the readers are agents, not the builder', () => {
+    const p = buildNextConvoPrompt(input)
+    expect(p).toMatch(/Sam/)
+    expect(p).toMatch(/Claude Code/)
+    expect(p).not.toMatch(/the builder reads it/)
+  })
+
+  it('embeds the curation guide in full', () => {
+    expect(NEXT_CONVO_SYSTEM_PROMPT).toContain(BRIEF_CURATION_GUIDE)
+  })
+
+  it('asks for the whole brief, rewritten, folding in every note', () => {
+    expect(NEXT_CONVO_SYSTEM_PROMPT).toMatch(/rewrite the brief whole/i)
+    expect(NEXT_CONVO_SYSTEM_PROMPT).toMatch(/every note/i)
+  })
+
+  it('carries locks verbatim and contests as is, and keeps a revised topic', () => {
+    expect(NEXT_CONVO_SYSTEM_PROMPT).toMatch(/NEVER drop, reword, or unset a locked decision/)
+    expect(NEXT_CONVO_SYSTEM_PROMPT).toMatch(/already on the brief as `contested`/)
+    expect(NEXT_CONVO_SYSTEM_PROMPT).toMatch(/keep(s)? its `topic` text exactly/)
   })
 })

@@ -7,7 +7,7 @@ import {
   NEXT_CONVO_IMPORT_FIELDS,
 } from '@/lib/api/import-payload'
 import { normalizeBriefContent } from '@/lib/api/brief-json'
-import type { BriefContent } from '@/lib/types'
+import type { BriefContent, BriefNote } from '@/lib/types'
 
 // =============================================================================
 // PREP-PROMPT FERRY — #39 snapshot + paste-back round-trip
@@ -24,12 +24,12 @@ import type { BriefContent } from '@/lib/types'
 // field *descriptions* (instructions to the receiving Claude), never injected
 // from the project's stored config. The only values that flow INTO the prompt:
 //   - new-project: nothing (fully static)
-//   - next-convo:  currentBrief (incl. decisions), conversationHistory,
-//                  projectTitle, sessionCount
+//   - next-convo:  currentBrief (incl. decisions), notes, stamp,
+//                  projectTitle, sessionCount (#229: notes replaced the transcript)
 // So the snapshots below permute exactly those inputs; the unit suites
 // (new-project-prompt.test.ts / next-convo-prompt.test.ts) already lockstep the
 // schema field list. These snapshots catch regressions in the split's prose +
-// the dynamic <project>/<current_brief>/<conversation_history> assembly.
+// the dynamic <project>/<current_brief>/<notes>/<prep_stamp> assembly.
 // =============================================================================
 
 const lockedBrief: BriefContent = {
@@ -45,6 +45,20 @@ const lockedBrief: BriefContent = {
   open_risks: ['No plan yet for first 10 users'],
 }
 
+const giftCardNote: BriefNote = {
+  id: 'noteGift1',
+  session_id: 'sess4',
+  created_at: '2026-10-28T18:00:00.000Z',
+  folded_at: null,
+  text: 'Maker wants to sell gift cards online.',
+  decisions: [{ topic: 'Gift cards', decision: 'Sell gift cards online' }],
+  risks_added: [{ text: 'Gift-card fraud path undefined', owner: 'builder' }],
+  risks_resolved: [],
+  lock_reversals: [],
+}
+
+const noNotes = { notes: [], stamp: { brief_version: 0, note_ids: [] } }
+
 describe('new-project prep prompt (static)', () => {
   it('snapshot — fully static, no input', () => {
     expect(buildNewProjectPrompt()).toMatchSnapshot()
@@ -52,11 +66,11 @@ describe('new-project prep prompt (static)', () => {
 })
 
 describe('next-convo prep prompt — permute the inputs that actually flow in', () => {
-  it('snapshot — empty: no brief, no history, session 0', () => {
+  it('snapshot — empty: no brief, no notes, session 0', () => {
     expect(
       buildNextConvoPrompt({
         currentBrief: null,
-        conversationHistory: [],
+        ...noNotes,
         projectTitle: 'Untitled',
         sessionCount: 0,
       }),
@@ -75,7 +89,8 @@ describe('next-convo prep prompt — permute the inputs that actually flow in', 
           decisions: [],
           open_risks: [],
         },
-        conversationHistory: [],
+        notes: [],
+        stamp: { brief_version: 1, note_ids: [] },
         projectTitle: "Sam's Cafe",
         sessionCount: 1,
       }),
@@ -86,21 +101,20 @@ describe('next-convo prep prompt — permute the inputs that actually flow in', 
     expect(
       buildNextConvoPrompt({
         currentBrief: lockedBrief,
-        conversationHistory: [],
+        notes: [],
+        stamp: { brief_version: 2, note_ids: [] },
         projectTitle: "Sam's Cafe",
         sessionCount: 2,
       }),
     ).toMatchSnapshot()
   })
 
-  it('snapshot — with conversation history, higher session count', () => {
+  it('snapshot — with an unfolded note, higher session count', () => {
     expect(
       buildNextConvoPrompt({
         currentBrief: lockedBrief,
-        conversationHistory: [
-          { role: 'assistant', content: 'Welcome back — where did we land on payments?' },
-          { role: 'user', content: 'Stripe is locked. Now I want to add gift cards.' },
-        ],
+        notes: [giftCardNote],
+        stamp: { brief_version: 3, note_ids: ['noteGift1'] },
         projectTitle: "Sam's Cafe",
         sessionCount: 4,
       }),
@@ -110,7 +124,7 @@ describe('next-convo prep prompt — permute the inputs that actually flow in', 
   it('embeds the locked-decision carry-forward rule', () => {
     const p = buildNextConvoPrompt({
       currentBrief: lockedBrief,
-      conversationHistory: [],
+      ...noNotes,
       projectTitle: 'X',
       sessionCount: 1,
     })
