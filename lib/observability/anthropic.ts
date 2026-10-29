@@ -5,6 +5,7 @@ export type AnthropicRoute =
   | 'chat'
   | 'chat/kickoff'
   | 'brief.generate'
+  | 'brief.note'
   | 'welcome'
   | 'prep.generate'
   | 'integration.chat'
