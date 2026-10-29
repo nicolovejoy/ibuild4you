@@ -14,7 +14,7 @@ import type { BriefContent, BriefDecision, BriefNote, BriefNoteLockReversal } fr
 import { BRIEF_MODEL, BRIEF_TEMPERATURE, NOTE_MAX_TOKENS } from '@/lib/agent/constants'
 import { NOTE_SYSTEM_PROMPT, buildNoteUserContent } from '@/lib/agent/note-prompt'
 import { logAnthropicCall } from '@/lib/observability/anthropic'
-import { addNote, isEmptyNote } from '@/lib/api/brief-notes'
+import { addNote, isEmptyNote, listUnfoldedNotes } from '@/lib/api/brief-notes'
 import { upsertBrief } from '@/lib/api/briefs'
 import { contestFor, normalizeDecisionText, topicKey } from '@/lib/api/brief-merge'
 import { normalizeRisks } from '@/lib/brief/risks'
@@ -220,6 +220,12 @@ export async function writeNoteForProject(
     ? ((briefDoc.data().content as BriefContent) ?? EMPTY_BRIEF)
     : null
 
+  // Notes written since the last paste: the model builds on them so notes
+  // between pastes don't contradict or repeat each other. A read failure
+  // throws before the model call, so the breaker counts it and the next run
+  // retries the same window.
+  const notesSinceCuration = briefDoc ? await listUnfoldedNotes(db, briefDoc.id) : []
+
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
   const callStart = Date.now()
   const response = await client.messages.create({
@@ -233,7 +239,7 @@ export async function writeNoteForProject(
         content: [
           {
             type: 'text',
-            text: buildNoteUserContent({ currentBrief, earlierContext, newMessages }),
+            text: buildNoteUserContent({ currentBrief, notesSinceCuration, earlierContext, newMessages }),
           },
         ],
       },

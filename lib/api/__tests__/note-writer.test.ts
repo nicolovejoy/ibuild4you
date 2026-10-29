@@ -252,6 +252,56 @@ describe('writeNoteForProject', () => {
     expect(text).toContain('<current_brief>')
   })
 
+  it("passes the brief's unfolded notes (not folded ones) as <notes_since_curation>", async () => {
+    seedProject({ notes_through_at: '2026-10-01T00:00:01Z' })
+    seedBrief(emptyBrief, '2026-09-01T00:00:00Z')
+    coll('briefs/b1/notes').set('old', {
+      session_id: 's0',
+      created_at: '2026-09-20T00:00:00Z',
+      folded_at: '2026-09-25T00:00:00Z',
+      text: 'ALREADY CURATED',
+      decisions: [],
+      risks_added: [],
+      risks_resolved: [],
+      lock_reversals: [],
+    })
+    coll('briefs/b1/notes').set('recent', {
+      session_id: 's1',
+      created_at: '2026-10-01T00:00:01Z',
+      folded_at: null,
+      text: 'EARLIER UNFOLDED NOTE',
+      decisions: [{ topic: 'Delivery', decision: 'Pickup only' }],
+      risks_added: ['Opening hours unknown'],
+      risks_resolved: [],
+      lock_reversals: [],
+    })
+    seedSession('s1', '2026-10-01T00:00:00Z')
+    seedMessage('m1', 's1', '2026-10-01T00:00:01Z', 'old')
+    seedMessage('m2', 's1', '2026-10-01T00:00:02Z', 'new')
+    mockMessagesCreate.mockResolvedValue(noteResponse(someNote))
+
+    await writeNoteForProject(db, 'p1')
+
+    const call = lastCall()
+    const block = userText(call).split('<notes_since_curation>')[1].split('</notes_since_curation>')[0]
+    expect(block).toContain('EARLIER UNFOLDED NOTE')
+    expect(block).toContain('Delivery')
+    expect(block).toContain('Opening hours unknown')
+    expect(block).not.toContain('ALREADY CURATED')
+    expect(call.system[0].text).toContain('<notes_since_curation>')
+  })
+
+  it('says None in <notes_since_curation> when there are no unfolded notes', async () => {
+    seedProject()
+    seedSession('s1', '2026-10-01T00:00:00Z')
+    seedMessage('m1', 's1', '2026-10-01T00:00:01Z', 'hello')
+    mockMessagesCreate.mockResolvedValue(noteResponse(someNote))
+
+    await writeNoteForProject(db, 'p1')
+
+    expect(userText(lastCall())).toContain('<notes_since_curation>\nNone\n</notes_since_curation>')
+  })
+
   it('creates an empty brief when none exists', async () => {
     seedProject()
     seedSession('s1', '2026-10-01T00:00:00Z')

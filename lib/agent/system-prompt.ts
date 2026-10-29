@@ -107,7 +107,7 @@ export function renderUnfoldedNotesBlock(notes: BriefNote[]): string | null {
   })
   return `## New since the brief was last curated
 
-These notes were written after each conversation and are not yet folded into the brief above. Treat them as part of what we know; where a note and the brief disagree, the note is newer.
+These notes were written after each conversation and are not yet folded into the brief above. Treat them as part of what we know; where a note and the brief disagree, the note is newer, and later notes supersede earlier ones.
 
 ${sections.join('\n\n')}`
 }

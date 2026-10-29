@@ -804,6 +804,11 @@ describe('unfolded notes block (#229)', () => {
     expect(volatile ?? '').not.toContain('FIRST NOTE')
   })
 
+  it('tells Sam later notes supersede earlier ones', () => {
+    const { stable } = buildSystemPromptParts({ ...minimalInput, briefContent: brief, unfoldedNotes: [note()] })
+    expect(stable).toContain('later notes supersede earlier ones')
+  })
+
   it('omits the block when there are no notes', () => {
     const { stable } = buildSystemPromptParts({ ...minimalInput, briefContent: brief, unfoldedNotes: [] })
     expect(stable).not.toContain('New since the brief was last curated')
