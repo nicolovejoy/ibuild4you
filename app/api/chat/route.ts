@@ -2,7 +2,7 @@ import { toLocale } from '@/lib/locale'
 import { getAuthenticatedUser, getAdminDb, getProjectRole, getUserDisplayName } from '@/lib/api/firebase-server-helpers'
 import { countsAsMakerActivity } from '@/lib/projects/project-view'
 import { buildSystemPromptParts } from '@/lib/agent/system-prompt'
-import { listUnfoldedNotes } from '@/lib/api/brief-notes'
+import { fetchUnfoldedNotes } from '@/lib/api/brief-notes'
 import { fetchPrototypeFeedback } from '@/lib/api/prototype-feedback'
 import { fetchPrototypeContext } from '@/lib/api/prototype-context'
 import { fetchPinnedArtifacts } from '@/lib/api/artifact-context'
@@ -353,7 +353,7 @@ async function handleChat(
     fetchPinnedArtifacts(db, projectId),
     fetchSiblingDecisions(db, { id: projectId, github_repo: projectData.github_repo as string | undefined }),
     fetchPreviousConversations(db, sessionIds, session_id),
-    briefSnap.empty ? Promise.resolve([]) : listUnfoldedNotes(db, briefSnap.docs[0].id),
+    fetchUnfoldedNotes(db, briefSnap.empty ? null : briefSnap.docs[0].id),
   ])
 
   // #214: the maker was greeted with the canned "nothing queued" text and the

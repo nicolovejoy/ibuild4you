@@ -28,6 +28,19 @@ export async function listUnfoldedNotes(db: Firestore, briefId: string): Promise
   return (await listNotes(db, briefId)).filter((n) => !n.folded_at)
 }
 
+// For the chat and kickoff prompts: bonus context, so a read failure (or no
+// brief yet) degrades to no notes instead of failing the turn. Logs the
+// brief id only, never note content.
+export async function fetchUnfoldedNotes(db: Firestore, briefId: string | null): Promise<BriefNote[]> {
+  if (!briefId) return []
+  try {
+    return await listUnfoldedNotes(db, briefId)
+  } catch (err) {
+    console.error('[brief-notes] unfolded notes read failed for brief', briefId, err)
+    return []
+  }
+}
+
 export async function addNote(
   db: Firestore,
   briefId: string,
