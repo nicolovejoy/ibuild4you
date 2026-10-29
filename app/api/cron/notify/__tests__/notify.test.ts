@@ -4,8 +4,7 @@ import { GET } from '../route'
 // =============================================================================
 // CRON NOTIFY TESTS
 //
-// The route auto-regenerates briefs for projects idle ≥10 min with stale
-// briefs. (Notification email moved out to /api/cron/notify-digest — #65.)
+// The route writes notes for projects idle ≥10 min that no note covers yet. (Notification email moved out to /api/cron/notify-digest — #65.)
 //
 // The mock supports multiple where() calls per collection by keying results
 // on the field name passed to .where(). The briefs lookup uses
@@ -59,16 +58,16 @@ vi.mock('resend', () => ({
 }))
 
 const mockRegenerate = vi.fn<(db: unknown, projectId: string) => Promise<unknown>>(
-  async () => ({ id: 'brief-1', version: 2 }),
+  async () => ({ note_id: 'n1', covered: 3, through: '2026-04-01T00:00:00.000Z' }),
 )
-vi.mock('@/lib/api/briefs', () => ({
-  regenerateBriefForProject: (db: unknown, projectId: string) => mockRegenerate(db, projectId),
+vi.mock('@/lib/api/note-writer', () => ({
+  writeNoteForProject: (db: unknown, projectId: string) => mockRegenerate(db, projectId),
 }))
 
 beforeEach(() => {
   mockDoc.update.mockReset()
   mockSend.mockReset()
-  mockRegenerate.mockReset().mockResolvedValue({ id: 'brief-1', version: 2 })
+  mockRegenerate.mockReset().mockResolvedValue({ note_id: 'n1', covered: 3, through: '2026-04-01T00:00:00.000Z' })
   for (const k of Object.keys(whereResults)) delete whereResults[k]
   for (const k of Object.keys(briefResults)) delete briefResults[k]
   for (const k of Object.keys(memberResults)) delete memberResults[k]
@@ -108,7 +107,7 @@ describe('GET /api/cron/notify — auth', () => {
 })
 
 describe('GET /api/cron/notify — idle brief regeneration', () => {
-  it('regenerates the brief for an idle project with a stale brief', async () => {
+  it('calls writeNoteForProject for an idle project', async () => {
     // Maker last sent something 12 min ago — idle
     const lastMakerAt = new Date(Date.now() - 12 * 60 * 1000).toISOString()
     whereResults.projects.last_maker_message_at = [
@@ -129,7 +128,7 @@ describe('GET /api/cron/notify — idle brief regeneration', () => {
     const res = await GET(req('Bearer test-secret'))
     expect(res.status).toBe(200)
     const body = await res.json()
-    expect(body.regenerated).toBe(1)
+    expect(body.notes_written).toBe(1)
     expect(mockRegenerate).toHaveBeenCalledWith(expect.anything(), 'p1')
   })
 
@@ -153,11 +152,41 @@ describe('GET /api/cron/notify — idle brief regeneration', () => {
     const res = await GET(req('Bearer test-secret'))
     expect(res.status).toBe(200)
     const body = await res.json()
-    expect(body.regenerated).toBe(0)
+    expect(body.notes_written).toBe(0)
     expect(mockRegenerate).not.toHaveBeenCalled()
   })
 
-  it('regenerates when no brief exists yet', async () => {
+  it('skips when notes_through_at >= last_maker_message_at', async () => {
+    const lastMakerAt = new Date(Date.now() - 12 * 60 * 1000).toISOString()
+    whereResults.projects.last_maker_message_at = [
+      {
+        id: 'p1',
+        data: () => ({ last_maker_message_at: lastMakerAt, notes_through_at: lastMakerAt }),
+        ref: { update: mockDoc.update },
+      },
+    ]
+    // Brief is old, but a note already covers the last maker turn.
+    briefResults.p1 = [{ id: 'brief-1', data: () => ({ updated_at: '2026-04-01T00:00:00.000Z' }) }]
+
+    const body = await (await GET(req('Bearer test-secret'))).json()
+    expect(body.notes_written).toBe(0)
+    expect(mockRegenerate).not.toHaveBeenCalled()
+  })
+
+  it('writes a note when notes_through_at is older than the last maker turn', async () => {
+    const lastMakerAt = new Date(Date.now() - 12 * 60 * 1000).toISOString()
+    whereResults.projects.last_maker_message_at = [
+      {
+        id: 'p1',
+        data: () => ({ last_maker_message_at: lastMakerAt, notes_through_at: '2026-04-01T00:00:00.000Z' }),
+        ref: { update: mockDoc.update },
+      },
+    ]
+    const body = await (await GET(req('Bearer test-secret'))).json()
+    expect(body.notes_written).toBe(1)
+  })
+
+  it('writes a note when no brief exists yet', async () => {
     const lastMakerAt = new Date(Date.now() - 12 * 60 * 1000).toISOString()
     whereResults.projects.last_maker_message_at = [
       {
@@ -171,7 +200,7 @@ describe('GET /api/cron/notify — idle brief regeneration', () => {
     const res = await GET(req('Bearer test-secret'))
     expect(res.status).toBe(200)
     const body = await res.json()
-    expect(body.regenerated).toBe(1)
+    expect(body.notes_written).toBe(1)
     expect(mockRegenerate).toHaveBeenCalledWith(expect.anything(), 'p1')
   })
 
@@ -191,13 +220,13 @@ describe('GET /api/cron/notify — idle brief regeneration', () => {
     ]
     mockRegenerate
       .mockRejectedValueOnce(new Error('claude unhappy'))
-      .mockResolvedValueOnce({ id: 'brief-2', version: 1 })
+      .mockResolvedValueOnce({ note_id: 'n2', covered: 1, through: '2026-04-01T00:00:00.000Z' })
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
 
     const res = await GET(req('Bearer test-secret'))
     expect(res.status).toBe(200)
     const body = await res.json()
-    expect(body.regenerated).toBe(1)
+    expect(body.notes_written).toBe(1)
     expect(body.regen_errors).toEqual(['p1'])
     consoleError.mockRestore()
   })
@@ -207,7 +236,7 @@ describe('GET /api/cron/notify — idle brief regeneration', () => {
     const res = await GET(req('Bearer test-secret'))
     expect(res.status).toBe(200)
     const body = await res.json()
-    expect(body.regenerated).toBe(0)
+    expect(body.notes_written).toBe(0)
     expect(mockRegenerate).not.toHaveBeenCalled()
   })
 
@@ -220,7 +249,7 @@ describe('GET /api/cron/notify — idle brief regeneration', () => {
         ref: { update: mockDoc.update },
       },
     ]
-    mockRegenerate.mockRejectedValueOnce(new Error('regenerate_brief_max_tokens'))
+    mockRegenerate.mockRejectedValueOnce(new Error('write_note_max_tokens'))
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
 
     await GET(req('Bearer test-secret'))
@@ -228,7 +257,7 @@ describe('GET /api/cron/notify — idle brief regeneration', () => {
     expect(mockDoc.update).toHaveBeenCalledWith(
       expect.objectContaining({
         brief_regen_failures: 1,
-        brief_regen_last_error: 'regenerate_brief_max_tokens',
+        brief_regen_last_error: 'write_note_max_tokens',
       }),
     )
     consoleError.mockRestore()
@@ -253,7 +282,7 @@ describe('GET /api/cron/notify — idle brief regeneration', () => {
 
     const res = await GET(req('Bearer test-secret'))
     const body = await res.json()
-    expect(body.regenerated).toBe(0)
+    expect(body.notes_written).toBe(0)
     expect(body.circuit_broken).toBe(1)
     expect(mockRegenerate).not.toHaveBeenCalled()
   })
@@ -275,7 +304,7 @@ describe('GET /api/cron/notify — idle brief regeneration', () => {
 
     const res = await GET(req('Bearer test-secret'))
     const body = await res.json()
-    expect(body.regenerated).toBe(1)
+    expect(body.notes_written).toBe(1)
     expect(mockRegenerate).toHaveBeenCalledWith(expect.anything(), 'p1')
     // On success any stale failure counter is cleared.
     expect(mockDoc.update).toHaveBeenCalledWith(
@@ -304,7 +333,7 @@ describe('GET /api/cron/notify — idle brief regeneration', () => {
     ]
     // Stale brief so regen is attempted; it fails again.
     briefResults.p1 = [{ id: 'b1', data: () => ({ updated_at: '2026-04-01T00:00:00.000Z' }) }]
-    mockRegenerate.mockRejectedValueOnce(new Error('regenerate_brief_max_tokens'))
+    mockRegenerate.mockRejectedValueOnce(new Error('write_note_max_tokens'))
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
 
     await GET(req('Bearer test-secret'))
@@ -338,7 +367,7 @@ describe('GET /api/cron/notify — idle brief regeneration', () => {
 
     const res = await GET(req('Bearer test-secret'))
     const body = await res.json()
-    expect(body.regenerated).toBe(0)
+    expect(body.notes_written).toBe(0)
     expect(body.archived_skipped).toBe(1)
     expect(mockRegenerate).not.toHaveBeenCalled()
   })
@@ -360,7 +389,7 @@ describe('GET /api/cron/notify — idle brief regeneration', () => {
 
     const res = await GET(req('Bearer test-secret'))
     const body = await res.json()
-    expect(body.regenerated).toBe(1)
+    expect(body.notes_written).toBe(1)
     expect(body.archived_skipped).toBe(0)
     expect(mockRegenerate).toHaveBeenCalledWith(expect.anything(), 'p1')
   })

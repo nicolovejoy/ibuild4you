@@ -415,6 +415,24 @@ describe('DELETE /api/projects', () => {
     expect(deleted).toContain(briefRef)
   })
 
+  it('deletes the notes subcollection', async () => {
+    const n1 = { id: 'n1' }
+    const briefRef = {
+      id: 'brief-1',
+      collection: (name: string) => ({
+        get: async () => ({ docs: name === 'notes' ? [{ ref: n1 }] : [] }),
+      }),
+    }
+    mockWhereGet.mockImplementation(async () => {
+      if (lastCollectionName === 'briefs') return { docs: [{ id: 'brief-1', ref: briefRef }] }
+      return { docs: [] }
+    })
+
+    const res = await DELETE(makeDeleteRequest('proj-1'))
+    expect(res.status).toBe(200)
+    expect(mockBatchDelete.mock.calls.map((c) => c[0])).toContain(n1)
+  })
+
   it('deletes S3 objects for ready files but skips pending ones', async () => {
     mockWhereGet.mockImplementation(async () => {
       if (lastCollectionName === 'files') {

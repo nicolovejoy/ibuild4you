@@ -525,15 +525,16 @@ function BriefTab({
   const handleGenerate = async () => {
     setGenerating(true)
     try {
-      await apiFetch('/api/briefs/generate', {
+      await apiFetch('/api/briefs/notes', {
         method: 'POST',
         body: JSON.stringify({ project_id: projectId }),
       })
       queryClient.invalidateQueries({ queryKey: ['brief', projectId] })
       queryClient.invalidateQueries({ queryKey: queryKeys.briefVersions(projectId) })
+      queryClient.invalidateQueries({ queryKey: ['briefNotes', projectId] })
       setShowGenConfirm(false)
     } catch (err) {
-      console.error('Brief generation failed:', err)
+      console.error('Writing the note failed:', err)
     } finally {
       setGenerating(false)
     }

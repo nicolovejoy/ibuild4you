@@ -177,19 +177,19 @@ export const copy = {
       'This payload includes builder directives, but the brief is in discover mode — directives are only sent in converge mode. They were saved and will apply if the mode flips.',
     // Brief size vs. what one automatic update can rewrite (lib/agent/brief-size.ts)
     briefNearSizeLimit: (chars: number, budget: number) =>
-      `This brief is ${chars.toLocaleString('en-US')} characters. One automatic update can rewrite about ${budget.toLocaleString('en-US')}, so the next ones may fail. Consider merging or trimming decisions.`,
+      `This brief is ${chars.toLocaleString('en-US')} characters, close to the ${budget.toLocaleString('en-US')} curation budget. Trim or merge decisions when you next curate it.`,
     briefOverSizeLimit: (chars: number, budget: number) =>
-      `This brief is ${chars.toLocaleString('en-US')} characters, over the ${budget.toLocaleString('en-US')} one automatic update can rewrite. Automatic updates will fail until it is trimmed.`,
+      `This brief is ${chars.toLocaleString('en-US')} characters, over the ${budget.toLocaleString('en-US')} curation budget. It still saves. Trim or merge decisions when you can.`,
     regenFailedTooLarge: (when: string) =>
-      `The brief has not updated automatically since ${when}: it is too large to rewrite in one pass. Paste an updated payload, or trim it.`,
+      `The note from the last conversation failed on ${when}: the model ran out of room writing it. Try "Write note now" under Details.`,
     regenFailed: (when: string) =>
-      `The last automatic brief update failed (${when}). Try "Update from conversation" under Details.`,
+      `The note from the last conversation failed on ${when}. Try "Write note now" under Details.`,
     importStayHint: 'Brief updated. Read the note above, then continue.',
     importContinueButton: 'Continue to Conversations',
     emptyTitle: 'No brief yet',
     // #194 — version history on the Brief tab
     history: 'History',
-    historyEmpty: 'No earlier versions yet — the first regen or save will create one.',
+    historyEmpty: 'No earlier versions yet. The first save will create one.',
     historyLoading: 'Loading history…',
     historyError: "Couldn't load history — try again.",
     restore: 'Restore',
@@ -225,7 +225,7 @@ export const copy = {
     copyPrep: 'Copy next-convo prep',
     copied: 'Copied!',
     details: 'Details',
-    detailsHint: 'brief · history · regenerate · attachments',
+    detailsHint: 'brief · history · write note · attachments',
     escHint: 'Esc back to dashboard',
     openQuestionsTitle: (name: string) => `Open questions for ${name}`,
     openQuestionsFallbackName: 'the maker',

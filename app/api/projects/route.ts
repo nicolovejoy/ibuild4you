@@ -276,6 +276,9 @@ export async function DELETE(request: Request) {
     // versions explicitly or they outlive the project (#194).
     const versionsSnap = await briefDoc.ref.collection('versions').get()
     versionsSnap.docs.forEach((v) => docsToDelete.push(v.ref))
+    // Same for the per-conversation notes (#229).
+    const notesSnap = await briefDoc.ref.collection('notes').get()
+    notesSnap.docs.forEach((n) => docsToDelete.push(n.ref))
     docsToDelete.push(briefDoc.ref)
   }
 
