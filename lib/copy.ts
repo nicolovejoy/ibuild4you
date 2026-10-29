@@ -211,7 +211,7 @@ export const copy = {
     lockLossConfirm: 'Yes, save',
     lockLossCancel: 'Cancel',
     sourceLabel: (source: string | null) =>
-      ({ create: 'created', paste: 'saved by hand', regen: 'regenerated', restore: 'restored' } as Record<string, string>)[
+      ({ create: 'created', paste: 'saved by hand', regen: 'regenerated', restore: 'restored', note: 'contest from conversation' } as Record<string, string>)[
         source ?? ''
       ] ?? 'unknown source',
     // Ferry desk — the copy/paste loop that fronts the Brief tab

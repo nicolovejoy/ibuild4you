@@ -85,6 +85,8 @@ export interface Project extends BaseEntity {
   brief_regen_failures?: number
   brief_regen_last_error?: string | null
   brief_regen_last_error_at?: string | null
+  // #229: created_at of the newest message any brief note has covered.
+  notes_through_at?: string | null
   // Enriched by GET /api/projects
   session_count?: number
   last_message_at?: string | null
@@ -184,7 +186,7 @@ export interface FileFolder extends BaseEntity {
 // Briefs collection — the living brief for a project
 // #194: who produced a brief version. Archived versions carry the source that
 // produced THEM, so the history reads "v3 — regen", "v4 — paste".
-export type BriefSource = 'create' | 'paste' | 'regen' | 'restore'
+export type BriefSource = 'create' | 'paste' | 'regen' | 'restore' | 'note'
 
 export interface Brief extends BaseEntity {
   project_id: string
@@ -328,4 +330,29 @@ export interface BriefDecision {
   // the brief's version history (#194).
   revised_in_session?: string | null
   revised_at?: string // ISO timestamp
+}
+
+// #229: a short per-conversation note under briefs/{id}/notes.
+export interface BriefNoteLockReversal {
+  topic: string
+  proposed: string
+  reason: string
+}
+
+export interface BriefNote {
+  id: string
+  session_id: string | null
+  created_at: string
+  folded_at: string | null
+  text: string
+  decisions: { topic: string; decision: string }[]
+  risks_added: Array<string | BriefRisk>
+  risks_resolved: string[]
+  lock_reversals: BriefNoteLockReversal[]
+}
+
+// #229: what a prep payload carries back as `_prep_stamp`.
+export interface PrepStamp {
+  brief_version: number
+  note_ids: string[]
 }
