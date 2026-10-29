@@ -29,7 +29,15 @@ function makeNotes() {
     },
     doc: (id: string) => {
       // Real Firestore throws on these ids; mirror it.
-      if (!id || id.includes('/') || /^__.*__$/.test(id)) throw new Error(`invalid doc id ${id}`)
+      if (
+        !id ||
+        id === '.' ||
+        id === '..' ||
+        id.length > 1500 ||
+        id.includes('/') ||
+        /^__.*__$/.test(id)
+      )
+        throw new Error(`invalid doc id ${id}`)
       return {
         get: async () => ({ id, exists: store.has(id), data: () => store.get(id) }),
         update: async (patch: Record<string, unknown>) => {
@@ -91,7 +99,9 @@ describe('brief notes store', () => {
   it('foldNotes skips malformed ids instead of throwing', async () => {
     const db = makeDb()
     const a = await addNote(db, 'b1', note('2026-10-01T00:00:00Z'))
-    await expect(foldNotes(db, 'b1', ['', 'a/b', '__x__', a], 'T')).resolves.toBeUndefined()
+    await expect(
+      foldNotes(db, 'b1', ['', 'a/b', '__x__', '.', '..', a], 'T')
+    ).resolves.toBeUndefined()
     expect((await listNotes(db, 'b1'))[0].folded_at).toBe('T')
   })
 
@@ -148,5 +158,8 @@ describe('parsePrepStamp', () => {
     expect(parsePrepStamp({ brief_version: 1, note_ids: [''] })).toBeNull()
     expect(parsePrepStamp({ brief_version: 1, note_ids: ['a/b'] })).toBeNull()
     expect(parsePrepStamp({ brief_version: 1, note_ids: ['__x__'] })).toBeNull()
+    expect(parsePrepStamp({ brief_version: 1, note_ids: ['.'] })).toBeNull()
+    expect(parsePrepStamp({ brief_version: 1, note_ids: ['..'] })).toBeNull()
+    expect(parsePrepStamp({ brief_version: 1, note_ids: ['a'.repeat(200)] })).toBeNull()
   })
 })

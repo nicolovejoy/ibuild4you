@@ -6,10 +6,11 @@
 import type { Firestore } from 'firebase-admin/firestore'
 import type { BriefNote, PrepStamp } from '@/lib/types'
 
-// Firestore throws synchronously on these doc ids; note ids can come from an
-// untrusted pasted payload, so screen them first.
+// Note ids are Firestore auto-ids (alphanumeric) and can arrive from an
+// untrusted pasted payload. Whitelist the shape: Firestore's doc() throws
+// synchronously on '', '.', '..', '/', '__x__' and over-long ids.
 export function isValidNoteId(id: unknown): id is string {
-  return typeof id === 'string' && id !== '' && !id.includes('/') && !/^__.*__$/.test(id)
+  return typeof id === 'string' && /^[A-Za-z0-9]{1,128}$/.test(id)
 }
 
 function notesRef(db: Firestore, briefId: string) {
@@ -69,7 +70,8 @@ export function isEmptyNote(
 export function parsePrepStamp(raw: unknown): PrepStamp | null {
   if (!raw || typeof raw !== 'object') return null
   const { brief_version, note_ids } = raw as Record<string, unknown>
-  if (typeof brief_version !== 'number' || !Number.isInteger(brief_version) || brief_version < 0) return null
+  if (typeof brief_version !== 'number' || !Number.isInteger(brief_version) || brief_version < 0)
+    return null
   if (!Array.isArray(note_ids) || !note_ids.every(isValidNoteId)) return null
   return { brief_version, note_ids: note_ids as string[] }
 }
