@@ -1,12 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import type { Firestore } from 'firebase-admin/firestore'
-import {
-  isValidAppSlug,
-  findAppBySlug,
-  createApp,
-  AppSlugInvalid,
-  AppSlugTaken,
-} from '../apps'
+import { isValidAppSlug, findAppBySlug, createApp, AppSlugInvalid, AppSlugTaken } from '../apps'
 
 // In-memory stand-in for the `apps` collection: doc get/set by id, plus the
 // where('legacy_slugs','array-contains',x).limit(n).get() query.
@@ -21,17 +15,21 @@ function makeDb(seed: Record<string, Record<string, unknown>> = {}) {
     collection: (name: string) => {
       if (name !== 'apps') throw new Error(`unexpected collection ${name}`)
       return {
-        doc: (id: string) => ({
-          get: async () => snap(id),
-          set: async (data: Record<string, unknown>) => {
-            store.set(id, data)
-          },
-          // Firestore create(): fails with gRPC ALREADY_EXISTS (6) if the doc is there.
-          create: async (data: Record<string, unknown>) => {
-            if (store.has(id)) throw Object.assign(new Error('ALREADY_EXISTS'), { code: 6 })
-            store.set(id, data)
-          },
-        }),
+        doc: (id: string) => {
+          // Real Firestore throws on these ids; mirror it so tests catch them.
+          if (id.includes('/') || /^__.*__$/.test(id)) throw new Error(`invalid doc id ${id}`)
+          return {
+            get: async () => snap(id),
+            set: async (data: Record<string, unknown>) => {
+              store.set(id, data)
+            },
+            // Firestore create(): fails with gRPC ALREADY_EXISTS (6) if the doc is there.
+            create: async (data: Record<string, unknown>) => {
+              if (store.has(id)) throw Object.assign(new Error('ALREADY_EXISTS'), { code: 6 })
+              store.set(id, data)
+            },
+          }
+        },
         where: (field: string, op: string, value: string) => ({
           limit: () => ({
             get: async () => {
@@ -86,12 +84,23 @@ describe('findAppBySlug', () => {
     const { db } = makeDb({ byside: { ...base, slug: 'byside' } })
     expect(await findAppBySlug(db, 'nope')).toBeNull()
   })
+  it('returns null (no Firestore call) for ids that are not valid slugs', async () => {
+    const { db } = makeDb({ byside: { ...base, slug: 'byside' } })
+    expect(await findAppBySlug(db, 'a/b')).toBeNull()
+    expect(await findAppBySlug(db, '__x__')).toBeNull()
+    expect(await findAppBySlug(db, 'Tide line')).toBeNull()
+  })
 })
 
 describe('createApp', () => {
   it('writes apps/{slug} with created_at and the given fields', async () => {
     const { db, store } = makeDb()
-    const app = await createApp(db, { slug: 'prntd', name: 'PRNTD', created_by: 'u1', github_repo: 'a/b' })
+    const app = await createApp(db, {
+      slug: 'prntd',
+      name: 'PRNTD',
+      created_by: 'u1',
+      github_repo: 'a/b',
+    })
     const doc = store.get('prntd')!
     expect(doc.name).toBe('PRNTD')
     expect(doc.github_repo).toBe('a/b')
@@ -103,15 +112,21 @@ describe('createApp', () => {
   })
   it('throws AppSlugInvalid for "Tideline"', async () => {
     const { db } = makeDb()
-    await expect(createApp(db, { slug: 'Tideline', name: 'T', created_by: 'u1' })).rejects.toBeInstanceOf(AppSlugInvalid)
+    await expect(
+      createApp(db, { slug: 'Tideline', name: 'T', created_by: 'u1' })
+    ).rejects.toBeInstanceOf(AppSlugInvalid)
   })
   it('throws AppSlugTaken when the slug is another app’s canonical slug', async () => {
     const { db } = makeDb({ byside: { ...base, slug: 'byside' } })
-    await expect(createApp(db, { slug: 'byside', name: 'X', created_by: 'u1' })).rejects.toBeInstanceOf(AppSlugTaken)
+    await expect(
+      createApp(db, { slug: 'byside', name: 'X', created_by: 'u1' })
+    ).rejects.toBeInstanceOf(AppSlugTaken)
   })
   it('throws AppSlugTaken when the slug is another app’s legacy slug', async () => {
     const { db } = makeDb({ byside: { ...base, slug: 'byside', legacy_slugs: ['old'] } })
-    await expect(createApp(db, { slug: 'old', name: 'X', created_by: 'u1' })).rejects.toBeInstanceOf(AppSlugTaken)
+    await expect(
+      createApp(db, { slug: 'old', name: 'X', created_by: 'u1' })
+    ).rejects.toBeInstanceOf(AppSlugTaken)
   })
   it('throws AppSlugTaken when a legacy_slugs entry is already an app slug', async () => {
     const { db } = makeDb({ byside: { ...base, slug: 'byside' } })
@@ -138,18 +153,29 @@ describe('createApp', () => {
       }
       return c
     }
-    await expect(createApp(db, { slug: 'race', name: 'R', created_by: 'u1' })).rejects.toBeInstanceOf(AppSlugTaken)
+    await expect(
+      createApp(db, { slug: 'race', name: 'R', created_by: 'u1' })
+    ).rejects.toBeInstanceOf(AppSlugTaken)
     expect(store.has('race')).toBe(false)
   })
   it('a rejected create writes nothing', async () => {
     const { db, store } = makeDb({ byside: { ...base, slug: 'byside' } })
-    await expect(createApp(db, { slug: 'byside', name: 'X', created_by: 'u1' })).rejects.toBeInstanceOf(AppSlugTaken)
-    await expect(createApp(db, { slug: 'Bad', name: 'X', created_by: 'u1' })).rejects.toBeInstanceOf(AppSlugInvalid)
+    await expect(
+      createApp(db, { slug: 'byside', name: 'X', created_by: 'u1' })
+    ).rejects.toBeInstanceOf(AppSlugTaken)
+    await expect(
+      createApp(db, { slug: 'Bad', name: 'X', created_by: 'u1' })
+    ).rejects.toBeInstanceOf(AppSlugInvalid)
     expect([...store.keys()]).toEqual(['byside'])
   })
   it('de-duplicates legacy_slugs', async () => {
     const { db, store } = makeDb()
-    await createApp(db, { slug: 'new-app', name: 'N', created_by: 'u1', legacy_slugs: ['old', 'old'] })
+    await createApp(db, {
+      slug: 'new-app',
+      name: 'N',
+      created_by: 'u1',
+      legacy_slugs: ['old', 'old'],
+    })
     expect(store.get('new-app')?.legacy_slugs).toEqual(['old'])
   })
 })

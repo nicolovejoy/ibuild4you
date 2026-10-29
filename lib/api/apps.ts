@@ -31,6 +31,9 @@ export class AppSlugTaken extends Error {
 
 // Find an app by canonical slug first, then by legacy slug.
 export async function findAppBySlug(db: Firestore, slugOrLegacy: string): Promise<App | null> {
+  // Anything that isn't a valid slug can't be an app id (and doc('a/b') or a
+  // reserved '__x__' id would throw), so answer null before touching Firestore.
+  if (!isValidAppSlug(slugOrLegacy)) return null
   const direct = await db.collection('apps').doc(slugOrLegacy).get()
   if (direct.exists) return { id: direct.id, ...(direct.data() as Omit<App, 'id'>) }
 
