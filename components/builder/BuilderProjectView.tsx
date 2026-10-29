@@ -498,6 +498,8 @@ function BriefTab({
   const [stalePrep, setStalePrep] = useState<{ info: StalePrepInfo; payload: NextConvoPayload } | null>(null)
   const { data: briefNotes } = useBriefNotes(projectId)
   const [loadingPayload, setLoadingPayload] = useState(false)
+  // Copy prep failed (nothing on the clipboard): shown in the desk's notices.
+  const [copyPrepError, setCopyPrepError] = useState<string | null>(null)
   // Covers the whole import (brief save + optional config PATCH + paste
   // stamp), not just the brief mutation.
   const [importing, setImporting] = useState(false)
@@ -510,9 +512,10 @@ function BriefTab({
 
   const briefContent = brief?.content as BriefContent | undefined
   const regenNotice = project ? regenFailureNotice(project, brief?.updated_at) : null
-  // The live brief is close to (or over) what one automatic update can rewrite
-  // (lib/agent/brief-size.ts). Shown whenever the tab is open, not only right
-  // after a paste: F4FC crossed the line through regens, with nothing pasted.
+  // The live brief is close to (or over) the curation budget the comms agent
+  // works to (lib/agent/brief-size.ts). Shown whenever the tab is open, not
+  // only right after a paste, so an oversized brief is visible before the
+  // next prep.
   const sizeNotice = briefContent ? briefSizeWarning(briefContent) : null
   const hasBrief = briefContent && hasBriefContent(briefContent)
 
@@ -559,6 +562,7 @@ function BriefTab({
     // Never build the prep prompt without the loaded project (no "Untitled" fallback).
     if (!project) return
     setLoadingPayload(true)
+    setCopyPrepError(null)
     try {
       // #229: the prep carries the brief plus the notes not yet folded into
       // it (no transcript), and a stamp the paste guard checks on the way back.
@@ -577,7 +581,12 @@ function BriefTab({
         const briefRes = await apiFetch(`/api/briefs?project_id=${projectId}`)
         if (!briefRes.ok) throw new Error('Failed to load brief')
         const live = (await briefRes.json()) as { version: number; content: BriefContent } | null
-        if ((live?.version ?? 0) !== brief_version) throw new Error('Brief changed while copying the prep; try again')
+        if ((live?.version ?? 0) !== brief_version) {
+          // Moved again between the two reads: stamp and text would disagree.
+          queryClient.invalidateQueries({ queryKey: ['brief', projectId] })
+          setCopyPrepError(copy.brief.copyPrepBriefChanged)
+          return
+        }
         liveContent = live?.content
         queryClient.invalidateQueries({ queryKey: ['brief', projectId] })
       }
@@ -604,6 +613,7 @@ function BriefTab({
       )
     } catch (err) {
       console.error('Failed to copy payload:', err)
+      setCopyPrepError(copy.brief.copyPrepFailed)
     } finally {
       setLoadingPayload(false)
     }
@@ -677,8 +687,8 @@ function BriefTab({
       // A payload without a prep stamp (old prep, hand-written JSON) folds no
       // notes. Say so here only: the structured editor and Restore don't warn.
       if (payload.stamp === null) warnings = [...warnings, copy.brief.pasteNotFromPrep]
-      // A brief too big for one automatic update saves fine but stops updating
-      // from conversation (F4FC). Warn, never reject: the paste is the builder's call.
+      // A brief over the curation budget saves fine; it just costs every chat
+      // turn and every prep more. Warn, never reject: the paste is the builder's call.
       const sizeWarning = briefSizeWarning(payload.brief)
       if (sizeWarning) warnings = [...warnings, sizeWarning]
       setPasteJson('')
@@ -774,8 +784,9 @@ function BriefTab({
             <OpenQuestionsCard title={project?.title ?? ''} makerName={makerName} questions={questions} />
           }
           notices={
-            (regenNotice || sizeNotice || importWarnings || stalePrep) && (
+            (copyPrepError || regenNotice || sizeNotice || importWarnings || stalePrep) && (
               <>
+                {copyPrepError && <StatusMessage type="error" message={copyPrepError} />}
                 {/* #229: the server refused a stale prep; nothing was saved.
                     Save anyway resends the same parsed payload with force. */}
                 {stalePrep && (

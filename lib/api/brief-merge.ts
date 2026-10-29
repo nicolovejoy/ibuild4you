@@ -1,15 +1,17 @@
-// Pure helpers for reconciling a freshly-regenerated brief against the prior
-// one. Kept separate from lib/api/briefs.ts so the merge logic is unit-testable
-// without an Anthropic or Firestore mock.
+// Pure helpers for reconciling an incoming brief (a stamped ferry-desk paste,
+// #229; formerly the whole-brief regen) against the prior one. Kept separate
+// from lib/api/briefs.ts so the merge logic is unit-testable without an
+// Anthropic or Firestore mock.
 //
 // Background — issue #71 (brief↔build reconciliation): a *locked* decision is a
 // durable constraint (the build's "do-not-use" / locked-convention list). The
-// regen model is told to preserve locked decisions, but a model can always drop
-// or reword one — and across many sessions that silent loss is exactly the bug.
-// So durability can't depend on the model: this code re-injects every locked
-// decision the regen output dropped or altered, verbatim, before the brief is
-// persisted. Locked decisions are immutable through regen; only an explicit
-// maker confirm (a separate, deliberate flow) ever changes one.
+// comms agent that curates the brief is told to keep locked decisions, but a
+// model can always drop or reword one — and across many sessions that silent
+// loss is exactly the bug. So durability can't depend on the model: on a
+// stamped paste, PUT /api/briefs re-injects every locked decision the paste
+// dropped or altered, verbatim, with its contest state (restoreLocksOnPaste).
+// Only a builder's deliberate, unstamped save (the structured editor,
+// Accept/Dismiss, Restore) ever unlocks or rewrites one.
 
 import type {
   BriefContent,
@@ -113,7 +115,7 @@ export function lostLocks(
 
 // Accept a `contested` value only when it is well-formed AND the decision is
 // locked (#197). Used by every write path that takes decisions from outside
-// (regen coercion, PUT /api/briefs, the raw-JSON normaliser).
+// (the note writer's lock reversals, PUT /api/briefs, the raw-JSON normaliser).
 export function contestFor(locked: boolean, raw: unknown): BriefDecisionContest | undefined {
   if (!locked || !raw || typeof raw !== 'object') return undefined
   const c = raw as Record<string, unknown>
@@ -168,9 +170,9 @@ export function resolveContest(
 //
 // Every decision carries where it came from (`decided_in_session` +
 // `decided_at`), stamped HERE by code — never trusted from the model, which
-// sees stamps in its prompt and will echo or hallucinate them. One function
-// serves both write paths (regen and the paste/import PUT), run AFTER
-// mergeLockedDecisions so locked decisions arrive verbatim from prev and rule 2
+// sees stamps in its prompt and will echo or hallucinate them. Since #229 the
+// paste/import PUT is the only write path; on a stamped paste it runs AFTER
+// restoreLocksOnPaste, so locked decisions arrive verbatim from prev and rule 2
 // preserves their stamps automatically.
 
 // Text comparison for "did this decision actually change?" (#228 part 2):

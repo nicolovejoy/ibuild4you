@@ -175,7 +175,7 @@ export const copy = {
       'This payload includes seed questions, but the brief is in converge mode — seed questions are only sent in discover mode. They were saved and will apply if the mode flips.',
     importIgnoredDirectives:
       'This payload includes builder directives, but the brief is in discover mode — directives are only sent in converge mode. They were saved and will apply if the mode flips.',
-    // Brief size vs. what one automatic update can rewrite (lib/agent/brief-size.ts)
+    // Brief size vs. the curation budget the comms agent works to (lib/agent/brief-size.ts)
     briefNearSizeLimit: (chars: number, budget: number) =>
       `This brief is ${chars.toLocaleString('en-US')} characters, close to the ${budget.toLocaleString('en-US')} curation budget. Trim or merge decisions when you next curate it.`,
     briefOverSizeLimit: (chars: number, budget: number) =>
@@ -205,6 +205,9 @@ export const copy = {
     writeNoteCancel: 'Cancel',
     writeNoteNothingNew: 'Nothing new since the last note.',
     writeNoteFailed: "Couldn't write the note — try again.",
+    // Copy prep (#229) failed: nothing reached the clipboard.
+    copyPrepBriefChanged: "Couldn't copy the prep — the brief changed while loading. Try again.",
+    copyPrepFailed: "Couldn't copy the prep — try again.",
     newSinceCuration: (n: number) => `New since last curation (${n})`,
     noteHeading: (day: string) => `Conversation of ${day}`,
     noteDecision: (topic: string, decision: string) => `Decision: ${topic}: ${decision}`,

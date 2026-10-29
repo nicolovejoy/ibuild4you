@@ -139,11 +139,10 @@ async function handleChat(
   // welcome-back recap (#26). Otherwise the gap would always be ~0.
   const previousMakerMessageAt = projectData.last_maker_message_at as string | undefined | null
 
-  // Queue a debounced notification + record the maker timestamp for idle-based
-  // brief regeneration. The cron at /api/cron/notify picks up projects where
-  // notify_after has passed and sends a single digest email; the same cron
-  // also auto-regenerates the brief when last_maker_message_at is older than
-  // 10 minutes and the brief is stale.
+  // Queue a notification + record the maker timestamp. The daily
+  // /api/cron/notify-digest sends one digest email for pending projects; the
+  // */5 /api/cron/notify writes a per-conversation brief note (#229) once
+  // last_maker_message_at is over 10 minutes old and no note covers it yet.
   // Maker-side senders only (#110): a builder/owner/admin joining the chat
   // must not silence reminder nudges or move the turn indicator.
   if (countsAsMakerActivity(role)) {

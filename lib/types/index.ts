@@ -80,8 +80,9 @@ export interface Project extends BaseEntity {
   auto_reminders_enabled?: boolean
   reminders_sent_count?: number
   last_reminder_sent_at?: string | null
-  // Written by the notify cron's brief regen (app/api/cron/notify). The error is
-  // cleared on the next successful update; the Brief tab shows it until then.
+  // Written by the notify cron's note writer (app/api/cron/notify, #229; the
+  // field names predate it). The error is cleared on the next successful note;
+  // the Brief tab shows it until then.
   brief_regen_failures?: number
   brief_regen_last_error?: string | null
   brief_regen_last_error_at?: string | null
@@ -307,15 +308,17 @@ export interface BriefDecision {
   topic: string // short label ("Data source", "Ticker selection")
   decision: string // what was decided ("Reddit API for user sentiment")
   // Locked = a durable constraint (the build's locked convention / do-not-use
-  // list). Survives brief regen verbatim and the agent must reconcile new intake
-  // against it rather than silently overwriting. See lib/api/brief-merge.ts (#71).
+  // list). Survives a stamped ferry-desk paste verbatim (the server restores
+  // it, #229) and the agent must reconcile new intake against it rather than
+  // silently overwriting. See lib/api/brief-merge.ts (#71).
   locked?: boolean
-  // #197: regen may *contest* a locked decision (the maker explicitly confirmed
-  // a reversal in conversation) but never remove it. Only ever set on a locked
-  // decision; cleared by a builder's Accept/Dismiss on the Brief tab.
+  // #197: the note writer may *contest* a locked decision (the maker explicitly
+  // confirmed a reversal in conversation, #229) but never remove it. Only ever
+  // set on a locked decision; cleared by a builder's Accept/Dismiss on the
+  // Brief tab (a stamped paste can't clear it).
   contested?: BriefDecisionContest
-  // #197: a builder dismissed a contest. Remembered so the next regen — which
-  // re-reads the whole transcript — does not raise the same proposal again.
+  // #197: a builder dismissed a contest. Remembered so a later note does not
+  // raise the same proposal again.
   // Only on a locked decision. Cleared when the lock is accepted/changed.
   contest_dismissed?: BriefContestDismissed
   // Provenance (#121) — stamped by code (stampDecisionProvenance), never by the

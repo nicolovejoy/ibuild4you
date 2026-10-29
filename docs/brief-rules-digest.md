@@ -107,7 +107,7 @@ Mark [ ] keep · [ ] change · [ ] drop. Changes become follow-up issues.
   - [ ] keep · [ ] change · [ ] drop
 - **Failure bookkeeping** — Each failure bumps the count and stores the error text (200 chars) and time on the project. Success clears them. `app/api/cron/notify/route.ts:94-111`.
   - [ ] keep · [ ] change · [ ] drop
-- **Manual regen** — `POST /api/briefs/generate` (builder+) runs regen immediately and clears the breaker counters. `app/api/briefs/generate/route.ts:5-11`, `app/api/briefs/generate/route.ts:28-33`.
+- **Manual regen** — `POST /api/briefs/generate` (builder+) runs regen immediately and clears the breaker counters. `app/api/briefs/generate/route.ts:5-11`, `app/api/briefs/generate/route.ts:28-33`. — replaced by #229 (2026-10-29): whole-brief regen is gone; `POST /api/briefs/notes` ("Write note now") writes a per-conversation note.
   - [ ] keep · [ ] change · [ ] drop
 
 ## 4. Who speaks first / return sessions
