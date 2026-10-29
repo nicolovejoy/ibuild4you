@@ -1,8 +1,8 @@
 #!/usr/bin/env node
-// READ-ONLY. Why did a brief stop updating, and why does the agent keep
-// greeting? Dumps one project's regen breaker state, brief + version history
+// READ-ONLY. Why did a brief stop getting notes, and why does the agent keep
+// greeting? Dumps one project's note-writer breaker state (brief_regen_* fields), brief + version history
 // (with size), per-session message timeline (role/kind/length, no content), and
-// its api_usage rows by route (output_tokens near BRIEF_MAX_TOKENS = truncation).
+// its api_usage rows by route (output_tokens near NOTE_MAX_TOKENS = a truncated note).
 //
 // Usage:
 //   op run --env-file=.env.ops.tpl -- node scripts/with-prod-env-ro.mjs node scripts/inspect-brief-health.mjs --slug f4fc
@@ -43,8 +43,8 @@ console.log(`welcome_message ${len(p.welcome_message)} chars  nudge_message ${le
 console.log(`last_maker_message_at ${p.last_maker_message_at}`)
 console.log(`maker_waiting_since ${p.maker_waiting_since ?? '-'}`)
 console.log(`prep_copied_at ${p.prep_copied_at ?? '-'}  payload_pasted_at ${p.payload_pasted_at ?? '-'}  payload_pasted_version ${p.payload_pasted_version ?? '-'}`)
-console.log(`brief_regen_failures ${p.brief_regen_failures ?? 0}  since ${p.brief_regen_failures_since ?? '-'}`)
-console.log(`brief_regen_last_error ${p.brief_regen_last_error ?? '-'}  at ${p.brief_regen_last_error_at ?? '-'}`)
+console.log(`note-writer failures (brief_regen_failures) ${p.brief_regen_failures ?? 0}  since ${p.brief_regen_failures_since ?? '-'}`)
+console.log(`note-writer last error (brief_regen_last_error) ${p.brief_regen_last_error ?? '-'}  at ${p.brief_regen_last_error_at ?? '-'}`)
 
 const briefs = (await db.collection('briefs').where('project_id', '==', p.id).get()).docs
 console.log(`\nbriefs (${briefs.length}):`)

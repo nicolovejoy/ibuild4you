@@ -1,8 +1,9 @@
 #!/usr/bin/env node
-// Emergency stop for a runaway brief-regeneration loop (cost incident, 2026-06-15).
+// Emergency stop for a runaway note-writer loop (cost incident 2026-06-15, when it was
+// whole-brief regeneration; the brief_regen_* breaker fields were kept in #229).
 //
-// The notify cron auto-regenerates idle projects' briefs. When a brief always
-// fails (e.g. regenerate_brief_max_tokens), a circuit breaker is supposed to stop
+// The notify cron writes a note for idle projects' conversations. When the note
+// writer always fails (e.g. a max-tokens error), a circuit breaker is supposed to stop
 // retrying — but a bug makes it clear-and-retry every 5-min tick once the maker
 // has messaged after the failure streak started, billing a Sonnet call each time.
 //
