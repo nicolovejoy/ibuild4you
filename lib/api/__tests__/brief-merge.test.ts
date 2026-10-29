@@ -805,6 +805,32 @@ describe('stampDecisionProvenance: normalised comparison and note origin', () =>
     expect(out[0].decided_at).toBe('2026-09-01T00:00:00Z')
   })
 
+  it('a revision on a topic in originByTopic takes that note as the revision (#229)', () => {
+    const origin = new Map([['payment', { session_id: 's4', at: '2026-10-20T00:00:00Z' }]])
+    const out = stampDecisionProvenance({
+      prev: [stamped],
+      next: [d('Payment', 'Use Square')],
+      sessionId: null,
+      now: NOW,
+      originByTopic: origin,
+    })
+    expect(out[0].revised_in_session).toBe('s4')
+    expect(out[0].revised_at).toBe('2026-10-20T00:00:00Z')
+    expect(out[0].decided_at).toBe('2026-07-01T00:00:00Z')
+  })
+
+  it('an explicit differing revised_* still wins over originByTopic', () => {
+    const out = stampDecisionProvenance({
+      prev: [stamped],
+      next: [{ ...d('Payment', 'Use Square'), revised_in_session: 's3', revised_at: '2026-10-05T00:00:00Z' }],
+      sessionId: null,
+      now: NOW,
+      originByTopic: new Map([['payment', { session_id: 's4', at: '2026-10-20T00:00:00Z' }]]),
+    })
+    expect(out[0].revised_in_session).toBe('s3')
+    expect(out[0].revised_at).toBe('2026-10-05T00:00:00Z')
+  })
+
   it('normalizeDecisionText lowercases, strips punctuation and collapses whitespace', () => {
     expect(normalizeDecisionText('  Stripe — ONLY! ')).toBe('stripe only')
   })

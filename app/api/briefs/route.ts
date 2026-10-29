@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getAuthenticatedUser, getAdminDb, getProjectRole, requireRole } from '@/lib/api/firebase-server-helpers'
 import { upsertBrief } from '@/lib/api/briefs'
-import { contestFor, dismissedFor, stampDecisionProvenance, topicKey } from '@/lib/api/brief-merge'
+import { contestFor, dismissedFor, restoreLocksOnPaste, stampDecisionProvenance, topicKey } from '@/lib/api/brief-merge'
 import { carryRiskOwners, normalizeRisks } from '@/lib/brief/risks'
 import { foldNotes, listUnfoldedNotes, parsePrepStamp } from '@/lib/api/brief-notes'
 import { briefSizeWarning } from '@/lib/agent/brief-size'
@@ -157,11 +157,22 @@ export async function PUT(request: Request) {
     }
   }
 
+  // #229 (kept guarantee #71/#197): a stamped paste is the comms agent's
+  // rewrite, so it can't drop or reword a lock or change its contest state —
+  // the live brief's locks come back verbatim with their contest fields.
+  // Unstamped saves (structured editor, Accept/Dismiss, Restore, a raw paste)
+  // skip this: their unlock or dismiss is deliberate, and the Brief tab asks
+  // before one drops a lock.
+  if (stamp) {
+    briefContent.decisions = restoreLocksOnPaste(prevContent?.decisions, briefContent.decisions)
+  }
+
   // #121: stamp decision provenance against the latest stored brief. Paste path
   // stamps sessionId null ("decided out-of-band"); carry-forward also restores
   // stamps an outside agent dropped when round-tripping the brief JSON.
   // #229: a new topic a folded note introduced takes that note's session and
-  // time instead (notes are oldest first, so the later note wins).
+  // time instead, and a topic a folded note revised takes it as the revision
+  // (notes are oldest first, so the later note wins).
   const originByTopic = new Map<string, { session_id: string | null; at: string }>()
   for (const n of listed) {
     for (const d of n.decisions ?? []) {

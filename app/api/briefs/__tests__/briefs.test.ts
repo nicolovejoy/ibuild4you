@@ -680,6 +680,93 @@ describe('PUT /api/briefs — paste guard (#229)', () => {
     errSpy.mockRestore()
   })
 
+  // --- Locks on a stamped paste (#71/#197 kept guarantee, #229) ---
+  // The comms agent rewrites the brief; a stamped paste can't drop a lock,
+  // reword one, or clear its contest. The live brief is the authority.
+  const lockedPrev = {
+    topic: 'Payment',
+    decision: 'Stripe only',
+    locked: true,
+    decided_in_session: 's1',
+    decided_at: '2026-10-01T18:00:00.000Z',
+  }
+  const contest = { proposed: 'Square', reason: 'Maker confirmed in conv 4' }
+
+  it('a stamped paste that drops a lock gets it back verbatim', async () => {
+    liveBrief(3, { problem: 'p', decisions: [lockedPrev, { topic: 'Hosting', decision: 'Vercel' }] })
+    await put({
+      content: { problem: 'p', decisions: [{ topic: 'Hosting', decision: 'Vercel' }] },
+      prep_stamp: { brief_version: 3, note_ids: [] },
+    })
+    const decisions = mockUpsertBrief.mock.calls[0][2].decisions
+    expect(decisions).toContainEqual(lockedPrev)
+    expect(decisions).toContainEqual(expect.objectContaining({ topic: 'Hosting', decision: 'Vercel' }))
+  })
+
+  it('a stamped paste that drops contested on a lock keeps the contest', async () => {
+    const dismissed = { proposed: 'PayPal', at: '2026-10-10T18:00:00.000Z' }
+    liveBrief(3, { problem: 'p', decisions: [{ ...lockedPrev, contested: contest, contest_dismissed: dismissed }] })
+    await put({
+      content: { problem: 'p', decisions: [{ topic: 'Payment', decision: 'Stripe only', locked: true }] },
+      prep_stamp: { brief_version: 3, note_ids: [] },
+    })
+    const [d] = mockUpsertBrief.mock.calls[0][2].decisions
+    expect(d.contested).toEqual(contest)
+    expect(d.contest_dismissed).toEqual(dismissed)
+  })
+
+  it('a stamped paste cannot replace a contest with its own', async () => {
+    liveBrief(3, { problem: 'p', decisions: [{ ...lockedPrev, contested: contest }] })
+    await put({
+      content: {
+        problem: 'p',
+        decisions: [{ topic: 'Payment', decision: 'Stripe only', locked: true, contested: { proposed: 'Cash', reason: 'x' } }],
+      },
+      prep_stamp: { brief_version: 3, note_ids: [] },
+    })
+    expect(mockUpsertBrief.mock.calls[0][2].decisions[0].contested).toEqual(contest)
+  })
+
+  it('a stamped paste that rewords a locked decision keeps the stored text', async () => {
+    liveBrief(3, { problem: 'p', decisions: [lockedPrev] })
+    await put({
+      content: { problem: 'p', decisions: [{ topic: ' payment ', decision: 'Stripe and Square' }] },
+      prep_stamp: { brief_version: 3, note_ids: [] },
+    })
+    const decisions = mockUpsertBrief.mock.calls[0][2].decisions
+    expect(decisions).toEqual([lockedPrev])
+  })
+
+  it('an unstamped save that unlocks a decision is honoured', async () => {
+    liveBrief(3, { problem: 'p', decisions: [lockedPrev] })
+    await put({ content: { problem: 'p', decisions: [{ topic: 'Payment', decision: 'Stripe only' }] } })
+    const [d] = mockUpsertBrief.mock.calls[0][2].decisions
+    expect(d.locked).toBeUndefined()
+    expect(d.decision).toBe('Stripe only')
+  })
+
+  it('a stamped paste revising a topic a folded note revised takes that note as the revision', async () => {
+    liveBrief(3, {
+      problem: 'p',
+      decisions: [{ topic: 'Hosting', decision: 'Netlify', decided_in_session: 's1', decided_at: '2026-10-01T18:00:00.000Z' }],
+    })
+    mockListUnfoldedNotes.mockResolvedValue([
+      note('aaa', { session_id: 's9', created_at: '2026-10-25T18:00:00.000Z', decisions: [{ topic: 'hosting', decision: 'Vercel' }] }),
+    ])
+    await put({
+      content: { problem: 'p', decisions: [{ topic: 'Hosting', decision: 'Vercel' }] },
+      prep_stamp: { brief_version: 3, note_ids: ['aaa'] },
+    })
+    expect(mockUpsertBrief.mock.calls[0][2].decisions[0]).toEqual({
+      topic: 'Hosting',
+      decision: 'Vercel',
+      decided_in_session: 's1',
+      decided_at: '2026-10-01T18:00:00.000Z',
+      revised_in_session: 's9',
+      revised_at: '2026-10-25T18:00:00.000Z',
+    })
+  })
+
   it('returns a size warning when the saved brief is over budget', async () => {
     liveBrief(3)
     const res = await put({ content: { problem: 'x'.repeat(21000) } })

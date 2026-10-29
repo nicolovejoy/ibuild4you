@@ -75,6 +75,20 @@ export function mergeLockedDecisions(
   ]
 }
 
+// #229: a stamped ferry-desk paste (the comms agent rewrote the brief) can't
+// drop a lock, reword one, or change its contest state. Same as
+// mergeLockedDecisions except the paste's own `contested` is ignored: prev is
+// the authority for contest state (the note writer sets `contested` on the
+// live brief; only the Brief tab's Accept/Dismiss, an unstamped save, clears
+// it), so every lock comes back with prev's `contested`/`contest_dismissed`.
+// Pasted non-locked decisions pass through with contest fields stripped.
+export function restoreLocksOnPaste(
+  prev: BriefDecision[] | undefined,
+  next: BriefDecision[] | undefined
+): BriefDecision[] {
+  return mergeLockedDecisions(prev, (next ?? []).map(withoutContestFields))
+}
+
 // Contest state (`contested`, `contest_dismissed`) only lives on a lock; strip
 // both from anything else.
 function withoutContestFields(d: BriefDecision): BriefDecision {
@@ -208,7 +222,10 @@ export function stripDecisionProvenance(decisions: BriefDecision[]): BriefDecisi
 //      kept. A prev decision with no origin stamp gets revised_* only — the
 //      origin is not invented — unless the incoming decision supplies an
 //      explicit origin, which is honored. Incoming decided_* are otherwise
-//      ignored: prev's origin is the source of truth.
+//      ignored: prev's origin is the source of truth. When `originByTopic`
+//      has the topic (a folded note revised it, #229), that note's session
+//      and time stamp the revision instead of sessionId + now; an explicit
+//      differing revised_* still wins.
 // Idempotent: regenerating an unchanged brief never moves a stamp, so
 // decided_at means "decided", not "last regenerated".
 export function stampDecisionProvenance(args: {
@@ -245,9 +262,15 @@ export function stampDecisionProvenance(args: {
         revised.decided_at = n.decided_at
         revised.decided_in_session = n.decided_in_session ?? null
       }
+      const noteOrigin = args.originByTopic?.get(topicKey(n))
       if (hasExplicitRevision(n) && n.revised_at !== p.revised_at) {
         revised.revised_at = n.revised_at
         revised.revised_in_session = n.revised_in_session ?? null
+      } else if (noteOrigin) {
+        // #229: a folded note revised this topic; the revision happened in
+        // that note's conversation, not at paste time.
+        revised.revised_at = noteOrigin.at
+        revised.revised_in_session = noteOrigin.session_id
       } else {
         revised.revised_at = args.now
         revised.revised_in_session = args.sessionId
