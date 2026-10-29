@@ -30,9 +30,12 @@ The widget is a React component you **copy in**, not a script bundle. Three
 files travel together:
 
 1. Copy `lib/feedback/reference/FeedbackWidget.tsx` + `lib/feedback/payload.ts` +
-   `lib/feedback/capture.ts` into the host repo (`FeedbackType` is inlined in
-   `payload.ts` so there's no iBuild4you dependency; `capture.ts` is the #72
-   structural page snapshot — plain DOM APIs, zero deps).
+   `lib/feedback/capture.ts` into the host repo. Two `@/` imports need
+   replacing in the copies: `FeedbackType` from `@/lib/types` (inline
+   `type FeedbackType = 'bug' | 'idea' | 'other'` in `payload.ts`) and
+   `normalizeEmail` from `@/lib/email/normalize` (inline a trim + lowercase).
+   `capture.ts` is the #72 structural page snapshot — plain DOM APIs, zero
+   deps. `'use client'` is a Next directive; drop it outside Next.
 2. Render it, pointing `projectId` at an existing iBuild4you `projects.slug`:
 
    ```tsx

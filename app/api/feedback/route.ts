@@ -63,6 +63,9 @@ function corsHeaders(): Record<string, string> {
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     'Access-Control-Max-Age': '86400',
+    // Lets a widget on another origin read Retry-After on a 429 and say when
+    // to try again (a browser hides non-safelisted headers otherwise).
+    'Access-Control-Expose-Headers': 'Retry-After',
   }
 }
 
