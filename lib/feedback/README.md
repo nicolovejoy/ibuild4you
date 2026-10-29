@@ -149,8 +149,8 @@ that predate it ignore it.
 | 201    | `{ "id": "<feedback-id>" }`                       | Created                                    |
 | 200    | `{ "ok": true }`                                  | Honeypot tripped (silently dropped)        |
 | 400    | `{ "error": "<reason>" }`                         | Validation failure, see `<reason>`         |
-| 403    | `{ "error": "<copy.feedback.requiresIdentity>" }` | Project requires identity, submission unverified (#150) |
-| 404    | `{ "error": "Unknown project" }`                  | `projectId` doesn't match any slug         |
+| 403    | `{ "error": "<copy.feedback.requiresIdentity>" }` | App requires identity, submission unverified (#150) |
+| 404    | `{ "error": "Unknown project" }`                  | `projectId` doesn't match any app slug     |
 | 429    | `{ "error": "Too many submissions, ..." }`        | Rate limit; respect `Retry-After` (skipped for verified submissions) |
 
 ## Side effects on success
