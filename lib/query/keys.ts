@@ -13,5 +13,7 @@ export const queryKeys = {
   messages: (sessionId: string | undefined) => ['messages', sessionId] as const,
   files: (projectId: string | undefined) => ['files', projectId] as const,
   folders: (projectId: string | undefined) => ['folders', projectId] as const,
+  apps: () => ['apps'] as const,
+  app: (slug: string | undefined) => ['app', slug] as const,
   fileUrl: (fileId: string | undefined) => ['fileUrl', fileId] as const,
 }

@@ -61,7 +61,9 @@ export async function createApp(
     legacy_slugs?: string[]
   }
 ): Promise<App> {
-  const { slug, legacy_slugs } = input
+  const { slug } = input
+  // De-duplicate so an app never lists the same legacy slug twice.
+  const legacy_slugs = input.legacy_slugs ? [...new Set(input.legacy_slugs)] : undefined
   if (!isValidAppSlug(slug)) throw new AppSlugInvalid(slug)
   for (const legacy of legacy_slugs ?? []) {
     if (!isValidAppSlug(legacy)) throw new AppSlugInvalid(legacy)
@@ -85,6 +87,13 @@ export async function createApp(
   if (input.brief_id !== undefined) data.brief_id = input.brief_id
   if (legacy_slugs !== undefined) data.legacy_slugs = legacy_slugs
 
-  await db.collection('apps').doc(slug).set(data)
+  // create() fails if the doc exists, so two concurrent creates of one slug
+  // can't both succeed (the isSlugTaken check above is only a fast path).
+  try {
+    await db.collection('apps').doc(slug).create(data)
+  } catch (err) {
+    if ((err as { code?: number }).code === 6) throw new AppSlugTaken(slug) // ALREADY_EXISTS
+    throw err
+  }
   return { id: slug, ...data }
 }

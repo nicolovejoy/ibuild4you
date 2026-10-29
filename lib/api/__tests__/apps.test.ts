@@ -26,6 +26,11 @@ function makeDb(seed: Record<string, Record<string, unknown>> = {}) {
           set: async (data: Record<string, unknown>) => {
             store.set(id, data)
           },
+          // Firestore create(): fails with gRPC ALREADY_EXISTS (6) if the doc is there.
+          create: async (data: Record<string, unknown>) => {
+            if (store.has(id)) throw Object.assign(new Error('ALREADY_EXISTS'), { code: 6 })
+            store.set(id, data)
+          },
         }),
         where: (field: string, op: string, value: string) => ({
           limit: () => ({
@@ -113,5 +118,37 @@ describe('createApp', () => {
     await expect(
       createApp(db, { slug: 'new-app', name: 'X', created_by: 'u1', legacy_slugs: ['byside'] })
     ).rejects.toBeInstanceOf(AppSlugTaken)
+  })
+  it('maps Firestore ALREADY_EXISTS (a concurrent create) to AppSlugTaken', async () => {
+    const { db, store } = makeDb()
+    // Simulate the race: the slug looks free at check time, then another create lands.
+    const realCollection = (db as unknown as { collection: (n: string) => any }).collection
+    ;(db as unknown as { collection: unknown }).collection = (n: string) => {
+      const c = realCollection(n)
+      const realDoc = c.doc
+      c.doc = (id: string) => {
+        const d = realDoc(id)
+        return {
+          ...d,
+          create: async () => {
+            throw Object.assign(new Error('6 ALREADY_EXISTS'), { code: 6 })
+          },
+        }
+      }
+      return c
+    }
+    await expect(createApp(db, { slug: 'race', name: 'R', created_by: 'u1' })).rejects.toBeInstanceOf(AppSlugTaken)
+    expect(store.has('race')).toBe(false)
+  })
+  it('a rejected create writes nothing', async () => {
+    const { db, store } = makeDb({ byside: { ...base, slug: 'byside' } })
+    await expect(createApp(db, { slug: 'byside', name: 'X', created_by: 'u1' })).rejects.toBeInstanceOf(AppSlugTaken)
+    await expect(createApp(db, { slug: 'Bad', name: 'X', created_by: 'u1' })).rejects.toBeInstanceOf(AppSlugInvalid)
+    expect([...store.keys()]).toEqual(['byside'])
+  })
+  it('de-duplicates legacy_slugs', async () => {
+    const { db, store } = makeDb()
+    await createApp(db, { slug: 'new-app', name: 'N', created_by: 'u1', legacy_slugs: ['old', 'old'] })
+    expect(store.get('new-app')?.legacy_slugs).toEqual(['old'])
   })
 })

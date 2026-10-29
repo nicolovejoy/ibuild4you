@@ -136,7 +136,7 @@ Any Brief-tab save (structured or raw) or History → Restore that would drop a 
 
 ### Update (PATCH /api/projects)
 
-Requires `project_id`. Only these fields are accepted: `title`, `context`, `welcome_message`, `nudge_message`, `voice_sample`, `session_mode`, `seed_questions`, `builder_directives`, `requester_first_name`, `requester_last_name`, `last_nudged_at`, `prep_copied_at`, `payload_pasted_at`, `payload_pasted_version`, `last_builder_activity_at`, `identity`, `github_repo`, `auto_reminders_enabled`, `feedback_requires_identity`, `language` (`en`|`fr`, else 400), `hide_title_in_previews` (boolean, else 400). Changing `title` regenerates the slug.
+Requires `project_id`. Only these fields are accepted: `title`, `context`, `welcome_message`, `nudge_message`, `voice_sample`, `session_mode`, `seed_questions`, `builder_directives`, `requester_first_name`, `requester_last_name`, `last_nudged_at`, `prep_copied_at`, `payload_pasted_at`, `payload_pasted_version`, `last_builder_activity_at`, `identity`, `github_repo`, `auto_reminders_enabled`, `language` (`en`|`fr`, else 400), `hide_title_in_previews` (boolean, else 400). Changing `title` regenerates the slug.
 
 ## Agent Behavior Rules
 
