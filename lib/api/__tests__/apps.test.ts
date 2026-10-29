@@ -122,6 +122,7 @@ describe('createApp', () => {
   it('maps Firestore ALREADY_EXISTS (a concurrent create) to AppSlugTaken', async () => {
     const { db, store } = makeDb()
     // Simulate the race: the slug looks free at check time, then another create lands.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const realCollection = (db as unknown as { collection: (n: string) => any }).collection
     ;(db as unknown as { collection: unknown }).collection = (n: string) => {
       const c = realCollection(n)

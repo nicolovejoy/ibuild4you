@@ -5,7 +5,9 @@ const mockGetAuthenticatedUser = vi.fn()
 const mockHasSystemRole = vi.fn()
 const mockDocGet = vi.fn()
 const mockDocUpdate = vi.fn<(patch: Record<string, unknown>) => Promise<void>>(async () => undefined)
-const mockProjectsGet = vi.fn()
+const mockAppDocGet = vi.fn()
+const mockAppLegacyGet = vi.fn()
+const mockCollectionNames: string[] = []
 
 vi.mock('@/lib/api/firebase-server-helpers', () => ({
   getAuthenticatedUser: (req: Request) => mockGetAuthenticatedUser(req),
@@ -15,9 +17,11 @@ vi.mock('@/lib/api/firebase-server-helpers', () => ({
       if (name === 'feedback') {
         return { doc: () => ({ get: mockDocGet, update: mockDocUpdate }) }
       }
-      // 'projects'
+      mockCollectionNames.push(name)
+      // 'apps': direct doc lookup, then legacy_slugs array-contains
       return {
-        where: () => ({ limit: () => ({ get: mockProjectsGet }) }),
+        doc: () => ({ get: mockAppDocGet }),
+        where: () => ({ limit: () => ({ get: mockAppLegacyGet }) }),
       }
     },
   }),
@@ -52,10 +56,13 @@ beforeEach(() => {
   mockGetAuthenticatedUser.mockResolvedValue(adminAuth)
   mockHasSystemRole.mockReturnValue(true)
   mockDocGet.mockResolvedValue({ exists: true, data: () => baseFeedback })
-  mockProjectsGet.mockResolvedValue({
-    empty: false,
-    docs: [{ data: () => ({ title: 'Sample Cafe', github_repo: 'nicolovejoy/sample-cafe' }) }],
+  mockCollectionNames.length = 0
+  mockAppDocGet.mockResolvedValue({
+    exists: true,
+    id: 'sample-cafe',
+    data: () => ({ name: 'Sample Cafe', github_repo: 'nicolovejoy/sample-cafe' }),
   })
+  mockAppLegacyGet.mockResolvedValue({ empty: true, docs: [] })
   vi.spyOn(globalThis, 'fetch').mockResolvedValue(
     new Response(
       JSON.stringify({ number: 7, html_url: 'https://github.com/nicolovejoy/sample-cafe/issues/7' }),
@@ -109,25 +116,48 @@ describe('POST /api/admin/feedback/[id]/to-github', () => {
     expect(mockDocUpdate).not.toHaveBeenCalled()
   })
 
-  it('returns 404 when the project no longer exists', async () => {
-    mockProjectsGet.mockResolvedValueOnce({ empty: true, docs: [] })
+  it('404 Unknown app when no app matches the feedback slug', async () => {
+    mockAppDocGet.mockResolvedValueOnce({ exists: false, data: () => undefined })
     const res = await POST(makeReq(), { params })
     expect(res.status).toBe(404)
+    expect((await res.json()).error).toBe('Unknown app')
   })
 
-  it('returns 400 when project has no github_repo set', async () => {
-    mockProjectsGet.mockResolvedValueOnce({
-      empty: false,
-      docs: [{ data: () => ({ title: 'X' }) }],
-    })
+  it('400 when the app has no github_repo', async () => {
+    mockAppDocGet.mockResolvedValueOnce({ exists: true, id: 'sample-cafe', data: () => ({ name: 'X' }) })
     const res = await POST(makeReq(), { params })
     expect(res.status).toBe(400)
+    expect((await res.json()).error).toBe('App has no github_repo set')
+    // Never falls through to a projects lookup (would 500/404 for app-only slugs).
+    expect(mockCollectionNames).not.toContain('projects')
+  })
+
+  it('resolves a legacy slug stored on older feedback rows', async () => {
+    mockAppDocGet.mockResolvedValueOnce({ exists: false, data: () => undefined })
+    mockAppLegacyGet.mockResolvedValueOnce({
+      empty: false,
+      docs: [{ id: 'sample-cafe', data: () => ({ name: 'Sample Cafe', github_repo: 'nicolovejoy/sample-cafe' }) }],
+    })
+    const res = await POST(makeReq(), { params })
+    expect(res.status).toBe(200)
+  })
+
+  it('issue title uses apps.name', async () => {
+    mockAppDocGet.mockResolvedValueOnce({
+      exists: true,
+      id: 'sample-cafe',
+      data: () => ({ name: 'The Sample Cafe App', github_repo: 'nicolovejoy/sample-cafe' }),
+    })
+    await POST(makeReq(), { params })
+    const [, init] = vi.mocked(globalThis.fetch).mock.calls[0] as [string, RequestInit]
+    expect(JSON.parse(init.body as string).body).toContain('The Sample Cafe App')
   })
 
   it('returns 400 when github_repo is malformed', async () => {
-    mockProjectsGet.mockResolvedValueOnce({
-      empty: false,
-      docs: [{ data: () => ({ title: 'X', github_repo: 'not-a-repo' }) }],
+    mockAppDocGet.mockResolvedValueOnce({
+      exists: true,
+      id: 'sample-cafe',
+      data: () => ({ name: 'X', github_repo: 'not-a-repo' }),
     })
     const res = await POST(makeReq(), { params })
     expect(res.status).toBe(400)

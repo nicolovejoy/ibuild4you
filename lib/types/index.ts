@@ -63,11 +63,7 @@ export interface Project extends BaseEntity {
   session_mode?: 'discover' | 'converge' // current operating mode (default: discover)
   slug?: string // URL-friendly identifier derived from title
   identity?: string // custom agent identity/persona (overrides default)
-  github_repo?: string // "owner/name" — destination for FeedbackWidget "Convert to GitHub Issue"
-  // #150: reject fully-anonymous widget submissions when true. Default (undefined)
-  // = off, existing behavior. "Verified" = a valid #149 host identityAssertion OR
-  // a valid ibuild4you Firebase Bearer — a merely-typed email never satisfies this.
-  feedback_requires_identity?: boolean
+  github_repo?: string // "owner/name" — the brief's codebase, for sibling decisions (#142)
   // Language the maker is addressed in (agent replies, outbound copy, link
   // previews). Absent = English. The brief content itself stays English.
   language?: Locale

@@ -331,7 +331,6 @@ export function useUpdateProject() {
       identity?: string
       auto_reminders_enabled?: boolean
       github_repo?: string
-      feedback_requires_identity?: boolean
       language?: import('@/lib/locale').Locale
       hide_title_in_previews?: boolean
     }) => {

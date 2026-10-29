@@ -71,7 +71,7 @@ or nothing). If a host app has real login and wants attributed feedback, its
 **server** can sign a short-lived assertion vouching for the logged-in user's
 email and hand it to the widget as the `identityAssertion` prop/field — the
 widget never signs anything itself. Verified submissions bypass the rate
-limit and, if the project turns on `feedback_requires_identity` (#150),
+limit and, if the app turns on `feedback_requires_identity` (#150; `apps.feedback_requires_identity`, set at `/admin/apps/<slug>`),
 unverified submissions are rejected outright.
 
 The token format, freshness rules, and verification contract are documented

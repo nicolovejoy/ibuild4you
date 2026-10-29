@@ -88,8 +88,8 @@ present in the body. On failure (bad signature, expired, wrong project,
 unknown kid, malformed) the assertion is silently ignored — the submission
 falls back to whatever `submitterEmail` was typed (or anonymous) and is
 **not** treated as verified. An invalid token never fails the submission by
-itself, EXCEPT when the target project has `feedback_requires_identity: true`
-(#150) — then an unverified submission (typed email or none) is rejected
+itself, EXCEPT when the target app has `feedback_requires_identity: true`
+(`apps.feedback_requires_identity`, set at `/admin/apps/<slug>`; #150) — then an unverified submission (typed email or none) is rejected
 with `403`.
 
 **Rate-limit bypass.** A *verified* submission (valid token, or a valid
@@ -136,8 +136,8 @@ that predate it ignore it.
    anonymous — they don't fail the submission. A valid Bearer counts as
    "verified" for both the rate-limit bypass and #150's
    `feedback_requires_identity` gate — same as a valid `identityAssertion`.
-6. **`feedback_requires_identity` (#150).** When the target project has this
-   flag set `true`, a submission that isn't verified (no valid
+6. **`feedback_requires_identity` (#150).** When the target app has this
+   flag set `true` (`apps.feedback_requires_identity`, set at `/admin/apps/<slug>`), a submission that isn't verified (no valid
    `identityAssertion` and no valid Bearer — a merely-typed
    `submitterEmail` does not count) is rejected with `403`. Default (flag
    absent) is unchanged behavior — anonymous submissions allowed.

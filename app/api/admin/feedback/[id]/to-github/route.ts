@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server'
 import { getAuthenticatedUser, getAdminDb, hasSystemRole } from '@/lib/api/firebase-server-helpers'
 import { buildGithubIssue, createGithubIssue, parseGithubRepo } from '@/lib/feedback/github'
+import { findAppBySlug } from '@/lib/api/apps'
 import type { Feedback } from '@/lib/types'
 
 // POST /api/admin/feedback/[id]/to-github — admin-only.
 //
-// Creates a GitHub issue from the feedback in the project's `github_repo`,
+// Creates a GitHub issue from the feedback in the app's `github_repo`,
 // stores the issue URL on the feedback doc, and returns the updated feedback.
 // Idempotent: if `github_issue_url` is already set, returns it without
 // hitting GitHub a second time.
@@ -45,35 +46,27 @@ export async function POST(
     return NextResponse.json(feedback)
   }
 
-  // Look up the project by slug — feedback.project_id stores the slug.
-  const projectSnap = await db
-    .collection('projects')
-    .where('slug', '==', feedback.project_id)
-    .limit(1)
-    .get()
-  if (projectSnap.empty) {
-    return NextResponse.json({ error: 'Project not found' }, { status: 404 })
+  // feedback.project_id holds an app slug (canonical for new rows; older rows
+  // may hold a legacy slug, which findAppBySlug also resolves).
+  const app = await findAppBySlug(db, feedback.project_id)
+  if (!app) {
+    return NextResponse.json({ error: 'Unknown app' }, { status: 404 })
   }
-  const projectDoc = projectSnap.docs[0]
-  const project = projectDoc.data() as { title?: string; github_repo?: string }
 
-  if (!project.github_repo) {
-    return NextResponse.json(
-      { error: 'Project has no github_repo set' },
-      { status: 400 }
-    )
+  if (!app.github_repo) {
+    return NextResponse.json({ error: 'App has no github_repo set' }, { status: 400 })
   }
-  const repo = parseGithubRepo(project.github_repo)
+  const repo = parseGithubRepo(app.github_repo)
   if (!repo) {
     return NextResponse.json(
-      { error: `Invalid github_repo: ${project.github_repo}` },
+      { error: `Invalid github_repo: ${app.github_repo}` },
       { status: 400 }
     )
   }
 
   const issuePayload = buildGithubIssue({
     feedback,
-    projectTitle: project.title || feedback.project_id,
+    projectTitle: app.name || feedback.project_id,
   })
 
   let issue: { url: string; number: number }
