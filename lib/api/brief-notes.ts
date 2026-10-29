@@ -6,6 +6,12 @@
 import type { Firestore } from 'firebase-admin/firestore'
 import type { BriefNote, PrepStamp } from '@/lib/types'
 
+// Firestore throws synchronously on these doc ids; note ids can come from an
+// untrusted pasted payload, so screen them first.
+export function isValidNoteId(id: unknown): id is string {
+  return typeof id === 'string' && id !== '' && !id.includes('/') && !/^__.*__$/.test(id)
+}
+
 function notesRef(db: Firestore, briefId: string) {
   return db.collection('briefs').doc(briefId).collection('notes')
 }
@@ -39,6 +45,7 @@ export async function foldNotes(
 ): Promise<void> {
   const ref = notesRef(db, briefId)
   for (const id of noteIds) {
+    if (!isValidNoteId(id)) continue
     const snap = await ref.doc(id).get()
     if (!snap.exists) continue
     if ((snap.data() as { folded_at?: string | null }).folded_at) continue
@@ -63,6 +70,6 @@ export function parsePrepStamp(raw: unknown): PrepStamp | null {
   if (!raw || typeof raw !== 'object') return null
   const { brief_version, note_ids } = raw as Record<string, unknown>
   if (typeof brief_version !== 'number' || !Number.isInteger(brief_version) || brief_version < 0) return null
-  if (!Array.isArray(note_ids) || !note_ids.every((x) => typeof x === 'string')) return null
+  if (!Array.isArray(note_ids) || !note_ids.every(isValidNoteId)) return null
   return { brief_version, note_ids: note_ids as string[] }
 }
