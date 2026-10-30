@@ -209,6 +209,22 @@ export async function getAuthenticatedUser(request: Request): Promise<AuthSucces
     }
   }
 
+  // An unconfirmed address proves nothing about who holds it: with public
+  // sign-up on, anyone can create an email/password account for an address
+  // that Garm (or a project_members row) already trusts but that has never
+  // signed in, and every check below keys on the email. Google sign-ins carry
+  // email_verified: true; password accounts get it once the owner completes a
+  // password-setup or reset link (audit 2026-10-30: every real password
+  // account was already verified). Refuse before any email-keyed lookup.
+  if (decoded.email_verified !== true) {
+    console.warn('[auth] email_unverified')
+    return {
+      uid: null,
+      email: null,
+      error: NextResponse.json({ error: 'email_unverified' }, { status: 403 }),
+    }
+  }
+
   const uid = decoded.uid
   // Normalize at the token boundary (#155) — every downstream auth.email
   // consumer (isAdminEmail, getProjectRole, project_members writes, ...)

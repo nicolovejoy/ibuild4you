@@ -26,6 +26,8 @@ export default function NotApprovedPage() {
     )
   }
 
+  const unverified = !user.emailVerified
+
   const handleSignOut = async () => {
     await signOut()
     router.push('/auth/login')
@@ -35,8 +37,15 @@ export default function NotApprovedPage() {
     <div className="min-h-screen bg-brand-cream flex items-center justify-center px-4">
       <div className="max-w-md text-center space-y-6">
         <Clock className="h-16 w-16 text-brand-slate mx-auto" />
-        <h1 className="text-2xl font-bold text-brand-charcoal">{t.title}</h1>
-        <p className="text-brand-slate">{t.message(user.email ?? '')}</p>
+        {/* An unconfirmed address is refused by every API route (403
+            email_unverified), which lands here; say what fixes it instead of
+            "not approved yet". */}
+        <h1 className="text-2xl font-bold text-brand-charcoal">
+          {unverified ? t.unverifiedTitle : t.title}
+        </h1>
+        <p className="text-brand-slate">
+          {unverified ? t.unverifiedMessage(user.email ?? '') : t.message(user.email ?? '')}
+        </p>
         <p className="text-sm text-brand-slate">{t.wrongAccount}</p>
         <div className="flex items-center justify-center gap-3">
           <Button variant="primary" onClick={handleSignOut}>

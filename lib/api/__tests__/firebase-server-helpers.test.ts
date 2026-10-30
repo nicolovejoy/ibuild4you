@@ -48,8 +48,18 @@ vi.mock('@/lib/firebase/admin', () => ({
 import { getAdminAuth, getAdminDb } from '@/lib/firebase/admin'
 
 // Helper: set up getAdminAuth mock with a verifyIdToken that resolves to given claims
-function mockToken(claims: { uid: string; email: string; name?: string }) {
-  const mockVerify = vi.fn().mockResolvedValue(claims)
+// claims. email_verified defaults to true (a Google sign-in or a confirmed
+// password account); pass false or null to model an unconfirmed address.
+function mockToken(claims: {
+  uid: string
+  email: string
+  name?: string
+  email_verified?: boolean | null
+}) {
+  const { email_verified = true, ...rest } = claims
+  const mockVerify = vi
+    .fn()
+    .mockResolvedValue(email_verified === null ? rest : { ...rest, email_verified })
   vi.mocked(getAdminAuth).mockReturnValue({ verifyIdToken: mockVerify } as never)
   return mockVerify
 }
@@ -507,6 +517,27 @@ describe('getAuthenticatedUser', () => {
     const result = await getAuthenticatedUser(request)
     expect(result.error).not.toBeNull()
     expect(result.error!.status).toBe(401)
+  })
+
+  it('refuses an unconfirmed address with 403 email_unverified, before any lookup', async () => {
+    mockToken({ uid: 'squatter', email: 'maker@example.com', email_verified: false })
+    const result = await getAuthenticatedUser(authedRequest())
+    expect(result.error!.status).toBe(403)
+    expect(await result.error!.json()).toEqual({ error: 'email_unverified' })
+    expect(result.uid).toBeNull()
+    expect(resolveCanonicalEmail).not.toHaveBeenCalled()
+  })
+
+  it('refuses a token with no email_verified claim at all', async () => {
+    mockToken({ uid: 'no-claim', email: 'maker@example.com', email_verified: null })
+    const result = await getAuthenticatedUser(authedRequest())
+    expect(result.error!.status).toBe(403)
+  })
+
+  it('refuses an unconfirmed address even for the admin email', async () => {
+    mockToken({ uid: 'fake-admin', email: 'nlovejoy@me.com', email_verified: false })
+    const result = await getAuthenticatedUser(authedRequest())
+    expect(result.error!.status).toBe(403)
   })
 
   it('returns 401 for an invalid token', async () => {

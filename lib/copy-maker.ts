@@ -82,6 +82,8 @@ const en = {
     title: copy.auth.notApprovedTitle,
     message: copy.auth.notApprovedMessage,
     wrongAccount: copy.auth.notApprovedWrongAccount,
+    unverifiedTitle: copy.auth.unverifiedTitle,
+    unverifiedMessage: copy.auth.unverifiedMessage,
   },
   dashboard: {
     title: copy.dashboard.title,
@@ -266,6 +268,9 @@ const fr: MakerCopy = {
     message: (email: string) =>
       `Merci de votre inscription. Votre compte (${email}) n’est pas encore approuvé. Nous vous préviendrons dès que vous aurez accès.`,
     wrongAccount: 'Connecté avec le mauvais compte ? Déconnectez-vous et réessayez.',
+    unverifiedTitle: 'Confirmez votre adresse e-mail',
+    unverifiedMessage: (email: string) =>
+      `Nous n’avons pas pu confirmer que l’adresse ${email} est la vôtre. Déconnectez-vous, puis touchez « Mot de passe oublié ? » sur la page de connexion : définir un mot de passe depuis le lien reçu par e-mail confirme votre adresse.`,
   },
   dashboard: {
     title: 'Vos briefs',
