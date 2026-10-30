@@ -79,6 +79,15 @@ vi.mock('@/lib/firebase/admin', () => ({
   getAdminAuth: vi.fn(() => ({ verifyIdToken: mockVerifyIdToken })),
 }))
 
+const mockListAppGrants = vi.fn<(slug: string) => Promise<Array<{ email: string; role: string }>>>(
+  async () => []
+)
+let garmConfigured = true
+vi.mock('@/lib/garm-loop', () => ({
+  listAppGrants: (slug: string) => mockListAppGrants(slug),
+  loopGarmConfigured: () => garmConfigured,
+}))
+
 vi.mock('resend', () => ({
   Resend: vi.fn(() => ({ emails: { send: mockResendSend } })),
 }))
@@ -113,6 +122,8 @@ beforeEach(() => {
   vi.clearAllMocks()
   _resetRateLimit()
   appsStore = { 'sample-cafe': { ...SAMPLE_APP } }
+  garmConfigured = true
+  mockListAppGrants.mockResolvedValue([])
   mockFeedbackWhereGet.mockResolvedValue({ docs: [] })
   mockSecretGet.mockResolvedValue({ exists: false, data: () => undefined })
 })
@@ -145,11 +156,45 @@ describe('POST /api/feedback — validation', () => {
     expect(mockResendSend).toHaveBeenCalledOnce()
     const email = mockResendSend.mock.calls[0][0]
     expect(email.subject).toBe('[bug] Sample Cafe: Header is broken on mobile')
-    expect(email.text).toContain('Review: https://ibuild4you.com/admin/feedback?focus=feedback-1')
+    expect(email.text).toContain('Review: https://ibuild4you.com/admin/apps/sample-cafe?id=feedback-1')
     expect(email.text).toContain('From: sam@example.com')
     expect(email.html).toContain('<a href=')
     // Lone note → no burst suffix.
     expect(email.subject).not.toContain('note this session')
+  })
+
+  it("sends to NOTIFICATION_EMAILS plus the app's owners and collaborators, not viewers", async () => {
+    mockListAppGrants.mockResolvedValue([
+      { email: 'eric@x.com', role: 'owner' },
+      { email: 'v@x.com', role: 'viewer' },
+      { email: 'eric@x.com', role: 'collaborator' },
+    ])
+    await POST(makeRequest(validPayload()))
+    expect(mockListAppGrants).toHaveBeenCalledWith('sample-cafe')
+    expect(mockResendSend.mock.calls[0][0].to).toEqual(['nlovejoy@me.com', 'eric@x.com'])
+  })
+
+  it('falls back to NOTIFICATION_EMAILS when Garm throws', async () => {
+    mockListAppGrants.mockRejectedValue(new Error('down'))
+    await POST(makeRequest(validPayload()))
+    expect(mockResendSend.mock.calls[0][0].to).toEqual(['nlovejoy@me.com'])
+  })
+
+  it('falls back to NOTIFICATION_EMAILS when Garm is not configured', async () => {
+    garmConfigured = false
+    await POST(makeRequest(validPayload()))
+    expect(mockListAppGrants).not.toHaveBeenCalled()
+    expect(mockResendSend.mock.calls[0][0].to).toEqual(['nlovejoy@me.com'])
+  })
+
+  it('FEEDBACK_NOTIFY_SUPPRESS=on makes no Garm call', async () => {
+    process.env.FEEDBACK_NOTIFY_SUPPRESS = 'on'
+    try {
+      await POST(makeRequest(validPayload()))
+      expect(mockListAppGrants).not.toHaveBeenCalled()
+    } finally {
+      delete process.env.FEEDBACK_NOTIFY_SUPPRESS
+    }
   })
 
   it('FEEDBACK_NOTIFY_SUPPRESS=on skips the notification but still writes the doc', async () => {
