@@ -2,9 +2,10 @@ import { NextResponse } from 'next/server'
 import { getAuthenticatedUser, getAdminDb, hasSystemRole } from '@/lib/api/firebase-server-helpers'
 import { buildGithubIssue, createGithubIssue, parseGithubRepo } from '@/lib/feedback/github'
 import { findAppBySlug } from '@/lib/api/apps'
+import { requireFeedbackAccess } from '@/lib/api/feedback-access'
 import type { Feedback } from '@/lib/types'
 
-// POST /api/admin/feedback/[id]/to-github — admin-only.
+// POST /api/admin/feedback/[id]/to-github — admins and collaborators+ on the row's app.
 //
 // Creates a GitHub issue from the feedback in the app's `github_repo`,
 // stores the issue URL on the feedback doc, and returns the updated feedback.
@@ -16,10 +17,6 @@ export async function POST(
 ) {
   const auth = await getAuthenticatedUser(request)
   if (auth.error) return auth.error
-  if (!hasSystemRole(auth, 'admin')) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
-
   const { id } = await params
   if (!id) {
     return NextResponse.json({ error: 'id is required' }, { status: 400 })
@@ -40,6 +37,8 @@ export async function POST(
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
   const feedback = { id, ...(snap.data() as Omit<Feedback, 'id'>) } as Feedback
+  const denied = await requireFeedbackAccess(auth, feedback.project_id)
+  if (denied) return denied
 
   // Idempotent: don't double-post.
   if (feedback.github_issue_url) {

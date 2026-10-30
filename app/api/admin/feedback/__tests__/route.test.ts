@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { NextResponse } from 'next/server'
 import { GET } from '../route'
 
 // =============================================================================
@@ -42,6 +43,11 @@ vi.mock('@/lib/api/apps', () => ({
   findAppBySlug: (...args: unknown[]) => mockFindAppBySlug(...args),
 }))
 
+const mockRequireFeedbackAccess = vi.fn()
+vi.mock('@/lib/api/feedback-access', () => ({
+  requireFeedbackAccess: (...args: unknown[]) => mockRequireFeedbackAccess(...args),
+}))
+
 const adminAuth = { uid: 'u1', email: 'admin@x.com', systemRoles: ['admin'], error: null }
 
 beforeEach(() => {
@@ -50,6 +56,7 @@ beforeEach(() => {
   orderByCall = null
   mockGetAuthenticatedUser.mockResolvedValue(adminAuth)
   mockHasSystemRole.mockReturnValue(true)
+  mockRequireFeedbackAccess.mockResolvedValue(null)
   mockFindAppBySlug.mockResolvedValue(null)
 })
 
@@ -66,10 +73,29 @@ describe('GET /api/admin/feedback', () => {
     expect(res.status).toBe(401)
   })
 
-  it('returns 403 for non-admins', async () => {
-    mockHasSystemRole.mockReturnValueOnce(false)
+  it('returns 403 for a non-admin who names no app', async () => {
+    mockHasSystemRole.mockReturnValue(false)
     const res = await GET(makeReq())
     expect(res.status).toBe(403)
+    expect(mockRequireFeedbackAccess).not.toHaveBeenCalled()
+  })
+
+  it('returns 403 for a non-admin without access to the app', async () => {
+    mockHasSystemRole.mockReturnValue(false)
+    mockRequireFeedbackAccess.mockResolvedValue(NextResponse.json({ error: 'Forbidden' }, { status: 403 }))
+    const res = await GET(makeReq('?projectId=byside'))
+    expect(res.status).toBe(403)
+    expect(mockGet).not.toHaveBeenCalled()
+  })
+
+  it('lists an app\'s feedback for a non-admin collaborator', async () => {
+    mockHasSystemRole.mockReturnValue(false)
+    mockFindAppBySlug.mockResolvedValue({ slug: 'byside', legacy_slugs: ['old-byside'] })
+    mockGet.mockResolvedValue({ docs: [] })
+    const res = await GET(makeReq('?projectId=byside'))
+    expect(res.status).toBe(200)
+    expect(mockRequireFeedbackAccess).toHaveBeenCalledWith(expect.anything(), 'byside')
+    expect(whereCalls).toContainEqual({ field: 'project_id', op: '==', value: 'old-byside' })
   })
 
   it('returns all feedback ordered by created_at desc when no filters', async () => {
