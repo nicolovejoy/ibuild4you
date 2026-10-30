@@ -164,6 +164,21 @@ describe('PATCH /api/admin/feedback/[id]', () => {
     expect(mockResendSend).not.toHaveBeenCalled()
   })
 
+  it('rejects a github_issue_url that is not https://github.com/, even for an admin', async () => {
+    for (const u of ['javascript:alert(1)', 'http://github.com/x/y/issues/1', 'https://evil.com/github.com/']) {
+      const res = await PATCH(makeReq({ github_issue_url: u }), { params })
+      expect(res.status).toBe(400)
+      expect(await res.json()).toEqual({ error: 'github_issue_url must be a https://github.com/ URL' })
+    }
+    expect(mockUpdate).not.toHaveBeenCalled()
+  })
+
+  it('allows clearing github_issue_url with null', async () => {
+    const res = await PATCH(makeReq({ github_issue_url: null }), { params })
+    expect(res.status).toBe(200)
+    expect(mockUpdate.mock.calls[0][0].github_issue_url).toBeNull()
+  })
+
   it('allows clearing internal_notes with null', async () => {
     const res = await PATCH(makeReq({ internal_notes: null }), { params })
     expect(res.status).toBe(200)

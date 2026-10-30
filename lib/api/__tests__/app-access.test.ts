@@ -2,16 +2,32 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { AuthSuccess } from '@/lib/api/firebase-server-helpers'
 import { appAccessFor, requireAppAccess, accessibleApps, hasAnyAppAccess } from '../app-access'
 
+import { GarmLoopError } from '@/lib/garm-loop'
+
+// mockLoopCheck answers loopCheckResult: 'allowed' | 'denied' | 'error'.
 const mockLoopCheck = vi.fn()
 const mockListGrants = vi.fn()
 const mockBypassed = vi.fn()
 const mockConfigured = vi.fn()
-vi.mock('@/lib/garm-loop', () => ({
-  loopCheck: (...a: unknown[]) => mockLoopCheck(...a),
-  listGrantsForEmail: (...a: unknown[]) => mockListGrants(...a),
-  loopGarmBypassed: () => mockBypassed(),
-  loopGarmConfigured: () => mockConfigured(),
-}))
+vi.mock('@/lib/garm-loop', () => {
+  class GarmLoopError extends Error {
+    status: number | null
+    code: string | null
+    constructor(m: string, status: number | null, code: string | null = null) {
+      super(m)
+      this.status = status
+      this.code = code
+    }
+  }
+  return {
+    GarmLoopError,
+    loopCheckResult: (...a: unknown[]) => mockLoopCheck(...a),
+    loopCheck: async (...a: unknown[]) => (await mockLoopCheck(...a)) === 'allowed',
+    listGrantsForEmail: (...a: unknown[]) => mockListGrants(...a),
+    loopGarmBypassed: () => mockBypassed(),
+    loopGarmConfigured: () => mockConfigured(),
+  }
+})
 
 let store: Map<string, Record<string, unknown>>
 vi.mock('@/lib/api/firebase-server-helpers', () => ({
@@ -31,10 +47,10 @@ vi.mock('@/lib/api/firebase-server-helpers', () => ({
 const admin = { email: 'a@x.com', systemRoles: ['admin'] } as unknown as AuthSuccess
 const user = { email: 'u@x.com', systemRoles: [] } as unknown as AuthSuccess
 
-// loopCheck(email, slug, min) answers from a table of "slug:min" -> boolean.
+// loopCheckResult(email, slug, min) answers from a table of "slug:min" -> allowed.
 function allow(...keys: string[]) {
   mockLoopCheck.mockImplementation(async (_e: string, slug: string, min: string) =>
-    keys.includes(`${slug}:${min}`)
+    keys.includes(`${slug}:${min}`) ? 'allowed' : 'denied'
   )
 }
 
@@ -43,7 +59,7 @@ beforeEach(() => {
   store = new Map()
   mockBypassed.mockReturnValue(false)
   mockConfigured.mockReturnValue(true)
-  mockLoopCheck.mockResolvedValue(false)
+  mockLoopCheck.mockResolvedValue('denied')
 })
 
 describe('appAccessFor', () => {
@@ -65,6 +81,16 @@ describe('appAccessFor', () => {
     mockConfigured.mockReturnValue(false)
     expect(await appAccessFor(user, 'a')).toBeNull()
   })
+  it('throws GarmLoopError when a check errors (outage, not a refusal)', async () => {
+    mockLoopCheck.mockResolvedValue('error')
+    await expect(appAccessFor(user, 'a')).rejects.toBeInstanceOf(GarmLoopError)
+  })
+  it('throws when the owner check is denied and the collaborator check errors', async () => {
+    mockLoopCheck.mockImplementation(async (_e: string, _s: string, min: string) =>
+      min === 'owner' ? 'denied' : 'error'
+    )
+    await expect(appAccessFor(user, 'a')).rejects.toBeInstanceOf(GarmLoopError)
+  })
 })
 
 describe('requireAppAccess', () => {
@@ -78,6 +104,12 @@ describe('requireAppAccess', () => {
   })
   it('always allows an admin', async () => {
     expect(await requireAppAccess(admin, 'a', 'owner')).toBeNull()
+  })
+  it('503s garm_unavailable when Garm errors', async () => {
+    mockLoopCheck.mockResolvedValue('error')
+    const res = await requireAppAccess(user, 'a', 'collaborator')
+    expect(res?.status).toBe(503)
+    expect(await res?.json()).toEqual({ error: 'garm_unavailable' })
   })
 })
 
@@ -108,9 +140,14 @@ describe('accessibleApps', () => {
     allow()
     expect(await accessibleApps(user)).toEqual([])
   })
-  it('returns [] when the grants list throws', async () => {
-    mockListGrants.mockRejectedValue(new Error('down'))
-    expect(await accessibleApps(user)).toEqual([])
+  it('throws GarmLoopError when the grants list throws', async () => {
+    mockListGrants.mockRejectedValue(new GarmLoopError('down', null))
+    await expect(accessibleApps(user)).rejects.toBeInstanceOf(GarmLoopError)
+  })
+  it('throws GarmLoopError when a check errors', async () => {
+    mockListGrants.mockResolvedValue([{ project: 'tideline', role: 'owner' }])
+    mockLoopCheck.mockResolvedValue('error')
+    await expect(accessibleApps(user)).rejects.toBeInstanceOf(GarmLoopError)
   })
 })
 
@@ -124,6 +161,11 @@ describe('hasAnyAppAccess', () => {
   })
   it('is false when listing throws', async () => {
     mockListGrants.mockRejectedValue(new Error('down'))
+    expect(await hasAnyAppAccess('u@x.com')).toBe(false)
+  })
+  it('is false (never throws) when a check errors', async () => {
+    mockListGrants.mockResolvedValue([{ project: 'tideline', role: 'collaborator' }])
+    mockLoopCheck.mockResolvedValue('error')
     expect(await hasAnyAppAccess('u@x.com')).toBe(false)
   })
   it('is true for a collaborator grant on an app with a row whose check passes', async () => {

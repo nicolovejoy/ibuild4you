@@ -10,12 +10,21 @@ import {
 } from '@/lib/garm-loop'
 
 // GET /api/admin/apps — the Loop apps the caller can see, sorted by name, each
-// with their `access`. Admins see all; others only apps Garm grants them ([] if none).
+// with their `access`. Admins see all; others only apps Garm grants them ([] if
+// none). Garm down is a 503 garm_unavailable, never an empty list.
 export async function GET(request: Request) {
   const auth = await getAuthenticatedUser(request)
   if (auth.error) return auth.error
 
-  const rows = await accessibleApps(auth)
+  let rows: Awaited<ReturnType<typeof accessibleApps>>
+  try {
+    rows = await accessibleApps(auth)
+  } catch (err) {
+    if (err instanceof GarmLoopError) {
+      return NextResponse.json({ error: 'garm_unavailable' }, { status: 503 })
+    }
+    throw err
+  }
   return NextResponse.json({ apps: rows.map(({ app, access }) => ({ ...app, access })) })
 }
 

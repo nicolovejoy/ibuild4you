@@ -15,7 +15,8 @@ import type { App } from '@/lib/types'
 const t = copy.adminApps
 
 // One Loop app: settings (admins), its feedback (anyone with access) and its
-// admin list (owners). The API decides access; a 403 sends the caller home. `?id=<feedbackId>` deep-links to one item in the list.
+// admin list (owners). The API decides access; a 403 sends the caller home, a 503 says Garm is down.
+// `?id=<feedbackId>` deep-links to one item in the list.
 export default function AppAdminPage() {
   const { slug } = useParams<{ slug: string }>()
   const { user, loading: authLoading, isAuthenticated } = useAuth()
@@ -48,6 +49,8 @@ function AppBody({ slug }: { slug: string }) {
   const { data: app, isLoading, error } = useApp(slug)
   const router = useRouter()
   const forbidden = error instanceof HttpError && error.status === 403
+  // Garm down: say so and stay put (no redirect, it is not a refusal).
+  const garmDown = error instanceof HttpError && error.status === 503
 
   useEffect(() => {
     if (forbidden) router.push('/dashboard')
@@ -58,7 +61,14 @@ function AppBody({ slug }: { slug: string }) {
       <SectionHeader backHref="/admin/apps" title={app?.name ?? slug} />
       <main className="max-w-5xl mx-auto px-4 py-6 space-y-6">
         {isLoading && <div className="text-center text-gray-400 py-6">{copy.loading}</div>}
-        {error && !forbidden && <div className="text-center text-red-500 py-6">{t.notFound}</div>}
+        {garmDown && (
+          <div role="alert" className="text-center text-red-500 py-6">
+            {t.errorGarmDown}
+          </div>
+        )}
+        {error && !forbidden && !garmDown && (
+          <div className="text-center text-red-500 py-6">{t.notFound}</div>
+        )}
         {app && (
           <>
             {app.access === 'admin' && <SettingsForm app={app} />}

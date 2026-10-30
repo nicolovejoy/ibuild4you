@@ -11,13 +11,15 @@ const dateFmt = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Los_Angele
 function errorText(err: unknown): string {
   if (err instanceof HttpError) {
     if (err.message === 'last_owner') return t.errorLastOwner
+    if (err.message === 'alias') return t.errorAlias
     if (err.status === 403) return t.errorNotOwner
     if (err.status === 502 || err.status === 503) return t.errorGarmDown
   }
   return t.errorGeneric
 }
 
-// An app's admin list. Read live from Garm on every load; nothing is kept here.
+// An app's admin list. Read live from Garm on every load; nothing is stored
+// server-side; the browser holds the list only while the page renders it.
 export function ManageAdmins({ slug }: { slug: string }) {
   const { data: admins, isLoading, error } = useAppAdmins(slug)
   const grant = useGrantAppAdmin(slug)
@@ -78,7 +80,11 @@ export function ManageAdmins({ slug }: { slug: string }) {
               <tr key={a.email} className="border-b border-gray-50 last:border-0">
                 <td className="px-3 py-2 text-brand-charcoal">{a.email}</td>
                 <td className="px-3 py-2 text-xs">
-                  {a.role === 'owner' ? t.roleOwner : t.roleCollaborator}
+                  {a.role === 'owner'
+                    ? t.roleOwner
+                    : a.role === 'viewer'
+                      ? t.roleViewer
+                      : t.roleCollaborator}
                 </td>
                 <td className="px-3 py-2 text-xs text-gray-500">
                   {a.created_at ? dateFmt.format(new Date(a.created_at)) : '—'}

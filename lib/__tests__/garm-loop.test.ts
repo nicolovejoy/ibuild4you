@@ -4,6 +4,7 @@ import {
   loopGarmConfigured,
   loopGarmBypassed,
   loopCheck,
+  loopCheckResult,
   listGrantsForEmail,
   listDelegableApps,
   listAppGrants,
@@ -104,6 +105,36 @@ describe('loopCheck', () => {
   })
 })
 
+describe('loopCheckResult', () => {
+  it("is 'allowed' on allowed:true", async () => {
+    vi.stubGlobal('fetch', mockFetch({ allowed: true }))
+    expect(await loopCheckResult('a@b.com', 'tideline', 'owner')).toBe('allowed')
+  })
+  it("is 'denied' on allowed:false", async () => {
+    vi.stubGlobal('fetch', mockFetch({ allowed: false, role: null }))
+    expect(await loopCheckResult('a@b.com', 'tideline', 'owner')).toBe('denied')
+  })
+  it("is 'error' on a 500", async () => {
+    vi.stubGlobal('fetch', mockFetch({ error: 'boom' }, 500))
+    expect(await loopCheckResult('a@b.com', 'tideline', 'owner')).toBe('error')
+  })
+  it("is 'error' on a timeout", async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('timeout') }))
+    expect(await loopCheckResult('a@b.com', 'tideline', 'owner')).toBe('error')
+  })
+  it("is 'error' when unconfigured, with no fetch", async () => {
+    delete process.env.GARM_LOOP_KEY
+    const f = vi.fn()
+    vi.stubGlobal('fetch', f)
+    expect(await loopCheckResult('a@b.com', 'tideline', 'owner')).toBe('error')
+    expect(f).not.toHaveBeenCalled()
+  })
+  it("is 'error' on an off-shape body", async () => {
+    vi.stubGlobal('fetch', mockFetch({ nope: 1 }))
+    expect(await loopCheckResult('a@b.com', 'tideline', 'owner')).toBe('error')
+  })
+})
+
 describe('listGrantsForEmail', () => {
   it('normalizes and encodes the email, returns grants', async () => {
     const grants = [{ project: 'tideline', role: 'owner' }]
@@ -183,7 +214,32 @@ describe('grantOnApp', () => {
 
   it('throws status 409', async () => {
     vi.stubGlobal('fetch', mockFetch({}, 409))
-    await expect(grantOnApp('o@x.com', 't', 'n@x.com', 'owner')).rejects.toMatchObject({ status: 409 })
+    await expect(grantOnApp('o@x.com', 't', 'n@x.com', 'owner')).rejects.toMatchObject({
+      status: 409,
+      code: null,
+    })
+  })
+
+  it("maps Garm's alias 409 to code 'alias'", async () => {
+    vi.stubGlobal(
+      'fetch',
+      mockFetch({ error: 'email is an alias; grant to its canonical address instead' }, 409)
+    )
+    await expect(grantOnApp('o@x.com', 't', 'n@x.com', 'owner')).rejects.toMatchObject({
+      status: 409,
+      code: 'alias',
+    })
+  })
+
+  it("maps Garm's last-owner 409 to code 'last_owner'", async () => {
+    vi.stubGlobal(
+      'fetch',
+      mockFetch({ error: 'this would leave t without an owner; grant another owner first' }, 409)
+    )
+    await expect(grantOnApp('o@x.com', 't', 'n@x.com', 'collaborator')).rejects.toMatchObject({
+      status: 409,
+      code: 'last_owner',
+    })
   })
 
   it('throws status 403', async () => {

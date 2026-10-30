@@ -8,6 +8,7 @@ import { useState, useEffect } from 'react'
 import type { User as FirebaseUser } from 'firebase/auth'
 import { useQueryClient } from '@tanstack/react-query'
 import { useApps, useCurrentUser, useUpdateCurrentUser } from '@/lib/query/hooks'
+import { useApproval } from '@/lib/hooks/useApproval'
 import { SetPasswordModal } from '@/components/SetPasswordModal'
 import { useMakerCopy } from '@/components/locale-context'
 import { copy } from '@/lib/copy'
@@ -20,12 +21,16 @@ export function UserMenu() {
   const [showSetPassword, setShowSetPassword] = useState(false)
   const router = useRouter()
   const queryClient = useQueryClient()
-  const { data: currentUser } = useCurrentUser()
+  const { data: currentUser, isSuccess: currentUserLoaded } = useCurrentUser()
+  const { approved } = useApproval()
   const updateUser = useUpdateCurrentUser()
   const isAdmin = currentUser?.system_roles?.includes('admin') ?? false
   const t = useMakerCopy().common
-  // Non-admins who own or collaborate on a Loop app get a link to it.
-  const { data: myApps } = useApps({ enabled: !!user && !isAdmin })
+  // Non-admins who own or collaborate on a Loop app get a link to it. Only ask
+  // once signed in, approved and known not to be an admin; a failure shows nothing.
+  const { data: myApps } = useApps({
+    enabled: !!user && approved === true && currentUserLoaded && !isAdmin,
+  })
   const hasApps = !isAdmin && (myApps?.length ?? 0) > 0
 
   useEffect(() => {

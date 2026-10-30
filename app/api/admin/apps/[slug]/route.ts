@@ -1,19 +1,29 @@
 import { NextResponse } from 'next/server'
 import { getAuthenticatedUser, getAdminDb, hasSystemRole } from '@/lib/api/firebase-server-helpers'
-import { appAccessFor } from '@/lib/api/app-access'
+import { appAccessFor, type AppAccess } from '@/lib/api/app-access'
+import { GarmLoopError } from '@/lib/garm-loop'
 import type { App } from '@/lib/types'
 import { FieldValue } from 'firebase-admin/firestore'
 
 type Ctx = { params: Promise<{ slug: string }> }
 
 // GET /api/admin/apps/[slug] — one app by its canonical slug, with the caller's
-// `access`. Admins, and people Garm grants on the app.
+// `access`. Admins, and people Garm grants on the app. Garm down is a 503
+// garm_unavailable, so the page can say so instead of treating it as a 403.
 export async function GET(request: Request, { params }: Ctx) {
   const auth = await getAuthenticatedUser(request)
   if (auth.error) return auth.error
 
   const { slug } = await params
-  const access = await appAccessFor(auth, slug)
+  let access: AppAccess
+  try {
+    access = await appAccessFor(auth, slug)
+  } catch (err) {
+    if (err instanceof GarmLoopError) {
+      return NextResponse.json({ error: 'garm_unavailable' }, { status: 503 })
+    }
+    throw err
+  }
   if (!access) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const doc = await getAdminDb().collection('apps').doc(slug).get()
   if (!doc.exists) return NextResponse.json({ error: 'App not found' }, { status: 404 })

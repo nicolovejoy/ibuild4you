@@ -2,8 +2,10 @@ import { NextResponse } from 'next/server'
 import type { App } from '@/lib/types'
 import { getAdminDb, hasSystemRole, type AuthSuccess } from '@/lib/api/firebase-server-helpers'
 import {
+  GarmLoopError,
   listGrantsForEmail,
   loopCheck,
+  loopCheckResult,
   loopGarmBypassed,
   loopGarmConfigured,
 } from '@/lib/garm-loop'
@@ -12,6 +14,11 @@ import {
 // Who may see or manage a Loop app. Garm decides: every grant is confirmed with
 // a /gnipahellir check (`loopCheck`), never by comparing role strings. System
 // admins keep full access regardless of Garm. Nothing is cached or stored here.
+//
+// A Garm outage is not a refusal: for non-admins the request-path helpers throw
+// GarmLoopError (requireAppAccess turns it into a 503 garm_unavailable) so the
+// UI can say Garm is down instead of showing "no apps". The sign-in gate
+// (hasAnyAppAccess) is the exception: any error there is simply false.
 // =============================================================================
 
 /** 'admin' means a system admin; owner/collaborator come from Garm. */
@@ -22,22 +29,39 @@ function garmUsable(): boolean {
   return loopGarmConfigured() && !loopGarmBypassed()
 }
 
-/** `slug` must be the canonical app slug. */
+/**
+ * `slug` must be the canonical app slug. Throws GarmLoopError when a check
+ * errors (Garm down). Bypassed/unconfigured is config, not an outage: null.
+ */
 export async function appAccessFor(auth: AuthSuccess, slug: string): Promise<AppAccess> {
   if (hasSystemRole(auth, 'admin')) return 'admin'
   if (!garmUsable()) return null
-  if (await loopCheck(auth.email, slug, 'owner')) return 'owner'
-  if (await loopCheck(auth.email, slug, 'collaborator')) return 'collaborator'
+  for (const role of ['owner', 'collaborator'] as const) {
+    const result = await loopCheckResult(auth.email, slug, role)
+    if (result === 'error') throw new GarmLoopError('garm check failed', null)
+    if (result === 'allowed') return role
+  }
   return null
 }
 
-/** null when allowed, else a 403. Owner satisfies a collaborator requirement. */
+/**
+ * null when allowed, else a 403 (or a 503 garm_unavailable when Garm is down).
+ * Owner satisfies a collaborator requirement.
+ */
 export async function requireAppAccess(
   auth: AuthSuccess,
   slug: string,
   min: 'owner' | 'collaborator'
 ): Promise<NextResponse | null> {
-  const access = await appAccessFor(auth, slug)
+  let access: AppAccess
+  try {
+    access = await appAccessFor(auth, slug)
+  } catch (err) {
+    if (err instanceof GarmLoopError) {
+      return NextResponse.json({ error: 'garm_unavailable' }, { status: 503 })
+    }
+    throw err
+  }
   const allowed =
     access === 'admin' ||
     access === 'owner' ||
@@ -46,9 +70,15 @@ export async function requireAppAccess(
 }
 
 // Slugs of the apps this email holds an owner/collaborator grant on AND that
-// have a Firestore row. Throws if Garm can't be listed.
+// have a Firestore row. Throws GarmLoopError if Garm can't be listed; a
+// Firestore error propagates as itself.
 async function candidateApps(email: string): Promise<App[]> {
-  const grants = await listGrantsForEmail(email)
+  let grants: Awaited<ReturnType<typeof listGrantsForEmail>>
+  try {
+    grants = await listGrantsForEmail(email)
+  } catch (err) {
+    throw err instanceof GarmLoopError ? err : new GarmLoopError('garm list failed', null)
+  }
   const slugs = [
     ...new Set(
       grants.filter((g) => g.role === 'owner' || g.role === 'collaborator').map((g) => g.project)
@@ -80,12 +110,8 @@ export async function accessibleApps(
   }
   if (!garmUsable()) return []
 
-  let candidates: App[]
-  try {
-    candidates = await candidateApps(auth.email)
-  } catch {
-    return []
-  }
+  // Throws GarmLoopError when Garm can't be listed or a check errors.
+  const candidates = await candidateApps(auth.email)
   const out: Array<{ app: App; access: Exclude<AppAccess, null> }> = []
   for (const app of candidates) {
     const access = await appAccessFor(auth, app.id)
@@ -94,7 +120,7 @@ export async function accessibleApps(
   return out.sort(byName)
 }
 
-/** For the sign-in gate, before there is an AuthSuccess. */
+/** For the sign-in gate, before there is an AuthSuccess. Never throws: any error is false. */
 export async function hasAnyAppAccess(email: string): Promise<boolean> {
   if (!garmUsable()) return false
   let candidates: App[]

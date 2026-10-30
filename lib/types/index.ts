@@ -247,7 +247,7 @@ export type AppWithAccess = App & { access: AppAccess }
 // One row of an app's admin list (read live from Garm, never stored here).
 export interface AppAdmin {
   email: string
-  role: 'owner' | 'collaborator'
+  role: 'owner' | 'collaborator' | 'viewer' // Garm lists every role on the app
   created_at?: string
   created_by?: string
 }

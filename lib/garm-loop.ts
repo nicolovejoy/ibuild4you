@@ -14,7 +14,8 @@ import { normalizeEmail } from '@/lib/email/normalize'
 // functions are for display and for choosing which apps to check.
 //
 // No copy of an admin list lives in this app: nothing here is cached, every
-// call asks Garm. Check failures deny (fail closed); list/write failures throw
+// call asks Garm. Check failures deny (fail closed) and report 'error' through
+// loopCheckResult so callers can say Garm is down; list/write failures throw
 // a GarmLoopError so the caller can show an honest "Garm is unreachable".
 // Garm contract: the garm repo's docs/apps.md ("Delegated endpoints") and
 // docs/consuming.md ("Listing an email's grants").
@@ -24,14 +25,34 @@ export type LoopRole = 'owner' | 'collaborator' | 'viewer'
 
 const TIMEOUT_MS = 2_000
 
+/**
+ * Which 409 Garm sent, read from its error text: `last_owner` (the write would
+ * leave the app with no owner) or `alias` (the target address is an alias).
+ * null for any other refusal, or any status but 409.
+ */
+export type GarmLoopErrorCode = 'last_owner' | 'alias' | null
+
 /** `status` is Garm's HTTP status, or null for timeout/network/unconfigured. */
 export class GarmLoopError extends Error {
   status: number | null
-  constructor(message: string, status: number | null) {
+  code: GarmLoopErrorCode
+  constructor(message: string, status: number | null, code: GarmLoopErrorCode = null) {
     super(message)
     this.name = 'GarmLoopError'
     this.status = status
+    this.code = code
   }
+}
+
+// Garm's two 409 messages on delegated writes (garm lib/handlers/delegated/writes.ts):
+//   "this would leave <slug> without an owner; grant another owner first"
+//   "email is an alias; grant to its canonical address instead"
+function conflictCode(body: unknown): GarmLoopErrorCode {
+  const text = (body as { error?: unknown } | null)?.error
+  if (typeof text !== 'string') return null
+  if (text.includes('without an owner')) return 'last_owner'
+  if (text.includes('is an alias')) return 'alias'
+  return null
 }
 
 export function loopGarmConfigured(): boolean {
@@ -72,7 +93,15 @@ async function garmRequest(
     throw new GarmLoopError('garm unreachable', null)
   }
   if (!okStatuses.includes(res.status)) {
-    throw new GarmLoopError(`garm returned ${res.status}`, res.status)
+    let code: GarmLoopErrorCode = null
+    if (res.status === 409) {
+      try {
+        code = conflictCode(await res.json())
+      } catch {
+        // No readable body: a plain 409.
+      }
+    }
+    throw new GarmLoopError(`garm returned ${res.status}`, res.status, code)
   }
   try {
     return await res.json()
@@ -90,29 +119,42 @@ function arrayField(data: unknown, field: string): Record<string, unknown>[] {
 }
 
 /**
- * Does `email` hold at least `minRole` on app `slug`? True only when Garm says
- * `allowed === true`. Any error (unconfigured, timeout, non-2xx, off-shape)
- * is false; never throws. Never cached.
+ * Does `email` hold at least `minRole` on app `slug`? 'allowed' only when Garm
+ * says `allowed === true`, 'denied' when it says `allowed === false`, and
+ * 'error' for anything else (unconfigured, timeout, non-2xx, off-shape body),
+ * so a caller can tell an outage from a refusal. Never throws. Never cached.
  */
-export async function loopCheck(
+export async function loopCheckResult(
   email: string,
   slug: string,
   minRole: 'owner' | 'collaborator'
-): Promise<boolean> {
+): Promise<'allowed' | 'denied' | 'error'> {
   try {
     const data = await garmRequest('POST', '/gnipahellir', {
       email: normalizeEmail(email),
       project: slug,
       min_role: minRole,
     })
-    return (data as { allowed?: unknown } | null)?.allowed === true
+    const allowed = (data as { allowed?: unknown } | null)?.allowed
+    if (allowed === true) return 'allowed'
+    if (allowed === false) return 'denied'
+    throw new GarmLoopError('garm response off-shape', null)
   } catch (err) {
     console.warn(
       `[garm-loop] check failed for ${slug} (fail-closed):`,
       err instanceof GarmLoopError ? err.status : 'error'
     )
-    return false
+    return 'error'
   }
+}
+
+/** loopCheckResult as a boolean: true only on 'allowed' (fail closed). */
+export async function loopCheck(
+  email: string,
+  slug: string,
+  minRole: 'owner' | 'collaborator'
+): Promise<boolean> {
+  return (await loopCheckResult(email, slug, minRole)) === 'allowed'
 }
 
 /** Every project the address holds a grant on (alias-resolved by Garm). */

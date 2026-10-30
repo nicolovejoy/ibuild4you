@@ -968,21 +968,8 @@ export function useFileUrl(fileId: string | undefined) {
 
 // --- Loop apps (admin) ---
 
-// `enabled` lets callers on shared pages (dashboard, user menu) wait for sign-in.
-export function useApps(options: { enabled?: boolean } = {}) {
-  return useQuery<AppWithAccess[]>({
-    queryKey: queryKeys.apps(),
-    queryFn: async () => {
-      const res = await apiFetch('/api/admin/apps')
-      if (!res.ok) throw new Error('Failed to load apps')
-      return (await res.json()).apps
-    },
-    enabled: options.enabled ?? true,
-    staleTime: 60 * 1000,
-  })
-}
-
-// Error that carries the HTTP status, so a page can redirect on 403.
+// Error that carries the HTTP status, so a page can redirect on 403 or say
+// Garm is down on 503 (garm_unavailable).
 export class HttpError extends Error {
   constructor(
     message: string,
@@ -990,6 +977,20 @@ export class HttpError extends Error {
   ) {
     super(message)
   }
+}
+
+// `enabled` lets callers on shared pages (dashboard, user menu) wait for sign-in.
+export function useApps(options: { enabled?: boolean } = {}) {
+  return useQuery<AppWithAccess[]>({
+    queryKey: queryKeys.apps(),
+    queryFn: async () => {
+      const res = await apiFetch('/api/admin/apps')
+      if (!res.ok) throw new HttpError('Failed to load apps', res.status)
+      return (await res.json()).apps
+    },
+    enabled: options.enabled ?? true,
+    staleTime: 60 * 1000,
+  })
 }
 
 export function useApp(slug: string | undefined) {

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
-import { getAuthenticatedUser } from '@/lib/api/firebase-server-helpers'
+import { getAdminDb, getAuthenticatedUser } from '@/lib/api/firebase-server-helpers'
 import { requireAppAccess } from '@/lib/api/app-access'
+import { findAppBySlug, isValidAppSlug } from '@/lib/api/apps'
 import {
   GarmLoopError,
   grantOnApp,
@@ -29,22 +30,36 @@ function garmError(err: unknown) {
   const status = err instanceof GarmLoopError ? err.status : null
   if (status === 404) return json({ error: 'App not found in Garm' }, 404)
   if (status === 403) return json({ error: 'Garm says you are not an owner of this app' }, 403)
-  if (status === 409) return json({ error: 'last_owner' }, 409)
+  if (status === 409) {
+    // Garm sends two distinct 409s; only one of them is the last-owner guardrail.
+    const code = err instanceof GarmLoopError ? err.code : null
+    if (code === 'last_owner') return json({ error: 'last_owner' }, 409)
+    if (code === 'alias') return json({ error: 'alias' }, 409)
+    return json({ error: 'Garm rejected the request' }, 409)
+  }
   if (status === 400) return json({ error: 'Garm rejected the request' }, 400)
   return json({ error: 'Garm is unavailable' }, 502)
 }
 
-// Shared prelude: auth, owner gate (system admins pass), then Garm must be usable.
-// Returns the actor email, or a response to send back.
-async function prelude(request: Request, slug: string): Promise<{ actor: string } | NextResponse> {
+// Shared prelude: auth, a valid slug naming a known app (a legacy slug resolves
+// to its canonical one), owner gate on the canonical slug (system admins pass),
+// then Garm must be usable. Returns the actor email and canonical slug, or a
+// response to send back.
+async function prelude(
+  request: Request,
+  rawSlug: string
+): Promise<{ actor: string; slug: string } | NextResponse> {
   const auth = await getAuthenticatedUser(request)
   if (auth.error) return noStore(auth.error)
-  const denied = await requireAppAccess(auth, slug, 'owner')
+  if (!isValidAppSlug(rawSlug)) return json({ error: 'Invalid slug' }, 400)
+  const app = await findAppBySlug(getAdminDb(), rawSlug)
+  if (!app) return json({ error: 'App not found' }, 404)
+  const denied = await requireAppAccess(auth, app.slug, 'owner')
   if (denied) return noStore(denied)
   if (loopGarmBypassed() || !loopGarmConfigured()) {
     return json({ error: 'Garm is not configured' }, 503)
   }
-  return { actor: auth.email }
+  return { actor: auth.email, slug: app.slug }
 }
 
 async function readBody(request: Request): Promise<Record<string, unknown> | null> {
@@ -62,7 +77,7 @@ export async function GET(request: Request, { params }: Ctx) {
   const pre = await prelude(request, slug)
   if (pre instanceof NextResponse) return pre
   try {
-    return json({ admins: await listAppGrants(slug) })
+    return json({ admins: await listAppGrants(pre.slug) })
   } catch (err) {
     return garmError(err)
   }
@@ -83,7 +98,7 @@ export async function POST(request: Request, { params }: Ctx) {
     return json({ error: 'role must be owner or collaborator' }, 400)
   }
   try {
-    await grantOnApp(pre.actor, slug, normalizeEmail(email), role)
+    await grantOnApp(pre.actor, pre.slug, normalizeEmail(email), role)
     return json({ ok: true })
   } catch (err) {
     return garmError(err)
@@ -102,7 +117,7 @@ export async function DELETE(request: Request, { params }: Ctx) {
     return json({ error: 'A valid email is required' }, 400)
   }
   try {
-    await revokeOnApp(pre.actor, slug, normalizeEmail(email))
+    await revokeOnApp(pre.actor, pre.slug, normalizeEmail(email))
     return json({ ok: true })
   } catch (err) {
     return garmError(err)

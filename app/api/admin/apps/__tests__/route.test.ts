@@ -115,6 +115,13 @@ describe('GET /api/admin/apps', () => {
     const json = await (await GET(req('GET'))).json()
     expect(json.apps).toEqual([{ id: 'a', slug: 'a', name: 'Alpha', access: 'collaborator' }])
   })
+  it('503 garm_unavailable when Garm is down', async () => {
+    mockHasSystemRole.mockReturnValue(false)
+    mockAccessibleApps.mockRejectedValue(new GarmLoopError('down', null))
+    const res = await GET(req('GET'))
+    expect(res.status).toBe(503)
+    expect(await res.json()).toEqual({ error: 'garm_unavailable' })
+  })
   it('a non-admin with no apps gets []', async () => {
     mockHasSystemRole.mockReturnValue(false)
     mockAccessibleApps.mockResolvedValue([])
@@ -222,6 +229,14 @@ describe('/api/admin/apps/[slug]', () => {
     mockAppAccessFor.mockResolvedValue(null)
     store.set('byside', { ...base, slug: 'byside', name: 'B' })
     expect((await GET_ONE(req('GET'), ctx('byside'))).status).toBe(403)
+  })
+  it('GET 503 garm_unavailable when Garm is down', async () => {
+    mockHasSystemRole.mockReturnValue(false)
+    mockAppAccessFor.mockRejectedValue(new GarmLoopError('down', null))
+    store.set('byside', { ...base, slug: 'byside', name: 'B' })
+    const res = await GET_ONE(req('GET'), ctx('byside'))
+    expect(res.status).toBe(503)
+    expect(await res.json()).toEqual({ error: 'garm_unavailable' })
   })
   it('GET 200 with access for a collaborator', async () => {
     mockHasSystemRole.mockReturnValue(false)

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { Resend } from 'resend'
-import { getAuthenticatedUser, getAdminDb, hasSystemRole } from '@/lib/api/firebase-server-helpers'
+import { getAuthenticatedUser, getAdminDb } from '@/lib/api/firebase-server-helpers'
 import { requireFeedbackAccess } from '@/lib/api/feedback-access'
 import { feedbackReplyAddress } from '@/lib/feedback/inbound'
 import type { FeedbackStatus } from '@/lib/types'
@@ -61,6 +61,13 @@ export async function PATCH(
     const u = body.github_issue_url
     if (u !== null && typeof u !== 'string') {
       return NextResponse.json({ error: 'github_issue_url must be string or null' }, { status: 400 })
+    }
+    // The inbox renders this as a link, so only a real GitHub URL is accepted.
+    if (u !== null && !/^https:\/\/github\.com\//.test(u)) {
+      return NextResponse.json(
+        { error: 'github_issue_url must be a https://github.com/ URL' },
+        { status: 400 }
+      )
     }
     patch.github_issue_url = u
   }

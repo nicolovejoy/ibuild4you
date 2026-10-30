@@ -5,7 +5,7 @@ import { useApproval } from '@/lib/hooks/useApproval'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { useApps, useCreateApp, useCurrentUser } from '@/lib/query/hooks'
+import { HttpError, useApps, useCreateApp, useCurrentUser } from '@/lib/query/hooks'
 import { useEscapeBack } from '@/lib/hooks/useEscapeBack'
 import { SectionHeader } from '@/components/section-header'
 import { copy } from '@/lib/copy'
@@ -188,11 +188,19 @@ function AppsTable() {
   )
 }
 
-// Non-admin view: just the apps the caller owns or collaborates on.
+// Non-admin view: just the apps the caller owns or collaborates on. A 503 is
+// Garm being down, which must not read as "you administer no apps".
 function MyApps() {
   const { data: apps, isLoading, error } = useApps()
 
   if (isLoading) return <div className="text-center text-gray-400 py-6">{copy.loading}</div>
+  if (error instanceof HttpError && error.status === 503) {
+    return (
+      <div role="alert" className="text-center text-red-500 py-6">
+        {t.errorGarmDown}
+      </div>
+    )
+  }
   if (error) return <div className="text-center text-red-500 py-6">{error.message}</div>
   if (!apps || apps.length === 0) {
     return (
