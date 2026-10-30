@@ -156,8 +156,9 @@ that predate it ignore it.
 ## Side effects on success
 
 - Row written to `feedback/{id}` with `status: "new"` and the request fields
-- Admin notification email sent via Resend (non-blocking — submission
-  succeeds even if email fails)
+- Notification email sent via Resend (non-blocking — submission
+  succeeds even if email fails) to `NOTIFICATION_EMAILS` plus the app's Garm
+  owners and collaborators
 
 ## What goes wrong
 

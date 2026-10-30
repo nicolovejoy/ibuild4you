@@ -191,6 +191,8 @@ depends on them.
 
 ### Phase B — access through Garm (after Garm ships the needs above)
 
+Plan: docs/superpowers/plans/2026-10-29-loop-apps-phase-b.md; host-facing read deferred.
+
 - Sign-in gate: a person is admitted if Garm allows them on `ibuild4you`
   **or** they hold owner or collaborator on any registered app. One Garm
   call per sign-in, no fan-out.
