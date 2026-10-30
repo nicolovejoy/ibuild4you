@@ -7,7 +7,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { Plus, FolderOpen, Copy, Check, Settings, ChevronRight, ChevronDown, Archive, ArchiveRestore } from 'lucide-react'
 import { SiteHeader } from '@/components/site-header'
-import { useProjects, useCreateProject, useCurrentUser, useArchiveProject } from '@/lib/query/hooks'
+import { useApps, useProjects, useCreateProject, useCurrentUser, useArchiveProject } from '@/lib/query/hooks'
 import { LoadingButton } from '@/components/ui/LoadingButton'
 import { Card, CardBody } from '@/components/ui/Card'
 import { EmptyState } from '@/components/ui/EmptyState'
@@ -38,6 +38,9 @@ export default function DashboardPage() {
   const { data: currentUser } = useCurrentUser()
   const router = useRouter()
   const m = useMakerCopy()
+  // Only ask once signed in and approved; admins already have the Admin link.
+  const isAdminUser = currentUser?.system_roles?.includes('admin') ?? false
+  const { data: myApps } = useApps({ enabled: isAuthenticated && approved === true && !isAdminUser })
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -92,6 +95,13 @@ export default function DashboardPage() {
             </div>
           )}
         </div>
+        {!isAdmin && (myApps?.length ?? 0) > 0 && (
+          <p className="mb-4 text-sm">
+            <Link href="/admin/apps" className="text-brand-navy hover:underline">
+              {copy.adminApps.yourApps}
+            </Link>
+          </p>
+        )}
         <ProjectList isAdmin={isAdmin} />
       </main>
     </div>

@@ -4,22 +4,22 @@ import { useAuth } from '@/lib/hooks/useAuth'
 import { useApproval } from '@/lib/hooks/useApproval'
 import { useParams, useRouter } from 'next/navigation'
 import { Suspense, useEffect, useState } from 'react'
-import { useApp, useCurrentUser, useUpdateApp } from '@/lib/query/hooks'
+import { HttpError, useApp, useUpdateApp } from '@/lib/query/hooks'
 import { useEscapeBack } from '@/lib/hooks/useEscapeBack'
 import { SectionHeader } from '@/components/section-header'
 import { FeedbackInbox } from '@/components/admin/FeedbackInbox'
+import { ManageAdmins } from '@/components/admin/ManageAdmins'
 import { copy } from '@/lib/copy'
 import type { App } from '@/lib/types'
 
 const t = copy.adminApps
 
-// One Loop app: settings + that app's feedback. Admin only, same guard as
-// /admin/feedback. `?id=<feedbackId>` deep-links to one item in the list.
+// One Loop app: settings (admins), its feedback (anyone with access) and its
+// admin list (owners). The API decides access; a 403 sends the caller home. `?id=<feedbackId>` deep-links to one item in the list.
 export default function AppAdminPage() {
   const { slug } = useParams<{ slug: string }>()
   const { user, loading: authLoading, isAuthenticated } = useAuth()
   const { approved, loading: approvalLoading } = useApproval()
-  const { data: currentUser, isLoading: roleLoading } = useCurrentUser()
   const router = useRouter()
   useEscapeBack('/admin/apps')
 
@@ -31,7 +31,7 @@ export default function AppAdminPage() {
     if (!approvalLoading && approved === false && isAuthenticated) router.push('/not-approved')
   }, [approvalLoading, approved, isAuthenticated, router])
 
-  if (authLoading || approvalLoading || roleLoading) {
+  if (authLoading || approvalLoading) {
     return (
       <div className="min-h-screen bg-brand-cream flex items-center justify-center">
         <div className="animate-pulse text-brand-slate">{copy.loading}</div>
@@ -41,27 +41,28 @@ export default function AppAdminPage() {
 
   if (!user || !approved) return null
 
-  const isAdmin = currentUser?.system_roles?.includes('admin') ?? false
-  if (!isAdmin) {
-    router.push('/dashboard')
-    return null
-  }
-
   return <AppBody slug={slug} />
 }
 
 function AppBody({ slug }: { slug: string }) {
   const { data: app, isLoading, error } = useApp(slug)
+  const router = useRouter()
+  const forbidden = error instanceof HttpError && error.status === 403
+
+  useEffect(() => {
+    if (forbidden) router.push('/dashboard')
+  }, [forbidden, router])
 
   return (
     <div className="min-h-screen bg-brand-cream">
       <SectionHeader backHref="/admin/apps" title={app?.name ?? slug} />
       <main className="max-w-5xl mx-auto px-4 py-6 space-y-6">
         {isLoading && <div className="text-center text-gray-400 py-6">{copy.loading}</div>}
-        {error && <div className="text-center text-red-500 py-6">{t.notFound}</div>}
+        {error && !forbidden && <div className="text-center text-red-500 py-6">{t.notFound}</div>}
         {app && (
           <>
-            <SettingsForm app={app} />
+            {app.access === 'admin' && <SettingsForm app={app} />}
+            {(app.access === 'admin' || app.access === 'owner') && <ManageAdmins slug={app.slug} />}
             <section className="space-y-3">
               <h2 className="text-sm font-medium text-brand-charcoal">{t.feedbackHeading}</h2>
               <Suspense fallback={<div className="text-center text-gray-400 py-12">{copy.loading}</div>}>
