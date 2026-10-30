@@ -3,13 +3,15 @@
 import { auth } from '@/lib/firebase/client'
 import { signOut } from 'firebase/auth'
 import { useRouter } from 'next/navigation'
-import { User, LogOut, Shield, Info, Pencil, Check, X, KeyRound } from 'lucide-react'
+import { User, LogOut, Shield, LayoutGrid, Info, Pencil, Check, X, KeyRound } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import type { User as FirebaseUser } from 'firebase/auth'
 import { useQueryClient } from '@tanstack/react-query'
-import { useCurrentUser, useUpdateCurrentUser } from '@/lib/query/hooks'
+import { useApps, useCurrentUser, useUpdateCurrentUser } from '@/lib/query/hooks'
+import { useApproval } from '@/lib/hooks/useApproval'
 import { SetPasswordModal } from '@/components/SetPasswordModal'
 import { useMakerCopy } from '@/components/locale-context'
+import { copy } from '@/lib/copy'
 
 export function UserMenu() {
   const [user, setUser] = useState<FirebaseUser | null>(null)
@@ -19,10 +21,17 @@ export function UserMenu() {
   const [showSetPassword, setShowSetPassword] = useState(false)
   const router = useRouter()
   const queryClient = useQueryClient()
-  const { data: currentUser } = useCurrentUser()
+  const { data: currentUser, isSuccess: currentUserLoaded } = useCurrentUser()
+  const { approved } = useApproval()
   const updateUser = useUpdateCurrentUser()
   const isAdmin = currentUser?.system_roles?.includes('admin') ?? false
   const t = useMakerCopy().common
+  // Non-admins who own or collaborate on a Loop app get a link to it. Only ask
+  // once signed in, approved and known not to be an admin; a failure shows nothing.
+  const { data: myApps } = useApps({
+    enabled: !!user && approved === true && currentUserLoaded && !isAdmin,
+  })
+  const hasApps = !isAdmin && (myApps?.length ?? 0) > 0
 
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged((firebaseUser) => {
@@ -157,6 +166,18 @@ export function UserMenu() {
               >
                 <Shield className="h-4 w-4" />
                 {t.admin}
+              </button>
+            )}
+            {hasApps && (
+              <button
+                onClick={() => {
+                  setShowDropdown(false)
+                  router.push('/admin/apps')
+                }}
+                className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+              >
+                <LayoutGrid className="h-4 w-4" />
+                {copy.adminApps.yourApps}
               </button>
             )}
             <button

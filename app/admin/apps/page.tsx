@@ -5,21 +5,21 @@ import { useApproval } from '@/lib/hooks/useApproval'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { useApps, useCreateApp, useCurrentUser } from '@/lib/query/hooks'
+import { HttpError, useApps, useCreateApp, useCurrentUser } from '@/lib/query/hooks'
 import { useEscapeBack } from '@/lib/hooks/useEscapeBack'
 import { SectionHeader } from '@/components/section-header'
 import { copy } from '@/lib/copy'
 
 const t = copy.adminApps
 
-// Loop apps: host sites that embed the feedback widget. Admin only, same guard
-// as /admin/feedback.
+// Loop apps: host sites that embed the feedback widget. Admins see every app
+// and can create them; app owners and collaborators see only their own.
 export default function AppsAdminPage() {
   const { user, loading: authLoading, isAuthenticated } = useAuth()
   const { approved, loading: approvalLoading } = useApproval()
   const { data: currentUser, isLoading: roleLoading } = useCurrentUser()
   const router = useRouter()
-  useEscapeBack('/admin')
+  useEscapeBack(currentUser?.system_roles?.includes('admin') ? '/admin' : '/dashboard')
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) router.push('/auth/login')
@@ -40,17 +40,16 @@ export default function AppsAdminPage() {
   if (!user || !approved) return null
 
   const isAdmin = currentUser?.system_roles?.includes('admin') ?? false
-  if (!isAdmin) {
-    router.push('/dashboard')
-    return null
-  }
 
   return (
     <div className="min-h-screen bg-brand-cream">
-      <SectionHeader backHref="/admin" title={t.pageTitle} />
+      <SectionHeader
+        backHref={isAdmin ? '/admin' : '/dashboard'}
+        title={isAdmin ? t.pageTitle : t.yourApps}
+      />
       <main className="max-w-5xl mx-auto px-4 py-6 space-y-6">
-        <NewAppForm />
-        <AppsTable />
+        {isAdmin && <NewAppForm />}
+        {isAdmin ? <AppsTable /> : <MyApps />}
       </main>
     </div>
   )
@@ -176,6 +175,60 @@ function AppsTable() {
               </td>
               <td className="px-3 py-2 text-xs">{a.github_repo || '—'}</td>
               <td className="px-3 py-2 text-xs">{a.feedback_requires_identity ? t.yes : t.no}</td>
+              <td className="px-3 py-2 text-right">
+                <Link href={`/admin/apps/${a.slug}`} className="text-brand-navy hover:underline">
+                  {t.open}
+                </Link>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+// Non-admin view: just the apps the caller owns or collaborates on. A 503 is
+// Garm being down, which must not read as "you administer no apps".
+function MyApps() {
+  const { data: apps, isLoading, error } = useApps()
+
+  if (isLoading) return <div className="text-center text-gray-400 py-6">{copy.loading}</div>
+  if (error instanceof HttpError && error.status === 503) {
+    return (
+      <div role="alert" className="text-center text-red-500 py-6">
+        {t.errorGarmDown}
+      </div>
+    )
+  }
+  if (error) return <div className="text-center text-red-500 py-6">{error.message}</div>
+  if (!apps || apps.length === 0) {
+    return (
+      <div className="text-center text-gray-400 py-12 bg-white rounded-lg border border-gray-200">
+        {t.noAccessApps}
+      </div>
+    )
+  }
+
+  return (
+    <div className="bg-white rounded-lg border border-gray-200 overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="text-left text-xs uppercase tracking-wide text-brand-slate border-b border-gray-100">
+            <th className="px-3 py-2">{t.colName}</th>
+            <th className="px-3 py-2">{t.colSlug}</th>
+            <th className="px-3 py-2">{t.accessLabel}</th>
+            <th className="px-3 py-2" />
+          </tr>
+        </thead>
+        <tbody>
+          {apps.map((a) => (
+            <tr key={a.slug} data-app-slug={a.slug} className="border-b border-gray-50 last:border-0">
+              <td className="px-3 py-2 text-brand-charcoal">{a.name}</td>
+              <td className="px-3 py-2 font-mono text-xs">{a.slug}</td>
+              <td className="px-3 py-2 text-xs">
+                {a.access === 'collaborator' ? t.accessCollaborator : t.accessOwner}
+              </td>
               <td className="px-3 py-2 text-right">
                 <Link href={`/admin/apps/${a.slug}`} className="text-brand-navy hover:underline">
                   {t.open}

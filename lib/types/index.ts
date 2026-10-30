@@ -240,6 +240,18 @@ export interface App extends BaseEntity {
   created_by: string
 }
 
+// What /api/admin/apps returns: the app plus how the caller reaches it.
+export type AppAccess = 'admin' | 'owner' | 'collaborator'
+export type AppWithAccess = App & { access: AppAccess }
+
+// One row of an app's admin list (read live from Garm, never stored here).
+export interface AppAdmin {
+  email: string
+  role: 'owner' | 'collaborator' | 'viewer' // Garm lists every role on the app
+  created_at?: string
+  created_by?: string
+}
+
 // Feedback submissions from the FeedbackWidget embedded on client sites.
 // projectId on the wire is an app slug (or one of its legacy slugs); widget
 // submissions are rejected when it doesn't match an app.

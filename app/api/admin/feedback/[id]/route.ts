@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { Resend } from 'resend'
-import { getAuthenticatedUser, getAdminDb, hasSystemRole } from '@/lib/api/firebase-server-helpers'
+import { getAuthenticatedUser, getAdminDb } from '@/lib/api/firebase-server-helpers'
+import { requireFeedbackAccess } from '@/lib/api/feedback-access'
 import { feedbackReplyAddress } from '@/lib/feedback/inbound'
 import type { FeedbackStatus } from '@/lib/types'
 
@@ -10,7 +11,7 @@ const ALLOWED_STATUSES: FeedbackStatus[] = ['new', 'acknowledged', 'in_progress'
 // "acknowledged" tells them we heard them; "done" closes the loop.
 const NOTIFY_ON: FeedbackStatus[] = ['acknowledged', 'done']
 
-// PATCH /api/admin/feedback/[id] — admin-only: update status / internal_notes /
+// PATCH /api/admin/feedback/[id] — admins and collaborators+ on the row's app: update status / internal_notes /
 // github_issue_url. Sends a submitter notification on acknowledged/done.
 export async function PATCH(
   request: Request,
@@ -18,10 +19,6 @@ export async function PATCH(
 ) {
   const auth = await getAuthenticatedUser(request)
   if (auth.error) return auth.error
-  if (!hasSystemRole(auth, 'admin')) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
-
   const { id } = await params
   if (!id) {
     return NextResponse.json({ error: 'id is required' }, { status: 400 })
@@ -41,6 +38,8 @@ export async function PATCH(
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
   const existing = snap.data()!
+  const denied = await requireFeedbackAccess(auth, existing.project_id as string)
+  if (denied) return denied
 
   const patch: Record<string, unknown> = { updated_at: new Date().toISOString() }
 
@@ -62,6 +61,13 @@ export async function PATCH(
     const u = body.github_issue_url
     if (u !== null && typeof u !== 'string') {
       return NextResponse.json({ error: 'github_issue_url must be string or null' }, { status: 400 })
+    }
+    // The inbox renders this as a link, so only a real GitHub URL is accepted.
+    if (u !== null && !/^https:\/\/github\.com\//.test(u)) {
+      return NextResponse.json(
+        { error: 'github_issue_url must be a https://github.com/ URL' },
+        { status: 400 }
+      )
     }
     patch.github_issue_url = u
   }

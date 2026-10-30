@@ -95,6 +95,30 @@ given project:
    write` on that repo. The PAT's repo scope is managed on GitHub — add new host
    repos there or the conversion 500s.
 
+## Who can see an app's feedback
+
+- System admins (`ADMIN_EMAILS`) see every app, independent of Garm.
+- Anyone else needs a Garm grant on the app: `owner` or `collaborator` sees that
+  app's inbox, replies, sets status and files GitHub issues. They can sign in
+  with just that grant and see nothing else of the iBuild4you admin.
+- Each app's people are listed under "Your apps" (dashboard and user menu) and at
+  `/admin/apps/<slug>`.
+
+### Adding or removing an admin
+
+An app owner (or a system admin) opens `/admin/apps/<slug>`, **Manage admins**,
+and adds an email as `owner` or `collaborator`, or removes one. This writes to
+Garm directly.
+
+### The admin list lives only in Garm
+
+Loop keeps no copy of it: no Firestore field, no cache beyond a 60 s sign-in
+yes-answer. Every check asks Garm (`lib/garm-loop.ts`, key `GARM_LOOP_KEY`) and
+fails closed if Garm is unreachable. New-feedback email goes to
+`NOTIFICATION_EMAILS` plus the app's Garm owners and collaborators. Read-only
+check: `GARM_LOOP_KEY=op://dev-secrets/garm-consumer-loop/password op run -- node scripts/garm-loop-smoke.mjs`.
+A host app reading its own feedback from Loop is not built yet.
+
 ## Changing the contract
 
 Additive fields are safe; renames/removals are an API version bump that every

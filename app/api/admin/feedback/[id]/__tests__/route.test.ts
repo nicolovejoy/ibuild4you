@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { NextResponse } from 'next/server'
 import { PATCH } from '../route'
 
 // =============================================================================
@@ -25,6 +26,11 @@ vi.mock('@/lib/api/firebase-server-helpers', () => ({
   }),
 }))
 
+const mockRequireFeedbackAccess = vi.fn()
+vi.mock('@/lib/api/feedback-access', () => ({
+  requireFeedbackAccess: (...args: unknown[]) => mockRequireFeedbackAccess(...args),
+}))
+
 vi.mock('resend', () => ({
   Resend: vi.fn(() => ({ emails: { send: mockResendSend } })),
 }))
@@ -45,6 +51,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   mockGetAuthenticatedUser.mockResolvedValue(adminAuth)
   mockHasSystemRole.mockReturnValue(true)
+  mockRequireFeedbackAccess.mockResolvedValue(null)
   mockDocGet.mockResolvedValue({
     exists: true,
     data: () => ({
@@ -66,10 +73,27 @@ describe('PATCH /api/admin/feedback/[id]', () => {
     expect(res.status).toBe(401)
   })
 
-  it('returns 403 for non-admins', async () => {
-    mockHasSystemRole.mockReturnValueOnce(false)
+  it('returns 403 for a non-admin without access to the row\'s app', async () => {
+    mockHasSystemRole.mockReturnValue(false)
+    mockRequireFeedbackAccess.mockResolvedValue(NextResponse.json({ error: 'Forbidden' }, { status: 403 }))
     const res = await PATCH(makeReq({ status: 'acknowledged' }), { params })
     expect(res.status).toBe(403)
+    expect(mockRequireFeedbackAccess).toHaveBeenCalledWith(expect.anything(), 'sample-cafe')
+    expect(mockUpdate).not.toHaveBeenCalled()
+  })
+
+  it('lets a non-admin collaborator on the row\'s app update it', async () => {
+    mockHasSystemRole.mockReturnValue(false)
+    const res = await PATCH(makeReq({ status: 'in_progress' }), { params })
+    expect(res.status).toBe(200)
+    expect(mockUpdate).toHaveBeenCalledOnce()
+  })
+
+  it('returns 404 (not 403) for a missing row, even for a non-admin', async () => {
+    mockHasSystemRole.mockReturnValue(false)
+    mockDocGet.mockResolvedValueOnce({ exists: false, data: () => undefined })
+    const res = await PATCH(makeReq({ status: 'in_progress' }), { params })
+    expect(res.status).toBe(404)
   })
 
   it('returns 404 when the doc does not exist', async () => {
@@ -138,6 +162,21 @@ describe('PATCH /api/admin/feedback/[id]', () => {
     expect(patch.internal_notes).toBe('Talked to Sam')
     expect(patch.github_issue_url).toBe('https://github.com/x/y/issues/1')
     expect(mockResendSend).not.toHaveBeenCalled()
+  })
+
+  it('rejects a github_issue_url that is not https://github.com/, even for an admin', async () => {
+    for (const u of ['javascript:alert(1)', 'http://github.com/x/y/issues/1', 'https://evil.com/github.com/']) {
+      const res = await PATCH(makeReq({ github_issue_url: u }), { params })
+      expect(res.status).toBe(400)
+      expect(await res.json()).toEqual({ error: 'github_issue_url must be a https://github.com/ URL' })
+    }
+    expect(mockUpdate).not.toHaveBeenCalled()
+  })
+
+  it('allows clearing github_issue_url with null', async () => {
+    const res = await PATCH(makeReq({ github_issue_url: null }), { params })
+    expect(res.status).toBe(200)
+    expect(mockUpdate.mock.calls[0][0].github_issue_url).toBeNull()
   })
 
   it('allows clearing internal_notes with null', async () => {

@@ -16,5 +16,6 @@ export const queryKeys = {
   folders: (projectId: string | undefined) => ['folders', projectId] as const,
   apps: () => ['apps'] as const,
   app: (slug: string | undefined) => ['app', slug] as const,
+  appAdmins: (slug: string | undefined) => ['app-admins', slug] as const,
   fileUrl: (fileId: string | undefined) => ['fileUrl', fileId] as const,
 }

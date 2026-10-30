@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiFetch } from '@/lib/firebase/api-fetch'
 import { queryKeys } from './keys'
-import type { App, Project, Session, Message, Brief, BriefNote, BriefVersion, PrepStamp, SystemRole, ProjectFile, FileFolder, ProjectMemberSummary } from '@/lib/types'
+import type { App, AppWithAccess, AppAdmin, Project, Session, Message, Brief, BriefNote, BriefVersion, PrepStamp, SystemRole, ProjectFile, FileFolder, ProjectMemberSummary } from '@/lib/types'
 import type { GarmSyncOutcome } from '@/lib/garm-grants'
 
 // --- Current user ---
@@ -968,24 +968,38 @@ export function useFileUrl(fileId: string | undefined) {
 
 // --- Loop apps (admin) ---
 
-export function useApps() {
-  return useQuery<App[]>({
+// Error that carries the HTTP status, so a page can redirect on 403 or say
+// Garm is down on 503 (garm_unavailable).
+export class HttpError extends Error {
+  constructor(
+    message: string,
+    public status: number
+  ) {
+    super(message)
+  }
+}
+
+// `enabled` lets callers on shared pages (dashboard, user menu) wait for sign-in.
+export function useApps(options: { enabled?: boolean } = {}) {
+  return useQuery<AppWithAccess[]>({
     queryKey: queryKeys.apps(),
     queryFn: async () => {
       const res = await apiFetch('/api/admin/apps')
-      if (!res.ok) throw new Error('Failed to load apps')
+      if (!res.ok) throw new HttpError('Failed to load apps', res.status)
       return (await res.json()).apps
     },
+    enabled: options.enabled ?? true,
     staleTime: 60 * 1000,
   })
 }
 
 export function useApp(slug: string | undefined) {
-  return useQuery<App>({
+  return useQuery<AppWithAccess>({
     queryKey: queryKeys.app(slug),
+    retry: false,
     queryFn: async () => {
       const res = await apiFetch(`/api/admin/apps/${slug}`)
-      if (!res.ok) throw new Error('Failed to load app')
+      if (!res.ok) throw new HttpError('Failed to load app', res.status)
       return (await res.json()).app
     },
     enabled: !!slug,
@@ -1042,5 +1056,50 @@ export function useUpdateApp() {
       queryClient.invalidateQueries({ queryKey: queryKeys.apps() })
       queryClient.invalidateQueries({ queryKey: queryKeys.app(variables.slug) })
     },
+  })
+}
+
+// --- App admins (live from Garm) ---
+
+export function useAppAdmins(slug: string | undefined) {
+  return useQuery<AppAdmin[]>({
+    queryKey: queryKeys.appAdmins(slug),
+    queryFn: async () => {
+      const res = await apiFetch(`/api/admin/apps/${slug}/admins`)
+      if (!res.ok) throw new HttpError('Failed to load admins', res.status)
+      return (await res.json()).admins
+    },
+    enabled: !!slug,
+    retry: false,
+  })
+}
+
+export function useGrantAppAdmin(slug: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (payload: { email: string; role: 'owner' | 'collaborator' }) => {
+      const res = await apiFetch(`/api/admin/apps/${slug}/admins`, {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new HttpError(data?.error || 'Grant failed', res.status)
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.appAdmins(slug) }),
+  })
+}
+
+export function useRevokeAppAdmin(slug: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (payload: { email: string }) => {
+      const res = await apiFetch(`/api/admin/apps/${slug}/admins`, {
+        method: 'DELETE',
+        body: JSON.stringify(payload),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new HttpError(data?.error || 'Revoke failed', res.status)
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.appAdmins(slug) }),
   })
 }

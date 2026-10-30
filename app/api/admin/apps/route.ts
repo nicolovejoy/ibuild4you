@@ -1,20 +1,31 @@
 import { NextResponse } from 'next/server'
 import { getAuthenticatedUser, getAdminDb, hasSystemRole } from '@/lib/api/firebase-server-helpers'
-import { createApp, AppSlugInvalid, AppSlugTaken } from '@/lib/api/apps'
-import type { App } from '@/lib/types'
+import { createApp, isSlugTaken, isValidAppSlug, AppSlugInvalid, AppSlugTaken } from '@/lib/api/apps'
+import { accessibleApps } from '@/lib/api/app-access'
+import {
+  createGarmApp,
+  GarmLoopError,
+  loopGarmBypassed,
+  loopGarmConfigured,
+} from '@/lib/garm-loop'
 
-// GET /api/admin/apps — list Loop apps, sorted by name. Admin-only.
+// GET /api/admin/apps — the Loop apps the caller can see, sorted by name, each
+// with their `access`. Admins see all; others only apps Garm grants them ([] if
+// none). Garm down is a 503 garm_unavailable, never an empty list.
 export async function GET(request: Request) {
   const auth = await getAuthenticatedUser(request)
   if (auth.error) return auth.error
-  if (!hasSystemRole(auth, 'admin')) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
 
-  const snap = await getAdminDb().collection('apps').get()
-  const apps: App[] = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<App, 'id'>) }))
-  apps.sort((a, b) => a.name.localeCompare(b.name))
-  return NextResponse.json({ apps })
+  let rows: Awaited<ReturnType<typeof accessibleApps>>
+  try {
+    rows = await accessibleApps(auth)
+  } catch (err) {
+    if (err instanceof GarmLoopError) {
+      return NextResponse.json({ error: 'garm_unavailable' }, { status: 503 })
+    }
+    throw err
+  }
+  return NextResponse.json({ apps: rows.map(({ app, access }) => ({ ...app, access })) })
 }
 
 // POST /api/admin/apps { slug, name, github_repo?, feedback_requires_identity? }
@@ -48,6 +59,37 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'feedback_requires_identity must be a boolean' }, { status: 400 })
   }
 
+  if (!isValidAppSlug(slug)) {
+    return NextResponse.json({ error: 'Invalid slug' }, { status: 400 })
+  }
+  // Cheap local check first, so a taken slug never reaches Garm.
+  if (await isSlugTaken(getAdminDb(), slug)) {
+    return NextResponse.json({ error: 'Slug already in use' }, { status: 409 })
+  }
+
+  // Garm app first: it is the authority for who may use the app. Nothing is
+  // written locally if Garm refuses. A preview with no Loop key skips this step.
+  if (!loopGarmBypassed()) {
+    if (!loopGarmConfigured()) {
+      return NextResponse.json({ error: 'Garm is not configured' }, { status: 503 })
+    }
+    try {
+      await createGarmApp(auth.email, slug, name.trim())
+    } catch (err) {
+      const status = err instanceof GarmLoopError ? err.status : null
+      if (status === 409) {
+        return NextResponse.json({ error: 'That slug already exists in Garm' }, { status: 409 })
+      }
+      if (status === 403) {
+        return NextResponse.json(
+          { error: 'You are not an owner of garm, so you cannot create apps' },
+          { status: 403 }
+        )
+      }
+      return NextResponse.json({ error: 'Garm is unavailable' }, { status: 502 })
+    }
+  }
+
   try {
     const app = await createApp(getAdminDb(), {
       slug,
@@ -62,6 +104,9 @@ export async function POST(request: Request) {
   } catch (err) {
     if (err instanceof AppSlugInvalid) return NextResponse.json({ error: 'Invalid slug' }, { status: 400 })
     if (err instanceof AppSlugTaken) return NextResponse.json({ error: 'Slug already in use' }, { status: 409 })
+    // Garm apps are never deleted. A retry of the create will 409 in Garm; the
+    // admin fixes the local row by hand.
+    console.error('[apps] garm app created but local row failed', { slug })
     throw err
   }
 }

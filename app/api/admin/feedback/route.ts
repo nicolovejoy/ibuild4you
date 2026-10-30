@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getAuthenticatedUser, getAdminDb, hasSystemRole } from '@/lib/api/firebase-server-helpers'
 import { findAppBySlug } from '@/lib/api/apps'
+import { requireFeedbackAccess } from '@/lib/api/feedback-access'
 import type { FeedbackStatus, FeedbackType } from '@/lib/types'
 
 const ALLOWED_STATUSES: FeedbackStatus[] = ['new', 'acknowledged', 'in_progress', 'done', 'wontfix', 'spam']
@@ -15,14 +16,18 @@ const ALLOWED_TYPES: FeedbackType[] = ['bug', 'idea', 'other']
 export async function GET(request: Request) {
   const auth = await getAuthenticatedUser(request)
   if (auth.error) return auth.error
-  if (!hasSystemRole(auth, 'admin')) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
-
   const { searchParams } = new URL(request.url)
   const projectId = searchParams.get('projectId')?.trim() || null
   const status = searchParams.get('status')?.trim() || null
   const type = searchParams.get('type')?.trim() || null
+
+  // Admins see everything. Anyone else must name an app and hold collaborator+
+  // on it in Garm.
+  if (!hasSystemRole(auth, 'admin')) {
+    if (!projectId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    const denied = await requireFeedbackAccess(auth, projectId)
+    if (denied) return denied
+  }
 
   if (status && !ALLOWED_STATUSES.includes(status as FeedbackStatus)) {
     return NextResponse.json({ error: 'Invalid status' }, { status: 400 })
@@ -34,7 +39,8 @@ export async function GET(request: Request) {
   const db = getAdminDb()
   // A filter by app also matches rows stored under the app's legacy slugs
   // (pre-migration rows keep their old project_id). A projectId that matches no
-  // app falls back to exact match so old free-text links keep working.
+  // app falls back to exact match so old free-text links keep working (admins
+  // only: non-admins were already denied above).
   let ids: string[] = []
   if (projectId) {
     const app = await findAppBySlug(db, projectId)

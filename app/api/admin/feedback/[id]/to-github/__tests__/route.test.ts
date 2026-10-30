@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { NextResponse } from 'next/server'
 import { POST } from '../route'
 
 const mockGetAuthenticatedUser = vi.fn()
@@ -25,6 +26,11 @@ vi.mock('@/lib/api/firebase-server-helpers', () => ({
       }
     },
   }),
+}))
+
+const mockRequireFeedbackAccess = vi.fn()
+vi.mock('@/lib/api/feedback-access', () => ({
+  requireFeedbackAccess: (...args: unknown[]) => mockRequireFeedbackAccess(...args),
 }))
 
 const adminAuth = { uid: 'u1', email: 'admin@x.com', systemRoles: ['admin'], error: null }
@@ -55,6 +61,7 @@ beforeEach(() => {
   process.env.GITHUB_TOKEN = 'test-token'
   mockGetAuthenticatedUser.mockResolvedValue(adminAuth)
   mockHasSystemRole.mockReturnValue(true)
+  mockRequireFeedbackAccess.mockResolvedValue(null)
   mockDocGet.mockResolvedValue({ exists: true, data: () => baseFeedback })
   mockCollectionNames.length = 0
   mockAppDocGet.mockResolvedValue({
@@ -85,10 +92,20 @@ describe('POST /api/admin/feedback/[id]/to-github', () => {
     expect(res.status).toBe(401)
   })
 
-  it('returns 403 for non-admins', async () => {
-    mockHasSystemRole.mockReturnValueOnce(false)
+  it('returns 403 for a non-admin without access to the row\'s app', async () => {
+    mockHasSystemRole.mockReturnValue(false)
+    mockRequireFeedbackAccess.mockResolvedValue(NextResponse.json({ error: 'Forbidden' }, { status: 403 }))
     const res = await POST(makeReq(), { params })
     expect(res.status).toBe(403)
+    expect(mockRequireFeedbackAccess).toHaveBeenCalledWith(expect.anything(), 'sample-cafe')
+    expect(mockDocUpdate).not.toHaveBeenCalled()
+  })
+
+  it('lets a non-admin collaborator on the row\'s app file the issue', async () => {
+    mockHasSystemRole.mockReturnValue(false)
+    const res = await POST(makeReq(), { params })
+    expect(res.status).toBe(200)
+    expect(mockDocUpdate).toHaveBeenCalledOnce()
   })
 
   it('returns 500 when GITHUB_TOKEN is missing', async () => {

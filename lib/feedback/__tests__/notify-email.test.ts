@@ -15,6 +15,7 @@ function baseInput(overrides: Partial<Parameters<typeof buildFeedbackEmail>[0]> 
     pageUrl: 'https://sample-cafe.com/menu',
     viewport: '375x812',
     userAgent: 'Mozilla/5.0',
+    appSlug: 'tideline',
     feedbackId: 'fb-123',
     burstIndex: 1,
     ...overrides,
@@ -79,7 +80,7 @@ describe('buildFeedbackEmail — text body', () => {
         'Header is broken on mobile',
         '',
         'Page: https://sample-cafe.com/menu',
-        'Review: https://ibuild4you.com/admin/feedback?focus=fb-123',
+        'Review: https://ibuild4you.com/admin/apps/tideline?id=fb-123',
         '',
         'From: sam@example.com',
         '',
@@ -103,7 +104,7 @@ describe('buildFeedbackEmail — text body', () => {
 
   it('links the review URL with the raw feedback id', () => {
     const { text } = buildFeedbackEmail(baseInput({ feedbackId: 'abc-XYZ' }))
-    expect(text).toContain('Review: https://ibuild4you.com/admin/feedback?focus=abc-XYZ')
+    expect(text).toContain('Review: https://ibuild4you.com/admin/apps/tideline?id=abc-XYZ')
   })
 
   it('handles empty viewport/ua gracefully in the footer', () => {
@@ -117,7 +118,7 @@ describe('buildFeedbackEmail — html body', () => {
     const { html } = buildFeedbackEmail(
       baseInput({ body: 'Button <b>broken</b> & ugly', pageUrl: 'https://byside.app/settings' })
     )
-    expect(html).toContain('<a href="https://ibuild4you.com/admin/feedback?focus=')
+    expect(html).toContain('<a href="https://ibuild4you.com/admin/apps/tideline?id=')
     expect(html).toContain('<a href="https://byside.app/settings"')
     expect(html).toContain('Button &lt;b&gt;broken&lt;/b&gt; &amp; ugly')
   })

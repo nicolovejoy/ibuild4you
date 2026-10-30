@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { Resend } from 'resend'
 import { getAdminAuth, getAdminDb } from '@/lib/firebase/admin'
-import { NOTIFICATION_EMAILS } from '@/lib/constants'
+import { feedbackRecipients } from '@/lib/feedback/recipients'
 import { checkRateLimit, getClientIp } from '@/lib/api/rate-limit'
 import { RATE_LIMIT_PER_HOUR } from '@/lib/feedback/limits'
 import { buildFeedbackEmail } from '@/lib/feedback/notify-email'
@@ -307,12 +307,13 @@ export async function POST(request: Request) {
         pageUrl,
         viewport,
         userAgent,
+        appSlug: app.slug,
         feedbackId: docRef.id,
         burstIndex,
       })
       await resend.emails.send({
         from: 'iBuild4you <noreply@ibuild4you.com>',
-        to: NOTIFICATION_EMAILS,
+        to: await feedbackRecipients(app.slug),
         subject,
         text,
         html,
