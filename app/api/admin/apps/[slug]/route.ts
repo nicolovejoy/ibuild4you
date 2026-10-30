@@ -1,22 +1,23 @@
 import { NextResponse } from 'next/server'
 import { getAuthenticatedUser, getAdminDb, hasSystemRole } from '@/lib/api/firebase-server-helpers'
+import { appAccessFor } from '@/lib/api/app-access'
 import type { App } from '@/lib/types'
 import { FieldValue } from 'firebase-admin/firestore'
 
 type Ctx = { params: Promise<{ slug: string }> }
 
-// GET /api/admin/apps/[slug] — one app by its canonical slug. Admin-only.
+// GET /api/admin/apps/[slug] — one app by its canonical slug, with the caller's
+// `access`. Admins, and people Garm grants on the app.
 export async function GET(request: Request, { params }: Ctx) {
   const auth = await getAuthenticatedUser(request)
   if (auth.error) return auth.error
-  if (!hasSystemRole(auth, 'admin')) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
 
   const { slug } = await params
+  const access = await appAccessFor(auth, slug)
+  if (!access) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const doc = await getAdminDb().collection('apps').doc(slug).get()
   if (!doc.exists) return NextResponse.json({ error: 'App not found' }, { status: 404 })
-  return NextResponse.json({ app: { id: doc.id, ...(doc.data() as Omit<App, 'id'>) } })
+  return NextResponse.json({ app: { id: doc.id, ...(doc.data() as Omit<App, 'id'>), access } })
 }
 
 // PATCH /api/admin/apps/[slug] — only name, github_repo (empty string clears it)

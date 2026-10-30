@@ -50,6 +50,33 @@ vi.mock('@/lib/api/firebase-server-helpers', () => ({
   getAdminDb: () => db(),
 }))
 
+const mockAccessibleApps = vi.fn()
+const mockAppAccessFor = vi.fn()
+vi.mock('@/lib/api/app-access', () => ({
+  accessibleApps: (a: unknown) => mockAccessibleApps(a),
+  appAccessFor: (a: unknown, s: string) => mockAppAccessFor(a, s),
+}))
+
+const mockCreateGarmApp = vi.fn()
+const mockBypassed = vi.fn()
+const mockConfigured = vi.fn()
+vi.mock('@/lib/garm-loop', () => {
+  class GarmLoopError extends Error {
+    status: number | null
+    constructor(m: string, status: number | null) {
+      super(m)
+      this.status = status
+    }
+  }
+  return {
+    GarmLoopError,
+    createGarmApp: (...a: unknown[]) => mockCreateGarmApp(...a),
+    loopGarmBypassed: () => mockBypassed(),
+    loopGarmConfigured: () => mockConfigured(),
+  }
+})
+import { GarmLoopError } from '@/lib/garm-loop'
+
 const adminAuth = { uid: 'u1', email: 'admin@x.com', systemRoles: ['admin'], error: null }
 const base = { created_by: 'u0', created_at: 'x', updated_at: 'x' }
 
@@ -67,12 +94,31 @@ beforeEach(() => {
   store = new Map()
   mockGetAuthenticatedUser.mockResolvedValue(adminAuth)
   mockHasSystemRole.mockReturnValue(true)
+  mockBypassed.mockReturnValue(false)
+  mockConfigured.mockReturnValue(true)
+  mockCreateGarmApp.mockResolvedValue(undefined)
+  mockAppAccessFor.mockResolvedValue('admin')
+  // Default: behave like an admin, listing every row in the in-memory store.
+  mockAccessibleApps.mockImplementation(async () =>
+    [...store.entries()]
+      .map(([id, d]) => ({ app: { id, ...d } as { id: string; name?: string }, access: 'admin' }))
+      .sort((a, b) => String(a.app.name).localeCompare(String(b.app.name)))
+  )
 })
 
 describe('GET /api/admin/apps', () => {
-  it('403 for a non-admin', async () => {
+  it('a non-admin gets only their accessible apps, with access', async () => {
     mockHasSystemRole.mockReturnValue(false)
-    expect((await GET(req('GET'))).status).toBe(403)
+    mockAccessibleApps.mockResolvedValue([
+      { app: { id: 'a', slug: 'a', name: 'Alpha' }, access: 'collaborator' },
+    ])
+    const json = await (await GET(req('GET'))).json()
+    expect(json.apps).toEqual([{ id: 'a', slug: 'a', name: 'Alpha', access: 'collaborator' }])
+  })
+  it('a non-admin with no apps gets []', async () => {
+    mockHasSystemRole.mockReturnValue(false)
+    mockAccessibleApps.mockResolvedValue([])
+    expect((await (await GET(req('GET'))).json()).apps).toEqual([])
   })
   it('lists apps sorted by name', async () => {
     store.set('b', { ...base, slug: 'b', name: 'Zed' })
@@ -80,6 +126,63 @@ describe('GET /api/admin/apps', () => {
     const res = await GET(req('GET'))
     const json = await res.json()
     expect(json.apps.map((a: { name: string }) => a.name)).toEqual(['Alpha', 'Zed'])
+  })
+})
+
+describe('POST /api/admin/apps (Garm first)', () => {
+  it('creates the Garm app before the local row', async () => {
+    const order: string[] = []
+    mockCreateGarmApp.mockImplementation(async () => {
+      order.push(`garm:${store.size}`)
+    })
+    const res = await POST(req('POST', { slug: 'tideline2', name: 'Tideline 2' }))
+    expect(res.status).toBe(201)
+    expect(mockCreateGarmApp).toHaveBeenCalledWith('admin@x.com', 'tideline2', 'Tideline 2')
+    expect(order).toEqual(['garm:0'])
+    expect(store.has('tideline2')).toBe(true)
+  })
+  it('Garm 409 -> 409, nothing written', async () => {
+    mockCreateGarmApp.mockRejectedValue(new GarmLoopError('x', 409))
+    const res = await POST(req('POST', { slug: 'tideline2', name: 'T' }))
+    expect(res.status).toBe(409)
+    expect((await res.json()).error).toBe('That slug already exists in Garm')
+    expect(store.size).toBe(0)
+  })
+  it('Garm 403 -> 403, nothing written', async () => {
+    mockCreateGarmApp.mockRejectedValue(new GarmLoopError('x', 403))
+    const res = await POST(req('POST', { slug: 'tideline2', name: 'T' }))
+    expect(res.status).toBe(403)
+    expect((await res.json()).error).toBe('You are not an owner of garm, so you cannot create apps')
+    expect(store.size).toBe(0)
+  })
+  it('Garm unreachable -> 502, nothing written', async () => {
+    mockCreateGarmApp.mockRejectedValue(new GarmLoopError('x', null))
+    const res = await POST(req('POST', { slug: 'tideline2', name: 'T' }))
+    expect(res.status).toBe(502)
+    expect((await res.json()).error).toBe('Garm is unavailable')
+    expect(store.size).toBe(0)
+  })
+  it('bypassed skips Garm and still creates', async () => {
+    mockBypassed.mockReturnValue(true)
+    mockConfigured.mockReturnValue(false)
+    expect((await POST(req('POST', { slug: 'tideline2', name: 'T' }))).status).toBe(201)
+    expect(mockCreateGarmApp).not.toHaveBeenCalled()
+  })
+  it('unconfigured (not bypassed) -> 503', async () => {
+    mockConfigured.mockReturnValue(false)
+    const res = await POST(req('POST', { slug: 'tideline2', name: 'T' }))
+    expect(res.status).toBe(503)
+    expect((await res.json()).error).toBe('Garm is not configured')
+    expect(store.size).toBe(0)
+  })
+  it('Firestore slug taken -> 409 without calling Garm', async () => {
+    store.set('tideline2', { ...base, slug: 'tideline2', name: 'X' })
+    expect((await POST(req('POST', { slug: 'tideline2', name: 'T' }))).status).toBe(409)
+    expect(mockCreateGarmApp).not.toHaveBeenCalled()
+  })
+  it('invalid slug never reaches Garm', async () => {
+    expect((await POST(req('POST', { slug: 'Bad Slug', name: 'T' }))).status).toBe(400)
+    expect(mockCreateGarmApp).not.toHaveBeenCalled()
   })
 })
 
@@ -113,6 +216,19 @@ describe('POST /api/admin/apps', () => {
 describe('/api/admin/apps/[slug]', () => {
   it('GET 404 for an unknown app', async () => {
     expect((await GET_ONE(req('GET'), ctx('nope'))).status).toBe(404)
+  })
+  it('GET 403 for a non-admin with no access', async () => {
+    mockHasSystemRole.mockReturnValue(false)
+    mockAppAccessFor.mockResolvedValue(null)
+    store.set('byside', { ...base, slug: 'byside', name: 'B' })
+    expect((await GET_ONE(req('GET'), ctx('byside'))).status).toBe(403)
+  })
+  it('GET 200 with access for a collaborator', async () => {
+    mockHasSystemRole.mockReturnValue(false)
+    mockAppAccessFor.mockResolvedValue('collaborator')
+    store.set('byside', { ...base, slug: 'byside', name: 'B' })
+    const json = await (await GET_ONE(req('GET'), ctx('byside'))).json()
+    expect(json.app.access).toBe('collaborator')
   })
   it('GET returns the app', async () => {
     store.set('byside', { ...base, slug: 'byside', name: 'B' })
