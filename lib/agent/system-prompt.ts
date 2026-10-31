@@ -252,7 +252,7 @@ ${briefContent.open_risks.map(renderRisk).join('\n')}
     parts.push(`
 ## Shipped recently
 
-These are built and available now. The maker can try them, and may have thoughts on them:
+These are built and available now. When it fits, ask the maker how they are working for them:
 
 ${recentShipped.map((s) => `- ${s.date}: ${s.items.join('; ')}`).join('\n')}
 `.trim())
@@ -262,7 +262,7 @@ ${recentShipped.map((s) => `- ${s.date}: ${s.items.join('; ')}`).join('\n')}
     parts.push(`
 ## Queued (not built yet)
 
-These are planned but not built. Use them only to understand the project; never tell the maker a queued item exists or when it will ship. If the maker raises one themselves, take their input and make no promise about timing:
+These are planned but not built. Use them to understand the project; don't bring them up yourself. If the maker raises one, or asks whether something like it is planned, you may say it is on the list and welcome their input. Never say it is built, never deny it, and never give a date:
 
 ${briefContent.queued.map((q) => `- ${q}`).join('\n')}
 `.trim())

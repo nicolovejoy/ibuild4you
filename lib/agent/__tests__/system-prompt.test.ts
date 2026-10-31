@@ -887,7 +887,7 @@ describe('shipped and queued sections (#219)', () => {
     const { stable, volatile } = buildSystemPromptParts({ ...minimalInput, briefContent: brief })
     expect(stable).toContain('## Queued (not built yet)')
     expect(stable).toContain('- X')
-    expect(stable).toContain('never tell the maker a queued item exists or when it will ship')
+    expect(stable).toContain('Never say it is built, never deny it, and never give a date')
     expect(volatile ?? '').not.toContain('Queued (not built yet)')
   })
 
