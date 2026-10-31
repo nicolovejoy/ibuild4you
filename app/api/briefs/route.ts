@@ -3,6 +3,7 @@ import { getAuthenticatedUser, getAdminDb, getProjectRole, requireRole } from '@
 import { upsertBrief } from '@/lib/api/briefs'
 import { contestFor, dismissedFor, restoreLocksOnPaste, stampDecisionProvenance, topicKey } from '@/lib/api/brief-merge'
 import { carryRiskOwners, normalizeRisks } from '@/lib/brief/risks'
+import { normalizeShipped, normalizeQueued, isShippedArrayShape } from '@/lib/brief/shipped'
 import { foldNotes, listUnfoldedNotes, parsePrepStamp } from '@/lib/api/brief-notes'
 import { briefSizeWarning } from '@/lib/agent/brief-size'
 import type { BriefContent, BriefNote, BriefSource, PrepStamp } from '@/lib/types'
@@ -66,6 +67,9 @@ export async function PUT(request: Request) {
   }
 
   // Normalize the content
+  // #219: normalized once, kept only when non-empty.
+  const shipped = normalizeShipped(content.shipped)
+  const queued = normalizeQueued(content.queued)
   const briefContent: BriefContent = {
     problem: typeof content.problem === 'string' ? content.problem : '',
     target_users: typeof content.target_users === 'string' ? content.target_users : '',
@@ -102,6 +106,8 @@ export async function PUT(request: Request) {
           })
       : [],
     open_risks: normalizeRisks(content.open_risks),
+    ...(shipped.length > 0 && { shipped }),
+    ...(queued.length > 0 && { queued }),
   }
 
   // #194: the Brief tab's Restore re-submits an archived version through this
@@ -220,6 +226,10 @@ function validateBriefContent(content: unknown): string | null {
 
   const c = content as Record<string, unknown>
 
+  // #219: a present shipped/queued must be a list (bad entries inside are dropped).
+  if (!isShippedArrayShape(c.shipped)) return '"shipped" must be a list'
+  if (c.queued !== undefined && !Array.isArray(c.queued)) return '"queued" must be a list'
+
   // At least one field should have data
   const hasData =
     (typeof c.problem === 'string' && c.problem.length > 0) ||
@@ -227,7 +237,9 @@ function validateBriefContent(content: unknown): string | null {
     (Array.isArray(c.features) && c.features.length > 0) ||
     (typeof c.constraints === 'string' && c.constraints.length > 0) ||
     (typeof c.additional_context === 'string' && c.additional_context.length > 0) ||
-    (Array.isArray(c.decisions) && c.decisions.length > 0)
+    (Array.isArray(c.decisions) && c.decisions.length > 0) ||
+    normalizeShipped(c.shipped).length > 0 ||
+    normalizeQueued(c.queued).length > 0
 
   if (!hasData) {
     return 'Brief content is empty — at least one field must have data'

@@ -13,6 +13,7 @@ import { copy } from '@/lib/copy'
 import { sessionNumberById, decisionProvenanceSuffix } from '@/lib/builder/decision-provenance'
 import type { BriefContent, BriefDecision, BriefRisk, BriefRiskOwner, Session } from '@/lib/types'
 import { riskText, riskOwner } from '@/lib/brief/risks'
+import { latestShipped } from '@/lib/brief/shipped'
 import { BriefHistory } from './BriefHistory'
 
 // Brief-as-document editor (#19 Phase 3). Read-first: the brief renders as a
@@ -26,7 +27,8 @@ type EditView = 'structured' | 'raw'
 const hasAnyContent = (b: BriefContent): boolean =>
   !!(b.problem || b.target_users || b.constraints || b.additional_context ||
     (b.features && b.features.length) || (b.decisions && b.decisions.length) ||
-    (b.open_risks && b.open_risks.length))
+    (b.open_risks && b.open_risks.length) ||
+    (b.shipped && b.shipped.length) || (b.queued && b.queued.length))
 
 export function BriefEditor({
   projectId,
@@ -365,6 +367,8 @@ function BriefReadView({ content }: { content: BriefContent }) {
   ].filter((s) => s.value)
   const features = content.features || []
   const openRisks = content.open_risks || []
+  const shipped = latestShipped(content.shipped || [], (content.shipped || []).length)
+  const queued = content.queued || []
 
   return (
     <div className="space-y-4 mt-2">
@@ -400,6 +404,27 @@ function BriefReadView({ content }: { content: BriefContent }) {
               </li>
               )
             })}
+          </ul>
+        </Section>
+      )}
+      {shipped.length > 0 && (
+        <Section label={copy.brief.shipped}>
+          <div className="space-y-2">
+            {shipped.map((b, i) => (
+              <div key={i}>
+                <p className="text-gray-600 text-xs font-medium">{b.date}</p>
+                <ul className="list-disc list-inside space-y-1">
+                  {b.items.map((it, j) => <li key={j} className="text-gray-800 text-sm">{it}</li>)}
+                </ul>
+              </div>
+            ))}
+          </div>
+        </Section>
+      )}
+      {queued.length > 0 && (
+        <Section label={copy.brief.queued}>
+          <ul className="list-disc list-inside space-y-1">
+            {queued.map((q, i) => <li key={i} className="text-gray-800 text-sm">{q}</li>)}
           </ul>
         </Section>
       )}
@@ -560,6 +585,13 @@ function StructuredEditor({
         value={draft.additional_context}
         onChange={(v) => set({ additional_context: v })}
       />
+      <StringListField
+        label={copy.brief.queued}
+        items={draft.queued || []}
+        onChange={(queued) => set({ queued })}
+        placeholder={copy.brief.queuedPlaceholder}
+      />
+      <p className="text-xs text-gray-500">{copy.brief.shippedEditHint}</p>
     </div>
   )
 }

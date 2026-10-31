@@ -72,6 +72,7 @@ import { FerryDesk } from './FerryDesk'
 import { OpenQuestionsCard } from './OpenQuestionsCard'
 import { StalePrepNotice, UnfoldedNotesList } from './BriefNotes'
 import { makerQuestions, riskOwner, riskText } from '@/lib/brief/risks'
+import { latestShipped } from '@/lib/brief/shipped'
 import { ferryStamps } from '@/lib/builder/ferry-stamps'
 import { getTurnIndicator } from '@/lib/turn-indicator'
 import { TurnBadge } from '@/components/ui/TurnBadge'
@@ -748,6 +749,15 @@ function BriefTab({
         }),
         '',
       )
+    }
+    if (briefContent.shipped?.length) {
+      sections.push(`## ${copy.brief.shipped}`, '')
+      for (const batch of latestShipped(briefContent.shipped, briefContent.shipped.length)) {
+        sections.push(`### ${batch.date}`, ...batch.items.map((it) => `- ${it}`), '')
+      }
+    }
+    if (briefContent.queued?.length) {
+      sections.push(`## ${copy.brief.queued}`, ...briefContent.queued.map((q) => `- ${q}`), '')
     }
     return sections.join('\n')
   }
@@ -2435,7 +2445,9 @@ function hasBriefContent(brief: BriefContent): boolean {
     brief.constraints ||
     brief.additional_context ||
     (brief.decisions && brief.decisions.length > 0) ||
-    (brief.open_risks && brief.open_risks.length > 0)
+    (brief.open_risks && brief.open_risks.length > 0) ||
+    (brief.shipped && brief.shipped.length > 0) ||
+    (brief.queued && brief.queued.length > 0)
   )
 }
 

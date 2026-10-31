@@ -35,7 +35,9 @@ When I say "give me the output", produce ONLY valid JSON matching this schema (n
     "constraints": "Any constraints, limitations, or things the maker explicitly doesn't want",
     "additional_context": "Any other relevant information that doesn't fit the above categories",
     "decisions": [{ "topic": "short label", "decision": "what was decided" }],
-    "open_risks": ["plain-language description of something unresolved, unclear, or risky", { "text": "a risk only one side can settle", "owner": "maker" }]
+    "open_risks": ["plain-language description of something unresolved, unclear, or risky", { "text": "a risk only one side can settle", "owner": "maker" }],
+    "shipped": [{ "date": "YYYY-MM-DD", "items": ["something already built and available to the maker"] }],
+    "queued": ["something planned but not built yet"]
   }
 }
 

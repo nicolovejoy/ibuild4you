@@ -1,3 +1,4 @@
+import { latestShipped } from '@/lib/brief/shipped'
 import { AGENT_BEHAVIOR_RULES, CONVERGE_BEHAVIOR_RULES, DEFAULT_IDENTITY, FACILITATOR_IDENTITY, FACILITATOR_RULES } from './constants'
 import { briefRoleLabel } from '@/lib/roles/display'
 import { renderPrototypeFeedbackBlock, type PrototypeFeedbackItem } from './prototype-feedback'
@@ -245,6 +246,28 @@ ${briefContent.open_risks.map(renderRisk).join('\n')}
 `.trim())
   }
 
+  // #219: what the maker can already try, and what is planned but not built.
+  const recentShipped = latestShipped(briefContent?.shipped, 2)
+  if (recentShipped.length > 0) {
+    parts.push(`
+## Shipped recently
+
+These are built and available now. When it fits, ask the maker how they are working for them:
+
+${recentShipped.map((s) => `- ${s.date}: ${s.items.join('; ')}`).join('\n')}
+`.trim())
+  }
+
+  if (briefContent?.queued && briefContent.queued.length > 0) {
+    parts.push(`
+## Queued (not built yet)
+
+These are planned but not built. Use them to understand the project; don't bring them up yourself. If the maker raises one, or asks whether something like it is planned, you may say it is on the list and welcome their input. Never say it is built, never deny it, and never give a date:
+
+${briefContent.queued.map((q) => `- ${q}`).join('\n')}
+`.trim())
+  }
+
   if (briefContent && hasBriefContent(briefContent)) {
     parts.push(`
 ## Current brief
@@ -343,7 +366,9 @@ function hasBriefContent(brief: BriefContent): boolean {
     brief.constraints ||
     brief.additional_context ||
     (brief.decisions && brief.decisions.length > 0) ||
-    (brief.open_risks && brief.open_risks.length > 0)
+    (brief.open_risks && brief.open_risks.length > 0) ||
+    (brief.shipped && brief.shipped.length > 0) ||
+    (brief.queued && brief.queued.length > 0)
   )
 }
 

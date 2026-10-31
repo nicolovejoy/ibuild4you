@@ -206,3 +206,23 @@ describe('open_risks owners (#220)', () => {
     expect(normalizeBriefContent({ open_risks: [42] }).ok).toBe(false)
   })
 })
+
+describe('shipped and queued (#219)', () => {
+  it('round-trips both fields through parse, serialize, parse', () => {
+    const b = { ...emptyBrief(), shipped: [{ date: '2026-10-17', items: ['A'] }], queued: ['Next'] }
+    const first = parseBriefJson(serializeBriefContent(b))
+    expect(first.ok && first.value.shipped).toEqual(b.shipped)
+    expect(first.ok && first.value.queued).toEqual(b.queued)
+    const second = first.ok && parseBriefJson(serializeBriefContent(first.value))
+    expect(second && second.ok && second.value).toEqual(first.ok && first.value)
+  })
+  it('rejects a non-list shipped or queued', () => {
+    expect(normalizeBriefContent({ shipped: 'x' }).ok).toBe(false)
+    expect(normalizeBriefContent({ queued: {} }).ok).toBe(false)
+  })
+  it('omits the keys when absent', () => {
+    const r = normalizeBriefContent({ problem: 'p' })
+    expect(r.ok && 'shipped' in r.value).toBe(false)
+    expect(r.ok && 'queued' in r.value).toBe(false)
+  })
+})

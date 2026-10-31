@@ -34,6 +34,8 @@ const BRIEF_FIELDS = [
   'additional_context',
   'decisions',
   'open_risks',
+  'shipped',
+  'queued',
 ]
 
 describe('buildNewProjectPrompt', () => {

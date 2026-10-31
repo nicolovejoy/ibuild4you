@@ -252,3 +252,51 @@ describe('BriefEditor — open risk owners (#220)', () => {
     expect(savedRisks()?.[3]).toBe('new')
   })
 })
+
+describe('BriefEditor — shipped and queued (#219)', () => {
+  const sq: BriefContent = {
+    ...base,
+    decisions: [],
+    shipped: [
+      { date: '2026-10-01', items: ['Old thing'] },
+      { date: '2026-10-20', items: ['New thing', 'Newer thing'] },
+    ],
+    queued: ['Next thing'],
+  }
+
+  it('read view shows Shipped newest first and Queued items', () => {
+    render(<BriefEditor projectId="p1" content={sq} version={1} />)
+    expect(screen.getByText('Shipped')).toBeTruthy()
+    expect(screen.getByText('Queued')).toBeTruthy()
+    expect(screen.getByText('Next thing')).toBeTruthy()
+    const html = document.body.textContent || ''
+    expect(html.indexOf('2026-10-20')).toBeGreaterThan(-1)
+    expect(html.indexOf('2026-10-20')).toBeLessThan(html.indexOf('2026-10-01'))
+    expect(screen.getByText('Newer thing')).toBeTruthy()
+  })
+
+  it('a brief with only queued is not empty', () => {
+    render(
+      <BriefEditor
+        projectId="p1"
+        content={{ problem: '', target_users: '', features: [], constraints: '', additional_context: '', decisions: [], open_risks: [], queued: ['Only this'] }}
+        version={1}
+      />,
+    )
+    expect(screen.getByText('Only this')).toBeTruthy()
+  })
+
+  it('structured editor adds a queued item and saves it', async () => {
+    render(<BriefEditor projectId="p1" content={sq} version={1} />)
+    fireEvent.click(screen.getByRole('button', { name: /edit brief/i }))
+    expect(screen.getByText(/raw JSON view/i)).toBeTruthy()
+    const input = screen.getByPlaceholderText('Add a queued item…')
+    fireEvent.change(input, { target: { value: 'Third' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    fireEvent.click(screen.getByRole('button', { name: /^save/i }))
+    await waitFor(() => expect(mockMutateAsync).toHaveBeenCalledOnce())
+    const saved = (mockMutateAsync.mock.calls[0] as unknown as [{ content: BriefContent }])[0].content
+    expect(saved.queued).toEqual(['Next thing', 'Third'])
+    expect(saved.shipped).toHaveLength(2)
+  })
+})
