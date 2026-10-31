@@ -18,6 +18,15 @@ describe('normalizeShipped', () => {
       ]),
     ).toEqual([{ date: '2026-10-18', items: ['ok'] }])
   })
+  it('drops dates that are not real calendar days', () => {
+    expect(
+      normalizeShipped([
+        { date: '2026-13-45', items: ['A'] },
+        { date: '2026-02-30', items: ['B'] },
+        { date: '2028-02-29', items: ['C'] },
+      ]),
+    ).toEqual([{ date: '2028-02-29', items: ['C'] }])
+  })
   it('returns [] for a non-array', () => {
     expect(normalizeShipped('x')).toEqual([])
     expect(normalizeShipped(undefined)).toEqual([])

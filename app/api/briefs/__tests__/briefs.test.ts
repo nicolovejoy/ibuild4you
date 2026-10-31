@@ -298,6 +298,11 @@ describe('PUT /api/briefs', () => {
     expect(res.status).toBe(400)
   })
 
+  it('400s on a non-list queued (#219)', async () => {
+    const res = await PUT(makePutRequest({ project_id: 'proj1', content: { ...validContent, queued: {} } }))
+    expect(res.status).toBe(400)
+  })
+
   it('normalizes content — filters invalid decisions', async () => {
     await PUT(makePutRequest({
       project_id: 'proj1',

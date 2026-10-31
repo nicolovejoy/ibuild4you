@@ -67,6 +67,9 @@ export async function PUT(request: Request) {
   }
 
   // Normalize the content
+  // #219: normalized once, kept only when non-empty.
+  const shipped = normalizeShipped(content.shipped)
+  const queued = normalizeQueued(content.queued)
   const briefContent: BriefContent = {
     problem: typeof content.problem === 'string' ? content.problem : '',
     target_users: typeof content.target_users === 'string' ? content.target_users : '',
@@ -103,9 +106,8 @@ export async function PUT(request: Request) {
           })
       : [],
     open_risks: normalizeRisks(content.open_risks),
-    // #219: kept only when non-empty.
-    ...(normalizeShipped(content.shipped).length > 0 && { shipped: normalizeShipped(content.shipped) }),
-    ...(normalizeQueued(content.queued).length > 0 && { queued: normalizeQueued(content.queued) }),
+    ...(shipped.length > 0 && { shipped }),
+    ...(queued.length > 0 && { queued }),
   }
 
   // #194: the Brief tab's Restore re-submits an archived version through this
