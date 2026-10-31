@@ -28,6 +28,8 @@ const BRIEF_FIELDS = [
   'additional_context',
   'decisions',
   'open_risks',
+  'shipped',
+  'queued',
 ]
 
 describe('buildNextConvoPrompt', () => {
@@ -220,5 +222,11 @@ describe('curation prep (#229)', () => {
     expect(NEXT_CONVO_SYSTEM_PROMPT).toMatch(/NEVER drop, reword, or unset a locked decision/)
     expect(NEXT_CONVO_SYSTEM_PROMPT).toMatch(/already on the brief as `contested`/)
     expect(NEXT_CONVO_SYSTEM_PROMPT).toMatch(/keep(s)? its `topic` text exactly/)
+  })
+
+  it('tells the comms agent to carry shipped and queued forward', () => {
+    const result = buildNextConvoPrompt(emptyInput)
+    expect(result).toMatch(/carry `?shipped`? and `?queued`? forward/i)
+    expect(result).toMatch(/out of `?additional_context`?/)
   })
 })

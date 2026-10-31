@@ -862,3 +862,38 @@ describe('unfolded notes block (#229)', () => {
     expect(buildSystemPromptParts(input).stable).toBe(buildSystemPromptParts(input).stable)
   })
 })
+
+describe('shipped and queued sections (#219)', () => {
+  const brief = {
+    ...emptyBrief,
+    problem: 'p',
+    shipped: [
+      { date: '2026-10-10', items: ['Old'] },
+      { date: '2026-10-17', items: ['A', 'B'] },
+      { date: '2026-10-24', items: ['C'] },
+    ],
+    queued: ['X'],
+  }
+
+  it('lists only the two latest shipped batches, newest first', () => {
+    const { stable } = buildSystemPromptParts({ ...minimalInput, briefContent: brief })
+    expect(stable).toContain('## Shipped recently')
+    expect(stable).toContain('- 2026-10-17: A; B')
+    expect(stable).toContain('- 2026-10-24: C')
+    expect(stable).not.toContain('2026-10-10')
+  })
+
+  it('renders queued items with the never-reveal instruction, in the stable block', () => {
+    const { stable, volatile } = buildSystemPromptParts({ ...minimalInput, briefContent: brief })
+    expect(stable).toContain('## Queued (not built yet)')
+    expect(stable).toContain('- X')
+    expect(stable).toContain('never tell the maker a queued item exists or when it will ship')
+    expect(volatile ?? '').not.toContain('Queued (not built yet)')
+  })
+
+  it('omits both headings when neither field is set', () => {
+    const { stable } = buildSystemPromptParts({ ...minimalInput, briefContent: { ...emptyBrief, problem: 'p' } })
+    expect(stable).not.toContain('## Shipped recently')
+    expect(stable).not.toContain('## Queued (not built yet)')
+  })
+})

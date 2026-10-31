@@ -40,5 +40,11 @@ Open risks
 - Every open risk is an object with "text" and "owner": "maker" when only the maker can settle it (their preference, a fact about their world, a choice that is theirs), "builder" when it is the builder's to resolve (technical, scheduling, something the builder said they would look into).
 - Carry an existing owner forward. Give an ownerless risk the owner that fits.
 
+Shipped and queued
+- "shipped" is dated batches of things already built: { "date": "YYYY-MM-DD", "items": [...] }. Keep every batch; only when the size budget presses, merge or drop the oldest first.
+- A dated "we shipped X" passage in additional_context belongs in "shipped". Move it there.
+- "queued" is a list of things planned but not built. When a note says a queued item shipped, remove it from "queued" and add it to the latest "shipped" batch.
+- Always carry "shipped" and "queued" forward: a brief written without them loses them.
+
 Language
 - The brief is in English whatever language the maker speaks, because the agents that read it work in English. Translate the maker's words.`

@@ -38,7 +38,9 @@ When I say "give me the output", produce ONLY valid JSON matching this schema (n
     "constraints": "Any constraints, limitations, or things the user explicitly doesn't want",
     "additional_context": "Any other relevant information that doesn't fit the above categories",
     "decisions": [{ "topic": "short label", "decision": "what was decided", "decided_in_session": "optional session id", "decided_at": "optional ISO timestamp", "revised_in_session": "optional session id", "revised_at": "optional ISO timestamp" }],
-    "open_risks": [{ "text": "plain-language description of something unresolved, unclear, or risky", "owner": "maker" }]
+    "open_risks": [{ "text": "plain-language description of something unresolved, unclear, or risky", "owner": "maker" }],
+    "shipped": [{ "date": "YYYY-MM-DD", "items": ["something built and available to the maker"] }],
+    "queued": ["something planned but not built yet"]
   },
   "welcome_message": "Posted word for word as the agent's first message when the maker opens the next session, so include any link or step they need. Omit it to let the agent greet them itself.",
   "nudge_message": "Optional. Verbatim outbound nudge text used to invite the maker back. Omit to let the system auto-draft.",
@@ -57,7 +59,8 @@ Rules:
 - \`session_opener\` is accepted as a legacy alias for \`welcome_message\` — prefer \`welcome_message\`.
 - The maker's language is given in the <project> block. Write \`welcome_message\` and \`nudge_message\` in that language. The project's language setting already makes the agent use it, so don't add a directive for it. The brief itself always stays in English, because the agents that read it (Sam, the comms agent, Claude Code) work in English: translate anything the maker said in another language.
 - Build the brief ONLY from the current brief and the notes. Do not invent or assume.
-- If a brief field has no information yet, use an empty string (or empty array for features/decisions/open_risks).
+- If a brief field has no information yet, use an empty string (or empty array for features/decisions/open_risks). \`shipped\` and \`queued\` may be omitted when empty.
+- Carry \`shipped\` and \`queued\` forward: they are part of the whole brief, so anything you leave out is gone. Move dated "we shipped X" history out of \`additional_context\` into \`shipped\` as \`{ "date", "items" }\` batches. When a note says a queued item shipped, remove it from \`queued\` and add it to the latest \`shipped\` batch.
 - Features should be distinct, actionable items (not vague goals).
 - A decision = the user committed to a specific choice (not just mentioned an option). Each decision has a short topic label and the decision itself.
 - A decision answers the question it was given. Keep it within that question's scope: don't turn an answer about one feature into a general rule, or into a separate decision. Use the maker's own words, quoting them when they're short. Don't record consequences or follow-on changes the maker didn't state.
