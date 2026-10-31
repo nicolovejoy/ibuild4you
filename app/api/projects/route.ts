@@ -13,6 +13,7 @@ import { generateSlug } from '@/lib/utils'
 import { isLocale } from '@/lib/locale'
 import { resolveBriefRole, defaultBriefRole } from '@/lib/roles/brief-role'
 import { normalizeRisks } from '@/lib/brief/risks'
+import { normalizeShipped, normalizeQueued } from '@/lib/brief/shipped'
 import { copy } from '@/lib/copy'
 import { applyImportToOpenSession } from '@/lib/sessions/apply-import'
 import { deleteS3Object } from '@/lib/s3/client'
@@ -557,6 +558,8 @@ export async function POST(request: Request) {
   if (body.brief && typeof body.brief === 'object') {
     const b = body.brief as Record<string, unknown>
     const seedRisks = normalizeRisks(b.open_risks)
+    const seedShipped = normalizeShipped(b.shipped)
+    const seedQueued = normalizeQueued(b.queued)
     const briefContent = {
       problem: typeof b.problem === 'string' ? b.problem : '',
       target_users: typeof b.target_users === 'string' ? b.target_users : '',
@@ -595,6 +598,8 @@ export async function POST(request: Request) {
           }),
         }),
       ...(seedRisks.length > 0 && { open_risks: seedRisks }),
+      ...(seedShipped.length > 0 && { shipped: seedShipped }),
+      ...(seedQueued.length > 0 && { queued: seedQueued }),
     }
     await db.collection('briefs').add({
       project_id: docRef.id,

@@ -3,6 +3,7 @@ import type { ParseResult } from './import-payload'
 import { parseLooseJson } from '@/lib/utils'
 import { contestFor, dismissedFor } from './brief-merge'
 import { normalizeRisks } from '@/lib/brief/risks'
+import { normalizeShipped, normalizeQueued, isShippedArrayShape } from '@/lib/brief/shipped'
 
 // Pure validation + (de)serialization for the brief-as-document editor (#19
 // Phase 3). The structured view and the raw-JSON view operate on ONE
@@ -52,6 +53,13 @@ export function normalizeBriefContent(input: unknown): ParseResult<BriefContent>
     return { ok: false, error: '"open_risks" must be a list of strings or { text, owner } objects' }
   }
 
+  if (!isShippedArrayShape(o.shipped)) {
+    return { ok: false, error: '"shipped" must be a list of { date, items } objects' }
+  }
+  if (o.queued !== undefined && !Array.isArray(o.queued)) {
+    return { ok: false, error: '"queued" must be a list of strings' }
+  }
+
   const decisions: BriefDecision[] = []
   if (o.decisions !== undefined) {
     if (!Array.isArray(o.decisions)) {
@@ -98,6 +106,11 @@ export function normalizeBriefContent(input: unknown): ParseResult<BriefContent>
     decisions,
     open_risks: normalizeRisks(o.open_risks),
   }
+  // #219: only present when non-empty, so old briefs stay free of empty keys.
+  const shipped = normalizeShipped(o.shipped)
+  const queued = normalizeQueued(o.queued)
+  if (shipped.length > 0) value.shipped = shipped
+  if (queued.length > 0) value.queued = queued
   return { ok: true, value }
 }
 
@@ -124,6 +137,8 @@ export function serializeBriefContent(b: BriefContent): string {
       additional_context: b.additional_context ?? '',
       decisions: b.decisions ?? [],
       open_risks: b.open_risks ?? [],
+      ...(b.shipped?.length ? { shipped: b.shipped } : {}),
+      ...(b.queued?.length ? { queued: b.queued } : {}),
     },
     null,
     2,

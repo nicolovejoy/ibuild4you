@@ -274,6 +274,30 @@ describe('PUT /api/briefs', () => {
     expect(contentArg.open_risks).toEqual([{ text: 'q', owner: 'maker' }, { text: 'bad', owner: 'maker' }, 'plain'])
   })
 
+  it('saves shipped and queued normalized (#219)', async () => {
+    await PUT(makePutRequest({
+      project_id: 'proj1',
+      content: {
+        ...validContent,
+        shipped: [{ date: '2026-10-17', items: [' A '] }, { date: 'bad', items: ['x'] }],
+        queued: [' Next ', ''],
+      },
+    }))
+    const contentArg = mockUpsertBrief.mock.calls[0][2]
+    expect(contentArg.shipped).toEqual([{ date: '2026-10-17', items: ['A'] }])
+    expect(contentArg.queued).toEqual(['Next'])
+  })
+
+  it('accepts a brief whose only content is queued (#219)', async () => {
+    const res = await PUT(makePutRequest({ project_id: 'proj1', content: { queued: ['Next'] } }))
+    expect(res.status).toBe(200)
+  })
+
+  it('400s on a non-list shipped (#219)', async () => {
+    const res = await PUT(makePutRequest({ project_id: 'proj1', content: { ...validContent, shipped: 'x' } }))
+    expect(res.status).toBe(400)
+  })
+
   it('normalizes content — filters invalid decisions', async () => {
     await PUT(makePutRequest({
       project_id: 'proj1',

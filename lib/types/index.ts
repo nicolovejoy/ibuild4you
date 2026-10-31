@@ -295,6 +295,13 @@ export interface BriefRisk {
   owner?: BriefRiskOwner
 }
 
+// A dated batch of things already built (#219). date is YYYY-MM-DD.
+// Helpers live in lib/brief/shipped.ts.
+export interface BriefShipped {
+  date: string
+  items: string[]
+}
+
 // Structured brief content sections
 export interface BriefContent {
   problem: string
@@ -304,6 +311,8 @@ export interface BriefContent {
   additional_context: string
   decisions?: BriefDecision[]
   open_risks?: Array<string | BriefRisk> // string = unowned; see lib/brief/risks.ts, #220
+  shipped?: BriefShipped[] // #219, omitted when empty
+  queued?: string[] // #219: not built yet, omitted when empty
 }
 
 export interface BriefDecisionContest {

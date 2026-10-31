@@ -577,6 +577,19 @@ describe('POST /api/projects', () => {
     })
   })
 
+  it('seeds shipped and queued when present, omits the keys when absent (#219)', async () => {
+    await POST(makeRequest({
+      title: 'Shipped',
+      brief: { problem: 'p', shipped: [{ date: '2026-10-17', items: ['A'] }], queued: ['Next'] },
+    }))
+    await POST(makeRequest({ title: 'Plain', brief: { problem: 'p' } }))
+    const briefs = addedDocs['briefs'] as Array<{ content: Record<string, unknown> }>
+    expect(briefs[0].content.shipped).toEqual([{ date: '2026-10-17', items: ['A'] }])
+    expect(briefs[0].content.queued).toEqual(['Next'])
+    expect('shipped' in briefs[1].content).toBe(false)
+    expect('queued' in briefs[1].content).toBe(false)
+  })
+
   it('filters non-string open_risks entries when seeding', async () => {
     await POST(makeRequest({
       title: 'Risks Test',
