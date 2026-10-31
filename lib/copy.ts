@@ -324,6 +324,9 @@ export const copy = {
     notApprovedMessage: (email: string) =>
       `Thanks for signing up. Your account (${email}) isn't approved yet. We'll let you know when you're in.`,
     notApprovedWrongAccount: 'Signed in with the wrong account? Sign out and try again.',
+    unverifiedTitle: 'Confirm your email address',
+    unverifiedMessage: (email: string) =>
+      `We couldn't confirm that ${email} is yours. Sign out, then tap "Forgot password?" on the sign-in page: setting a password from the emailed link confirms your address.`,
     signOut: 'Sign out',
   },
 
