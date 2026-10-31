@@ -14,7 +14,9 @@ const NEXT_CONVO_PAYLOAD = `{
     "constraints": "Any constraints, limitations, or things the user explicitly doesn't want",
     "additional_context": "Anything else that doesn't fit the categories above",
     "decisions": [{ "topic": "short label", "decision": "what was decided" }],
-    "open_risks": ["plain-language description of something unresolved, unclear, or risky", { "text": "a risk only one side can settle", "owner": "maker" }]
+    "open_risks": ["plain-language description of something unresolved, unclear, or risky", { "text": "a risk only one side can settle", "owner": "maker" }],
+    "shipped": [{ "date": "YYYY-MM-DD", "items": ["what went out in this batch"] }],
+    "queued": ["what is next and not built yet"]
   },
   "welcome_message": "Posted word for word as the agent's first message when the maker opens the next session. Omit it to let the agent greet them itself.",
   "nudge_message": "Optional. Verbatim outbound nudge text used to invite the maker back. Omit to let the system auto-draft.",
@@ -33,6 +35,7 @@ const NOTES = [
   'Include the "brief" object to save a new brief revision; the other fields update the project and steer the next session.',
   'Only include fields the conversation actually addressed — omit the rest rather than inventing them.',
   'session_opener is accepted as a legacy alias for welcome_message — prefer welcome_message.',
+  'shipped is dated batches of what has gone out; queued is what is next and not yet built. additional_context stays for background that is neither.',
   'Preserve prior brief content and decisions unless the conversation explicitly contradicts or reverses them.',
 ]
 

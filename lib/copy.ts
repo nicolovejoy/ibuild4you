@@ -263,6 +263,10 @@ export const copy = {
     openQuestionsCopy: 'Copy as markdown',
     openQuestionsCopied: 'Copied!',
     exportOpenRisks: 'Open risks',
+    shipped: 'Shipped',
+    queued: 'Queued',
+    queuedPlaceholder: 'Add a queued item…',
+    shippedEditHint: 'Edit shipped batches in the raw JSON view.',
     pastePlaceholder: 'Paste the JSON from your prep chat here…',
     pastedVersion: (v: number) => `v${v}`,
     versionLine: (version: number | null, sessions: number | undefined) =>
