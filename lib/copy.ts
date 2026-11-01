@@ -406,6 +406,16 @@ export const copy = {
     warning: "This permanently deletes this brief and all its conversations. This can't be undone.",
   },
 
+  // --- Builder message box under the open conversation (#245). English only. ---
+  builderChat: {
+    joinConversation: 'Join the conversation',
+    placeholder: 'Write to the conversation…',
+    samReplies: 'Sam replies',
+    samRepliesHint: 'Off: your message is posted as a note. Sam reads it next turn but does not answer now.',
+    send: 'Send',
+    samReplying: 'Sam is replying…',
+  },
+
   // --- Loop / feedback (#149, #150) ---
   feedback: {
     requiresIdentity: 'This app requires you to be signed in before sending feedback.',

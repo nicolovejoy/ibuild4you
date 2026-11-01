@@ -69,6 +69,7 @@ import { queryKeys } from '@/lib/query/keys'
 import { BuilderFilesTab } from './BuilderFilesTab'
 import { BriefEditor } from './BriefEditor'
 import { FerryDesk } from './FerryDesk'
+import { ConversationComposer } from './ConversationComposer'
 import { OpenQuestionsCard } from './OpenQuestionsCard'
 import { StalePrepNotice, UnfoldedNotesList } from './BriefNotes'
 import { makerQuestions, riskOwner, riskText } from '@/lib/brief/risks'
@@ -1031,6 +1032,9 @@ function ConversationsTab({
             )}
           </div>
           {selectedSession && <TranscriptPane key={selectedSession.id} session={selectedSession} />}
+          {selectedSession?.status === 'active' && (
+            <ConversationComposer key={`composer-${selectedSession.id}`} projectId={projectId} sessionId={selectedSession.id} />
+          )}
         </div>
       )}
     </div>
@@ -1135,7 +1139,7 @@ function StatusStrip({
               className="flex items-center gap-1 text-sm text-brand-navy hover:underline underline-offset-2 shrink-0"
             >
               <MessageSquare className="h-3.5 w-3.5" />
-              Join the conversation
+              {copy.builderChat.joinConversation}
             </button>
           )}
         </div>
