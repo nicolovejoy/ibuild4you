@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { buildGithubIssue, createGithubIssue, parseGithubRepo } from '../github'
+import { buildGithubIssue, createGithubIssue, parseGithubRepo, githubRepoAccessError } from '../github'
 import type { Feedback } from '@/lib/types'
 
 function makeFeedback(overrides: Partial<Feedback> = {}): Feedback {
@@ -162,5 +162,42 @@ describe('createGithubIssue', () => {
         issue: { title: 't', body: 'b', labels: [] },
       })
     ).rejects.toThrow(/Not Found/)
+  })
+})
+
+describe('githubRepoAccessError', () => {
+  const ok = (status: number) => new Response('{}', { status })
+  beforeEach(() => {
+    vi.spyOn(globalThis, 'fetch')
+    process.env.GITHUB_TOKEN = 'tok'
+  })
+  afterEach(() => {
+    vi.restoreAllMocks()
+    delete process.env.GITHUB_TOKEN
+  })
+
+  it('returns null when the token can read the repo', async () => {
+    const fetchMock = vi.mocked(globalThis.fetch).mockResolvedValue(ok(200))
+    expect(await githubRepoAccessError('nicolovejoy/musicforge')).toBeNull()
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe('https://api.github.com/repos/nicolovejoy/musicforge')
+    expect((init.headers as Record<string, string>).Authorization).toBe('Bearer tok')
+    expect(init.method ?? 'GET').toBe('GET')
+  })
+  it('names the repo and the token when GitHub answers 404 or 403', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValue(ok(404))
+    expect(await githubRepoAccessError('nicolovejoy/l6-music')).toMatch(/can't reach nicolovejoy\/l6-music/)
+    vi.mocked(globalThis.fetch).mockResolvedValue(ok(403))
+    expect(await githubRepoAccessError('nicolovejoy/l6-music')).toMatch(/can't reach/)
+  })
+  it('lets the save through when GitHub is down or the token is unset', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValue(ok(502))
+    expect(await githubRepoAccessError('a/b')).toBeNull()
+    vi.mocked(globalThis.fetch).mockRejectedValue(new Error('network'))
+    expect(await githubRepoAccessError('a/b')).toBeNull()
+    delete process.env.GITHUB_TOKEN
+    vi.mocked(globalThis.fetch).mockClear()
+    expect(await githubRepoAccessError('a/b')).toBeNull()
+    expect(globalThis.fetch).not.toHaveBeenCalled()
   })
 })

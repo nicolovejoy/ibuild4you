@@ -4,6 +4,7 @@ import { appAccessFor, type AppAccess } from '@/lib/api/app-access'
 import { GarmLoopError } from '@/lib/garm-loop'
 import type { App } from '@/lib/types'
 import { FieldValue } from 'firebase-admin/firestore'
+import { githubRepoAccessError } from '@/lib/feedback/github'
 
 type Ctx = { params: Promise<{ slug: string }> }
 
@@ -69,7 +70,14 @@ export async function PATCH(request: Request, { params }: Ctx) {
   }
 
   const ref = getAdminDb().collection('apps').doc(slug)
-  if (!(await ref.get()).exists) return NextResponse.json({ error: 'App not found' }, { status: 404 })
+  const current = await ref.get()
+  if (!current.exists) return NextResponse.json({ error: 'App not found' }, { status: 404 })
+
+  // Only a changed, non-empty repo is checked, so editing the name never waits on GitHub.
+  if (typeof updates.github_repo === 'string' && updates.github_repo !== current.data()?.github_repo) {
+    const repoError = await githubRepoAccessError(updates.github_repo)
+    if (repoError) return NextResponse.json({ error: repoError }, { status: 400 })
+  }
 
   updates.updated_at = new Date().toISOString()
   await ref.update(updates)

@@ -8,6 +8,7 @@ import {
   loopGarmBypassed,
   loopGarmConfigured,
 } from '@/lib/garm-loop'
+import { githubRepoAccessError } from '@/lib/feedback/github'
 
 // GET /api/admin/apps — the Loop apps the caller can see, sorted by name, each
 // with their `access`. Admins see all; others only apps Garm grants them ([] if
@@ -65,6 +66,11 @@ export async function POST(request: Request) {
   // Cheap local check first, so a taken slug never reaches Garm.
   if (await isSlugTaken(getAdminDb(), slug)) {
     return NextResponse.json({ error: 'Slug already in use' }, { status: 409 })
+  }
+  // Before Garm, so a repo the token can't reach leaves nothing behind.
+  if (github_repo) {
+    const repoError = await githubRepoAccessError(github_repo as string)
+    if (repoError) return NextResponse.json({ error: repoError }, { status: 400 })
   }
 
   // Garm app first: it is the authority for who may use the app. Nothing is
