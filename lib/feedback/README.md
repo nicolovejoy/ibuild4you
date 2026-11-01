@@ -4,16 +4,17 @@ This is the canonical spec for the `<FeedbackWidget>` ↔ `/api/feedback`
 contract — the wire layer of **Loop**, the feedback mechanism. For the
 overview + how to embed Loop in a host app, see [`docs/loop.md`](../../docs/loop.md).
 Update this file when the contract changes; sites embedding the widget read
-this to know what to send.
+this to know what to send. Hosts reading their own feedback back out of Loop
+should see [`READ.md`](./READ.md).
 
 The contract lives in three coordinated places:
 
-| Concern              | Source of truth                                    |
-| -------------------- | -------------------------------------------------- |
-| Field names + types  | `payload.ts` (`FeedbackPayload`)                   |
-| Field validation     | `payload.ts` (`validateFeedbackInput`)             |
-| Server-side accept   | `app/api/feedback/route.ts`                        |
-| Reference client     | `lib/feedback/reference/FeedbackWidget.tsx`                    |
+| Concern             | Source of truth                             |
+| ------------------- | ------------------------------------------- |
+| Field names + types | `payload.ts` (`FeedbackPayload`)            |
+| Field validation    | `payload.ts` (`validateFeedbackInput`)      |
+| Server-side accept  | `app/api/feedback/route.ts`                 |
+| Reference client    | `lib/feedback/reference/FeedbackWidget.tsx` |
 
 If you copy the widget into another repo, also copy `payload.ts`. They're
 designed to travel together.
@@ -32,22 +33,23 @@ honeypot, render-time check, and rate limit, not in an origin allowlist.
 
 ```jsonc
 {
-  "projectId": "sample-cafe",          // string, required, must match an app slug (apps.slug or one of its legacy_slugs)
-  "type": "bug",                       // "bug" | "idea" | "other", required
-  "body": "Footer link 404s",          // string, required, max 5000 chars
-  "submitterEmail": "j@example.com",   // string, optional, lowercased server-side
-  "pageUrl": "https://...",            // string, optional, sliced to 2000 chars
-  "userAgent": "Mozilla/5.0 ...",      // string, optional, sliced to 500 chars
-  "viewport": "1440x900",              // string, optional, sliced to 50 chars
-  "website": "",                       // honeypot — MUST stay empty
-  "_ts": 1736812345000,                // number, required, render-time epoch ms
-  "capture": {                         // OPTIONAL — #72 structural page snapshot
-    "v": 1,                            //   must be exactly 1
-    "route": "/checkout",              //   path only (no host/query), sliced to 300
-    "title": "Checkout — Byside",      //   sliced to 200
-    "outline": "h1: Checkout\n..."     //   sliced to 4000
+  "projectId": "sample-cafe", // string, required, must match an app slug (apps.slug or one of its legacy_slugs)
+  "type": "bug", // "bug" | "idea" | "other", required
+  "body": "Footer link 404s", // string, required, max 5000 chars
+  "submitterEmail": "j@example.com", // string, optional, lowercased server-side
+  "pageUrl": "https://...", // string, optional, sliced to 2000 chars
+  "userAgent": "Mozilla/5.0 ...", // string, optional, sliced to 500 chars
+  "viewport": "1440x900", // string, optional, sliced to 50 chars
+  "website": "", // honeypot — MUST stay empty
+  "_ts": 1736812345000, // number, required, render-time epoch ms
+  "capture": {
+    // OPTIONAL — #72 structural page snapshot
+    "v": 1, //   must be exactly 1
+    "route": "/checkout", //   path only (no host/query), sliced to 300
+    "title": "Checkout — Byside", //   sliced to 200
+    "outline": "h1: Checkout\n...", //   sliced to 4000
   },
-  "identityAssertion": "eyJ2Ijox....sig" // OPTIONAL — #149 host-signed identity token
+  "identityAssertion": "eyJ2Ijox....sig", // OPTIONAL — #149 host-signed identity token
 }
 ```
 
@@ -65,7 +67,7 @@ string to the widget to attach; the widget itself never signs anything.
   — `project` must be the app's canonical `apps.slug`, or one of that same app's legacy slugs (an assertion naming a different app's slug does not verify);
   `ts` is unix **seconds**; `kid` names which per-app secret signed it.
 - `sig` = base64url(HMAC-SHA256(UTF-8 bytes of the `payloadB64url` string, secret))
-  — the HMAC is computed over the *string*, not a re-serialization of the
+  — the HMAC is computed over the _string_, not a re-serialization of the
   parsed JSON. Verifiers must do the same: recompute over the exact received
   `payloadB64url`, compare in constant time, and only THEN parse the payload.
 
@@ -92,7 +94,7 @@ itself, EXCEPT when the target app has `feedback_requires_identity: true`
 (`apps.feedback_requires_identity`, set at `/admin/apps/<slug>`; #150) — then an unverified submission (typed email or none) is rejected
 with `403`.
 
-**Rate-limit bypass.** A *verified* submission (valid token, or a valid
+**Rate-limit bypass.** A _verified_ submission (valid token, or a valid
 ibuild4you Firebase `Authorization: Bearer` — see "Optional auth" below)
 bypasses the per-IP rate limit entirely. A merely-typed email does not.
 
@@ -124,7 +126,7 @@ that predate it ignore it.
 2. **Render-time window.** `_ts` must be at least **2,000 ms** old (catches
    bots that fill and submit instantly) and at most **86,400,000 ms / 24 h**
    old (catches stale-form replays). Outside the window → `400 Invalid
-   submission`. **Drift on either bound silently rejects submissions** —
+submission`. **Drift on either bound silently rejects submissions** —
    keep this window in mind if you cache the form HTML.
 3. **Rate limit.** 20 submissions per IP per hour. Exceeded →
    `429 Too many submissions` with a `Retry-After` header in seconds.
@@ -144,13 +146,13 @@ that predate it ignore it.
 
 ## Responses
 
-| Status | Body                                              | Meaning                                    |
-| ------ | ------------------------------------------------- | ------------------------------------------ |
-| 201    | `{ "id": "<feedback-id>" }`                       | Created                                    |
-| 200    | `{ "ok": true }`                                  | Honeypot tripped (silently dropped)        |
-| 400    | `{ "error": "<reason>" }`                         | Validation failure, see `<reason>`         |
-| 403    | `{ "error": "<copy.feedback.requiresIdentity>" }` | App requires identity, submission unverified (#150) |
-| 404    | `{ "error": "Unknown project" }`                  | `projectId` doesn't match any app slug     |
+| Status | Body                                              | Meaning                                                              |
+| ------ | ------------------------------------------------- | -------------------------------------------------------------------- |
+| 201    | `{ "id": "<feedback-id>" }`                       | Created                                                              |
+| 200    | `{ "ok": true }`                                  | Honeypot tripped (silently dropped)                                  |
+| 400    | `{ "error": "<reason>" }`                         | Validation failure, see `<reason>`                                   |
+| 403    | `{ "error": "<copy.feedback.requiresIdentity>" }` | App requires identity, submission unverified (#150)                  |
+| 404    | `{ "error": "Unknown project" }`                  | `projectId` doesn't match any app slug                               |
 | 429    | `{ "error": "Too many submissions, ..." }`        | Rate limit; respect `Retry-After` (skipped for verified submissions) |
 
 ## Side effects on success
@@ -164,7 +166,7 @@ that predate it ignore it.
 
 - **Silent rejection.** Most likely: `_ts` outside the 2 s – 24 h window
   (form was cached or pre-rendered too long ago, or rendered after a clock
-  skew). Always set `_ts` from `Date.now()` at *render time*, not at submit
+  skew). Always set `_ts` from `Date.now()` at _render time_, not at submit
   time.
 - **404 Unknown project.** Slug mismatch. App slugs are kebab-case and
   must match exactly — `sample-cafe`, not `samplecafe` or
