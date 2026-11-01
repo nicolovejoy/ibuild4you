@@ -15,15 +15,15 @@ how-to-embed or triage story changes.
 
 ## Moving parts
 
-| Piece                                 | Where                                                                                                                                                |
-| ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Widget (form)                         | `lib/feedback/reference/FeedbackWidget.tsx`                                                                                                          |
-| Launcher (corner button)              | `components/feedback-launcher.tsx` _(in host apps; see below)_                                                                                       |
-| Payload builder + validation          | `lib/feedback/payload.ts`                                                                                                                            |
-| Ingestion endpoint                    | `app/api/feedback/route.ts` (public, CORS-open)                                                                                                      |
-| Admin inbox                           | `app/admin/feedback/` (all apps) and `app/admin/apps/` (app list, New app, per-app settings + inbox; deep link `/admin/apps/<slug>?id=<feedbackId>`) |
-| Convert to GitHub issue               | `app/api/admin/feedback/[id]/to-github/route.ts`                                                                                                     |
-| Host read endpoint (per-app read key) | `app/api/feedback/read/route.ts`, contract `lib/feedback/READ.md`                                                                                    |
+| Piece | Where |
+| ----- | ----- |
+| Widget (form) | `lib/feedback/reference/FeedbackWidget.tsx` |
+| Launcher (corner button) | `components/feedback-launcher.tsx` *(in host apps; see below)* |
+| Payload builder + validation | `lib/feedback/payload.ts` |
+| Ingestion endpoint | `app/api/feedback/route.ts` (public, CORS-open) |
+| Admin inbox | `app/admin/feedback/` (all apps) and `app/admin/apps/` (app list, New app, per-app settings + inbox; deep link `/admin/apps/<slug>?id=<feedbackId>`) |
+| Convert to GitHub issue | `app/api/admin/feedback/[id]/to-github/route.ts` |
+| Host read endpoint (per-app read key) | `app/api/feedback/read/route.ts`, contract `lib/feedback/READ.md` |
 
 ## Embedding Loop in a host app
 
@@ -40,7 +40,10 @@ files travel together:
 2. Render it, pointing `projectId` at an iBuild4you app slug (`apps.slug`, or one of its `legacy_slugs`):
 
    ```tsx
-   <FeedbackWidget projectId="your-project-slug" endpoint="https://ibuild4you.com/api/feedback" />
+   <FeedbackWidget
+     projectId="your-project-slug"
+     endpoint="https://ibuild4you.com/api/feedback"
+   />
    ```
 
    Render it in the host's root layout so it works on every page and captures
@@ -90,7 +93,7 @@ given project:
    builder's **Agent setup** panel ("GitHub repo" field), or via PATCH
    `/api/projects`.
 2. The server's `GITHUB_TOKEN` (fine-grained PAT) must have `Issues: Read &
-write` on that repo. The PAT's repo scope is managed on GitHub — add new host
+   write` on that repo. The PAT's repo scope is managed on GitHub — add new host
    repos there or the conversion 500s.
 
 ## Who can see an app's feedback

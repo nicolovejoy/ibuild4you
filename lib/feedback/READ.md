@@ -82,7 +82,8 @@ Fields of each item:
 - `loop_url`: opens this item in Loop for an admin. It needs a Loop sign-in
   with access to the app; the key does not grant it.
 - `sender`: `"Sender "` plus four hex characters. The same person gets the same
-  tag within one app every time, so you can tell senders apart in a list. The
+  tag within one app every time, so you can usually tell senders apart in a
+  list (four hex characters can collide, so two people may share a tag). The
   tag cannot be reversed to an email and does not match across apps. It is
   `"anonymous"` when the submission had no email.
 
@@ -104,7 +105,9 @@ cursor until it is `null`.
 
 ## Limits and scope
 
-- Rate limit: 60 reads per minute per app. Only requests with a valid key count.
+- Rate limit: about 60 reads per minute per app, best effort (it is counted per
+  Loop server instance, so a burst may get a little more). Only requests with a
+  valid key count.
 - Server-to-server only. The endpoint sends no CORS headers and has no OPTIONS
   handler, so a browser cannot call it cross-origin. Never ship the key to a
   client.

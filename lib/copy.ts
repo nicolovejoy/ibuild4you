@@ -431,6 +431,7 @@ export const copy = {
     readKeyCopied: 'Copied',
     readKeyLoading: 'Loading…',
     readKeyError: 'Could not change the read key.',
+    readKeyLoadError: 'Could not load the read key status.',
     cardLabel: 'Loop apps',
     pageTitle: 'Loop apps',
     appFilter: 'App',

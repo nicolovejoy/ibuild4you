@@ -66,7 +66,9 @@ export async function verifyReadKey(
 ): Promise<{ last_used_at: string | null } | null> {
   const snap = await db.collection(READ_KEYS_COLLECTION).doc(slug).get()
   if (!snap.exists) return null
-  const data = snap.data() as ReadKeyDoc
+  const data = snap.data() as Partial<ReadKeyDoc> | undefined
+  // A malformed doc (no string hash) is treated as no key, never a throw.
+  if (typeof data?.key_hash !== 'string') return null
   if (!readKeyMatches(presented, data.key_hash)) return null
   return { last_used_at: data.last_used_at ?? null }
 }

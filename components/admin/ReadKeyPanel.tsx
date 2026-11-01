@@ -12,8 +12,9 @@ const button =
   'px-3 py-1.5 text-sm border border-gray-200 rounded text-brand-charcoal hover:border-brand-navy hover:text-brand-navy disabled:opacity-30 disabled:cursor-not-allowed transition-colors'
 
 // The app's read key, for its server to read its own feedback. The key is
-// shown once, right after minting; it lives only in this component's state
-// and is dropped on revoke or when the panel unmounts.
+// shown once, right after minting; the panel holds it in its own state (the
+// mint mutation is not kept in the query cache) and drops it on revoke or
+// when the panel unmounts.
 export function ReadKeyPanel({ slug }: { slug: string }) {
   const { data: status, isLoading, error: loadError } = useAppReadKey(slug)
   const mint = useMintAppReadKey(slug)
@@ -131,7 +132,7 @@ export function ReadKeyPanel({ slug }: { slug: string }) {
 
       {(error || loadError) && (
         <p role="alert" className="text-xs text-red-500">
-          {error ?? t.readKeyError}
+          {error ?? t.readKeyLoadError}
         </p>
       )}
     </section>

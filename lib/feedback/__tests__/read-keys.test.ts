@@ -99,6 +99,14 @@ describe('verifyReadKey', () => {
     expect(await verifyReadKey(f.db, 'b', key)).toBeNull()
     expect(await verifyReadKey(f.db, 'nope', key)).toBeNull()
   })
+
+  it('treats a doc without a string key_hash as no key, without throwing', async () => {
+    const f = fakeDb()
+    f.data.set('loop_read_keys/a', { key_hash: 123, created_at: NOW.toISOString() })
+    f.data.set('loop_read_keys/b', { created_at: NOW.toISOString() })
+    expect(await verifyReadKey(f.db, 'a', 'lrk_AAAAAAAAAAAAAAAAAAAAAA')).toBeNull()
+    expect(await verifyReadKey(f.db, 'b', 'lrk_AAAAAAAAAAAAAAAAAAAAAA')).toBeNull()
+  })
 })
 
 describe('revokeReadKey', () => {

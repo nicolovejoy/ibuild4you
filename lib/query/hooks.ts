@@ -1120,10 +1120,12 @@ export function useAppReadKey(slug: string | undefined) {
 }
 
 // Minting again replaces the live key (that is Rotate). The key is in this
-// response only; the caller holds it in component state.
+// response only; the caller holds it in component state. gcTime 0 drops the
+// mutation (and the key in its result) from the cache as soon as it settles.
 export function useMintAppReadKey(slug: string) {
   const queryClient = useQueryClient()
   return useMutation({
+    gcTime: 0,
     mutationFn: async (): Promise<{ key: string; created_at: string; rotated: boolean }> => {
       const res = await apiFetch(`/api/admin/apps/${slug}/read-key`, { method: 'POST' })
       const data = await res.json().catch(() => ({}))
