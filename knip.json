@@ -1,0 +1,16 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "entry": [
+    "scripts/**/*.{mjs,js}",
+    "lib/feedback/reference/FeedbackWidget.tsx"
+  ],
+  "ignoreDependencies": [
+    "playwright",
+    "eslint",
+    "eslint-config-next"
+  ],
+  "ignoreExportsUsedInFile": true,
+  "ignoreBinaries": [
+    "pbcopy"
+  ]
+}
