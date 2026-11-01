@@ -252,6 +252,13 @@ export interface AppAdmin {
   created_by?: string
 }
 
+// Status of an app's Loop read key. Never carries the key or its hash.
+export interface ReadKeyStatus {
+  exists: boolean
+  created_at: string | null
+  last_used_at: string | null
+}
+
 // Feedback submissions from the FeedbackWidget embedded on client sites.
 // projectId on the wire is an app slug (or one of its legacy slugs); widget
 // submissions are rejected when it doesn't match an app.
