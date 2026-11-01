@@ -7,6 +7,7 @@ import {
 } from '@/lib/api/firebase-server-helpers'
 import { isBriefRole } from '@/lib/roles/brief-role'
 import { normalizeEmail } from '@/lib/email/normalize'
+import { selfEditError } from '@/lib/members/lifecycle'
 
 // GET /api/projects/role?project_id=xxx — get the current user's role on a project
 export async function GET(request: Request) {
@@ -55,6 +56,10 @@ export async function PATCH(request: Request) {
   const callerRole = await getProjectRole(db, projectId, auth.uid, auth.email, auth.systemRoles, auth)
   const roleCheck = requireRole(callerRole, 'builder')
   if (roleCheck) return roleCheck
+
+  // #245: no changing your own brief role — ask another owner.
+  const selfError = selfEditError(email, auth.email)
+  if (selfError) return NextResponse.json({ error: selfError }, { status: 400 })
 
   const memberSnap = await db
     .collection('project_members')

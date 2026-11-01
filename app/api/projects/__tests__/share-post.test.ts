@@ -142,6 +142,15 @@ describe('POST /api/projects/share', () => {
     mockGetProjectRole.mockResolvedValue('builder')
   })
 
+  it('refuses to invite yourself (#245)', async () => {
+    const res = await POST(makeReq({ project_id: 'p1', email: '  Builder@Example.com ', role: 'apprentice' }))
+    expect(res.status).toBe(400)
+    await expect(res.json()).resolves.toEqual({ error: "You're already on this brief. You can't invite yourself." })
+    expect(memberAdds).toHaveLength(0)
+    expect(approvedSets).toHaveLength(0)
+    expect(projectUpdates).toHaveLength(0)
+  })
+
   // The welcome posted into an empty active conversation on share follows the
   // same rule as session creation (lib/sessions/welcome.ts).
   it('posts the welcome into the first conversation on share', async () => {

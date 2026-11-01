@@ -17,6 +17,7 @@ import { accumulateSessionUsage } from '@/lib/observability/session-cost'
 import Anthropic from '@anthropic-ai/sdk'
 import { isArchivedSession } from '@/lib/sessions/active'
 import { isPayloadQueued } from '@/lib/sessions/queued'
+import { isBuilderSideRole } from '@/lib/roles/member-role'
 import type { BriefContent, BriefRole } from '@/lib/types'
 
 // Debounce window for maker-activity notifications. The cron at /api/cron/notify
@@ -94,7 +95,7 @@ async function handleChat(
   } catch {
     return jsonError('Invalid JSON body', 400)
   }
-  const { session_id, content, file_ids } = body
+  const { session_id, content, file_ids, reply } = body
   ctx.session_id = session_id
 
   if (!session_id || (!content?.trim() && (!file_ids || file_ids.length === 0))) {
@@ -159,6 +160,16 @@ async function handleChat(
       // The maker has spoken, so they're no longer waiting on the builder (#214).
       maker_waiting_since: null,
       updated_at: now,
+    })
+  }
+
+  // Note mode (#245): an owner or builder can post without asking Sam to
+  // answer now. The message is stored above; Sam reads it from history on the
+  // next turn. Makers always get a reply, whatever `reply` says.
+  if (reply === false && (role === 'owner' || role === 'builder')) {
+    return new Response(JSON.stringify({ ok: true, reply: false }), {
+      status: 201,
+      headers: { 'Content-Type': 'application/json' },
     })
   }
 
@@ -324,7 +335,7 @@ async function handleChat(
   // session, in first-appearance order, tagged with their brief_role. Only
   // built when 2+ humans are present, so solo sessions do one fewer read and
   // keep the existing single-maker framing.
-  let participants: { name: string; brief_role: BriefRole | null }[] | undefined
+  let participants: { name: string; brief_role: BriefRole | null; builder?: boolean }[] | undefined
   if (multiHuman) {
     const membersSnap = await db
       .collection('project_members')
@@ -338,7 +349,17 @@ async function handleChat(
       if (m.role !== 'user' || !m.sender_email || seen.has(m.sender_email)) continue
       seen.set(m.sender_email, speakerName(m))
     }
-    participants = [...seen].map(([email, name]) => ({ name, brief_role: roleByEmail.get(email) ?? null }))
+    // #245: owner/builder senders render as Builder so Sam reads their notes
+    // as guidance, not the maker's wishes. A sender with no member row (e.g.
+    // an admin who was never added) is left as today.
+    const builderEmails = new Set(
+      membersSnap.docs.filter((d) => isBuilderSideRole(d.data().role)).map((d) => d.data().email as string)
+    )
+    participants = [...seen].map(([email, name]) => ({
+      name,
+      brief_role: roleByEmail.get(email) ?? null,
+      ...(builderEmails.has(email) ? { builder: true } : {}),
+    }))
   }
 
   // #72: ground Sam in what the maker actually reported from the running

@@ -17,6 +17,7 @@ import { isArchivedSession } from '@/lib/sessions/active'
 import { isUnqueuedReturn } from '@/lib/sessions/queued'
 import { unqueuedGreeting } from '@/lib/sessions/unqueued-greeting'
 import { sendUnqueuedNotification } from '@/lib/email/unqueued-notify'
+import { isBuilderSideRole } from '@/lib/roles/member-role'
 import type { BriefContent, BriefRole } from '@/lib/types'
 
 // Agent kickoff (#31). When a maker opens a stale session, the frontend calls
@@ -280,7 +281,7 @@ export async function POST(request: Request) {
       ? Date.now() - lastMakerAtMs
       : undefined
 
-  let participants: { name: string; brief_role: BriefRole | null }[] | undefined
+  let participants: { name: string; brief_role: BriefRole | null; builder?: boolean }[] | undefined
   if (multiHuman) {
     const membersSnap = await db.collection('project_members').where('project_id', '==', projectId).get()
     const roleByEmail = new Map(
@@ -291,7 +292,17 @@ export async function POST(request: Request) {
       if (m.role !== 'user' || !m.sender_email || seen.has(m.sender_email)) continue
       seen.set(m.sender_email, speakerName(m))
     }
-    participants = [...seen].map(([email, name]) => ({ name, brief_role: roleByEmail.get(email) ?? null }))
+    // #245: owner/builder senders render as Builder so Sam reads their notes
+    // as guidance, not the maker's wishes. A sender with no member row (e.g.
+    // an admin who was never added) is left as today.
+    const builderEmails = new Set(
+      membersSnap.docs.filter((d) => isBuilderSideRole(d.data().role)).map((d) => d.data().email as string)
+    )
+    participants = [...seen].map(([email, name]) => ({
+      name,
+      brief_role: roleByEmail.get(email) ?? null,
+      ...(builderEmails.has(email) ? { builder: true } : {}),
+    }))
   }
 
   // #72: ground the kickoff recap in real prototype feedback + structural

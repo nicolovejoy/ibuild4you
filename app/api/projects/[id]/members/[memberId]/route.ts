@@ -10,6 +10,7 @@ import {
   planAccessTierChange,
   planRemoveMember,
   planRestoreMember,
+  selfEditError,
   type MemberRow,
   type LifecyclePlan,
 } from '@/lib/members/lifecycle'
@@ -85,6 +86,10 @@ export async function PATCH(
   const now = new Date().toISOString()
   const targetEmail = members.find((m) => m.id === memberId)?.email ?? ''
 
+  // #245: no self-edits (tier change or restore) — ask another owner.
+  const selfError = selfEditError(targetEmail, loaded.auth.email)
+  if (selfError) return NextResponse.json({ error: selfError }, { status: 400 })
+
   if (body.removed === false) {
     return apply(db, memberId, targetEmail, planRestoreMember({ members, memberId, now }))
   }
@@ -105,6 +110,10 @@ export async function DELETE(
   if (!loaded.ok) return loaded.response
   const { db, members, auth } = loaded
   const targetEmail = members.find((m) => m.id === memberId)?.email ?? ''
+
+  // #245: no removing yourself — ask another owner.
+  const selfError = selfEditError(targetEmail, auth.email)
+  if (selfError) return NextResponse.json({ error: selfError }, { status: 400 })
 
   return apply(
     db,

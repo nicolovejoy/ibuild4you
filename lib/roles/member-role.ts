@@ -3,6 +3,13 @@ import type { MemberRole } from '@/lib/types'
 // The four access tiers, as a runtime-checkable list (highest → lowest).
 export const MEMBER_ROLES: MemberRole[] = ['owner', 'builder', 'apprentice', 'maker']
 
+// Builder-side = the people who run the brief rather than bring the idea
+// (system admins resolve to owner). Their chat messages are guidance for Sam
+// and the note writer, never the maker's own words (#245).
+export function isBuilderSideRole(role: unknown): boolean {
+  return role === 'owner' || role === 'builder'
+}
+
 export function isMemberRole(value: unknown): value is MemberRole {
   return typeof value === 'string' && (MEMBER_ROLES as string[]).includes(value)
 }

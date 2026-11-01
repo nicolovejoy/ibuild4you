@@ -10,6 +10,7 @@ import { generateWelcomeMessage } from '@/lib/agent/welcome-message'
 import { resolveBriefRole } from '@/lib/roles/brief-role'
 import { copy } from '@/lib/copy'
 import { normalizeEmail, isValidEmail } from '@/lib/email/normalize'
+import { isSelfRow } from '@/lib/members/self'
 import { welcomeToPost } from '@/lib/sessions/welcome'
 import { isArchivedSession } from '@/lib/sessions/active'
 import { ensureInviteResetLink } from '@/lib/auth/ensure-invite-account'
@@ -40,6 +41,15 @@ export async function POST(request: Request) {
   if (roleCheck) return roleCheck
 
   const normalizedEmail = normalizeEmail(email)
+
+  // #245: inviting yourself used to rewrite your own membership row (an owner
+  // demoted themselves this way). Refuse before any write.
+  if (isSelfRow(normalizedEmail, auth.email)) {
+    return NextResponse.json(
+      { error: "You're already on this brief. You can't invite yourself." },
+      { status: 400 }
+    )
+  }
 
   // Verify project exists
   const projectDoc = await db.collection('projects').doc(project_id).get()
@@ -224,6 +234,11 @@ export async function PATCH(request: Request) {
   if (typeof new_email === 'string' && new_email.trim()) {
     if (!isValidEmail(new_email)) {
       return NextResponse.json({ error: 'That doesn\'t look like a valid email address' }, { status: 400 })
+    }
+    // Self guard (#245): re-keying the maker's row to the caller's own address
+    // would leave two active rows for one human. Nothing is written.
+    if (isSelfRow(new_email, auth.email)) {
+      return NextResponse.json({ error: "You can't set the maker's email to your own." }, { status: 400 })
     }
     return rekeyRequesterEmail(db, project_id, new_email, auth.email)
   }

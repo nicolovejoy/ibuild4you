@@ -86,7 +86,8 @@ export function useStreamingChat({ projectId }: { projectId: string }) {
     sessionId: string,
     content: string,
     options?: { fileIds?: string[] },
-  ) => {
+  ): Promise<boolean> => {
+    // Resolves true on success, false when the error was caught (#245).
     const nowIso = new Date().toISOString()
     setMessages((prev) => [...prev, { role: 'agent', content: '', created_at: nowIso }])
     setStreaming(true)
@@ -110,6 +111,7 @@ export function useStreamingChat({ projectId }: { projectId: string }) {
 
       queryClient.invalidateQueries({ queryKey: ['messages', sessionId] })
       queryClient.invalidateQueries({ queryKey: ['sessions', projectId] })
+      return true
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong')
       // Remove empty agent placeholder on error
@@ -120,6 +122,7 @@ export function useStreamingChat({ projectId }: { projectId: string }) {
         }
         return updated
       })
+      return false
     } finally {
       setStreaming(false)
     }

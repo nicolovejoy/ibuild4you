@@ -509,6 +509,41 @@ describe('buildSystemPrompt', () => {
     expect(result).toContain('- **Owner** — Participant')
   })
 
+  it('labels a builder-side participant as Builder and adds the guidance line (#245)', () => {
+    const result = buildSystemPrompt({
+      ...minimalInput,
+      participants: [
+        { name: 'Maria', brief_role: 'originator' },
+        { name: 'Nico', brief_role: 'reviewer', builder: true },
+      ],
+    })
+    expect(result).toContain('- **Nico** — Builder')
+    expect(result).not.toContain('- **Nico** — Reviewer')
+    expect(result).toContain(
+      "Messages from the builder are guidance about the conversation, not the maker's own wishes"
+    )
+  })
+
+  it('leaves the roster unchanged when no participant is builder-side (#245)', () => {
+    const participants = [
+      { name: 'Maria', brief_role: 'originator' as const },
+      { name: 'Tom', brief_role: 'contributor' as const },
+    ]
+    const result = buildSystemPrompt({ ...minimalInput, participants })
+    expect(result).not.toContain('Messages from the builder')
+    expect(result).not.toContain('— Builder')
+  })
+
+  it('solo output is unchanged by the builder flag (#245)', () => {
+    const base = { ...minimalInput, makerFirstName: 'Maria' }
+    const solo = buildSystemPrompt(base)
+    const withFlag = buildSystemPrompt({
+      ...base,
+      participants: [{ name: 'Maria', brief_role: 'originator', builder: false }],
+    })
+    expect(withFlag).toBe(solo)
+  })
+
   // ---------------------------------------------------------------------------
   // Agent self-awareness (#69): role disclosure + capability honesty
   // ---------------------------------------------------------------------------

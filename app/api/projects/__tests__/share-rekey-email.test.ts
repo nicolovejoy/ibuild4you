@@ -86,6 +86,17 @@ describe('PATCH /api/projects/share — re-key requester email (#12)', () => {
     expect(memberUpdate).not.toHaveBeenCalled()
   })
 
+  it("refuses to set the maker's email to the caller's own (#245)", async () => {
+    // Padded + mixed case: the guard compares normalized addresses.
+    const res = await PATCH(patchReq({ project_id: 'proj1', new_email: '  Builder@Example.COM ' }))
+    expect(res.status).toBe(400)
+    const data = await res.json()
+    expect(data.error).toBe("You can't set the maker's email to your own.")
+    expect(approvedSet).not.toHaveBeenCalled()
+    expect(memberUpdate).not.toHaveBeenCalled()
+    expect(projectUpdate).not.toHaveBeenCalled()
+  })
+
   it('returns 403 when caller is a maker', async () => {
     mockGetProjectRole.mockResolvedValue('maker')
     const res = await PATCH(patchReq({ project_id: 'proj1', new_email: 'fixed@new.com' }))

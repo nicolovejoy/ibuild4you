@@ -5,7 +5,8 @@
 
 import type { BriefContent, BriefNote } from '@/lib/types'
 
-type Message = { role: string; content: string }
+// `builder`: sent by an owner/builder member (#245); labelled Builder, not User.
+type Message = { role: string; content: string; builder?: boolean }
 
 // Static, identical across projects: sent as a cached system block.
 export const NOTE_SYSTEM_PROMPT = `You write a short note about one stretch of conversation between a maker (someone with an app or website idea) and Sam, the intake assistant. The note records what this conversation added or changed relative to the current project brief. Someone else later merges notes into the brief.
@@ -19,6 +20,7 @@ You get four things:
 Call write_note once. Rules:
 - Write only what is new relative to the current brief and the notes since curation. Never restate either. If nothing new came up, leave every field empty.
 - Use only what the maker actually said. Do not invent or assume.
+- Lines starting "Builder:" are from the builder, not the maker. They are context only: never record a decision, risk owner change or lock_reversal from a Builder line.
 - decisions: choices the maker committed to in the new messages, as { topic, decision }. Include a changed decision too. When revising a decision already in the brief, reuse the brief's exact topic text; when revising one from the notes since curation, reuse that note's exact topic text. A decision answers the question it was given; keep it in the maker's own words.
 - risks_added: things that are now unresolved, unclear or risky. Set owner "maker" when only the maker can settle it, "builder" when it is the builder's to resolve; omit owner when unclear.
 - risks_resolved: the exact text of open risks that the new messages settled, quoted from the brief's open risks or from a note's risks_added.
@@ -36,7 +38,9 @@ export function buildNoteUserContent(args: {
   newMessages: Message[]
 }): string {
   const fmt = (list: Message[]) =>
-    list.map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`).join('\n\n')
+    list
+      .map((m) => `${m.role === 'user' ? (m.builder ? 'Builder' : 'User') : 'Assistant'}: ${m.content}`)
+      .join('\n\n')
   // Only the content fields: ids and fold state mean nothing to the model.
   const notes = args.notesSinceCuration.map((n) => ({
     written_at: n.created_at,
