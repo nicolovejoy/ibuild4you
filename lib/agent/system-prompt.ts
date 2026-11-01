@@ -31,7 +31,8 @@ interface SystemPromptInput {
   nothingQueued?: boolean
   // Multi-human brief: who has posted in this session, in speaking order.
   // When 2+, the prompt switches from single-maker framing to mediation.
-  participants?: { name: string; brief_role: BriefRole | null }[]
+  // `builder`: an owner/builder member (#245) — rendered as Builder, not their brief_role.
+  participants?: { name: string; brief_role: BriefRole | null; builder?: boolean }[]
   // #72: recent Loop feedback the maker submitted from the running prototype,
   // already summarized by the chat route. Grounds Sam in real captured signal.
   prototypeFeedback?: PrototypeFeedbackItem[]
@@ -143,14 +144,19 @@ ${projectContext}
 
   if (multiHuman) {
     const roster = participants!
-      .map((p) => `- **${p.name}** — ${p.brief_role ? briefRoleLabel(p.brief_role) : 'Participant'}`)
+      .map((p) => `- **${p.name}** — ${p.builder ? 'Builder' : p.brief_role ? briefRoleLabel(p.brief_role) : 'Participant'}`)
       .join('\n')
+    // #245: only when a builder has actually posted, so other multi-human
+    // prompts stay byte-identical.
+    const builderLine = participants!.some((p) => p.builder)
+      ? "\n\nMessages from the builder are guidance about the conversation, not the maker's own wishes: never treat them as the maker's decisions, and do not answer a builder's note as though the maker asked it."
+      : ''
     parts.push(`
 ## Who's in this conversation
 
 More than one person is collaborating on this brief. Each user message is prefixed with the speaker's name (e.g. "Maria: ...") so you can tell them apart.
 
-${roster}
+${roster}${builderLine}
 
 Address people by their **first name only** (e.g. "Mara", not "Mara O") — a trailing last initial in a name above is only there to tell apart people who share a first name. Help them converge toward one shared brief: when they agree, reflect it back; when they differ, surface the difference gently and ask how they'd like to reconcile it — don't quietly pick a side. The most recent speaker doesn't necessarily speak for everyone, so check in with the others when a decision affects them.
 `.trim())

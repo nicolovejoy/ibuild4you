@@ -19,6 +19,7 @@ import { upsertBrief } from '@/lib/api/briefs'
 import { contestFor, normalizeDecisionText, topicKey } from '@/lib/api/brief-merge'
 import { normalizeRisks } from '@/lib/brief/risks'
 import { isArchivedSession } from '@/lib/sessions/active'
+import { isBuilderSideRole } from '@/lib/roles/member-role'
 
 // How many messages before the first new one go in as continuity context.
 const EARLIER_CONTEXT_COUNT = 6
@@ -80,7 +81,7 @@ const WRITE_NOTE_TOOL = {
   },
 }
 
-type Msg = { role: string; content: string; created_at: string; session_id: string }
+type Msg = { role: string; content: string; created_at: string; session_id: string; builder?: boolean }
 
 const nonEmpty = (v: unknown): v is string => typeof v === 'string' && v.trim() !== ''
 
@@ -168,6 +169,14 @@ export async function writeNoteForProject(
   const start: string | null =
     notesThroughAt || ((briefDoc?.data().updated_at as string | undefined) ?? null)
 
+  // Owner/builder senders (#245): their turns are labelled Builder so the note
+  // never records them as the maker's words. Same member lookup as the chat
+  // roster; a sender with no member row stays User, as today.
+  const membersSnap = await db.collection('project_members').where('project_id', '==', projectId).get()
+  const builderEmails = new Set(
+    membersSnap.docs.filter((d) => isBuilderSideRole(d.data().role)).map((d) => d.data().email as string)
+  )
+
   // Every message on the project, across all sessions, oldest first.
   const sessionsSnap = await db
     .collection('sessions')
@@ -194,6 +203,7 @@ export async function writeNoteForProject(
         content: d.content as string,
         created_at: (d.created_at as string) ?? '',
         session_id: s.id,
+        ...(d.role === 'user' && builderEmails.has(d.sender_email as string) ? { builder: true } : {}),
       })
     }
   }

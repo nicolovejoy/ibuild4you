@@ -190,6 +190,34 @@ describe('writeNoteForProject', () => {
     expect(nm).not.toContain('old two')
   })
 
+  it('labels messages from an owner/builder member Builder: (#245)', async () => {
+    seedProject()
+    seedSession('s1', '2026-10-01T00:00:00Z')
+    coll('project_members').set('mem1', { project_id: 'p1', email: 'sam@example.com', role: 'maker' })
+    coll('project_members').set('mem2', { project_id: 'p1', email: 'nico@example.com', role: 'owner' })
+    coll('messages').set('m1', {
+      session_id: 's1',
+      created_at: '2026-10-01T00:00:01Z',
+      content: 'maker words',
+      role: 'user',
+      sender_email: 'sam@example.com',
+    })
+    coll('messages').set('m2', {
+      session_id: 's1',
+      created_at: '2026-10-01T00:00:02Z',
+      content: 'builder guidance',
+      role: 'user',
+      sender_email: 'nico@example.com',
+    })
+    mockMessagesCreate.mockResolvedValue(noteResponse(someNote))
+
+    await writeNoteForProject(db, 'p1')
+
+    const nm = userText(lastCall()).split('<new_messages>')[1]
+    expect(nm).toContain('User: maker words')
+    expect(nm).toContain('Builder: builder guidance')
+  })
+
   it('starts after brief.updated_at when notes_through_at is absent', async () => {
     seedProject()
     seedBrief(emptyBrief, '2026-10-01T00:00:02Z')

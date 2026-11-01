@@ -17,6 +17,7 @@ import { accumulateSessionUsage } from '@/lib/observability/session-cost'
 import Anthropic from '@anthropic-ai/sdk'
 import { isArchivedSession } from '@/lib/sessions/active'
 import { isPayloadQueued } from '@/lib/sessions/queued'
+import { isBuilderSideRole } from '@/lib/roles/member-role'
 import type { BriefContent, BriefRole } from '@/lib/types'
 
 // Debounce window for maker-activity notifications. The cron at /api/cron/notify
@@ -334,7 +335,7 @@ async function handleChat(
   // session, in first-appearance order, tagged with their brief_role. Only
   // built when 2+ humans are present, so solo sessions do one fewer read and
   // keep the existing single-maker framing.
-  let participants: { name: string; brief_role: BriefRole | null }[] | undefined
+  let participants: { name: string; brief_role: BriefRole | null; builder?: boolean }[] | undefined
   if (multiHuman) {
     const membersSnap = await db
       .collection('project_members')
@@ -348,7 +349,17 @@ async function handleChat(
       if (m.role !== 'user' || !m.sender_email || seen.has(m.sender_email)) continue
       seen.set(m.sender_email, speakerName(m))
     }
-    participants = [...seen].map(([email, name]) => ({ name, brief_role: roleByEmail.get(email) ?? null }))
+    // #245: owner/builder senders render as Builder so Sam reads their notes
+    // as guidance, not the maker's wishes. A sender with no member row (e.g.
+    // an admin who was never added) is left as today.
+    const builderEmails = new Set(
+      membersSnap.docs.filter((d) => isBuilderSideRole(d.data().role)).map((d) => d.data().email as string)
+    )
+    participants = [...seen].map(([email, name]) => ({
+      name,
+      brief_role: roleByEmail.get(email) ?? null,
+      ...(builderEmails.has(email) ? { builder: true } : {}),
+    }))
   }
 
   // #72: ground Sam in what the maker actually reported from the running
