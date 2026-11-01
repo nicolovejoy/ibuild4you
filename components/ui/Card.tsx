@@ -24,15 +24,6 @@ export function Card({ children, className = '', onClick, hover = true, style }:
   )
 }
 
-interface CardHeaderProps {
-  children: React.ReactNode
-  className?: string
-}
-
-export function CardHeader({ children, className = '' }: CardHeaderProps) {
-  return <div className={`p-4 border-b border-gray-200 ${className}`}>{children}</div>
-}
-
 interface CardBodyProps {
   children: React.ReactNode
   className?: string
