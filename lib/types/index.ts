@@ -252,6 +252,13 @@ export interface AppAdmin {
   created_by?: string
 }
 
+// Status of an app's Loop read key. Never carries the key or its hash.
+export interface ReadKeyStatus {
+  exists: boolean
+  created_at: string | null
+  last_used_at: string | null
+}
+
 // Feedback submissions from the FeedbackWidget embedded on client sites.
 // projectId on the wire is an app slug (or one of its legacy slugs); widget
 // submissions are rejected when it doesn't match an app.
@@ -275,6 +282,19 @@ export interface Feedback extends BaseEntity {
   internal_notes: string | null
   github_issue_url: string | null
   // Subcollection: feedback/{id}/replies — see FeedbackReply below.
+}
+
+// One feedback row as the Loop read API (GET /api/feedback/read) shows it to a
+// host app. Never carries an email, user agent, page URL, body or internal note.
+export interface ReadItem {
+  id: string
+  type: FeedbackType
+  summary: string // first line of the body, trimmed and capped
+  platform: 'ios' | 'android' | 'mac' | 'windows' | 'linux' | 'other'
+  created_at: string
+  status: FeedbackStatus
+  loop_url: string // the row in the Loop admin inbox
+  sender: string // "Sender 3fa9" (per-app tag) or "anonymous"
 }
 
 // Replies live under feedback/{id}/replies and capture the back-and-forth.

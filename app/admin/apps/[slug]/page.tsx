@@ -9,6 +9,7 @@ import { useEscapeBack } from '@/lib/hooks/useEscapeBack'
 import { SectionHeader } from '@/components/section-header'
 import { FeedbackInbox } from '@/components/admin/FeedbackInbox'
 import { ManageAdmins } from '@/components/admin/ManageAdmins'
+import { ReadKeyPanel } from '@/components/admin/ReadKeyPanel'
 import { copy } from '@/lib/copy'
 import type { App } from '@/lib/types'
 
@@ -73,6 +74,7 @@ function AppBody({ slug }: { slug: string }) {
           <>
             {app.access === 'admin' && <SettingsForm app={app} />}
             {(app.access === 'admin' || app.access === 'owner') && <ManageAdmins slug={app.slug} />}
+            {app.access === 'admin' && <ReadKeyPanel slug={app.slug} />}
             <section className="space-y-3">
               <h2 className="text-sm font-medium text-brand-charcoal">{t.feedbackHeading}</h2>
               <Suspense fallback={<div className="text-center text-gray-400 py-12">{copy.loading}</div>}>

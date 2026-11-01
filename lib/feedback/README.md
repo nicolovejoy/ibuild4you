@@ -4,7 +4,8 @@ This is the canonical spec for the `<FeedbackWidget>` ↔ `/api/feedback`
 contract — the wire layer of **Loop**, the feedback mechanism. For the
 overview + how to embed Loop in a host app, see [`docs/loop.md`](../../docs/loop.md).
 Update this file when the contract changes; sites embedding the widget read
-this to know what to send.
+this to know what to send. Hosts reading their own feedback back out of Loop
+should see [`READ.md`](./READ.md).
 
 The contract lives in three coordinated places:
 

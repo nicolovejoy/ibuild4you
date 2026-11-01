@@ -23,6 +23,7 @@ how-to-embed or triage story changes.
 | Ingestion endpoint | `app/api/feedback/route.ts` (public, CORS-open) |
 | Admin inbox | `app/admin/feedback/` (all apps) and `app/admin/apps/` (app list, New app, per-app settings + inbox; deep link `/admin/apps/<slug>?id=<feedbackId>`) |
 | Convert to GitHub issue | `app/api/admin/feedback/[id]/to-github/route.ts` |
+| Host read endpoint (per-app read key) | `app/api/feedback/read/route.ts`, contract `lib/feedback/READ.md` |
 
 ## Embedding Loop in a host app
 
@@ -117,7 +118,14 @@ yes-answer. Every check asks Garm (`lib/garm-loop.ts`, key `GARM_LOOP_KEY`) and
 fails closed if Garm is unreachable. New-feedback email goes to
 `NOTIFICATION_EMAILS` plus the app's Garm owners and collaborators. Read-only
 check: `GARM_LOOP_KEY=op://dev-secrets/garm-consumer-loop/password op run -- node scripts/garm-loop-smoke.mjs`.
-A host app reading its own feedback from Loop is not built yet.
+
+## Reading feedback from a host server
+
+A host app can read its own app's feedback with a per-app read key
+(`GET /api/feedback/read`, `Authorization: Bearer lrk_...`). A system admin mints
+the key at `/admin/apps/<slug>`; it is shown once. The response carries a short
+summary, a platform and a per-app sender tag, never an email. The full contract
+is [`lib/feedback/READ.md`](../lib/feedback/READ.md).
 
 ## Changing the contract
 
