@@ -7,12 +7,13 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 // #245: the owner/builder message box under the open conversation.
 const apiFetch = vi.fn()
 const streamMessage = vi.fn()
+let hookError: string | null = null
 vi.mock('@/lib/firebase/api-fetch', () => ({ apiFetch: (...a: unknown[]) => apiFetch(...a) }))
 vi.mock('@/lib/hooks/useStreamingChat', () => ({
   useStreamingChat: () => ({
     streamMessage: (...a: unknown[]) => streamMessage(...a),
     streaming: false,
-    error: null,
+    error: hookError,
     setError: vi.fn(),
   }),
 }))
@@ -31,7 +32,8 @@ function renderComposer() {
 beforeEach(() => {
   apiFetch.mockReset()
   streamMessage.mockReset()
-  streamMessage.mockResolvedValue(undefined)
+  hookError = null
+  streamMessage.mockResolvedValue(true)
 })
 afterEach(cleanup)
 
@@ -86,6 +88,17 @@ describe('ConversationComposer', () => {
     type('hello')
     fireEvent.click(screen.getByRole('button', { name: 'Send' }))
     await screen.findByText('Not allowed')
+    expect((screen.getByPlaceholderText('Write to the conversation…') as HTMLTextAreaElement).value).toBe('hello')
+  })
+
+  it('a failed reply keeps the text and shows the hook error', async () => {
+    hookError = 'Chat request failed (500)'
+    streamMessage.mockResolvedValue(false)
+    renderComposer()
+    type('hello')
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+    await waitFor(() => expect(streamMessage).toHaveBeenCalled())
+    expect(screen.getByText('Chat request failed (500)')).toBeTruthy()
     expect((screen.getByPlaceholderText('Write to the conversation…') as HTMLTextAreaElement).value).toBe('hello')
   })
 })

@@ -5,7 +5,7 @@
 // posted as a note Sam reads next turn but does not answer now. A note left as
 // the session's last message means the maker gets no automatic greeting on open.
 
-import { useState, useEffect, useRef } from 'react'
+import { useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { apiFetch } from '@/lib/firebase/api-fetch'
 import { errorMessageFromResponse } from '@/lib/hooks/chat-error'
@@ -20,15 +20,6 @@ export function ConversationComposer({ projectId, sessionId }: { projectId: stri
   const [samReplies, setSamReplies] = useState(true)
   const [sending, setSending] = useState(false)
   const [noteError, setNoteError] = useState<string | null>(null)
-  // The text of an in-flight reply send, so a stream error can put it back.
-  const pendingReply = useRef<string | null>(null)
-
-  useEffect(() => {
-    if (streamError && pendingReply.current !== null) {
-      setText((current) => current || pendingReply.current || '')
-      pendingReply.current = null
-    }
-  }, [streamError])
 
   const busy = sending || streaming
   const canSend = text.trim().length > 0 && !busy
@@ -41,10 +32,9 @@ export function ConversationComposer({ projectId, sessionId }: { projectId: stri
     setSending(true)
     try {
       if (samReplies) {
-        pendingReply.current = text
-        setText('')
-        await streamMessage(sessionId, content)
-        pendingReply.current = null
+        // false means the hook caught an error and shows it; keep the text.
+        const ok = await streamMessage(sessionId, content)
+        if (ok) setText('')
       } else {
         const res = await apiFetch('/api/chat', {
           method: 'POST',
