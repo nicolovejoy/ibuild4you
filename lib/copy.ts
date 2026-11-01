@@ -414,6 +414,22 @@ export const copy = {
   // --- Admin: Loop apps (/admin/apps). Admin screens are English only; the
   // French twins in lib/copy-maker.ts cover maker-facing text, not admin. ---
   adminApps: {
+    readKeyHeading: 'Read key',
+    readKeyNote:
+      'Lets this app’s server read its own feedback through /api/feedback/read. Server-to-server only, never put it in a browser. Sender emails are never returned.',
+    readKeyNone: 'No key yet.',
+    readKeyMinted: 'Minted',
+    readKeyLastUsed: 'last used',
+    readKeyNeverUsed: 'never used',
+    readKeyMint: 'Mint key',
+    readKeyRotate: 'Rotate key',
+    readKeyRevoke: 'Revoke',
+    readKeyConfirmRotate: 'Rotate the key? The current key stops working immediately.',
+    readKeyConfirmRevoke: 'Revoke the key? The host app loses access immediately.',
+    readKeyRevealNote: 'Copy it now. It will not be shown again.',
+    readKeyCopy: 'Copy',
+    readKeyCopied: 'Copied',
+    readKeyError: 'Could not change the read key.',
     cardLabel: 'Loop apps',
     pageTitle: 'Loop apps',
     appFilter: 'App',

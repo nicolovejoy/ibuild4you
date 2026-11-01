@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiFetch } from '@/lib/firebase/api-fetch'
 import { queryKeys } from './keys'
-import type { App, AppWithAccess, AppAdmin, Project, Session, Message, Brief, BriefNote, BriefVersion, PrepStamp, SystemRole, ProjectFile, FileFolder, ProjectMemberSummary } from '@/lib/types'
+import type { App, AppWithAccess, AppAdmin, ReadKeyStatus, Project, Session, Message, Brief, BriefNote, BriefVersion, PrepStamp, SystemRole, ProjectFile, FileFolder, ProjectMemberSummary } from '@/lib/types'
 import type { GarmSyncOutcome } from '@/lib/garm-grants'
 
 // --- Current user ---
@@ -1101,5 +1101,47 @@ export function useRevokeAppAdmin(slug: string) {
       if (!res.ok) throw new HttpError(data?.error || 'Revoke failed', res.status)
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.appAdmins(slug) }),
+  })
+}
+
+// --- App read key (host-facing feedback read) ---
+
+export function useAppReadKey(slug: string | undefined) {
+  return useQuery<ReadKeyStatus>({
+    queryKey: queryKeys.appReadKey(slug),
+    queryFn: async () => {
+      const res = await apiFetch(`/api/admin/apps/${slug}/read-key`)
+      if (!res.ok) throw new HttpError('Failed to load read key', res.status)
+      return res.json()
+    },
+    enabled: !!slug,
+    retry: false,
+  })
+}
+
+// Minting again replaces the live key (that is Rotate). The key is in this
+// response only; the caller holds it in component state.
+export function useMintAppReadKey(slug: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (): Promise<{ key: string; created_at: string; rotated: boolean }> => {
+      const res = await apiFetch(`/api/admin/apps/${slug}/read-key`, { method: 'POST' })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new HttpError(data?.error || 'Mint failed', res.status)
+      return data
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.appReadKey(slug) }),
+  })
+}
+
+export function useRevokeAppReadKey(slug: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async () => {
+      const res = await apiFetch(`/api/admin/apps/${slug}/read-key`, { method: 'DELETE' })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new HttpError(data?.error || 'Revoke failed', res.status)
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.appReadKey(slug) }),
   })
 }
