@@ -41,6 +41,15 @@ export async function POST(request: Request) {
 
   const normalizedEmail = normalizeEmail(email)
 
+  // #245: inviting yourself used to rewrite your own membership row (an owner
+  // demoted themselves this way). Refuse before any write.
+  if (normalizedEmail === normalizeEmail(auth.email)) {
+    return NextResponse.json(
+      { error: "You're already on this brief. You can't invite yourself." },
+      { status: 400 }
+    )
+  }
+
   // Verify project exists
   const projectDoc = await db.collection('projects').doc(project_id).get()
   if (!projectDoc.exists) {

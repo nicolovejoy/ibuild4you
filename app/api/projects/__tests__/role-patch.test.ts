@@ -56,6 +56,12 @@ describe('PATCH /api/projects/role', () => {
     expect(res.status).toBe(400)
   })
 
+  it('refuses to change your own brief_role (#245)', async () => {
+    const res = await PATCH(makeReq({ project_id: 'p1', email: ' Builder@Example.com ', brief_role: 'contributor' }))
+    expect(res.status).toBe(400)
+    expect(mockUpdate).not.toHaveBeenCalled()
+  })
+
   it('returns 403 when caller is below builder', async () => {
     mockGetProjectRole.mockResolvedValue('maker')
     const res = await PATCH(makeReq({ project_id: 'p1', email: 'tom@x.com', brief_role: 'contributor' }))

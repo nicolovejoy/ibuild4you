@@ -13,6 +13,7 @@
 
 import type { MemberRole } from '@/lib/types'
 import { isMemberRole } from '@/lib/roles/member-role'
+import { normalizeEmail } from '@/lib/email/normalize'
 
 export interface MemberRow {
   id: string
@@ -100,4 +101,18 @@ export function planRestoreMember({
   if (isActiveMember(target)) return { error: 'This member is already active.' }
 
   return { patch: { removed_at: null, removed_by: null, updated_at: now } }
+}
+
+/**
+ * #245: nobody edits their own access (invite, tier, brief role, removal) —
+ * another owner does it. Returns the 400 message, or null when the target is
+ * someone else (or either email is empty).
+ */
+export function selfEditError(targetEmail: string, actorEmail: string): string | null {
+  const target = normalizeEmail(targetEmail)
+  const actor = normalizeEmail(actorEmail)
+  if (target && actor && target === actor) {
+    return "You can't change your own access on a brief. Ask another owner."
+  }
+  return null
 }

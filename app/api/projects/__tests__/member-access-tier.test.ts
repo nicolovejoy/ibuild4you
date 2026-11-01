@@ -11,6 +11,8 @@ const mockDoc = vi.fn(() => ({ update: mockUpdate }))
 const mockWhere = vi.fn(() => ({ get: mockGet }))
 const mockCollection = vi.fn(() => ({ where: mockWhere, doc: mockDoc }))
 const mockGetProjectRole = vi.fn()
+const mockScheduleGarm = vi.fn()
+vi.mock('@/lib/garm-grants', () => ({ scheduleGarmGrantSync: (...a: unknown[]) => mockScheduleGarm(...a) }))
 
 vi.mock('@/lib/api/firebase-server-helpers', () => ({
   getAuthenticatedUser: vi.fn(async () => ({
@@ -113,5 +115,40 @@ describe('PATCH /api/projects/[id]/members/[memberId]', () => {
     const res = await PATCH(makeReq({ removed: false }), ctx)
     expect(res.status).toBe(200)
     expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({ removed_at: null, removed_by: null }))
+  })
+
+  // #245: an owner who targets their own row must be refused before any write.
+  describe('self-edit guard (#245)', () => {
+    const selfCtx = { params: Promise.resolve({ id: 'proj1', memberId: 'm3' }) }
+    beforeEach(() => {
+      mockGet.mockResolvedValue({
+        docs: [
+          { id: 'm1', data: () => ({ email: 'owner@x.com', role: 'owner' }) },
+          { id: 'm3', data: () => ({ email: 'Builder@Example.com', role: 'owner' }) },
+          { id: 'm2', data: () => ({ email: 'mara@x.com', role: 'maker' }) },
+        ],
+      })
+    })
+
+    it('PATCH role on your own row is 400 with no write or sync', async () => {
+      const req = new Request('http://localhost/x', { method: 'PATCH', body: JSON.stringify({ role: 'apprentice' }) })
+      const res = await PATCH(req, selfCtx)
+      expect(res.status).toBe(400)
+      expect(mockUpdate).not.toHaveBeenCalled()
+      expect(mockScheduleGarm).not.toHaveBeenCalled()
+    })
+
+    it('DELETE on your own row is 400 with no write', async () => {
+      const res = await DELETE(new Request('http://localhost/x', { method: 'DELETE' }), selfCtx)
+      expect(res.status).toBe(400)
+      expect(mockUpdate).not.toHaveBeenCalled()
+    })
+
+    it('an owner can still change another person\'s tier', async () => {
+      mockGetProjectRole.mockResolvedValue('owner')
+      const res = await PATCH(makeReq({ role: 'builder' }), ctx)
+      expect(res.status).toBe(200)
+      expect(mockUpdate).toHaveBeenCalled()
+    })
   })
 })

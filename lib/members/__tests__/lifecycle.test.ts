@@ -4,6 +4,7 @@ import {
   planAccessTierChange,
   planRemoveMember,
   planRestoreMember,
+  selfEditError,
   type MemberRow,
 } from '../lifecycle'
 
@@ -122,5 +123,21 @@ describe('planRestoreMember', () => {
     const members = rows({ id: 'm', role: 'maker' })
     const plan = planRestoreMember({ members, memberId: 'm', now: NOW })
     expect(plan).toHaveProperty('error')
+  })
+})
+
+describe('selfEditError (#245)', () => {
+  const MSG = "You can't change your own access on a brief. Ask another owner."
+  it('refuses when target is the actor', () => {
+    expect(selfEditError('nico@me.com', 'nico@me.com')).toBe(MSG)
+  })
+  it('normalizes case and padding', () => {
+    expect(selfEditError(' Nico@Me.com ', 'nico@me.com')).toBe(MSG)
+  })
+  it('allows another person', () => {
+    expect(selfEditError('danny@example.com', 'nico@me.com')).toBeNull()
+  })
+  it('allows when both are empty', () => {
+    expect(selfEditError('', '')).toBeNull()
   })
 })
