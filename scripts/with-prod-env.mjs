@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Load .env.local into the environment, then spawn the given command with
 // stdio inherited. Lets agent-driven scripts (api-usage-rollup,
-// touch-stuck-briefs, etc.) get the secrets they need without putting an
+// stop-regen-loop, etc.) get the secrets they need without putting an
 // explicit .env.local reference into the Bash command line — the
 // secrets-blocking hook in ~/.claude/hooks/block-secrets.sh would otherwise
 // reject it. The file is read here via fs, which the hook does not police.
@@ -10,7 +10,7 @@
 //
 // Usage:
 //   node scripts/with-prod-env.mjs node scripts/api-usage-rollup.mjs --days 1
-//   node scripts/with-prod-env.mjs node scripts/touch-stuck-briefs.mjs --apply
+//   node scripts/with-prod-env.mjs node scripts/stop-regen-loop.mjs <projectId> --apply
 
 import { readFileSync, existsSync } from 'node:fs'
 import { spawn } from 'node:child_process'
