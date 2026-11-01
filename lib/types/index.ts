@@ -284,6 +284,19 @@ export interface Feedback extends BaseEntity {
   // Subcollection: feedback/{id}/replies — see FeedbackReply below.
 }
 
+// One feedback row as the Loop read API (GET /api/feedback/read) shows it to a
+// host app. Never carries an email, user agent, page URL, body or internal note.
+export interface ReadItem {
+  id: string
+  type: FeedbackType
+  summary: string // first line of the body, trimmed and capped
+  platform: 'ios' | 'android' | 'mac' | 'windows' | 'linux' | 'other'
+  created_at: string
+  status: FeedbackStatus
+  loop_url: string // the row in the Loop admin inbox
+  sender: string // "Sender 3fa9" (per-app tag) or "anonymous"
+}
+
 // Replies live under feedback/{id}/replies and capture the back-and-forth.
 // Inbound mail (Resend webhook) appends `from: 'submitter', via_email: true`
 // replies; admin notes added through the dashboard set `from: 'admin'`.
