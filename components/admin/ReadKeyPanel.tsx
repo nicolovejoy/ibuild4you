@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useAppReadKey, useMintAppReadKey, useRevokeAppReadKey } from '@/lib/query/hooks'
 import { copy } from '@/lib/copy'
 
@@ -15,7 +15,7 @@ const button =
 // shown once, right after minting; it lives only in this component's state
 // and is dropped on revoke or when the panel unmounts.
 export function ReadKeyPanel({ slug }: { slug: string }) {
-  const { data: status, isLoading } = useAppReadKey(slug)
+  const { data: status, isLoading, error: loadError } = useAppReadKey(slug)
   const mint = useMintAppReadKey(slug)
   const revoke = useRevokeAppReadKey(slug)
   const [revealed, setRevealed] = useState<string | null>(null)
@@ -23,6 +23,15 @@ export function ReadKeyPanel({ slug }: { slug: string }) {
   const [error, setError] = useState<string | null>(null)
 
   const exists = !!status?.exists
+  const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Clear the "Copied" reset timer when the panel goes away.
+  useEffect(
+    () => () => {
+      if (copiedTimer.current) clearTimeout(copiedTimer.current)
+    },
+    []
+  )
 
   const onMint = async () => {
     if (exists && !window.confirm(t.readKeyConfirmRotate)) return
@@ -52,6 +61,8 @@ export function ReadKeyPanel({ slug }: { slug: string }) {
     try {
       await navigator.clipboard.writeText(revealed)
       setCopied(true)
+      if (copiedTimer.current) clearTimeout(copiedTimer.current)
+      copiedTimer.current = setTimeout(() => setCopied(false), 2000)
     } catch {
       setCopied(false)
     }
@@ -64,7 +75,7 @@ export function ReadKeyPanel({ slug }: { slug: string }) {
         <p className="text-xs text-gray-500">{t.readKeyNote}</p>
       </div>
 
-      {isLoading && <div className="text-gray-400 text-sm">{copy.loading}</div>}
+      {isLoading && <div className="text-gray-400 text-sm">{t.readKeyLoading}</div>}
       {status && (
         <p className="text-sm text-brand-charcoal">
           {exists && status.created_at
@@ -77,26 +88,28 @@ export function ReadKeyPanel({ slug }: { slug: string }) {
         </p>
       )}
 
-      <div className="flex flex-wrap items-center gap-3">
-        <button
-          type="button"
-          onClick={onMint}
-          disabled={mint.isPending || revoke.isPending || isLoading}
-          className={button}
-        >
-          {exists ? t.readKeyRotate : t.readKeyMint}
-        </button>
-        {exists && (
+      {status && (
+        <div className="flex flex-wrap items-center gap-3">
           <button
             type="button"
-            onClick={onRevoke}
+            onClick={onMint}
             disabled={mint.isPending || revoke.isPending}
-            className="text-xs text-red-500 hover:underline disabled:opacity-30"
+            className={button}
           >
-            {t.readKeyRevoke}
+            {exists ? t.readKeyRotate : t.readKeyMint}
           </button>
-        )}
-      </div>
+          {exists && (
+            <button
+              type="button"
+              onClick={onRevoke}
+              disabled={mint.isPending || revoke.isPending}
+              className="text-xs text-red-500 hover:underline disabled:opacity-30"
+            >
+              {t.readKeyRevoke}
+            </button>
+          )}
+        </div>
+      )}
 
       {revealed && (
         <div className="space-y-1">
@@ -116,9 +129,9 @@ export function ReadKeyPanel({ slug }: { slug: string }) {
         </div>
       )}
 
-      {error && (
+      {(error || loadError) && (
         <p role="alert" className="text-xs text-red-500">
-          {error}
+          {error ?? t.readKeyError}
         </p>
       )}
     </section>

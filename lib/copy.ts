@@ -429,6 +429,7 @@ export const copy = {
     readKeyRevealNote: 'Copy it now. It will not be shown again.',
     readKeyCopy: 'Copy',
     readKeyCopied: 'Copied',
+    readKeyLoading: 'Loading…',
     readKeyError: 'Could not change the read key.',
     cardLabel: 'Loop apps',
     pageTitle: 'Loop apps',
