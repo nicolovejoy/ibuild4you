@@ -101,3 +101,32 @@ export async function createGithubIssue({
   const data = (await res.json()) as { number: number; html_url: string }
   return { url: data.html_url, number: data.number }
 }
+
+// Can the server's GITHUB_TOKEN reach this repo? Checked when an app's
+// github_repo is saved, so a token missing the repo shows up then instead of
+// as "Not Found" on the first Convert to GitHub issue. A fine-grained PAT gets
+// 404 (sometimes 403) for a repo outside its access, same as a typo. Returns
+// the message to show, or null to let the save through. GitHub down, a
+// network error or an unset token never blocks a save.
+export async function githubRepoAccessError(repoInput: string): Promise<string | null> {
+  const token = process.env.GITHUB_TOKEN
+  const repo = parseGithubRepo(repoInput)
+  if (!token || !repo) return null
+  try {
+    const res = await fetch(`https://api.github.com/repos/${repo.owner}/${repo.repo}`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/vnd.github+json',
+        'X-GitHub-Api-Version': '2022-11-28',
+      },
+    })
+    if (res.status === 404 || res.status === 403) {
+      return `The GitHub token can't reach ${repo.owner}/${repo.repo}. Check the name, or add the repo to the token's repository access (then click Update).`
+    }
+    if (!res.ok) console.warn('[apps] github repo check got', res.status, 'for', `${repo.owner}/${repo.repo}`)
+    return null
+  } catch (err) {
+    console.warn('[apps] github repo check failed for', `${repo.owner}/${repo.repo}`, err)
+    return null
+  }
+}

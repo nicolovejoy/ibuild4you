@@ -77,6 +77,11 @@ vi.mock('@/lib/garm-loop', () => {
 })
 import { GarmLoopError } from '@/lib/garm-loop'
 
+const mockRepoAccessError = vi.fn()
+vi.mock('@/lib/feedback/github', () => ({
+  githubRepoAccessError: (r: string) => mockRepoAccessError(r),
+}))
+
 const adminAuth = { uid: 'u1', email: 'admin@x.com', systemRoles: ['admin'], error: null }
 const base = { created_by: 'u0', created_at: 'x', updated_at: 'x' }
 
@@ -98,6 +103,7 @@ beforeEach(() => {
   mockConfigured.mockReturnValue(true)
   mockCreateGarmApp.mockResolvedValue(undefined)
   mockAppAccessFor.mockResolvedValue('admin')
+  mockRepoAccessError.mockResolvedValue(null)
   // Default: behave like an admin, listing every row in the in-memory store.
   mockAccessibleApps.mockImplementation(async () =>
     [...store.entries()]
@@ -280,6 +286,28 @@ describe('/api/admin/apps/[slug]', () => {
     expect(store.get('byside')?.github_repo).toBe('nicolovejoy/byside')
     await PATCH(req('PATCH', { github_repo: '' }), ctx('byside'))
     expect(store.get('byside')?.github_repo).toBeUndefined()
+  })
+  it('PATCH 400 and saves nothing when the token cannot reach a new repo', async () => {
+    store.set('byside', { ...base, slug: 'byside', name: 'B' })
+    mockRepoAccessError.mockResolvedValue("The GitHub token can't reach a/b")
+    const res = await PATCH(req('PATCH', { github_repo: 'a/b', name: 'New' }), ctx('byside'))
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toMatch(/can't reach a\/b/)
+    expect(store.get('byside')?.github_repo).toBeUndefined()
+    expect(store.get('byside')?.name).toBe('B')
+  })
+  it('PATCH does not re-check an unchanged repo or a cleared one', async () => {
+    store.set('byside', { ...base, slug: 'byside', name: 'B', github_repo: 'a/b' })
+    await PATCH(req('PATCH', { github_repo: 'a/b', name: 'New' }), ctx('byside'))
+    await PATCH(req('PATCH', { github_repo: '' }), ctx('byside'))
+    expect(mockRepoAccessError).not.toHaveBeenCalled()
+  })
+  it('POST 400 when the token cannot reach the repo', async () => {
+    mockRepoAccessError.mockResolvedValue("The GitHub token can't reach a/b")
+    const res = await POST(req('POST', { slug: 'prntd', name: 'PRNTD', github_repo: 'a/b' }))
+    expect(res.status).toBe(400)
+    expect(store.has('prntd')).toBe(false)
+    expect(mockCreateGarmApp).not.toHaveBeenCalled()
   })
   it('PATCH 404 when the app does not exist', async () => {
     expect((await PATCH(req('PATCH', { name: 'N' }), ctx('nope'))).status).toBe(404)
