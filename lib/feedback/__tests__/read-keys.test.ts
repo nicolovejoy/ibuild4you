@@ -162,4 +162,19 @@ describe('touchReadKey', () => {
     expect(JSON.stringify(warn.mock.calls)).not.toContain('boom')
     warn.mockRestore()
   })
+
+  it('returns a promise that settles after the write and never rejects', async () => {
+    const f = fakeDb()
+    await mintReadKey(f.db, 'a', 'uid', NOW)
+    await touchReadKey(f.db, 'a', null, NOW)
+    expect(f.updates).toHaveLength(1)
+
+    f.failUpdates()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    await expect(touchReadKey(f.db, 'a', null, NOW)).resolves.toBeUndefined()
+    expect(warn).toHaveBeenCalled()
+    warn.mockRestore()
+
+    await expect(touchReadKey(f.db, 'a', ago(60 * 1000), NOW)).resolves.toBeUndefined()
+  })
 })

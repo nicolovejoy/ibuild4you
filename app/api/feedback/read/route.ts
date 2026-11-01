@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server'
+import { NextResponse, after } from 'next/server'
 import { getAdminDb } from '@/lib/firebase/admin'
 import { checkRateLimit } from '@/lib/api/rate-limit'
 import { isValidAppSlug } from '@/lib/api/apps'
@@ -22,7 +22,9 @@ import type { FeedbackStatus, FeedbackType, ReadItem } from '@/lib/types'
 //
 // Privacy rule: no email, user agent, page URL, body text or internal note
 // ever appears in a response or a log line. Hosts get a summary, a coarse
-// platform and a per-app sender tag instead.
+// platform and a per-app sender tag instead. The summary is the body's first
+// line with anything email-shaped replaced by "[email]", since people type
+// addresses into feedback.
 //
 // Every auth failure (missing or malformed header, wrong key, a key for
 // another app, an invalid or unknown slug) answers the same 404, so an
@@ -115,7 +117,7 @@ export async function GET(request: Request) {
   const items: ReadItem[] = page.map(({ id, data }) => ({
     id,
     type: data.type as FeedbackType,
-    summary: summarize(data.body as string | null),
+    summary: summarize(data.body),
     platform: platformFromUserAgent(data.user_agent as string | null),
     created_at: data.created_at as string,
     status: data.status as FeedbackStatus,
@@ -131,7 +133,15 @@ export async function GET(request: Request) {
   else if (hitBatchCap && lastScanned !== null) next_cursor = encodeCursor(lastScanned)
 
   const response = json({ items, next_cursor })
-  touchReadKey(db, slug, key.last_used_at)
+  // after() keeps the invocation alive until the touch settles, so it is not
+  // dropped when the function freezes after responding. It throws outside a
+  // request scope (scripts); fall back to plain fire-and-forget there.
+  const lastUsedAt = key.last_used_at
+  try {
+    after(() => touchReadKey(db, slug, lastUsedAt))
+  } catch {
+    void touchReadKey(db, slug, lastUsedAt)
+  }
   console.log(JSON.stringify({ event: 'loop_read', slug, count: items.length }))
   return response
 }

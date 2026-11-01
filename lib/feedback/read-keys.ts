@@ -71,16 +71,24 @@ export async function verifyReadKey(
   return { last_used_at: data.last_used_at ?? null }
 }
 
-// Fire and forget: a failed write must never fail the read it rode along with.
+// A failed write must never fail the read it rode along with: the returned
+// promise never rejects. Returned (not floated) so the route can hand it to
+// after() and keep the function alive until the write settles.
 export function touchReadKey(
   db: Firestore,
   slug: string,
   lastUsedAt: string | null,
   now: Date = new Date()
-): void {
-  if (lastUsedAt !== null && now.getTime() - Date.parse(lastUsedAt) < LAST_USED_THROTTLE_MS) return
-  db.collection(READ_KEYS_COLLECTION)
+): Promise<void> {
+  if (lastUsedAt !== null && now.getTime() - Date.parse(lastUsedAt) < LAST_USED_THROTTLE_MS) {
+    return Promise.resolve()
+  }
+  return db
+    .collection(READ_KEYS_COLLECTION)
     .doc(slug)
     .update({ last_used_at: now.toISOString() })
-    .catch(() => console.warn('[loop-read] could not record last_used_at', { slug }))
+    .then(
+      () => undefined,
+      () => console.warn('[loop-read] could not record last_used_at', { slug })
+    )
 }

@@ -1,4 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+
+// after() throws outside a Next request scope; run its callback inline and
+// record that it was used, so the last_used_at touch is observable.
+const mockAfter = vi.fn((cb: () => unknown) => {
+  cb()
+})
+vi.mock('next/server', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('next/server')>()
+  return { ...actual, after: (cb: () => unknown) => mockAfter(cb) }
+})
 import { GET } from '../route'
 import { _resetRateLimit } from '@/lib/api/rate-limit'
 import { hashReadKey, senderTag } from '@/lib/feedback/read-crypto'
@@ -107,6 +117,7 @@ beforeEach(() => {
   delete process.env.NEXT_PUBLIC_APP_URL
   _resetRateLimit()
   mockKeyUpdate.mockClear()
+  mockAfter.mockClear()
   keyStore = {
     byside: { key_hash: hashReadKey(BYSIDE_KEY), created_at: iso(1000), created_by: 'admin-1' },
     prntd: { key_hash: hashReadKey(PRNTD_KEY), created_at: iso(1000), created_by: 'admin-1' },
@@ -210,9 +221,33 @@ describe('GET /api/feedback/read — happy path', () => {
     expect(allArgs).not.toContain('@')
   })
 
-  it('records last_used_at after a successful read', async () => {
+  it('records last_used_at via after() on a successful read', async () => {
     await GET(req({ app: 'byside' }, `Bearer ${BYSIDE_KEY}`))
+    expect(mockAfter).toHaveBeenCalledTimes(1)
     expect(mockKeyUpdate).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not touch last_used_at on a failed read', async () => {
+    await GET(req({ app: 'byside' }, `Bearer ${PRNTD_KEY}`))
+    expect(mockAfter).not.toHaveBeenCalled()
+    expect(mockKeyUpdate).not.toHaveBeenCalled()
+  })
+
+  it('redacts an email typed on the first line of the body', async () => {
+    feedbackRows = [row(0, { submitter_email: null, body: 'Reach me at sam@example.com please\nmore' })]
+    const res = await GET(req({ app: 'byside' }, `Bearer ${BYSIDE_KEY}`))
+    const text = await res.text()
+    expect(JSON.parse(text).items[0].summary).toBe('Reach me at [email] please')
+    expect(text).toContain('[email]')
+    expect(text).not.toContain('@')
+  })
+
+  it('returns an empty summary for a malformed non-string body', async () => {
+    feedbackRows = [row(0, { body: { oops: true } }), row(1, { body: 12345 })]
+    const res = await GET(req({ app: 'byside' }, `Bearer ${BYSIDE_KEY}`))
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.items.map((i: { summary: string }) => i.summary)).toEqual(['', ''])
   })
 })
 

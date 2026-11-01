@@ -50,4 +50,25 @@ describe('summarize', () => {
   it('handles CRLF', () => {
     expect(summarize('a\r\nb')).toBe('a')
   })
+  it('returns empty for a non-string body', () => {
+    expect(summarize(42)).toBe('')
+    expect(summarize({ text: 'hi' })).toBe('')
+    expect(summarize(['a@b.co'])).toBe('')
+  })
+  it('redacts an email mid-line', () => {
+    expect(summarize('Please email me at sam.lee+loop@example.com about this')).toBe(
+      'Please email me at [email] about this'
+    )
+  })
+  it('redacts two emails', () => {
+    expect(summarize('cc a@b.co and <dana@cafe.example.org>')).toBe('cc [email] and <[email]>')
+  })
+  it('redacts before truncating, so a straddling email never leaks a fragment', () => {
+    const line = 'x'.repeat(130) + ' someone@example.com tail'
+    const out = summarize(line)
+    expect(out).toHaveLength(SUMMARY_MAX)
+    expect(out).not.toContain('@')
+    expect(out).not.toContain('someone')
+    expect(out.startsWith('x'.repeat(130) + ' [email')).toBe(true)
+  })
 })
