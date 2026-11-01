@@ -144,6 +144,21 @@ describe('PATCH /api/projects/[id]/members/[memberId]', () => {
       expect(mockUpdate).not.toHaveBeenCalled()
     })
 
+    // Deliberate ruling: restoring your own removed row is refused too.
+    it('PATCH { removed: false } on your own row is 400 with no write', async () => {
+      mockGet.mockResolvedValue({
+        docs: [
+          { id: 'm1', data: () => ({ email: 'owner@x.com', role: 'owner' }) },
+          { id: 'm3', data: () => ({ email: 'Builder@Example.com', role: 'owner', removed_at: '2026-06-01T00:00:00.000Z' }) },
+        ],
+      })
+      const req = new Request('http://localhost/x', { method: 'PATCH', body: JSON.stringify({ removed: false }) })
+      const res = await PATCH(req, selfCtx)
+      expect(res.status).toBe(400)
+      expect(mockUpdate).not.toHaveBeenCalled()
+      expect(mockScheduleGarm).not.toHaveBeenCalled()
+    })
+
     it('an owner can still change another person\'s tier', async () => {
       mockGetProjectRole.mockResolvedValue('owner')
       const res = await PATCH(makeReq({ role: 'builder' }), ctx)

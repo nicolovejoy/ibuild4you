@@ -411,9 +411,10 @@ export const copy = {
     joinConversation: 'Join the conversation',
     placeholder: 'Write to the conversation…',
     samReplies: 'Sam replies',
-    samRepliesHint: 'Off: your message is posted as a note. Sam reads it next turn but does not answer now.',
+    samRepliesHint: 'Off: your message is posted in the conversation (everyone sees it). Sam reads it next turn but does not answer now.',
     send: 'Send',
     samReplying: 'Sam is replying…',
+    you: '(you)',
   },
 
   // --- Loop / feedback (#149, #150) ---

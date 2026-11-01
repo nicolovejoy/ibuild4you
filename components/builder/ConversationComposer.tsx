@@ -2,7 +2,8 @@
 
 // #245: message box under the open conversation in the builder view. With
 // "Sam replies" on, the message streams to Sam like a maker turn; off, it is
-// posted as a note Sam reads next turn but does not answer now. A note left as
+// posted in the conversation (everyone sees it); Sam reads it next turn but
+// does not answer now. A note left as
 // the session's last message means the maker gets no automatic greeting on open.
 
 import { useState } from 'react'
@@ -64,6 +65,7 @@ export function ConversationComposer({ projectId, sessionId }: { projectId: stri
         value={text}
         onChange={(e) => setText(e.target.value)}
         placeholder={copy.builderChat.placeholder}
+        aria-label={copy.builderChat.placeholder}
         rows={3}
         className="w-full rounded border border-gray-300 p-2 text-sm"
       />

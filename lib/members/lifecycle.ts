@@ -110,7 +110,7 @@ export function planRestoreMember({
  */
 export function selfEditError(targetEmail: string, actorEmail: string): string | null {
   if (isSelfRow(targetEmail, actorEmail)) {
-    return "You can't change your own access on a brief. Ask another owner."
+    return "You can't change your own access on a brief. Ask another owner or an admin."
   }
   return null
 }

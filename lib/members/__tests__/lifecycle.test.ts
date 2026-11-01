@@ -127,7 +127,7 @@ describe('planRestoreMember', () => {
 })
 
 describe('selfEditError (#245)', () => {
-  const MSG = "You can't change your own access on a brief. Ask another owner."
+  const MSG = "You can't change your own access on a brief. Ask another owner or an admin."
   it('refuses when target is the actor', () => {
     expect(selfEditError('nico@me.com', 'nico@me.com')).toBe(MSG)
   })

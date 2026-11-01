@@ -235,6 +235,11 @@ export async function PATCH(request: Request) {
     if (!isValidEmail(new_email)) {
       return NextResponse.json({ error: 'That doesn\'t look like a valid email address' }, { status: 400 })
     }
+    // Self guard (#245): re-keying the maker's row to the caller's own address
+    // would leave two active rows for one human. Nothing is written.
+    if (isSelfRow(new_email, auth.email)) {
+      return NextResponse.json({ error: "You can't set the maker's email to your own." }, { status: 400 })
+    }
     return rekeyRequesterEmail(db, project_id, new_email, auth.email)
   }
 

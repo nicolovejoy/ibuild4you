@@ -1510,35 +1510,44 @@ function PeoplePanel({ project, onInvite }: { project: Project; onInvite: () => 
               <li key={m.id} className="py-2">
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="text-sm font-medium text-brand-charcoal truncate">{m.display_name}
-                      {isSelf && <span className="ml-1 text-xs font-normal text-gray-400">(you)</span>}
+                    <p className="text-sm font-medium text-brand-charcoal truncate">
+                      {m.display_name}
+                      {isSelf && (
+                        <span className="ml-1 text-xs font-normal text-gray-400">
+                          {copy.builderChat.you}
+                        </span>
+                      )}
                     </p>
                     <p className="text-xs text-gray-500 truncate">{m.email}</p>
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
                     {/* Access tier (permission level) — editable for every member but you. */}
                     {isSelf ? (
-                      <span className="text-xs text-gray-600 px-1">{memberRoleLabel(m.role ?? 'maker')}</span>
+                      <span className="text-xs text-gray-600 px-1">
+                        {memberRoleLabel(m.role ?? 'maker')}
+                      </span>
                     ) : (
-                    <select
-                      aria-label="Access tier"
-                      value={m.role ?? 'maker'}
-                      disabled={setMemberRole.isPending && pendingTierId === m.id}
-                      onChange={async (e) => {
-                        const value = e.target.value
-                        setPendingTierId(m.id)
-                        try {
-                          await setMemberRole.mutateAsync({ memberId: m.id, role: value })
-                        } finally {
-                          setPendingTierId(null)
-                        }
-                      }}
-                      className="px-2 py-1 border border-gray-300 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-brand-navy"
-                    >
-                      {MEMBER_ROLES.map((r) => (
-                        <option key={r} value={r}>{memberRoleLabel(r)}</option>
-                      ))}
-                    </select>
+                      <select
+                        aria-label="Access tier"
+                        value={m.role ?? 'maker'}
+                        disabled={setMemberRole.isPending && pendingTierId === m.id}
+                        onChange={async (e) => {
+                          const value = e.target.value
+                          setPendingTierId(m.id)
+                          try {
+                            await setMemberRole.mutateAsync({ memberId: m.id, role: value })
+                          } finally {
+                            setPendingTierId(null)
+                          }
+                        }}
+                        className="px-2 py-1 border border-gray-300 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-brand-navy"
+                      >
+                        {MEMBER_ROLES.map((r) => (
+                          <option key={r} value={r}>
+                            {memberRoleLabel(r)}
+                          </option>
+                        ))}
+                      </select>
                     )}
                     {/* Brief role (what they do) — console operators review by default. */}
                     {isConsole ? (
@@ -1546,7 +1555,9 @@ function PeoplePanel({ project, onInvite }: { project: Project; onInvite: () => 
                         {briefRoleLabel('reviewer')}
                       </span>
                     ) : isSelf ? (
-                      <span className="text-xs text-gray-600 px-1">{briefRoleLabel(m.brief_role ?? 'originator')}</span>
+                      <span className="text-xs text-gray-600 px-1">
+                        {briefRoleLabel(m.brief_role ?? 'originator')}
+                      </span>
                     ) : (
                       <select
                         aria-label="Brief role"
@@ -1570,14 +1581,14 @@ function PeoplePanel({ project, onInvite }: { project: Project; onInvite: () => 
                     )}
                     {/* Move out (#106) — non-destructive, two-step inline confirm. */}
                     {!isSelf && (
-                    <button
-                      onClick={() => setConfirmRemoveId(m.id)}
-                      title="Remove from brief"
-                      aria-label="Remove from brief"
-                      className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
+                      <button
+                        onClick={() => setConfirmRemoveId(m.id)}
+                        title="Remove from brief"
+                        aria-label="Remove from brief"
+                        className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
                     )}
                   </div>
                 </div>
