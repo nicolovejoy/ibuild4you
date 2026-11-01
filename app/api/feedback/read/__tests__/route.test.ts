@@ -16,7 +16,8 @@ import { hashReadKey, senderTag } from '@/lib/feedback/read-crypto'
 // =============================================================================
 // Tests for GET /api/feedback/read — the host-facing Loop read endpoint.
 //
-// Firebase Admin is mocked: loop_read_keys is a doc store keyed by slug, and
+// Firebase Admin is mocked: loop_read_keys and apps are doc stores keyed by
+// slug, and
 // feedback is an in-memory array behind a query fake that honours
 // where/orderBy/startAfter/limit (created_at desc).
 // =============================================================================
@@ -26,6 +27,7 @@ const BYSIDE_KEY = 'lrk_AAAAAAAAAAAAAAAAAAAAAA'
 const PRNTD_KEY = 'lrk_BBBBBBBBBBBBBBBBBBBBBB'
 
 let keyStore: Record<string, Record<string, unknown>> = {}
+let appStore: Record<string, Record<string, unknown>> = {}
 let feedbackRows: Array<Record<string, unknown> & { id: string }> = []
 const mockKeyUpdate = vi.fn(async () => undefined)
 
@@ -66,6 +68,13 @@ vi.mock('@/lib/firebase/admin', () => ({
           doc: (id: string) => ({
             get: async () => ({ exists: id in keyStore, id, data: () => keyStore[id] }),
             update: mockKeyUpdate,
+          }),
+        }
+      }
+      if (name === 'apps') {
+        return {
+          doc: (id: string) => ({
+            get: async () => ({ exists: id in appStore, id, data: () => appStore[id] }),
           }),
         }
       }
@@ -122,6 +131,7 @@ beforeEach(() => {
     byside: { key_hash: hashReadKey(BYSIDE_KEY), created_at: iso(1000), created_by: 'admin-1' },
     prntd: { key_hash: hashReadKey(PRNTD_KEY), created_at: iso(1000), created_by: 'admin-1' },
   }
+  appStore = { byside: { name: 'Byside' }, prntd: { name: 'Prntd' } }
   feedbackRows = []
   logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
 })
@@ -151,6 +161,13 @@ describe('GET /api/feedback/read — auth failures all look the same', () => {
     ['app missing', {}, `Bearer ${BYSIDE_KEY}`],
     ['app with no key doc', { app: 'l6-music' }, `Bearer ${BYSIDE_KEY}`],
   ]
+
+  it('a valid key whose app doc is gone → the same 404', async () => {
+    delete appStore.byside
+    const res = await GET(req({ app: 'byside' }, `Bearer ${BYSIDE_KEY}`))
+    expect(res.status).toBe(404)
+    expect(await res.text()).toBe(JSON.stringify({ error: 'Not found' }))
+  })
 
   it.each(cases)('%s → 404 Not found', async (_label, params, auth) => {
     const res = await GET(req(params, auth))
@@ -334,5 +351,70 @@ describe('GET /api/feedback/read — cursor and rate limit', () => {
     for (let i = 0; i < 60; i++) {
       expect((await GET(req({ app: 'byside' }, `Bearer ${BYSIDE_KEY}`))).status).toBe(200)
     }
+  })
+})
+
+describe('GET /api/feedback/read — legacy slugs', () => {
+  const auth = `Bearer ${BYSIDE_KEY}`
+  const ids = (body: { items: Array<{ id: string }> }) => body.items.map((i) => i.id)
+
+  beforeEach(() => {
+    appStore.byside = { name: 'Byside', legacy_slugs: ['byside-v1', 'byside'] }
+  })
+
+  it('includes rows under a legacy slug, newest first, no duplicates', async () => {
+    feedbackRows = [
+      row(0),
+      row(1, { project_id: 'byside-v1' }),
+      row(2),
+      row(3, { project_id: 'byside-v1' }),
+      row(4, { project_id: 'prntd' }),
+    ]
+    const res = await GET(req({ app: 'byside' }, auth))
+    const body = await res.json()
+    expect(ids(body)).toEqual(['fb-0', 'fb-1', 'fb-2', 'fb-3'])
+    expect(body.next_cursor).toBeNull()
+    // Items keep the canonical slug in loop_url and the sender tag.
+    expect(body.items[1].loop_url).toBe('https://ibuild4you.com/admin/apps/byside?id=fb-1')
+    expect(body.items[1].sender).toBe(senderTag(SECRET, 'byside', 'person1@example.com'))
+  })
+
+  it('pages across the merged stream with no gaps or duplicates', async () => {
+    // Interleave: even rows canonical, odd rows legacy.
+    feedbackRows = Array.from({ length: 25 }, (_, i) =>
+      row(i, i % 2 ? { project_id: 'byside-v1' } : {})
+    )
+    const seen: string[] = []
+    let before: string | null = null
+    for (let page = 0; page < 10; page++) {
+      const params: Record<string, string> = { app: 'byside', limit: '10' }
+      if (before) params.before = before
+      const body = await (await GET(req(params, auth))).json()
+      seen.push(...ids(body))
+      before = body.next_cursor
+      if (!before) break
+    }
+    expect(seen).toEqual(Array.from({ length: 25 }, (_, i) => `fb-${i}`))
+  })
+
+  it('does not skip legacy rows when only the legacy scan hits the batch cap', async () => {
+    // Legacy id: 600 newest rows are spam, then one real row. Canonical id has
+    // older real rows that would otherwise fill the page past the legacy gap.
+    feedbackRows = [
+      ...Array.from({ length: 600 }, (_, i) => row(i, { project_id: 'byside-v1', status: 'spam' })),
+      row(600, { project_id: 'byside-v1' }),
+      ...Array.from({ length: 5 }, (_, i) => row(700 + i)),
+    ]
+    const seen: string[] = []
+    let before: string | null = null
+    for (let page = 0; page < 10; page++) {
+      const params: Record<string, string> = { app: 'byside', limit: '3' }
+      if (before) params.before = before
+      const body = await (await GET(req(params, auth))).json()
+      seen.push(...ids(body))
+      before = body.next_cursor
+      if (!before) break
+    }
+    expect(seen).toEqual(['fb-600', 'fb-700', 'fb-701', 'fb-702', 'fb-703', 'fb-704'])
   })
 })

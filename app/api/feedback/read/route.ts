@@ -33,8 +33,13 @@ import type { FeedbackStatus, FeedbackType, ReadItem } from '@/lib/types'
 // The rate limit runs only after the key verifies: counting failed attempts
 // would let anyone without a key starve the host of its own reads.
 //
+// Feedback sent under the app's legacy slugs is included: the Phase A
+// migration did not rewrite old rows' project_id, so the route scans each id
+// (canonical slug plus `apps.legacy_slugs`) and merges the results newest
+// first, as the admin inbox does.
+//
 // Spam is filtered in code rather than with a `status !=` filter, so the
-// existing `project_id asc + created_at desc` index serves the query and no
+// existing `project_id asc + created_at desc` index serves each query and no
 // new composite index is needed. That means one page can take several
 // batches; the batch cap bounds the work and hands back a cursor past it.
 // =============================================================================
@@ -60,6 +65,46 @@ function bearerToken(request: Request): string | null {
   if (!match) return null
   const token = match[1].trim()
   return token.length > 0 ? token : null
+}
+
+interface IdScan {
+  kept: Array<{ id: string; data: Record<string, unknown> }>
+  // The oldest created_at this scan has fully accounted for, or null when the
+  // id has no more rows at all.
+  coveredTo: string | null
+}
+
+// Read one project_id newest first from `cursor`, in batches, keeping up to
+// limit + 1 non-spam rows (the extra one tells us there is more).
+async function scanOneId(
+  db: FirebaseFirestore.Firestore,
+  id: string,
+  cursor: string | null,
+  limit: number
+): Promise<IdScan> {
+  const kept: IdScan['kept'] = []
+  let lastScanned = cursor
+  for (let batch = 0; batch < READ_SCAN_MAX_BATCHES; batch++) {
+    let query = db
+      .collection('feedback')
+      .where('project_id', '==', id)
+      .orderBy('created_at', 'desc')
+    if (lastScanned !== null) query = query.startAfter(lastScanned)
+    const snap = await query.limit(READ_SCAN_BATCH).get()
+
+    for (const doc of snap.docs) {
+      const data = doc.data() as Record<string, unknown>
+      if (kept.length > limit) break
+      lastScanned = data.created_at as string
+      if (data.status !== 'spam') kept.push({ id: doc.id, data })
+    }
+    // Found the extra row: covered down to it (rows past it were not read).
+    if (kept.length > limit) return { kept, coveredTo: kept[limit].data.created_at as string }
+    // A short batch: this id has nothing older.
+    if (snap.docs.length < READ_SCAN_BATCH) return { kept, coveredTo: null }
+  }
+  // Stopped on the batch cap: covered down to the last row scanned.
+  return { kept, coveredTo: lastScanned }
 }
 
 export async function GET(request: Request) {
@@ -91,28 +136,35 @@ export async function GET(request: Request) {
 
   const limit = parseReadLimit(params.get('limit'))
 
-  // Collect limit + 1 non-spam rows: the extra one tells us there is more.
-  const kept: Array<{ id: string; data: Record<string, unknown> }> = []
-  let lastScanned = cursor
-  let hitBatchCap = false
-  for (let batch = 0; batch < READ_SCAN_MAX_BATCHES; batch++) {
-    let query = db
-      .collection('feedback')
-      .where('project_id', '==', slug)
-      .orderBy('created_at', 'desc')
-    if (lastScanned !== null) query = query.startAfter(lastScanned)
-    const snap = await query.limit(READ_SCAN_BATCH).get()
+  // The key is stored under the canonical slug, so the app doc is keyed the
+  // same way. No app doc answers the same 404 as every other failure.
+  const appSnap = await db.collection('apps').doc(slug).get()
+  if (!appSnap.exists) return notFound()
+  const legacy = (appSnap.data() as { legacy_slugs?: unknown }).legacy_slugs
+  const ids = [
+    ...new Set(
+      [slug, ...(Array.isArray(legacy) ? legacy : [])].filter((s) => typeof s === 'string')
+    ),
+  ] as string[]
 
-    for (const doc of snap.docs) {
-      const data = doc.data() as Record<string, unknown>
-      lastScanned = data.created_at as string
-      if (data.status !== 'spam' && kept.length <= limit) kept.push({ id: doc.id, data })
+  const scans = await Promise.all(ids.map((id) => scanOneId(db, id, cursor, limit)))
+
+  // How far the merged stream is complete: every id has been read down to its
+  // own `coveredTo` point, so only rows at or newer than the newest of those
+  // points are known to be in order across all ids. Older rows wait for the
+  // next page. null means every id ran out of rows.
+  let frontier: string | null = null
+  for (const scan of scans) {
+    if (scan.coveredTo !== null && (frontier === null || scan.coveredTo > frontier)) {
+      frontier = scan.coveredTo
     }
-    if (kept.length > limit || snap.docs.length < READ_SCAN_BATCH) break
-    if (batch === READ_SCAN_MAX_BATCHES - 1) hitBatchCap = true
   }
+  const merged = scans
+    .flatMap((scan) => scan.kept)
+    .filter((row) => frontier === null || (row.data.created_at as string) >= frontier)
+    .sort((a, b) => (b.data.created_at as string).localeCompare(a.data.created_at as string))
 
-  const page = kept.slice(0, limit)
+  const page = merged.slice(0, limit)
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://ibuild4you.com'
   const items: ReadItem[] = page.map(({ id, data }) => ({
     id,
@@ -125,12 +177,13 @@ export async function GET(request: Request) {
     sender: senderTag(secret, slug, data.submitter_email as string | null),
   }))
 
-  // More rows exist: point at the last returned item. Stopped on the batch cap
-  // without filling the page: point at the last row scanned, so the next call
-  // resumes the scan instead of re-reading the same spam.
+  // More known rows than fit: point at the last returned item. Otherwise, if
+  // any id still has rows past what was read (an extra row, or its scan
+  // stopped on the batch cap): point at the frontier, so the next call resumes
+  // there instead of skipping or re-reading rows.
   let next_cursor: string | null = null
-  if (kept.length > limit) next_cursor = encodeCursor(items[limit - 1].created_at)
-  else if (hitBatchCap && lastScanned !== null) next_cursor = encodeCursor(lastScanned)
+  if (merged.length > limit) next_cursor = encodeCursor(items[limit - 1].created_at)
+  else if (frontier !== null) next_cursor = encodeCursor(frontier)
 
   const response = json({ items, next_cursor })
   // after() keeps the invocation alive until the touch settles, so it is not

@@ -33,6 +33,7 @@ Authorization: Bearer lrk_...
 ```
 
 - `app`: the app's canonical slug. A legacy slug is not accepted (404).
+  Feedback sent under the app's older slugs is included.
 - `limit`: 1 to 50, default 20. A value outside the range is clamped, and a
   non-numeric value falls back to 20.
 - `before`: optional and opaque. To get the next page, pass back the
