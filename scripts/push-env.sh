@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Push secrets from 1Password to Vercel without the value ever touching disk or
-# the terminal. `op read` is piped straight into `vercel env add --sensitive`,
-# so the variable is stored as a Secret (not readable back from the dashboard).
+# the terminal. `op read` fills a shell variable that is piped into
+# `vercel env add --sensitive`, so the variable is stored as a Secret (not
+# readable back from the dashboard) and an empty read never overwrites one.
 #
 # One variable:
 #   scripts/push-env.sh VAR_NAME 'op://vault/item/field' production,preview
