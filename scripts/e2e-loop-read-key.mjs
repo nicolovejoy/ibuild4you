@@ -124,7 +124,10 @@ try {
   //    after the response, so give it a few reloads.
   let lastUsed = false
   for (let i = 0; i < 5 && !lastUsed; i++) {
-    await page.goto(`${BASE}/admin/apps/${SLUG}`, { waitUntil: 'networkidle' })
+    // 'load' rather than 'networkidle': the per-app page keeps a connection
+    // open once it has feedback, so it never goes idle and the goto times out.
+    await page.goto(`${BASE}/admin/apps/${SLUG}`, { waitUntil: 'load' })
+    await page.getByRole('heading', { name: 'Read key' }).waitFor({ timeout: 15_000 }).catch(() => {})
     await page.getByText('last used').first().waitFor({ timeout: 4_000 }).catch(() => {})
     lastUsed = (await page.getByText('last used').count()) > 0
   }
