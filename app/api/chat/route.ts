@@ -94,7 +94,7 @@ async function handleChat(
   } catch {
     return jsonError('Invalid JSON body', 400)
   }
-  const { session_id, content, file_ids } = body
+  const { session_id, content, file_ids, reply } = body
   ctx.session_id = session_id
 
   if (!session_id || (!content?.trim() && (!file_ids || file_ids.length === 0))) {
@@ -159,6 +159,16 @@ async function handleChat(
       // The maker has spoken, so they're no longer waiting on the builder (#214).
       maker_waiting_since: null,
       updated_at: now,
+    })
+  }
+
+  // Note mode (#245): an owner or builder can post without asking Sam to
+  // answer now. The message is stored above; Sam reads it from history on the
+  // next turn. Makers always get a reply, whatever `reply` says.
+  if (reply === false && (role === 'owner' || role === 'builder')) {
+    return new Response(JSON.stringify({ ok: true, reply: false }), {
+      status: 201,
+      headers: { 'Content-Type': 'application/json' },
     })
   }
 

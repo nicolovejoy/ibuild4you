@@ -595,6 +595,46 @@ describe('POST /api/chat', () => {
     expect(stored!.data.sender_display_name).toBe('Test User')
   })
 
+  // --- Note mode: reply:false (#245) ---
+
+  it.each(['owner', 'builder'])('%s with reply:false stores the message and returns 201 without calling the model', async (role) => {
+    mockGetProjectRole.mockResolvedValue(role)
+    const res = await POST(makeRequest({ session_id: 's1', content: 'A note for later', reply: false }))
+    expect(res.status).toBe(201)
+    expect(await res.json()).toEqual({ ok: true, reply: false })
+
+    const stored = addCalls.filter((c) => c.collection === 'messages')
+    expect(stored).toHaveLength(1)
+    expect(stored[0].data.role).toBe('user')
+    expect(stored[0].data.sender_email).toBe('user@ibuild4you.com')
+    expect(stored[0].data.sender_display_name).toBe('Test User')
+    expect(capturedStreamArgs).toBeNull()
+  })
+
+  it('owner with reply:false does not write maker activity', async () => {
+    mockGetProjectRole.mockResolvedValue('owner')
+    await POST(makeRequest({ session_id: 's1', content: 'A note', reply: false }))
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const calls = mockUpdate.mock.calls as any[][]
+    expect(calls.some((c) => c[0] && typeof c[0] === 'object' && 'last_maker_message_at' in c[0])).toBe(false)
+  })
+
+  it('maker with reply:false still gets the normal streamed reply', async () => {
+    mockGetProjectRole.mockResolvedValue('maker')
+    const res = await POST(makeRequest({ session_id: 's1', content: 'Hi', reply: false }))
+    expect(res.headers.get('Content-Type')).toBe('text/event-stream')
+    await readSSE(res)
+    expect(capturedStreamArgs).not.toBeNull()
+  })
+
+  it('owner without reply still gets the normal streamed reply', async () => {
+    mockGetProjectRole.mockResolvedValue('owner')
+    const res = await POST(makeRequest({ session_id: 's1', content: 'Hi' }))
+    expect(res.headers.get('Content-Type')).toBe('text/event-stream')
+    await readSSE(res)
+    expect(capturedStreamArgs).not.toBeNull()
+  })
+
   // --- Multi-human brief (5b) ---
 
   it('does NOT name-prefix turns when only one human has posted', async () => {
