@@ -28,9 +28,17 @@ push_one() {
   esac
   echo "push $name  <-  $ref  ->  $envs"
   if [ "$DRY" = 1 ]; then return 0; fi
+  # Read into a variable first so a failed or empty read stops here instead of
+  # storing an empty secret. The value is never echoed.
+  local value
+  value=$(op read -n "$ref") || { echo "op read failed for $name" >&2; return 1; }
+  if [ -z "$value" ]; then
+    echo "refusing to push $name: $ref read back empty" >&2
+    return 1
+  fi
   # --force overwrites an existing value in the same environment, so the same
   # command works for first set and for rotation.
-  op read -n "$ref" | vercel env add "$name" -e "$envs" --sensitive --force --yes
+  printf %s "$value" | vercel env add "$name" -e "$envs" --sensitive --force --yes
 }
 
 if [ "${1:-}" = "--from" ]; then
@@ -39,7 +47,10 @@ if [ "${1:-}" = "--from" ]; then
   # Lines look like KEY=op://vault/item/field, optionally quoted.
   while IFS= read -r line || [ -n "$line" ]; do
     line="${line%%#*}"
-    [[ "$line" =~ ^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*)[[:space:]]*=[[:space:]]*\"?(op://[^\"[:space:]]+)\"?[[:space:]]*$ ]] || continue
+    if ! [[ "$line" =~ ^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*)[[:space:]]*=[[:space:]]*\"?(op://[^\"[:space:]]+)\"?[[:space:]]*$ ]]; then
+      case "$line" in *op://*) echo "skip: unparsed op:// line" >&2 ;; esac
+      continue
+    fi
     push_one "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}" "$envs"
   done < "$file"
 else
