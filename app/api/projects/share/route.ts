@@ -10,6 +10,7 @@ import { generateWelcomeMessage } from '@/lib/agent/welcome-message'
 import { resolveBriefRole } from '@/lib/roles/brief-role'
 import { copy } from '@/lib/copy'
 import { normalizeEmail, isValidEmail } from '@/lib/email/normalize'
+import { isSelfRow } from '@/lib/members/self'
 import { welcomeToPost } from '@/lib/sessions/welcome'
 import { isArchivedSession } from '@/lib/sessions/active'
 import { ensureInviteResetLink } from '@/lib/auth/ensure-invite-account'
@@ -43,7 +44,7 @@ export async function POST(request: Request) {
 
   // #245: inviting yourself used to rewrite your own membership row (an owner
   // demoted themselves this way). Refuse before any write.
-  if (normalizedEmail === normalizeEmail(auth.email)) {
+  if (isSelfRow(normalizedEmail, auth.email)) {
     return NextResponse.json(
       { error: "You're already on this brief. You can't invite yourself." },
       { status: 400 }

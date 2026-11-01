@@ -57,6 +57,8 @@ import { formatCostUsd } from '@/lib/observability/session-cost'
 import { briefRoleLabel, briefRoleShort, viewerBriefRole } from '@/lib/roles/display'
 import { MEMBER_ROLES, memberRoleLabel } from '@/lib/roles/member-role'
 import { apiFetch } from '@/lib/firebase/api-fetch'
+import { useAuth } from '@/lib/hooks/useAuth'
+import { isSelfRow } from '@/lib/members/self'
 import { useRealtimeMessages } from '@/lib/hooks/useRealtimeMessages'
 import {
   makerRoster,
@@ -1470,6 +1472,7 @@ function PeoplePanel({ project, onInvite }: { project: Project; onInvite: () => 
   const [pendingEmail, setPendingEmail] = useState<string | null>(null)
   const [pendingTierId, setPendingTierId] = useState<string | null>(null)
   const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null)
+  const { user } = useAuth()
 
   const active = members?.filter((m) => !m.removed_at) ?? []
   const removed = members?.filter((m) => m.removed_at) ?? []
@@ -1501,15 +1504,22 @@ function PeoplePanel({ project, onInvite }: { project: Project; onInvite: () => 
           {active.map((m) => {
             const isConsole = m.role === 'owner' || m.role === 'builder'
             const confirming = confirmRemoveId === m.id
+            // #245: your own row is read-only; the server refuses self-edits too.
+            const isSelf = isSelfRow(m.email, user?.email)
             return (
               <li key={m.id} className="py-2">
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="text-sm font-medium text-brand-charcoal truncate">{m.display_name}</p>
+                    <p className="text-sm font-medium text-brand-charcoal truncate">{m.display_name}
+                      {isSelf && <span className="ml-1 text-xs font-normal text-gray-400">(you)</span>}
+                    </p>
                     <p className="text-xs text-gray-500 truncate">{m.email}</p>
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
-                    {/* Access tier (permission level) — editable for every member. */}
+                    {/* Access tier (permission level) — editable for every member but you. */}
+                    {isSelf ? (
+                      <span className="text-xs text-gray-600 px-1">{memberRoleLabel(m.role ?? 'maker')}</span>
+                    ) : (
                     <select
                       aria-label="Access tier"
                       value={m.role ?? 'maker'}
@@ -1529,11 +1539,14 @@ function PeoplePanel({ project, onInvite }: { project: Project; onInvite: () => 
                         <option key={r} value={r}>{memberRoleLabel(r)}</option>
                       ))}
                     </select>
+                    )}
                     {/* Brief role (what they do) — console operators review by default. */}
                     {isConsole ? (
                       <span className="text-xs text-gray-400 px-1" title={briefRoleShort('reviewer')}>
                         {briefRoleLabel('reviewer')}
                       </span>
+                    ) : isSelf ? (
+                      <span className="text-xs text-gray-600 px-1">{briefRoleLabel(m.brief_role ?? 'originator')}</span>
                     ) : (
                       <select
                         aria-label="Brief role"
@@ -1556,6 +1569,7 @@ function PeoplePanel({ project, onInvite }: { project: Project; onInvite: () => 
                       </select>
                     )}
                     {/* Move out (#106) — non-destructive, two-step inline confirm. */}
+                    {!isSelf && (
                     <button
                       onClick={() => setConfirmRemoveId(m.id)}
                       title="Remove from brief"
@@ -1564,6 +1578,7 @@ function PeoplePanel({ project, onInvite }: { project: Project; onInvite: () => 
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
+                    )}
                   </div>
                 </div>
 

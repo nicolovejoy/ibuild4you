@@ -13,7 +13,7 @@
 
 import type { MemberRole } from '@/lib/types'
 import { isMemberRole } from '@/lib/roles/member-role'
-import { normalizeEmail } from '@/lib/email/normalize'
+import { isSelfRow } from '@/lib/members/self'
 
 export interface MemberRow {
   id: string
@@ -109,9 +109,7 @@ export function planRestoreMember({
  * someone else (or either email is empty).
  */
 export function selfEditError(targetEmail: string, actorEmail: string): string | null {
-  const target = normalizeEmail(targetEmail)
-  const actor = normalizeEmail(actorEmail)
-  if (target && actor && target === actor) {
+  if (isSelfRow(targetEmail, actorEmail)) {
     return "You can't change your own access on a brief. Ask another owner."
   }
   return null

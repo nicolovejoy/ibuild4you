@@ -134,7 +134,7 @@ describe('useStreamingChat — streamMessage', () => {
     mockApiFetch.mockResolvedValue(sseResponse(['data: {"text":"hi"}\n\n', 'data: [DONE]\n\n']))
     const { result } = renderHook(() => useStreamingChat({ projectId: 'p1' }), { wrapper })
 
-    let pending!: Promise<void>
+    let pending!: Promise<boolean>
     act(() => {
       pending = result.current.streamMessage('s1', 'hello')
     })
