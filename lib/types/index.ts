@@ -281,6 +281,9 @@ export interface Feedback extends BaseEntity {
   status: FeedbackStatus
   internal_notes: string | null
   github_issue_url: string | null
+  // ISO UTC time the row was archived; null/absent = live. Archived rows are
+  // hidden from the inbox list unless asked for (#232).
+  archived_at?: string | null
   // Subcollection: feedback/{id}/replies — see FeedbackReply below.
 }
 
