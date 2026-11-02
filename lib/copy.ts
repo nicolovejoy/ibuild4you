@@ -110,7 +110,7 @@ export const copy = {
       'Set a new password here:',
       resetLink,
       '',
-      'If the link has expired by the time you get to it, just tap “Forgot password?” on the sign-in page again — it always works.',
+      "If the link has expired by the time you get to it, just tap “Forgot password?” on the sign-in page again — it always works.",
       '',
       "If you didn't ask for this, you can ignore this email. Nothing changes until you set a new password.",
       '',
@@ -190,12 +190,8 @@ export const copy = {
     stalePrepTitle: 'This prep is out of date',
     stalePrepNote: (count: number, liveVersion: number, prepVersion: number) => {
       const parts: string[] = []
-      if (count > 0)
-        parts.push(
-          `${count} note${count === 1 ? ' was' : 's were'} written after the prep was copied`
-        )
-      if (liveVersion > prepVersion)
-        parts.push(`the brief is now v${liveVersion}, the prep was made from v${prepVersion}`)
+      if (count > 0) parts.push(`${count} note${count === 1 ? ' was' : 's were'} written after the prep was copied`)
+      if (liveVersion > prepVersion) parts.push(`the brief is now v${liveVersion}, the prep was made from v${prepVersion}`)
       return `${parts.join(', and ')}. Nothing was saved. Save anyway keeps your paste; missed notes stay unfolded, so Sam and the next prep still see them.`
     },
     stalePrepMissedNote: (day: string) => `Note from ${day}`,
@@ -215,8 +211,7 @@ export const copy = {
     newSinceCuration: (n: number) => `New since last curation (${n})`,
     noteHeading: (day: string) => `Conversation of ${day}`,
     noteDecision: (topic: string, decision: string) => `Decision: ${topic}: ${decision}`,
-    noteRiskAdded: (text: string, owner?: string) =>
-      `Open risk${owner ? ` (${owner})` : ''}: ${text}`,
+    noteRiskAdded: (text: string, owner?: string) => `Open risk${owner ? ` (${owner})` : ''}: ${text}`,
     noteRiskResolved: (text: string) => `Resolved: ${text}`,
     noteLockReversal: (topic: string, proposed: string, reason: string) =>
       `Wants to change locked ${topic}: ${proposed} (${reason})`,
@@ -243,20 +238,13 @@ export const copy = {
     contestAcceptUnlock: 'Accept and unlock',
     contestDismiss: 'Dismiss',
     contestError: "Couldn't save that — try again.",
-    lockLossWarning: (topics: string[]) =>
-      `This save removes the lock on: ${topics.join(', ')}. Continue?`,
+    lockLossWarning: (topics: string[]) => `This save removes the lock on: ${topics.join(', ')}. Continue?`,
     lockLossConfirm: 'Yes, save',
     lockLossCancel: 'Cancel',
     sourceLabel: (source: string | null) =>
-      (
-        ({
-          create: 'created',
-          paste: 'saved by hand',
-          regen: 'regenerated',
-          restore: 'restored',
-          note: 'contest from conversation',
-        }) as Record<string, string>
-      )[source ?? ''] ?? 'unknown source',
+      ({ create: 'created', paste: 'saved by hand', regen: 'regenerated', restore: 'restored', note: 'contest from conversation' } as Record<string, string>)[
+        source ?? ''
+      ] ?? 'unknown source',
     // Ferry desk — the copy/paste loop that fronts the Brief tab
     stampCopied: 'Prep copied',
     stampPasted: 'Payload pasted',
@@ -423,8 +411,7 @@ export const copy = {
     joinConversation: 'Join the conversation',
     placeholder: 'Write to the conversation…',
     samReplies: 'Sam replies',
-    samRepliesHint:
-      'Off: your message is posted in the conversation (everyone sees it). Sam reads it next turn but does not answer now.',
+    samRepliesHint: 'Off: your message is posted in the conversation (everyone sees it). Sam reads it next turn but does not answer now.',
     send: 'Send',
     samReplying: 'Sam is replying…',
     you: '(you)',
@@ -472,8 +459,7 @@ export const copy = {
     repoHint: 'owner/name, used when converting feedback to an issue.',
     create: 'Create app',
     creating: 'Creating…',
-    errorInvalidSlug:
-      'That slug is not valid. Use lowercase letters, digits and single dashes, up to 64 characters.',
+    errorInvalidSlug: 'That slug is not valid. Use lowercase letters, digits and single dashes, up to 64 characters.',
     errorSlugTaken: 'That slug is already in use by another app (as its slug or a legacy slug).',
     errorGeneric: 'Could not create the app.',
     noApps: 'No apps yet.',
@@ -498,8 +484,7 @@ export const copy = {
     accessOwner: 'Owner',
     accessCollaborator: 'Collaborator',
     adminsHeading: 'Admins',
-    adminsNote:
-      'Kept in Garm. Owners can add and remove people; collaborators can read and act on feedback.',
+    adminsNote: 'Kept in Garm. Owners can add and remove people; collaborators can read and act on feedback.',
     addAdmin: 'Add',
     removeAdmin: 'Remove',
     roleOwner: 'Owner',

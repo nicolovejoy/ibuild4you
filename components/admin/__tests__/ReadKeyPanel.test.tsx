@@ -71,12 +71,18 @@ describe('ReadKeyPanel reveal form', () => {
     const form = container.querySelector('form')!
     const prevented: boolean[] = []
     // React handles events at the root, so observe at document (after it ran).
-    document.addEventListener('submit', (e) => prevented.push(e.defaultPrevented))
-    fireEvent.click(screen.getByRole('button', { name: 'Save to password manager' }))
-    const notCancelled = fireEvent.submit(form)
-    expect(notCancelled).toBe(false)
-    expect(prevented.length).toBeGreaterThan(0)
-    expect(prevented.every(Boolean)).toBe(true)
+    const onSubmit = (e: Event) => prevented.push(e.defaultPrevented)
+    document.addEventListener('submit', onSubmit)
+    try {
+      fireEvent.click(screen.getByRole('button', { name: 'Save to password manager' }))
+      const notCancelled = fireEvent.submit(form)
+      expect(notCancelled).toBe(false)
+      expect(prevented.length).toBeGreaterThan(0)
+      // defaultPrevented is the load-bearing no-submit assertion.
+      expect(prevented.every(Boolean)).toBe(true)
+    } finally {
+      document.removeEventListener('submit', onSubmit)
+    }
     expect(fetchSpy).not.toHaveBeenCalled()
     expect(apiFetchMock).not.toHaveBeenCalled()
   })

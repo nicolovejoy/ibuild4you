@@ -125,31 +125,45 @@ export function ReadKeyPanel({ slug }: { slug: string }) {
         // It never submits anywhere: no action, preventDefault, and nothing here
         // sends the key over the network.
         <form onSubmit={(e) => e.preventDefault()} className="space-y-2">
-          <div className="flex items-center gap-2">
+          <div>
+            <label
+              htmlFor={`read-key-username-${slug}`}
+              className="block text-xs text-gray-500 mb-0.5"
+            >
+              {t.readKeyUsernameLabel}
+            </label>
             <input
               type="text"
               name="username"
               autoComplete="username"
-              aria-label={t.readKeyUsernameLabel}
+              id={`read-key-username-${slug}`}
               value={usernameField}
               onChange={(e) => setUsernameField(e.target.value)}
               className="flex-1 px-2 py-1 text-sm font-mono border border-gray-200 rounded"
             />
           </div>
-          <div className="flex items-center gap-2">
-            <input
-              type="password"
-              name="password"
-              autoComplete="new-password"
-              aria-label={t.readKeyHeading}
-              value={keyField}
-              onChange={(e) => setKeyField(e.target.value)}
-              onFocus={(e) => e.currentTarget.select()}
-              className="flex-1 px-2 py-1 text-sm font-mono border border-gray-200 rounded"
-            />
-            <button type="button" onClick={onCopy} className={button}>
-              {copied ? t.readKeyCopied : t.readKeyCopy}
-            </button>
+          <div>
+            <label
+              htmlFor={`read-key-value-${slug}`}
+              className="block text-xs text-gray-500 mb-0.5"
+            >
+              {t.readKeyHeading}
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                type="password"
+                name="password"
+                autoComplete="new-password"
+                id={`read-key-value-${slug}`}
+                value={keyField}
+                onChange={(e) => setKeyField(e.target.value)}
+                onFocus={(e) => e.currentTarget.select()}
+                className="flex-1 px-2 py-1 text-sm font-mono border border-gray-200 rounded"
+              />
+              <button type="button" onClick={onCopy} className={button}>
+                {copied ? t.readKeyCopied : t.readKeyCopy}
+              </button>
+            </div>
           </div>
           <div className="flex items-center gap-2">
             <button type="submit" className={button}>
