@@ -52,6 +52,7 @@ import {
 } from '@/lib/query/hooks'
 import { buildNextConvoPrompt } from '@/lib/agent/next-convo-prompt'
 import { copy } from '@/lib/copy'
+import { AgentModelSelect } from './AgentModelSelect'
 import { outboundCopyFor } from '@/lib/email/outbound-copy'
 import { formatCostUsd } from '@/lib/observability/session-cost'
 import { briefRoleLabel, briefRoleShort, viewerBriefRole } from '@/lib/roles/display'
@@ -1701,6 +1702,7 @@ function AgentConfigCard({ project }: { project: Project }) {
   const [autoReminders, setAutoReminders] = useState(project.auto_reminders_enabled === true)
   const [githubRepo, setGithubRepo] = useState(project.github_repo || '')
   const [language, setLanguage] = useState<Locale>(toLocale(project.language))
+  const [model, setModel] = useState(project.model || '')
   const [hideTitleInPreviews, setHideTitleInPreviews] = useState(project.hide_title_in_previews === true)
   const [saved, setSaved] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -1724,8 +1726,9 @@ function AgentConfigCard({ project }: { project: Project }) {
     setAutoReminders(project.auto_reminders_enabled === true)
     setGithubRepo(project.github_repo || '')
     setLanguage(toLocale(project.language))
+    setModel(project.model || '')
     setHideTitleInPreviews(project.hide_title_in_previews === true)
-  }, [project.welcome_message, project.seed_questions, project.session_mode, project.builder_directives, project.identity, project.nudge_message, project.voice_sample, project.auto_reminders_enabled, project.github_repo, project.language, project.hide_title_in_previews])
+  }, [project.welcome_message, project.seed_questions, project.session_mode, project.builder_directives, project.identity, project.nudge_message, project.voice_sample, project.auto_reminders_enabled, project.github_repo, project.language, project.model, project.hide_title_in_previews])
 
   const handleSave = async () => {
     await updateProject.mutateAsync({
@@ -1740,6 +1743,7 @@ function AgentConfigCard({ project }: { project: Project }) {
       auto_reminders_enabled: autoReminders,
       github_repo: githubRepo.trim() || undefined,
       language,
+      model: model || null,
       hide_title_in_previews: hideTitleInPreviews,
       last_builder_activity_at: new Date().toISOString(),
     })
@@ -1811,6 +1815,9 @@ function AgentConfigCard({ project }: { project: Project }) {
             </select>
             <p className="text-xs text-gray-400 mt-1">The agent talks to the maker in this language from the first message, and link previews use it. The brief itself stays in English.</p>
           </div>
+
+          {/* Agent model (#189) — per-brief chat model, applies from the next conversation */}
+          <AgentModelSelect value={model} onChange={setModel} />
 
           {/* Mode */}
           <SessionModeToggle mode={sessionMode} onChange={setSessionMode} />

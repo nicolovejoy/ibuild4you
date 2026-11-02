@@ -332,6 +332,7 @@ export function useUpdateProject() {
       auto_reminders_enabled?: boolean
       github_repo?: string
       language?: import('@/lib/locale').Locale
+      model?: string | null
       hide_title_in_previews?: boolean
     }) => {
       const res = await apiFetch('/api/projects', {
