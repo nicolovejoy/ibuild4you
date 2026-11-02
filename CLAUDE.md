@@ -177,7 +177,7 @@ Keep the code approachable — clarity over cleverness. Code should be:
 > Shipped history lives in `docs/changelog.md` (newest first). **Prepend an entry there at session end — routine `/handoff` no longer touches docs (it only saves the session row), so do it explicitly before closing.** This section is **live work only**. Canonical backlog: `gh issue list --state open`. Durable gotchas and runbooks are in the next section.
 
 **Watch.**
-- musicforge's pass/fail reply on the `ibuild4you-musicforge` handoff for the Loop read key (#244; key at `op://dev-secrets/loop-read-key-musicforge/password`). Embed spike (Loop Phase 2) only if their panel proves not enough.
+- musicforge's read-key smoke PASSED 2026-11-02 (limit=5: 5 items, sender tags, no email in the body). Still to come: their from-server smoke once the musicforge Fly route ships (#244; key at `op://dev-secrets/loop-read-key-musicforge/password`). Embed spike (Loop Phase 2) only if their panel proves not enough.
 - First brief notes on prod (`api_usage` route `brief.note`), and F4FC's first curated paste bringing `l6-shapes-positions-game` under 20,000 chars (#229, PR #239).
 
 **Queue.** #247 (a builder message in a session the maker hasn't spoken in reads to Sam as the maker) → #217 checks as data (brainstorm first; changes agent context). Small: #232 archive/delete test feedback, #246 1Password-save at key mint, #189 per-brief model dial. Conversation-experience brainstorm still open (thumbs up/down exists as #130; question is what to do with the signal).
