@@ -140,7 +140,9 @@ ${projectContext}
 `.trim())
   }
 
-  const multiHuman = !!participants && participants.length > 1
+  // #247: a builder alone still gets the roster, so their note is labelled
+  // Builder rather than read as the maker's words under the solo framing.
+  const multiHuman = !!participants && (participants.length > 1 || participants.some((p) => p.builder))
 
   if (multiHuman) {
     const roster = participants!

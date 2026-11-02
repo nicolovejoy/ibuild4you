@@ -524,6 +524,18 @@ describe('buildSystemPrompt', () => {
     )
   })
 
+  it('uses the roster framing when a builder is the only participant so far (#247)', () => {
+    const result = buildSystemPrompt({
+      ...minimalInput,
+      makerFirstName: 'Maria',
+      participants: [{ name: 'Nico', brief_role: 'reviewer', builder: true }],
+    })
+    expect(result).toContain("## Who's in this conversation")
+    expect(result).toContain('- **Nico** — Builder')
+    expect(result).toContain("Messages from the builder are guidance about the conversation, not the maker's own wishes")
+    expect(result).not.toContain('## Maker')
+  })
+
   it('leaves the roster unchanged when no participant is builder-side (#245)', () => {
     const participants = [
       { name: 'Maria', brief_role: 'originator' as const },
