@@ -424,6 +424,20 @@ export const copy = {
 
   // --- Admin: Loop apps (/admin/apps). Admin screens are English only; the
   // French twins in lib/copy-maker.ts cover maker-facing text, not admin. ---
+  adminFeedback: {
+    showArchived: 'Show archived',
+    archivedBadge: 'Archived',
+    selectRow: 'Select',
+    selectAll: 'Select all shown',
+    selectedCount: (n: number) => `${n} selected`,
+    archiveSelected: 'Archive selected',
+    unarchiveSelected: 'Unarchive selected',
+    deleteSelected: 'Delete selected',
+    confirmDelete: (n: number) =>
+      `Delete ${n} feedback item${n === 1 ? '' : 's'} for good? This cannot be undone. Linked GitHub issues are left alone.`,
+    bulkFailed: (failed: number, total: number) => `${failed} of ${total} could not be changed.`,
+  },
+
   adminApps: {
     readKeyHeading: 'Read key',
     readKeyNote:

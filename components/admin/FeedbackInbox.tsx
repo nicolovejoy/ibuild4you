@@ -23,7 +23,13 @@ const STATUS_STYLES: Record<FeedbackStatus, string> = {
 // The feedback list. Used by /admin/feedback (all apps, with an app select) and
 // /admin/apps/[slug] (pinned to one app via projectId). Needs a Suspense
 // boundary above it because of useSearchParams.
-export function FeedbackInbox({ projectId: pinnedProjectId }: { projectId?: string }) {
+export function FeedbackInbox({
+  projectId: pinnedProjectId,
+  canDelete = false,
+}: {
+  projectId?: string
+  canDelete?: boolean
+}) {
   const [items, setItems] = useState<Feedback[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -32,6 +38,12 @@ export function FeedbackInbox({ projectId: pinnedProjectId }: { projectId?: stri
   const projectId = pinnedProjectId ?? selectedApp
   const [status, setStatus] = useState<FeedbackStatus | ''>('')
   const [type, setType] = useState<FeedbackType | ''>('')
+  // #232: archived rows are hidden unless asked for; selection drives the bulk bar.
+  const [showArchived, setShowArchived] = useState(false)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [bulkBusy, setBulkBusy] = useState(false)
+  const [bulkError, setBulkError] = useState<string | null>(null)
+  const [refetchCount, setRefetchCount] = useState(0)
   // #143: notification emails link here with ?focus=<feedbackId>; host dashboards
   // deep-link with ?id=<feedbackId>. Either works. When that item
   // is in the loaded set we scroll it into view + flash a highlight ring. If the
@@ -44,9 +56,16 @@ export function FeedbackInbox({ projectId: pinnedProjectId }: { projectId?: stri
     if (projectId.trim()) params.set('projectId', projectId.trim())
     if (status) params.set('status', status)
     if (type) params.set('type', type)
+    if (showArchived) params.set('include_archived', '1')
     const s = params.toString()
     return s ? `?${s}` : ''
-  }, [projectId, status, type])
+  }, [projectId, status, type, showArchived])
+
+  // Selection belongs to the rows on screen: drop it when the filters change.
+  useEffect(() => {
+    setSelected(new Set())
+    setBulkError(null)
+  }, [queryString])
 
   useEffect(() => {
     let cancelled = false
@@ -67,10 +86,46 @@ export function FeedbackInbox({ projectId: pinnedProjectId }: { projectId?: stri
     return () => {
       cancelled = true
     }
-  }, [queryString])
+  }, [queryString, refetchCount])
 
   const handleUpdated = (updated: Feedback) => {
     setItems((prev) => prev.map((f) => (f.id === updated.id ? updated : f)))
+  }
+
+  const toggleOne = (id: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  const allSelected = items.length > 0 && items.every((i) => selected.has(i.id))
+  const toggleAll = () => setSelected(allSelected ? new Set() : new Set(items.map((i) => i.id)))
+
+  // One request per selected id; a non-ok response counts as failed.
+  const runBulk = async (request: (id: string) => Promise<Response>) => {
+    const ids = Array.from(selected)
+    setBulkBusy(true)
+    setBulkError(null)
+    const results = await Promise.allSettled(
+      ids.map(async (id) => {
+        const res = await request(id)
+        if (!res.ok) throw new Error('failed')
+      })
+    )
+    const failed = results.filter((r) => r.status === 'rejected').length
+    setSelected(new Set())
+    if (failed > 0) setBulkError(copy.adminFeedback.bulkFailed(failed, ids.length))
+    setBulkBusy(false)
+    setRefetchCount((n) => n + 1)
+  }
+  const setArchived = (archived: boolean) =>
+    runBulk((id) =>
+      apiFetch(`/api/admin/feedback/${id}`, { method: 'PATCH', body: JSON.stringify({ archived }) })
+    )
+  const deleteSelected = () => {
+    if (!window.confirm(copy.adminFeedback.confirmDelete(selected.size))) return
+    runBulk((id) => apiFetch(`/api/admin/feedback/${id}`, { method: 'DELETE' }))
   }
 
   return (
@@ -123,12 +178,65 @@ export function FeedbackInbox({ projectId: pinnedProjectId }: { projectId?: stri
             ))}
           </select>
         </label>
+        <label className="flex items-center gap-2 text-xs text-brand-slate self-center">
+          <input
+            type="checkbox"
+            checked={showArchived}
+            onChange={(e) => setShowArchived(e.target.checked)}
+          />
+          {copy.adminFeedback.showArchived}
+        </label>
         <div className="ml-auto text-xs text-gray-400 self-center">
           {loading ? 'Loading...' : `${items.length} item${items.length === 1 ? '' : 's'}`}
         </div>
       </div>
 
       {error && <div className="text-center text-red-500 py-6">{error}</div>}
+
+      {items.length > 0 && (
+        <div className="bg-white rounded-lg border border-gray-200 p-3 flex flex-wrap gap-3 items-center text-sm">
+          <label className="flex items-center gap-2 text-xs text-brand-slate">
+            <input type="checkbox" checked={allSelected} onChange={toggleAll} />
+            {copy.adminFeedback.selectAll}
+          </label>
+          {selected.size > 0 && (
+            <>
+              <span className="text-xs text-brand-charcoal">
+                {copy.adminFeedback.selectedCount(selected.size)}
+              </span>
+              <button
+                type="button"
+                disabled={bulkBusy}
+                onClick={() => setArchived(true)}
+                className="px-3 py-1 text-sm border border-gray-200 rounded hover:border-brand-navy hover:text-brand-navy disabled:opacity-30"
+              >
+                {copy.adminFeedback.archiveSelected}
+              </button>
+              {showArchived && (
+                <button
+                  type="button"
+                  disabled={bulkBusy}
+                  onClick={() => setArchived(false)}
+                  className="px-3 py-1 text-sm border border-gray-200 rounded hover:border-brand-navy hover:text-brand-navy disabled:opacity-30"
+                >
+                  {copy.adminFeedback.unarchiveSelected}
+                </button>
+              )}
+              {canDelete && (
+                <button
+                  type="button"
+                  disabled={bulkBusy}
+                  onClick={deleteSelected}
+                  className="px-3 py-1 text-sm border border-red-200 text-red-600 rounded hover:border-red-500 disabled:opacity-30"
+                >
+                  {copy.adminFeedback.deleteSelected}
+                </button>
+              )}
+            </>
+          )}
+          {bulkError && <span className="text-xs text-red-500">{bulkError}</span>}
+        </div>
+      )}
 
       {!loading && !error && items.length === 0 && (
         <div className="text-center text-gray-400 py-12 bg-white rounded-lg border border-gray-200">
@@ -143,6 +251,8 @@ export function FeedbackInbox({ projectId: pinnedProjectId }: { projectId?: stri
             item={item}
             onUpdated={handleUpdated}
             focused={item.id === focusId}
+            selected={selected.has(item.id)}
+            onToggleSelected={() => toggleOne(item.id)}
           />
         ))}
       </div>
@@ -154,10 +264,14 @@ function FeedbackRow({
   item,
   onUpdated,
   focused = false,
+  selected,
+  onToggleSelected,
 }: {
   item: Feedback
   onUpdated: (f: Feedback) => void
   focused?: boolean
+  selected: boolean
+  onToggleSelected: () => void
 }) {
   const [status, setStatus] = useState<FeedbackStatus>(item.status)
   const [notes, setNotes] = useState<string>(item.internal_notes ?? '')
@@ -260,6 +374,17 @@ function FeedbackRow({
     >
       <div className="flex items-baseline justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-2 text-xs">
+          <input
+            type="checkbox"
+            aria-label={copy.adminFeedback.selectRow}
+            checked={selected}
+            onChange={onToggleSelected}
+          />
+          {item.archived_at && (
+            <span className="px-2 py-0.5 rounded-full font-medium bg-gray-100 text-gray-500">
+              {copy.adminFeedback.archivedBadge}
+            </span>
+          )}
           <span
             className={`px-2 py-0.5 rounded-full font-medium ${STATUS_STYLES[item.status]}`}
             title="Current saved status"
