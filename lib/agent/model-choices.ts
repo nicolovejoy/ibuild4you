@@ -12,3 +12,10 @@ export type BriefModel = (typeof BRIEF_MODELS)[number]
 export function isBriefModel(v: unknown): v is BriefModel {
   return typeof v === 'string' && (BRIEF_MODELS as readonly string[]).includes(v)
 }
+
+// The brief's model choice as a session should snapshot it: the project's
+// model when it is an allowed id, else null ("Default"). Always null, never
+// undefined, so a session records an explicit "Default" choice (#189).
+export function briefModelSnapshot(project: Record<string, unknown>): BriefModel | null {
+  return isBriefModel(project.model) ? project.model : null
+}

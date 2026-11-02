@@ -243,6 +243,17 @@ describe('POST /api/sessions', () => {
     })
   })
 
+  it('snapshots the project model as agent_model, null when absent (#189)', async () => {
+    mockProjectData = { title: 'P', model: 'claude-opus-5-5' }
+    await POST(makePostRequest({ project_id: 'proj1' }))
+    expect(batchSets.find((s) => s.data.project_id === 'proj1')!.data.agent_model).toBe('claude-opus-5-5')
+
+    batchSets.length = 0
+    mockProjectData = { title: 'P' }
+    await POST(makePostRequest({ project_id: 'proj1' }))
+    expect(batchSets.find((s) => s.data.project_id === 'proj1')!.data.agent_model).toBeNull()
+  })
+
   it('does not snapshot undefined config fields', async () => {
     // Project with no config
     mockProjectData = { title: 'Bare Project' }

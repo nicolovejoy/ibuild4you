@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getAuthenticatedUser, getAdminDb, getProjectRole, requireRole } from '@/lib/api/firebase-server-helpers'
 import { copy } from '@/lib/copy'
+import { briefModelSnapshot } from '@/lib/agent/model-choices'
 import { welcomeToPost } from '@/lib/sessions/welcome'
 import { excludeArchived, isArchivedSession } from '@/lib/sessions/active'
 
@@ -106,6 +107,8 @@ export async function POST(request: Request) {
       sessionData[field] = projectData[field]
     }
   }
+  // The brief's model choice, frozen for this conversation (null = Default).
+  sessionData.agent_model = briefModelSnapshot(projectData)
 
   const docRef = db.collection('sessions').doc()
   batch.set(docRef, sessionData)

@@ -508,6 +508,30 @@ describe('POST /api/projects', () => {
     expect(data.hide_title_in_previews).toBeUndefined()
   })
 
+  it('stores an allowed model and snapshots it onto the first session (#189)', async () => {
+    const res = await POST(makeRequest({ title: 'T', model: 'claude-opus-5-5' }))
+    expect(res.status).toBe(201)
+    expect((await res.json()).model).toBe('claude-opus-5-5')
+    expect(addedDocs['sessions'][0].agent_model).toBe('claude-opus-5-5')
+  })
+
+  it('omits model when absent, blank or null; first session agent_model is null (#189)', async () => {
+    for (const body of [{ title: 'T' }, { title: 'T', model: '' }, { title: 'T', model: null }]) {
+      for (const key of Object.keys(addedDocs)) delete addedDocs[key]
+      const res = await POST(makeRequest(body))
+      expect(res.status).toBe(201)
+      expect('model' in (await res.json())).toBe(false)
+      expect(addedDocs['sessions'][0].agent_model).toBeNull()
+    }
+  })
+
+  it('rejects an unknown model with 400 and creates nothing (#189)', async () => {
+    const res = await POST(makeRequest({ title: 'T', model: 'gpt-4' }))
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toBe('model must be one of: claude-sonnet-4-6, claude-sonnet-5-5, claude-opus-5-5')
+    expect(mockAdd).not.toHaveBeenCalled()
+  })
+
   it('ignores invalid session_mode values', async () => {
     const res = await POST(makeRequest({
       title: 'Test',

@@ -70,6 +70,8 @@ export interface Project extends BaseEntity {
   // Link previews show the brief title unless this is true (then the anonymous
   // colour/glyph/code card). Previews are public to anyone holding the link.
   hide_title_in_previews?: boolean
+  // The builder's chosen chat model for this brief (#189). null/absent = Default (env).
+  model?: string | null
   // Debounced maker-activity notifications — cron at /api/cron/notify reads these
   notify_after?: string | null // ISO timestamp; cron sends email once this passes
   notify_pending_since?: string | null // ISO timestamp of first unnotified maker message
@@ -120,6 +122,9 @@ export interface Session extends BaseEntity {
   builder_directives?: string[]
   welcome_message?: string
   identity?: string
+  // The brief's model choice snapshotted at creation (#189); null = Default.
+  // Distinct from `model` below, which records the model that actually answered.
+  agent_model?: string | null
   // Usage tracking — accumulated across all exchanges in the session
   model?: string
   token_usage_input?: number

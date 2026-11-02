@@ -412,6 +412,26 @@ describe('POST /api/chat', () => {
     expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({ model: 'claude-sonnet-5-5' }))
   })
 
+  it('uses the session agent_model over CHAT_MODEL, with the 5.x shape and usage recorded (#189)', async () => {
+    vi.stubEnv('CHAT_MODEL', 'claude-sonnet-5-5')
+    docData.sessions = { exists: true, data: () => ({ project_id: 'proj-1', session_mode: 'discover', agent_model: 'claude-opus-5-5' }) }
+    const res = await POST(makeRequest({ session_id: 's1', content: 'Hello' }))
+    await readSSE(res)
+    expect(capturedStreamArgs?.model).toBe('claude-opus-5-5')
+    expect(capturedStreamArgs?.temperature).toBeUndefined()
+    expect(capturedStreamArgs?.output_config).toEqual({ effort: 'low' })
+    expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({ model: 'claude-opus-5-5' }))
+  })
+
+  it('session agent_model null means Default: CHAT_MODEL applies even if the project has a model (#189)', async () => {
+    vi.stubEnv('CHAT_MODEL', 'claude-sonnet-5-5')
+    docData.sessions = { exists: true, data: () => ({ project_id: 'proj-1', agent_model: null }) }
+    docData.projects = { exists: true, data: () => ({ title: 'P', slug: 'p', context: null, model: 'claude-opus-5-5' }) }
+    const res = await POST(makeRequest({ session_id: 's1', content: 'Hello' }))
+    await readSSE(res)
+    expect(capturedStreamArgs?.model).toBe('claude-sonnet-5-5')
+  })
+
   it('posts a short fallback when the model refuses with no text, instead of an empty bubble', async () => {
     mockStreamEvents = []
     mockFinalMessage = {

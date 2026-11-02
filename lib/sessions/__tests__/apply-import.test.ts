@@ -92,9 +92,19 @@ describe('applyImportToOpenSession', () => {
       op: 'update',
       collection: 'sessions',
       id: 's1',
-      data: { ...project, last_kickoff_at: NOW, unqueued_notified_at: null, updated_at: NOW },
+      data: { ...project, agent_model: null, last_kickoff_at: NOW, unqueued_notified_at: null, updated_at: NOW },
     })
     expect(writes).toContainEqual({ op: 'update', collection: 'projects', id: 'p1', data: { maker_waiting_since: null } })
+  })
+
+  it('re-snapshots the project model as agent_model, null when unset (#189)', async () => {
+    const run = async (p: Record<string, unknown>) => {
+      const { db, writes } = makeDb({ sessions: { s1: activeSession }, messages: {} })
+      await applyImportToOpenSession(db, 'p1', p, NOW)
+      return (writes.find((w) => w.op === 'update' && w.collection === 'sessions') as { data: Record<string, unknown> }).data
+    }
+    expect((await run({ ...project, model: 'claude-opus-5-5' })).agent_model).toBe('claude-opus-5-5')
+    expect((await run(project)).agent_model).toBeNull()
   })
 
   it('posts the new welcome when it is new for this round', async () => {
