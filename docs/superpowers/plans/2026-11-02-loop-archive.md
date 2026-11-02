@@ -24,7 +24,7 @@
 - Non-admin collaborator sends DELETE → 403, doc untouched (Task 1 test).
 - PATCH `archived` with a non-boolean (e.g. `"yes"`) → 400 (Task 1 test).
 - A status filter (e.g. `?status=spam`) still hides archived rows unless `include_archived=1` (Task 1 test).
-- Read API page that would contain an archived row still returns `limit` live rows and a correct `has_more` (Task 2 test: archived rows are skipped exactly like spam).
+- Read API page that would contain an archived row still returns `limit` live rows and a correct `next_cursor` (Task 2 test: archived rows are skipped exactly like spam).
 - Bulk action where one request fails: the others still apply, the list refreshes, and an error line names the failure count (Task 3 test).
 
 ---
@@ -57,12 +57,12 @@
 - Modify: `app/api/feedback/read/route.ts` (`scanOneId`: skip archived alongside spam)
 - Modify: `lib/api/prototype-feedback.ts` (drop archived rows before `summarizePrototypeFeedback`)
 - Modify: `lib/feedback/READ.md` (one sentence: archived rows are not returned, like spam)
-- Test: `app/api/feedback/read/__tests__/route.test.ts`, a test for `fetchPrototypeFeedback` (add `lib/api/__tests__/prototype-feedback.test.ts` if none exists)
+- Test: `app/api/feedback/read/__tests__/route.test.ts`, `lib/api/__tests__/prototype-fetchers.test.ts` (existing tests for `fetchPrototypeFeedback`)
 
 **Interfaces:**
 - Consumes: `archived_at` field from Task 1.
 
-- [ ] **Step 1: Write failing tests:** read route — with `limit` N and an archived row among the stored rows, the response has no item with the archived id and still returns N live items / correct `has_more` (mirror the existing spam test). Prototype feedback — rows `[live, archived]` → only the live row reaches the summary.
+- [ ] **Step 1: Write failing tests:** read route — with `limit` N and an archived row among the stored rows, the response has no item with the archived id and still returns N live items / a correct `next_cursor` (mirror the existing spam test). Prototype feedback — rows `[live, archived]` → only the live row reaches the summary.
 - [ ] **Step 2: Run** `npx vitest run app/api/feedback/read lib/api` — FAIL.
 - [ ] **Step 3: Implement.** Read route: `if (data.status !== 'spam' && !data.archived_at) kept.push(...)`; update the comment above `scanOneId`. Prototype feedback: filter in memory after the merge (over-fetch is acceptable: archived rows are rare); comment why.
 - [ ] **Step 4: Run** the same — PASS.
