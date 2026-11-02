@@ -20,6 +20,9 @@ export function ReadKeyPanel({ slug }: { slug: string }) {
   const mint = useMintAppReadKey(slug)
   const revoke = useRevokeAppReadKey(slug)
   const [revealed, setRevealed] = useState<string | null>(null)
+  // Editable copies shown in the reveal form. Copy reads `revealed`, never these.
+  const [keyField, setKeyField] = useState('')
+  const [usernameField, setUsernameField] = useState('')
   const [copied, setCopied] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -41,6 +44,8 @@ export function ReadKeyPanel({ slug }: { slug: string }) {
     try {
       const res = await mint.mutateAsync()
       setRevealed(res.key)
+      setKeyField(res.key)
+      setUsernameField(`loop-read-key-${slug}`)
     } catch {
       setError(t.readKeyError)
     }
@@ -52,6 +57,8 @@ export function ReadKeyPanel({ slug }: { slug: string }) {
     try {
       await revoke.mutateAsync()
       setRevealed(null)
+      setKeyField('')
+      setUsernameField('')
     } catch {
       setError(t.readKeyError)
     }
@@ -113,12 +120,30 @@ export function ReadKeyPanel({ slug }: { slug: string }) {
       )}
 
       {revealed && (
-        <div className="space-y-1">
+        // This is a form only so a password manager (e.g. 1Password) offers to
+        // save the key: it looks for a username + new-password pair and a submit.
+        // It never submits anywhere: no action, preventDefault, and nothing here
+        // sends the key over the network.
+        <form onSubmit={(e) => e.preventDefault()} className="space-y-2">
           <div className="flex items-center gap-2">
             <input
-              readOnly
+              type="text"
+              name="username"
+              autoComplete="username"
+              aria-label={t.readKeyUsernameLabel}
+              value={usernameField}
+              onChange={(e) => setUsernameField(e.target.value)}
+              className="flex-1 px-2 py-1 text-sm font-mono border border-gray-200 rounded"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              type="password"
+              name="password"
+              autoComplete="new-password"
               aria-label={t.readKeyHeading}
-              value={revealed}
+              value={keyField}
+              onChange={(e) => setKeyField(e.target.value)}
               onFocus={(e) => e.currentTarget.select()}
               className="flex-1 px-2 py-1 text-sm font-mono border border-gray-200 rounded"
             />
@@ -126,8 +151,14 @@ export function ReadKeyPanel({ slug }: { slug: string }) {
               {copied ? t.readKeyCopied : t.readKeyCopy}
             </button>
           </div>
+          <div className="flex items-center gap-2">
+            <button type="submit" className={button}>
+              {t.readKeySave}
+            </button>
+          </div>
           <p className="text-xs text-gray-500">{t.readKeyRevealNote}</p>
-        </div>
+          <p className="text-xs text-gray-500">{t.readKeySaveNote}</p>
+        </form>
       )}
 
       {(error || loadError) && (
