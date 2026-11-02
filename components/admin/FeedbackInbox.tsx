@@ -38,12 +38,6 @@ export function FeedbackInbox({
   const projectId = pinnedProjectId ?? selectedApp
   const [status, setStatus] = useState<FeedbackStatus | ''>('')
   const [type, setType] = useState<FeedbackType | ''>('')
-  // #232: archived rows are hidden unless asked for; selection drives the bulk bar.
-  const [showArchived, setShowArchived] = useState(false)
-  const [selected, setSelected] = useState<Set<string>>(new Set())
-  const [bulkBusy, setBulkBusy] = useState(false)
-  const [bulkError, setBulkError] = useState<string | null>(null)
-  const [refetchCount, setRefetchCount] = useState(0)
   // #143: notification emails link here with ?focus=<feedbackId>; host dashboards
   // deep-link with ?id=<feedbackId>. Either works. When that item
   // is in the loaded set we scroll it into view + flash a highlight ring. If the
@@ -51,6 +45,13 @@ export function FeedbackInbox({
   const searchParams = useSearchParams()
   const focusId = searchParams.get('id') || searchParams.get('focus') || ''
 
+  // #232: archived rows are hidden unless asked for; selection drives the bulk bar.
+  // A deep link may point at an archived row, so a focus id starts with archived shown.
+  const [showArchived, setShowArchived] = useState(Boolean(focusId))
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [bulkBusy, setBulkBusy] = useState(false)
+  const [bulkError, setBulkError] = useState<string | null>(null)
+  const [refetchCount, setRefetchCount] = useState(0)
   const queryString = useMemo(() => {
     const params = new URLSearchParams()
     if (projectId.trim()) params.set('projectId', projectId.trim())

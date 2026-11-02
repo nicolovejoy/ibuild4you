@@ -8,7 +8,8 @@ import { copy } from '@/lib/copy'
 const apiFetch = vi.fn()
 vi.mock('@/lib/firebase/api-fetch', () => ({ apiFetch: (...a: unknown[]) => apiFetch(...a) }))
 vi.mock('@/lib/query/hooks', () => ({ useApps: () => ({ data: [] }) }))
-vi.mock('next/navigation', () => ({ useSearchParams: () => new URLSearchParams() }))
+let searchParams = new URLSearchParams()
+vi.mock('next/navigation', () => ({ useSearchParams: () => searchParams }))
 
 const row = (id: string, extra: Record<string, unknown> = {}) => ({
   id,
@@ -27,6 +28,7 @@ let failIds: Set<string>
 const json = (data: unknown, ok = true) => ({ ok, json: async () => data })
 
 beforeEach(() => {
+  searchParams = new URLSearchParams()
   failIds = new Set()
   lists = [[row('a'), row('b')]]
   apiFetch.mockReset()
@@ -45,7 +47,9 @@ afterEach(() => {
 
 const listCalls = () =>
   apiFetch.mock.calls.filter(
-    (c) => typeof c[0] === 'string' && c[0].startsWith('/api/admin/feedback?') || c[0] === '/api/admin/feedback'
+    (c) =>
+      (typeof c[0] === 'string' && c[0].startsWith('/api/admin/feedback?')) ||
+      c[0] === '/api/admin/feedback'
   )
 const mutations = (method: string) =>
   apiFetch.mock.calls.filter((c) => c[1]?.method === method)
@@ -105,8 +109,13 @@ describe('FeedbackInbox bulk actions', () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true)
     render(<FeedbackInbox canDelete />)
     await selectBoth()
+    const before = listCalls().length
     fireEvent.click(screen.getByRole('button', { name: 'Delete selected' }))
-    await waitFor(() => expect(mutations('DELETE')).toHaveLength(2))
+    await waitFor(() => expect(listCalls().length).toBeGreaterThan(before))
+    expect(mutations('DELETE').map((c) => c[0]).sort()).toEqual([
+      '/api/admin/feedback/a',
+      '/api/admin/feedback/b',
+    ])
   })
 
   it('Show archived refetches with include_archived, badges rows, offers Unarchive', async () => {
@@ -133,5 +142,17 @@ describe('FeedbackInbox bulk actions', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Archive selected' }))
     await screen.findByText('1 of 2 could not be changed.')
     await waitFor(() => expect(listCalls().length).toBeGreaterThan(before))
+  })
+
+  it('a deep link (?id=) starts with Show archived on so an archived row is listed', async () => {
+    searchParams = new URLSearchParams('id=z')
+    // jsdom has no scrollIntoView; the focused row calls it.
+    Element.prototype.scrollIntoView = vi.fn()
+    lists = [[row('z', { archived_at: '2026-11-02T00:00:00.000Z' })]]
+    render(<FeedbackInbox />)
+    await screen.findByText('body z')
+    expect(listCalls().some((c) => String(c[0]).includes('include_archived=1'))).toBe(true)
+    expect(screen.getByText('Archived')).toBeTruthy()
+    expect((screen.getByRole('checkbox', { name: 'Show archived' }) as HTMLInputElement).checked).toBe(true)
   })
 })

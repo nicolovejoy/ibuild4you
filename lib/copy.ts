@@ -422,8 +422,7 @@ export const copy = {
     requiresIdentity: 'This app requires you to be signed in before sending feedback.',
   },
 
-  // --- Admin: Loop apps (/admin/apps). Admin screens are English only; the
-  // French twins in lib/copy-maker.ts cover maker-facing text, not admin. ---
+  // --- Admin: Loop feedback inbox bulk actions (#232). English only. ---
   adminFeedback: {
     showArchived: 'Show archived',
     archivedBadge: 'Archived',
@@ -438,6 +437,8 @@ export const copy = {
     bulkFailed: (failed: number, total: number) => `${failed} of ${total} could not be changed.`,
   },
 
+  // --- Admin: Loop apps (/admin/apps). Admin screens are English only; the
+  // French twins in lib/copy-maker.ts cover maker-facing text, not admin. ---
   adminApps: {
     readKeyHeading: 'Read key',
     readKeyNote:

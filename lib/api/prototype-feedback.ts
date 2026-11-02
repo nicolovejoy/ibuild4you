@@ -33,6 +33,8 @@ export async function fetchPrototypeFeedback(
     ),
   )
   // Merge, dedupe by doc id, newest first, then apply the limit.
+  // Archived rows are dropped after the query, so Sam may see fewer than `limit`
+  // items when many recent rows are archived (accepted, #232).
   const byId = new Map<string, Record<string, unknown>>()
   for (const snap of snaps) {
     for (const d of snap.docs) byId.set(d.id, d.data() as Record<string, unknown>)
