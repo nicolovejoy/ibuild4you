@@ -70,7 +70,8 @@ describe('ReadKeyPanel reveal form', () => {
     await mintKey()
     const form = container.querySelector('form')!
     const prevented: boolean[] = []
-    form.addEventListener('submit', (e) => prevented.push(e.defaultPrevented))
+    // React handles events at the root, so observe at document (after it ran).
+    document.addEventListener('submit', (e) => prevented.push(e.defaultPrevented))
     fireEvent.click(screen.getByRole('button', { name: 'Save to password manager' }))
     const notCancelled = fireEvent.submit(form)
     expect(notCancelled).toBe(false)
