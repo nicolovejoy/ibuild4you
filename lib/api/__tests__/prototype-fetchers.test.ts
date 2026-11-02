@@ -84,6 +84,20 @@ describe('fetchPrototypeFeedback', () => {
     expect(items).toContain('canonical note')
     expect(items).toContain('legacy note')
   })
+  it('skips archived rows', async () => {
+    const db = makeDb(
+      { byside: app },
+      {
+        feedback: {
+          a: fb('live note', '2026-10-28T10:00:00Z', 'byside'),
+          b: { ...fb('archived note', '2026-10-29T10:00:00Z', 'byside'), archived_at: '2026-11-01T00:00:00Z' },
+        },
+      }
+    )
+    const items = JSON.stringify(await fetchPrototypeFeedback(db, 'brief-doc-1', 'old-brief-slug', NOW))
+    expect(items).toContain('live note')
+    expect(items).not.toContain('archived note')
+  })
   it('with no app, reads only the brief slug', async () => {
     const db = makeDb(
       {},

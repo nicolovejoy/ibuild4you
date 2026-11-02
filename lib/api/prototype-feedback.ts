@@ -37,7 +37,10 @@ export async function fetchPrototypeFeedback(
   for (const snap of snaps) {
     for (const d of snap.docs) byId.set(d.id, d.data() as Record<string, unknown>)
   }
+  // Archived rows (#232) are dropped in memory after the fetch: they are rare,
+  // so over-fetching by a few rows is cheaper than a new composite index.
   const rows = [...byId.values()]
+    .filter((r) => !r.archived_at)
     .sort((a, b) => String(b.created_at ?? '').localeCompare(String(a.created_at ?? '')))
     .slice(0, limit)
   if (rows.length === 0) return []
