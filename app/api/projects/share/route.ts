@@ -13,6 +13,7 @@ import { normalizeEmail, isValidEmail } from '@/lib/email/normalize'
 import { isSelfRow } from '@/lib/members/self'
 import { welcomeToPost } from '@/lib/sessions/welcome'
 import { isArchivedSession } from '@/lib/sessions/active'
+import { briefModelSnapshot } from '@/lib/agent/model-choices'
 import { ensureInviteResetLink } from '@/lib/auth/ensure-invite-account'
 import { scheduleGarmGrantSync, syncGarmGrantForEmail } from '@/lib/garm-grants'
 
@@ -148,6 +149,10 @@ export async function POST(request: Request) {
         .get()
 
       if (existingMessages.empty) {
+        // Nothing said yet: pick up a model chosen since the session was created.
+        // A re-share mid-conversation never switches the model (#189).
+        await sessionDoc.ref.update({ agent_model: briefModelSnapshot(projectData) })
+
         // Same rule as session creation (lib/sessions/welcome.ts): the first
         // conversation always opens with a welcome; a return conversation only
         // with one written for this round, word for word. Archived sessions

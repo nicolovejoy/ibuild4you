@@ -47,6 +47,8 @@ function membersWhereChain() {
 let activeSession: { id: string; data: Record<string, unknown> } | null = null
 let allSessions: { id: string; data: Record<string, unknown> }[] = []
 const messageAdds: Record<string, unknown>[] = []
+const sessionUpdates: Record<string, unknown>[] = []
+let sessionHasMessages = false
 
 const mockCollection = vi.fn((name: string) => {
   lastCollection = name
@@ -66,7 +68,7 @@ const mockCollection = vi.fn((name: string) => {
     const toDoc = (s: { id: string; data: Record<string, unknown> }) => ({
       id: s.id,
       data: () => s.data,
-      ref: { update: vi.fn(async () => {}) },
+      ref: { update: vi.fn(async (d: Record<string, unknown>) => { sessionUpdates.push(d) }) },
     })
     return {
       where: () => ({
@@ -83,7 +85,7 @@ const mockCollection = vi.fn((name: string) => {
   }
   if (name === 'messages') {
     return {
-      where: () => ({ limit: () => ({ get: async () => ({ empty: true }) }) }),
+      where: () => ({ limit: () => ({ get: async () => ({ empty: !sessionHasMessages }) }) }),
       add: async (d: Record<string, unknown>) => { messageAdds.push(d); return { id: 'msg' } },
     }
   }
@@ -138,6 +140,8 @@ describe('POST /api/projects/share', () => {
     activeSession = null
     allSessions = []
     messageAdds.length = 0
+    sessionUpdates.length = 0
+    sessionHasMessages = false
     lastCollection = ''
     mockGetProjectRole.mockResolvedValue('builder')
   })
@@ -159,6 +163,23 @@ describe('POST /api/projects/share', () => {
     allSessions = [activeSession]
     await POST(makeReq({ project_id: 'p1', email: 'first@example.com' }))
     expect(messageAdds.map((m) => m.content)).toEqual(['Hi Sam'])
+  })
+
+  it('refreshes agent_model on an empty session at share time (#189)', async () => {
+    projectDocData = { title: 'Cafe App', model: 'claude-opus-5-5' }
+    activeSession = { id: 's1', data: { agent_model: null } }
+    allSessions = [activeSession]
+    await POST(makeReq({ project_id: 'p1', email: 'first@example.com' }))
+    expect(sessionUpdates.some((u) => u.agent_model === 'claude-opus-5-5')).toBe(true)
+  })
+
+  it('keeps agent_model on a session that already has messages (#189)', async () => {
+    projectDocData = { title: 'Cafe App', model: 'claude-opus-5-5' }
+    activeSession = { id: 's1', data: { agent_model: null } }
+    allSessions = [activeSession]
+    sessionHasMessages = true
+    await POST(makeReq({ project_id: 'p1', email: 'first@example.com' }))
+    expect(sessionUpdates.some((u) => 'agent_model' in u)).toBe(false)
   })
 
   it('does not replay an earlier conversation\'s welcome into an empty return conversation', async () => {

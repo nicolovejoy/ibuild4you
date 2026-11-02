@@ -53,6 +53,7 @@ import {
 import { buildNextConvoPrompt } from '@/lib/agent/next-convo-prompt'
 import { copy } from '@/lib/copy'
 import { AgentModelSelect } from './AgentModelSelect'
+import { isBriefModel } from '@/lib/agent/model-choices'
 import { outboundCopyFor } from '@/lib/email/outbound-copy'
 import { formatCostUsd } from '@/lib/observability/session-cost'
 import { briefRoleLabel, briefRoleShort, viewerBriefRole } from '@/lib/roles/display'
@@ -1702,7 +1703,7 @@ function AgentConfigCard({ project }: { project: Project }) {
   const [autoReminders, setAutoReminders] = useState(project.auto_reminders_enabled === true)
   const [githubRepo, setGithubRepo] = useState(project.github_repo || '')
   const [language, setLanguage] = useState<Locale>(toLocale(project.language))
-  const [model, setModel] = useState(project.model || '')
+  const [model, setModel] = useState(isBriefModel(project.model) ? project.model : '')
   const [hideTitleInPreviews, setHideTitleInPreviews] = useState(project.hide_title_in_previews === true)
   const [saved, setSaved] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -1726,7 +1727,7 @@ function AgentConfigCard({ project }: { project: Project }) {
     setAutoReminders(project.auto_reminders_enabled === true)
     setGithubRepo(project.github_repo || '')
     setLanguage(toLocale(project.language))
-    setModel(project.model || '')
+    setModel(isBriefModel(project.model) ? project.model : '')
     setHideTitleInPreviews(project.hide_title_in_previews === true)
   }, [project.welcome_message, project.seed_questions, project.session_mode, project.builder_directives, project.identity, project.nudge_message, project.voice_sample, project.auto_reminders_enabled, project.github_repo, project.language, project.model, project.hide_title_in_previews])
 
