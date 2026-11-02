@@ -205,7 +205,17 @@ async function handleChat(
   const humanSenders = new Set(
     storedMessages.filter((m) => m.role === 'user' && m.sender_email).map((m) => m.sender_email)
   )
-  const multiHuman = humanSenders.size > 1
+  // #247: a builder-side sender forces the roster framing even when they are
+  // the only one who has posted, or Sam reads their note as the maker's words.
+  // Sessions where only makers have posted keep the solo framing.
+  const membersSnap =
+    humanSenders.size > 0
+      ? await db.collection('project_members').where('project_id', '==', projectId).get()
+      : null
+  const builderEmails = new Set(
+    (membersSnap?.docs ?? []).filter((d) => isBuilderSideRole(d.data().role)).map((d) => d.data().email as string)
+  )
+  const multiHuman = humanSenders.size > 1 || [...humanSenders].some((e) => builderEmails.has(e))
   const speakerName = (m: { sender_display_name: string; sender_email: string }) =>
     m.sender_display_name || m.sender_email.split('@')[0] || 'Someone'
   const prefixUser = (
@@ -333,14 +343,10 @@ async function handleChat(
 
   // Multi-human roster for the system prompt: who has actually posted in this
   // session, in first-appearance order, tagged with their brief_role. Only
-  // built when 2+ humans are present, so solo sessions do one fewer read and
-  // keep the existing single-maker framing.
+  // built when 2+ humans or a builder have posted, so maker-only sessions keep
+  // the existing single-maker framing.
   let participants: { name: string; brief_role: BriefRole | null; builder?: boolean }[] | undefined
-  if (multiHuman) {
-    const membersSnap = await db
-      .collection('project_members')
-      .where('project_id', '==', projectId)
-      .get()
+  if (multiHuman && membersSnap) {
     const roleByEmail = new Map(
       membersSnap.docs.map((d) => [d.data().email as string, (d.data().brief_role as BriefRole | null) ?? null])
     )
@@ -349,12 +355,9 @@ async function handleChat(
       if (m.role !== 'user' || !m.sender_email || seen.has(m.sender_email)) continue
       seen.set(m.sender_email, speakerName(m))
     }
-    // #245: owner/builder senders render as Builder so Sam reads their notes
-    // as guidance, not the maker's wishes. A sender with no member row (e.g.
-    // an admin who was never added) is left as today.
-    const builderEmails = new Set(
-      membersSnap.docs.filter((d) => isBuilderSideRole(d.data().role)).map((d) => d.data().email as string)
-    )
+    // #245: owner/builder senders (builderEmails, above) render as Builder so
+    // Sam reads their notes as guidance, not the maker's wishes. A sender with
+    // no member row (e.g. an admin who was never added) is left as today.
     participants = [...seen].map(([email, name]) => ({
       name,
       brief_role: roleByEmail.get(email) ?? null,

@@ -667,6 +667,64 @@ describe('POST /api/chat', () => {
     )
   })
 
+  it('keeps the solo framing when the only sender is a maker member (#247)', async () => {
+    queryResults.messages = [
+      {
+        id: 'm1',
+        data: () => ({
+          role: 'user',
+          content: 'My idea is a cafe app',
+          sender_email: 'maria@example.com',
+          sender_display_name: 'Maria',
+          created_at: '2026-01-01T00:01:00Z',
+        }),
+      },
+    ]
+    queryResults.project_members = [
+      { id: 'pm1', data: () => ({ email: 'maria@example.com', role: 'maker', brief_role: 'originator' }) },
+      { id: 'pm2', data: () => ({ email: 'nico@example.com', role: 'owner', brief_role: 'reviewer' }) },
+    ]
+
+    const res = await POST(makeRequest({ session_id: 's1', content: 'more' }))
+    await readSSE(res)
+
+    const contents = capturedStreamArgs!.messages!.map((m) =>
+      typeof m.content === 'string' ? m.content : (m.content as { text?: string }[]).map((b) => b.text).join('')
+    )
+    expect(contents).toContain('My idea is a cafe app')
+    expect(buildSystemPromptParts).toHaveBeenCalledWith(expect.objectContaining({ participants: undefined }))
+  })
+
+  it('uses the roster framing when the only sender is a builder-side member (#247)', async () => {
+    queryResults.messages = [
+      {
+        id: 'm1',
+        data: () => ({
+          role: 'user',
+          content: 'Ask her about pickup times',
+          sender_email: 'nico@example.com',
+          sender_display_name: 'Nico',
+          created_at: '2026-01-01T00:01:00Z',
+        }),
+      },
+    ]
+    queryResults.project_members = [
+      { id: 'pm1', data: () => ({ email: 'maria@example.com', role: 'maker', brief_role: 'originator' }) },
+      { id: 'pm2', data: () => ({ email: 'nico@example.com', role: 'owner', brief_role: 'reviewer' }) },
+    ]
+
+    const res = await POST(makeRequest({ session_id: 's1', content: 'more' }))
+    await readSSE(res)
+
+    const contents = capturedStreamArgs!.messages!.map((m) =>
+      typeof m.content === 'string' ? m.content : (m.content as { text?: string }[]).map((b) => b.text).join('')
+    )
+    expect(contents).toContain('Nico: Ask her about pickup times')
+    expect(buildSystemPromptParts).toHaveBeenCalledWith(
+      expect.objectContaining({ participants: [{ name: 'Nico', brief_role: 'reviewer', builder: true }] })
+    )
+  })
+
   it('name-prefixes each user turn when 2+ humans have posted', async () => {
     queryResults.messages = [
       { id: 'm1', data: () => ({ role: 'agent', content: 'Welcome!', created_at: '2026-01-01T00:00:00Z' }) },

@@ -381,6 +381,27 @@ describe('POST /api/chat/kickoff', () => {
     expect(String(last.content)).toContain('just opened')
   })
 
+  it('labels a builder note and names the opener when the builder is the only sender so far (#247)', async () => {
+    setup({
+      messages: [
+        msg('user', 3 * HOUR, { sender_email: 'nico@x.com', sender_display_name: 'Nico', content: 'Ask about pickup' }),
+        msg('agent', 3 * HOUR),
+      ],
+      lastMakerMessageAt: iso(3 * HOUR),
+    })
+    queryResults.project_members = [
+      { id: 'pm1', data: () => ({ email: 'nico@x.com', role: 'owner', brief_role: 'reviewer' }) },
+      { id: 'pm2', data: () => ({ email: 'sam@x.com', role: 'maker', brief_role: 'originator' }) },
+    ]
+    await drain(await POST(makeRequest({ session_id: 'sess-1' })))
+    const sent = capturedStreamArgs?.messages || []
+    expect(sent.map((m) => String(m.content))).toContain('Nico: Ask about pickup')
+    const { buildSystemPromptParts } = await import('@/lib/agent/system-prompt')
+    expect(vi.mocked(buildSystemPromptParts)).toHaveBeenCalledWith(
+      expect.objectContaining({ participants: [{ name: 'Nico', brief_role: 'reviewer', builder: true }] })
+    )
+  })
+
   it('declines (no-op, no stream) when the maker is mid-turn', async () => {
     setup({
       messages: [msg('agent', 3 * HOUR), msg('user', 1000)],
