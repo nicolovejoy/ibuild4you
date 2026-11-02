@@ -180,7 +180,7 @@ Keep the code approachable — clarity over cleverness. Code should be:
 - musicforge's read-key smoke PASSED 2026-11-02 (limit=5: 5 items, sender tags, no email in the body). Still to come: their from-server smoke once the musicforge Fly route ships (#244; key at `op://dev-secrets/loop-read-key-musicforge/password`). Embed spike (Loop Phase 2) only if their panel proves not enough.
 - First brief notes on prod (`api_usage` route `brief.note`), and F4FC's first curated paste bringing `l6-shapes-positions-game` under 20,000 chars (#229, PR #239).
 
-**Queue.** #247 (a builder message in a session the maker hasn't spoken in reads to Sam as the maker) → #217 checks as data (brainstorm first; changes agent context). Small: #232 archive/delete test feedback, #246 1Password-save at key mint, #189 per-brief model dial. Conversation-experience brainstorm still open (thumbs up/down exists as #130; question is what to do with the signal).
+**Queue.** In flight 2026-11-02 (SDD, one PR each): #232 archive/delete test feedback, #246 1Password-save at key mint, #189 per-brief model dial. Conversation-experience brainstorm still open (thumbs up/down exists as #130; question is what to do with the signal).
 
 **Loose ends (no issue).**
 - Drive the #177 kickoff fix end to end on preview: needs the seeded test cast (`.test-cast-passwords.json` via `scripts/fixtures/scenarios/multi-human-cast.mjs`) and a short maker-side e2e.
