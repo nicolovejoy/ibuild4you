@@ -439,6 +439,10 @@ export const copy = {
     readKeyConfirmRevoke: 'Revoke the key? The host app loses access immediately.',
     readKeyRevealNote: 'Copy it now. It will not be shown again.',
     readKeyCopy: 'Copy',
+    readKeyUsernameLabel: 'Item name',
+    readKeySave: 'Save to password manager',
+    readKeySaveNote:
+      'The key is masked so your password manager (e.g. 1Password) can offer to save it. Nothing is sent anywhere.',
     readKeyCopied: 'Copied',
     readKeyLoading: 'Loading…',
     readKeyError: 'Could not change the read key.',
