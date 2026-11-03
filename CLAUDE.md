@@ -186,7 +186,6 @@ Keep the code approachable — clarity over cleverness. Code should be:
 **Queue.** Nothing in flight (#232, #246, #189 shipped 2026-11-02). Open follow-up: on the read-key form 1Password also offers "Sign in" with a saved ibuild4you login, which would overwrite the shown-once key; dismiss it, or suppress it if it bites. Conversation-experience brainstorm still open (thumbs up/down exists as #130; question is what to do with the signal).
 
 **Loose ends (no issue).**
-- Drive the #177 kickoff fix end to end on preview: needs the seeded test cast (`.test-cast-passwords.json` via `scripts/fixtures/scenarios/multi-human-cast.mjs`) and a short maker-side e2e.
 - Garm listing contract still unconfirmed (`GET /api/grants?project=X` → `{grants:[...]}`, active-only, unpaginated).
 - Delete the retired `GARM_GATING` (Preview) and `GARM_SHADOW` (Production) from Vercel; nothing reads them.
 - UptimeRobot monitor "ibuild4you production health": confirm Alert Contacts are assigned (an unassigned monitor shows green and pages nobody).
