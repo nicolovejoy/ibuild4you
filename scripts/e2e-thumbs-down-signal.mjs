@@ -108,12 +108,13 @@ try {
   // Reload so the reply renders from the saved messages (with its id), and
   // wait until both agent messages (welcome + reply) show their thumbs.
   await mpage.reload({ waitUntil: 'domcontentloaded' })
-  const downs = mpage.getByTitle('Not helpful')
+  const downs = mpage.getByTitle('Not helpful', { exact: true })
   for (let i = 0; i < 15 && (await downs.count()) < 2; i++) await mpage.waitForTimeout(1000)
   grade((await downs.count()) === 2, `both of Sam's messages show thumbs -> ${await downs.count()}`)
 
-  // 2. 👎 on the reply (the second agent message), then the reason.
-  await downs.nth(1).click()
+  // 2. 👎 on the reply, then the reason. The maker's page lists messages
+  // newest first, so the reply is the first one.
+  await downs.first().click()
   const reasonBox = mpage.getByPlaceholder('What was off? (optional)')
   grade(await reasonBox.isVisible().catch(() => false), 'the "What was off?" box opens after 👎')
   await reasonBox.fill(REASON)
@@ -134,7 +135,7 @@ try {
   grade(td.length === 1 && td[0].reason === REASON && td[0].excerpt.length > 0, `the note lists the 👎 with the reason -> ${JSON.stringify(td).slice(0, 160)}`)
 
   // 5. Switch to 👍: reason dropped, count back to 0.
-  await mpage.getByTitle('Helpful').nth(1).click()
+  await mpage.getByTitle('Helpful', { exact: true }).first().click()
   await mpage.waitForTimeout(2500)
   const flipped = (await msgsOf()).find((m) => m.id === reply.id)
   grade(flipped?.rating === 'up' && !flipped?.rating_reason, 'switching to 👍 drops the reason')
