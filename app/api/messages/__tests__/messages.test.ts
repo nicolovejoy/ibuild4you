@@ -46,7 +46,7 @@ const mockCollection = vi.fn((name: string) => {
   return {
     where: mockWhere,
     doc: vi.fn(() => ({
-      get: vi.fn(async () => docData[lastCollection] || { exists: false }),
+      get: vi.fn(async () => docData[name] || { exists: false }),
       delete: mockDelete,
       update: name === 'projects' ? mockProjectUpdate : mockUpdate,
     })),
@@ -61,6 +61,14 @@ vi.mock('@/lib/api/firebase-server-helpers', () => ({
   })),
   getAdminDb: vi.fn(() => ({
     collection: mockCollection,
+    // Transactions run against the same doc mocks: tx.get/update/delete
+    // forward to the ref's own get/update/delete.
+    runTransaction: async (fn: (tx: unknown) => Promise<unknown>) =>
+      fn({
+        get: (ref: { get: () => Promise<unknown> }) => ref.get(),
+        update: (ref: { update: (d: unknown) => Promise<unknown> }, d: unknown) => ref.update(d),
+        delete: (ref: { delete: () => Promise<unknown> }) => ref.delete(),
+      }),
   })),
   getProjectRole: (...args: unknown[]) => mockGetProjectRole(...args),
   requireRole: (role: string | null, minimum: string) => {
@@ -317,6 +325,21 @@ describe('PATCH /api/messages', () => {
       ...docData,
       messages: { exists: true, data: () => ({ session_id: 'session-1', role: 'agent', rating: 'down' }) },
     }
+    await PATCH(patchReq({ message_id: 'm1', rating: 'down', reason: 'off topic' }))
+    expect(mockProjectUpdate).not.toHaveBeenCalled()
+  })
+
+  it('counts from the rating as read inside the transaction, not the earlier read', async () => {
+    // The first read (access check) still sees no rating; by the time the
+    // transaction reads, the 👎 from a moment ago has landed.
+    let reads = 0
+    Object.defineProperty(docData, 'messages', {
+      enumerable: true,
+      get: () => {
+        const rating = reads++ === 0 ? undefined : 'down'
+        return { exists: true, data: () => ({ session_id: 'session-1', role: 'agent', rating }) }
+      },
+    })
     await PATCH(patchReq({ message_id: 'm1', rating: 'down', reason: 'off topic' }))
     expect(mockProjectUpdate).not.toHaveBeenCalled()
   })

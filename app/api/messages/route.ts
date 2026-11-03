@@ -91,17 +91,19 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
 
+  // In a transaction: a 👎 and the reason sent right after it are two quick
+  // PATCHes, and both must see the rating the other wrote, or the counter
+  // counts the same 👎 twice.
   const ratingReason = rating === 'down' && typeof reason === 'string' && reason.trim() ? reason.trim() : null
-  await db.collection('messages').doc(message_id).update({
-    rating,
-    rating_reason: ratingReason,
-    updated_at: new Date().toISOString(),
+  const messageRef = db.collection('messages').doc(message_id)
+  await db.runTransaction(async (tx) => {
+    const fresh = await tx.get(messageRef)
+    const delta = (rating === 'down' ? 1 : 0) - (fresh.data()?.rating === 'down' ? 1 : 0)
+    tx.update(messageRef, { rating, rating_reason: ratingReason, updated_at: new Date().toISOString() })
+    if (delta !== 0) {
+      tx.update(db.collection('projects').doc(projectId), { thumbs_down_count: FieldValue.increment(delta) })
+    }
   })
-
-  const delta = (rating === 'down' ? 1 : 0) - (messageDoc.data()?.rating === 'down' ? 1 : 0)
-  if (delta !== 0) {
-    await db.collection('projects').doc(projectId).update({ thumbs_down_count: FieldValue.increment(delta) })
-  }
 
   return NextResponse.json({ message_id, rating })
 }
@@ -137,10 +139,16 @@ export async function DELETE(request: Request) {
   const roleCheck = requireRole(role, 'builder')
   if (roleCheck) return roleCheck
 
-  await db.collection('messages').doc(messageId).delete()
-  if (messageDoc.data()?.rating === 'down') {
-    await db.collection('projects').doc(projectId).update({ thumbs_down_count: FieldValue.increment(-1) })
-  }
+  // Same transaction as the rating PATCH, so a 👎 landing mid-delete is
+  // counted off exactly once.
+  const messageRef = db.collection('messages').doc(messageId)
+  await db.runTransaction(async (tx) => {
+    const fresh = await tx.get(messageRef)
+    tx.delete(messageRef)
+    if (fresh.data()?.rating === 'down') {
+      tx.update(db.collection('projects').doc(projectId), { thumbs_down_count: FieldValue.increment(-1) })
+    }
+  })
 
   return NextResponse.json({ deleted: true, message_id: messageId })
 }
