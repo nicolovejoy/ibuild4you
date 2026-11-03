@@ -103,9 +103,11 @@ export async function POST(request: Request) {
   await feedbackRef.collection('replies').add(reply)
 
   // Bump the parent feedback's status back to 'new' so the row resurfaces in
-  // the admin's default filter, plus refresh updated_at for sort order.
+  // the admin's default filter, plus refresh updated_at for sort order. A reply
+  // also unarchives the row (#232), since archived rows are hidden from the inbox.
   await feedbackRef.update({
     status: 'new',
+    archived_at: null,
     updated_at: new Date().toISOString(),
   })
 

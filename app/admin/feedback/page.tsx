@@ -46,7 +46,7 @@ export default function FeedbackAdminPage() {
 
       <main className="max-w-5xl mx-auto px-4 py-6">
         <Suspense fallback={<div className="text-center text-gray-400 py-12">Loading…</div>}>
-          <FeedbackInbox />
+          <FeedbackInbox canDelete />
         </Suspense>
       </main>
     </div>

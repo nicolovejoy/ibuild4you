@@ -20,6 +20,8 @@ export async function GET(request: Request) {
   const projectId = searchParams.get('projectId')?.trim() || null
   const status = searchParams.get('status')?.trim() || null
   const type = searchParams.get('type')?.trim() || null
+  // Archived rows are hidden unless the caller opts in (#232).
+  const includeArchived = searchParams.get('include_archived') === '1'
 
   // Admins see everything. Anyone else must name an app and hold collaborator+
   // on it in Garm.
@@ -70,6 +72,11 @@ export async function GET(request: Request) {
   // In-memory like the type filter — no != composite index needed.
   if (!status) {
     rows = rows.filter((r) => r.status !== 'spam')
+  }
+
+  // Archived rows: in memory too (no extra index), independent of ?status.
+  if (!includeArchived) {
+    rows = rows.filter((r) => !r.archived_at)
   }
 
   return NextResponse.json(rows)

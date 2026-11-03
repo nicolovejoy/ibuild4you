@@ -192,4 +192,31 @@ describe('GET /api/admin/feedback', () => {
     // merged newest first
     expect(rows.map((r: { id: string }) => r.id)).toEqual(['old1', 'new1', 'old0'])
   })
+
+  describe('archived rows', () => {
+    const docs = () => ({
+      docs: [
+        { id: 'f1', data: () => ({ type: 'bug', status: 'new' }) },
+        { id: 'f2', data: () => ({ type: 'bug', status: 'new', archived_at: '2026-11-01T00:00:00.000Z' }) },
+      ],
+    })
+
+    it('hides archived rows by default', async () => {
+      mockGet.mockResolvedValueOnce(docs())
+      const rows = await (await GET(makeReq())).json()
+      expect(rows.map((r: { id: string }) => r.id)).toEqual(['f1'])
+    })
+
+    it('keeps archived rows with include_archived=1', async () => {
+      mockGet.mockResolvedValueOnce(docs())
+      const rows = await (await GET(makeReq('?include_archived=1'))).json()
+      expect(rows.map((r: { id: string }) => r.id)).toEqual(['f1', 'f2'])
+    })
+
+    it('still hides archived rows under a status filter', async () => {
+      mockGet.mockResolvedValueOnce(docs())
+      const rows = await (await GET(makeReq('?status=new'))).json()
+      expect(rows.map((r: { id: string }) => r.id)).toEqual(['f1'])
+    })
+  })
 })

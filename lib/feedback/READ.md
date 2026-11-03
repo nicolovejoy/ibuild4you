@@ -78,7 +78,7 @@ Fields of each item:
   `windows`, `linux` or `other`.
 - `created_at`: ISO 8601 timestamp, UTC.
 - `status`: `new`, `acknowledged`, `in_progress`, `done` or `wontfix`. Spam is
-  never listed.
+  never listed, and neither are archived items.
 - `loop_url`: opens this item in Loop for an admin. It needs a Loop sign-in
   with access to the app; the key does not grant it.
 - `sender`: `"Sender "` plus four hex characters. The same person gets the same

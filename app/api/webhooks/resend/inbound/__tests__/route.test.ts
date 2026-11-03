@@ -186,6 +186,7 @@ describe('POST /api/webhooks/resend/inbound — happy path', () => {
     expect(mockFeedbackUpdate).toHaveBeenCalledOnce()
     const patch = mockFeedbackUpdate.mock.calls[0][0]
     expect(patch.status).toBe('new')
+    expect(patch.archived_at).toBeNull()
     expect(typeof patch.updated_at).toBe('string')
   })
 

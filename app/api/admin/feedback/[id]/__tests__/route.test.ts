@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { NextResponse } from 'next/server'
-import { PATCH } from '../route'
+import { PATCH, DELETE } from '../route'
 
 // =============================================================================
 // Tests for PATCH /api/admin/feedback/[id].
@@ -11,6 +11,9 @@ import { PATCH } from '../route'
 const mockGetAuthenticatedUser = vi.fn()
 const mockHasSystemRole = vi.fn()
 const mockDocGet = vi.fn()
+const mockDocDelete = vi.fn(async () => undefined)
+const mockReplyDelete = vi.fn(async () => undefined)
+const mockRepliesGet = vi.fn()
 const mockUpdate = vi.fn<(patch: Record<string, unknown>) => Promise<void>>(async () => undefined)
 const mockResendSend = vi.fn<(payload: Record<string, unknown>) => Promise<{ id: string }>>(
   async () => ({ id: 'email-1' })
@@ -21,7 +24,12 @@ vi.mock('@/lib/api/firebase-server-helpers', () => ({
   hasSystemRole: (auth: unknown, role: string) => mockHasSystemRole(auth, role),
   getAdminDb: () => ({
     collection: () => ({
-      doc: () => ({ get: mockDocGet, update: mockUpdate }),
+      doc: () => ({
+        get: mockDocGet,
+        update: mockUpdate,
+        delete: mockDocDelete,
+        collection: () => ({ get: mockRepliesGet }),
+      }),
     }),
   }),
 }))
@@ -52,6 +60,9 @@ beforeEach(() => {
   mockGetAuthenticatedUser.mockResolvedValue(adminAuth)
   mockHasSystemRole.mockReturnValue(true)
   mockRequireFeedbackAccess.mockResolvedValue(null)
+  mockRepliesGet.mockResolvedValue({
+    docs: [{ ref: { delete: mockReplyDelete } }, { ref: { delete: mockReplyDelete } }],
+  })
   mockDocGet.mockResolvedValue({
     exists: true,
     data: () => ({
@@ -189,5 +200,69 @@ describe('PATCH /api/admin/feedback/[id]', () => {
   it('rejects non-string non-null internal_notes', async () => {
     const res = await PATCH(makeReq({ internal_notes: 123 }), { params })
     expect(res.status).toBe(400)
+  })
+})
+
+describe('PATCH archived', () => {
+  it('archives with an ISO UTC timestamp', async () => {
+    const res = await PATCH(makeReq({ archived: true }), { params })
+    expect(res.status).toBe(200)
+    expect(mockUpdate.mock.calls[0][0].archived_at).toMatch(/^\d{4}-\d{2}-\d{2}T.*Z$/)
+  })
+
+  it('unarchives with null', async () => {
+    const res = await PATCH(makeReq({ archived: false }), { params })
+    expect(res.status).toBe(200)
+    expect(mockUpdate.mock.calls[0][0].archived_at).toBeNull()
+  })
+
+  it('rejects a non-boolean archived', async () => {
+    const res = await PATCH(makeReq({ archived: 'yes' }), { params })
+    expect(res.status).toBe(400)
+    expect(mockUpdate).not.toHaveBeenCalled()
+  })
+
+  it('lets a collaborator archive', async () => {
+    mockHasSystemRole.mockReturnValue(false)
+    const res = await PATCH(makeReq({ archived: true }), { params })
+    expect(res.status).toBe(200)
+    expect(mockUpdate).toHaveBeenCalledOnce()
+  })
+})
+
+describe('DELETE /api/admin/feedback/[id]', () => {
+  const delReq = () => new Request('http://localhost/api/admin/feedback/abc', { method: 'DELETE' })
+
+  it('returns 401 when unauthenticated', async () => {
+    mockGetAuthenticatedUser.mockResolvedValueOnce({
+      error: new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 }),
+    })
+    const res = await DELETE(delReq(), { params })
+    expect(res.status).toBe(401)
+    expect(mockDocDelete).not.toHaveBeenCalled()
+  })
+
+  it('returns 403 for a non-admin before reading anything', async () => {
+    mockHasSystemRole.mockReturnValue(false)
+    const res = await DELETE(delReq(), { params })
+    expect(res.status).toBe(403)
+    expect(mockDocGet).not.toHaveBeenCalled()
+    expect(mockDocDelete).not.toHaveBeenCalled()
+    expect(mockReplyDelete).not.toHaveBeenCalled()
+  })
+
+  it('returns 404 for a missing row', async () => {
+    mockDocGet.mockResolvedValueOnce({ exists: false, data: () => undefined })
+    const res = await DELETE(delReq(), { params })
+    expect(res.status).toBe(404)
+    expect(mockDocDelete).not.toHaveBeenCalled()
+  })
+
+  it('deletes replies and the row for an admin', async () => {
+    const res = await DELETE(delReq(), { params })
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ id: 'abc', deleted: true })
+    expect(mockReplyDelete).toHaveBeenCalledTimes(2)
+    expect(mockDocDelete).toHaveBeenCalledOnce()
   })
 })

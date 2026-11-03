@@ -275,6 +275,23 @@ describe('GET /api/feedback/read — spam and paging', () => {
     expect(body.items.map((i: { id: string }) => i.id)).toEqual(['fb-1'])
   })
 
+  it('excludes archived rows and pages like spam', async () => {
+    feedbackRows = [
+      row(0, { archived_at: '2026-11-01T00:00:00Z' }),
+      row(1),
+      row(2, { archived_at: '2026-11-01T00:00:00Z' }),
+      row(3),
+      row(4),
+    ]
+    const auth = `Bearer ${BYSIDE_KEY}`
+    const p1 = await (await GET(req({ app: 'byside', limit: '2' }, auth))).json()
+    expect(p1.items.map((i: { id: string }) => i.id)).toEqual(['fb-1', 'fb-3'])
+    expect(typeof p1.next_cursor).toBe('string')
+    const p2 = await (await GET(req({ app: 'byside', limit: '2', before: p1.next_cursor }, auth))).json()
+    expect(p2.items.map((i: { id: string }) => i.id)).toEqual(['fb-4'])
+    expect(p2.next_cursor).toBeNull()
+  })
+
   it('scans past a full batch of spam to find real rows', async () => {
     feedbackRows = [
       ...Array.from({ length: 120 }, (_, i) => row(i, { status: 'spam' })),
