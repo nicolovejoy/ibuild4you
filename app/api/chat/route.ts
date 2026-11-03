@@ -11,7 +11,7 @@ import { fetchPreviousConversations } from '@/lib/api/previous-conversations'
 import { loadAttachmentBlocks, type AttachmentBlock, type DroppedAttachment } from '@/lib/agent/attachments'
 import { applyPromptCaching } from '@/lib/agent/prompt-cache'
 import { AGENT_REFUSAL_FALLBACK, AGENT_EMPTY_FALLBACK } from '@/lib/agent/constants'
-import { resolveChatModel, chatModelOptions } from '@/lib/agent/model-config'
+import { resolveChatModel, resolveBriefModel, chatModelOptions } from '@/lib/agent/model-config'
 import { logAnthropicCall } from '@/lib/observability/anthropic'
 import { accumulateSessionUsage } from '@/lib/observability/session-cost'
 import Anthropic from '@anthropic-ai/sdk'
@@ -417,7 +417,7 @@ async function handleChat(
 
   // Stream response from Claude. The model (and so the sampling shape) can be
   // overridden per deployment via CHAT_MODEL (#184).
-  const chatModel = resolveChatModel()
+  const chatModel = resolveChatModel(process.env, resolveBriefModel(sessionData, projectData))
   const stream = getAnthropic().messages.stream({
     model: chatModel,
     system: cached.system,

@@ -98,6 +98,7 @@ Only `title` is required. All other fields are optional.
   "voice_sample": "Optional. One paragraph showing how you'd text this person by hand. Used as a style anchor for AI-generated outbound copy (nudge/invite/reminder). Ignored when nudge_message is set.",
   "session_mode": "converge",
   "language": "fr",
+  "model": "claude-sonnet-5-5",
   "hide_title_in_previews": false,
   "seed_questions": [
     "What problem are you trying to solve?",
@@ -126,6 +127,8 @@ An open risk may be a plain string or `{ "text": "…", "owner": "maker" | "buil
 
 `language` (optional, `en` | `fr`, default English): the language the maker is addressed in — the agent converses in it from the first message, welcome/nudge copy is written in it, every outbound maker email (invite, nudge, reminder, the cron's reminder digest; `lib/email/outbound-copy.ts`) is sent in it, and link previews use it. The password-reset email follows the sign-in page's locale instead, since it has no brief. The brief itself always stays in English. `hide_title_in_previews` (optional boolean): a shared `/projects/<slug>` link previews with the brief title unless this is true (then the anonymous colour/glyph/code card). Previews are unauthenticated and cached by messaging apps — never names or brief contents.
 
+`model` (optional, `claude-sonnet-4-6` | `claude-sonnet-5-5` | `claude-opus-5-5`; omitted, blank or null = Default) picks the model Sam talks with on this brief (#189). Precedence: the brief's `model` > `CHAT_MODEL` > `AGENT_MODEL`. Chat and kickoff only; welcome, prep and note writing keep their own models. It applies from the next conversation: a session snapshots it as `agent_model`, and sessions created under Default stay Default. Any other value is a 400. It is a Setup-tab setting, not part of the comms-agent payload schemas.
+
 `seed_questions` reach the agent only in `discover` mode and `builder_directives` only in `converge` mode (#192); both are stored regardless, so flipping `session_mode` never loses them. Guardrails that must hold in every session (e.g. "do not suggest technologies") go in `context`, which is always sent. The dashboard Setup tab already shows one or the other per mode; a JSON payload that sets both in `discover` mode simply has its directives held until the mode flips.
 
 `layout_mockups` (retired with the wireframes in #195 phase 2) is no longer accepted since this release (#210): create and PATCH treat it like any other unknown field and ignore it.
@@ -138,7 +141,7 @@ The Brief tab's editor (structured or raw) and History → Restore ask first whe
 
 ### Update (PATCH /api/projects)
 
-Requires `project_id`. Only these fields are accepted: `title`, `context`, `welcome_message`, `nudge_message`, `voice_sample`, `session_mode`, `seed_questions`, `builder_directives`, `requester_first_name`, `requester_last_name`, `last_nudged_at`, `prep_copied_at`, `payload_pasted_at`, `payload_pasted_version`, `last_builder_activity_at`, `identity`, `github_repo`, `auto_reminders_enabled`, `language` (`en`|`fr`, else 400), `hide_title_in_previews` (boolean, else 400). Changing `title` regenerates the slug.
+Requires `project_id`. Only these fields are accepted: `title`, `context`, `welcome_message`, `nudge_message`, `voice_sample`, `session_mode`, `seed_questions`, `builder_directives`, `requester_first_name`, `requester_last_name`, `last_nudged_at`, `prep_copied_at`, `payload_pasted_at`, `payload_pasted_version`, `last_builder_activity_at`, `identity`, `github_repo`, `auto_reminders_enabled`, `language` (`en`|`fr`, else 400), `model` (one of the three ids; `''`/null = Default; else 400), `hide_title_in_previews` (boolean, else 400). Changing `title` regenerates the slug.
 
 ## Agent Behavior Rules
 
@@ -218,7 +221,7 @@ Production (Vercel):
 - `STARS_INTEGRATION_SECRET` — shared secret for stars-demo's server-to-server calls to `/api/integrations/stars-demo/*` (header `X-Integration-Secret` + `X-Integration-Namespace: stars-demo`). Fail-closed: unset denies every request. Constant-time compare over SHA-256 digests. One value at a time, rotation is a coordinated cutover (08a §8). Value in 1Password `op://dev-secrets/starsdemo-ibuild4you-integration-secret/credential` (API Credential item; field is `credential`, verified 2026-09-22) (same value in stars-demo's `IBUILD4YOU_INTEGRATION_SECRET`). Never logged.
 - `RESEND_API_KEY` — for transactional email (interest form, notify cron).
 - `ANTHROPIC_API_KEY` — for the agent.
-- `CHAT_MODEL` — optional model override for the chat + kickoff routes only (#184). Unset → `AGENT_MODEL` (`claude-sonnet-4-6`). The Sonnet 5.5 trial sets it to `claude-sonnet-5-5` on **Preview** first; promote to prod only after comparing the admin usage page before/after. On a 5.x id the routes drop `temperature` and send `output_config.effort: low` instead (5.x 400s on a non-default temperature) — `lib/agent/model-config.ts`. Brief regen, welcome and prep never read it: they use forced `tool_choice` / a tuned temperature, which 5.x rejects. Any id set here must have a row in `lib/observability/anthropic-pricing.ts` or every call logs `$0`.
+- `CHAT_MODEL` — optional model override for the chat + kickoff routes only (#184); a brief's own `model` (#189) overrides it. Unset → `AGENT_MODEL` (`claude-sonnet-4-6`). The Sonnet 5.5 trial sets it to `claude-sonnet-5-5` on **Preview** first; promote to prod only after comparing the admin usage page before/after. On a 5.x id the routes drop `temperature` and send `output_config.effort: low` instead (5.x 400s on a non-default temperature) — `lib/agent/model-config.ts`. Brief regen, welcome and prep never read it: they use forced `tool_choice` / a tuned temperature, which 5.x rejects. Any id set here must have a row in `lib/observability/anthropic-pricing.ts` or every call logs `$0`.
 - `GARM_URL` — Garm authz service base URL. Canonical: `https://garm.prompt-labs.org` (custom domain, cert live; `/api/health?db=1` → `{"ok":true,"db":true}`). The `https://garm-seven.vercel.app` alias still resolves but don't wire it into anything new. Read by `lib/garm.ts` (`garmCheck`). Unset → the client denies by default (fail-closed). **Since PR G (2026-07-29) `isApprovedEmail()` gates sign-in on Garm** — the only exception is `usesPreviewAllowlist()` (a preview deployment with no Garm wiring).
 - `GARM_GATING` / `GARM_SHADOW` — **retired in PR H (2026-10-15)**; nothing reads them. Safe to delete from Vercel (`GARM_GATING` on Preview, `GARM_SHADOW` on Production).
 - `GARM_KEY` — Garm consumer key (`garm_…`) for this app; Bearer on the `/gnipahellir` check. Value in 1Password `op://dev-secrets/garm-consumer-ibuild4you/password`. Never logged. Unset → fail-closed.

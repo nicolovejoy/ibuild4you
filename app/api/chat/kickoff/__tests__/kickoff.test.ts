@@ -239,6 +239,21 @@ describe('POST /api/chat/kickoff', () => {
     expect(capturedStreamArgs?.max_tokens).toBe(8192)
   })
 
+  it('uses the session agent_model over CHAT_MODEL (#189)', async () => {
+    vi.stubEnv('CHAT_MODEL', 'claude-sonnet-5-5')
+    setup({
+      messages: [msg('agent', 5 * HOUR), msg('user', 3 * HOUR), msg('agent', 3 * HOUR)],
+      lastMakerMessageAt: iso(3 * HOUR),
+      session: { agent_model: 'claude-opus-5-5' },
+    })
+    const res = await POST(makeRequest({ session_id: 'sess-1' }))
+    await drain(res)
+    expect(capturedStreamArgs?.model).toBe('claude-opus-5-5')
+    expect(capturedStreamArgs?.temperature).toBeUndefined()
+    expect(capturedStreamArgs?.output_config).toEqual({ effort: 'low' })
+    expect(updateCalls.some((u) => JSON.stringify(u).includes('claude-opus-5-5'))).toBe(true)
+  })
+
   it('does not store a greeting that came back empty (an empty agent turn 400s every later chat turn)', async () => {
     mockStreamEvents = []
     mockFinalMessage = { usage: { input_tokens: 100, output_tokens: 0 }, stop_reason: 'refusal' }

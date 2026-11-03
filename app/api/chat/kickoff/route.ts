@@ -9,7 +9,7 @@ import { fetchPinnedArtifacts } from '@/lib/api/artifact-context'
 import { fetchSiblingDecisions } from '@/lib/api/sibling-decisions'
 import { fetchPreviousConversations } from '@/lib/api/previous-conversations'
 import { cacheSystemPrompt } from '@/lib/agent/prompt-cache'
-import { resolveChatModel, chatModelOptions } from '@/lib/agent/model-config'
+import { resolveChatModel, resolveBriefModel, chatModelOptions } from '@/lib/agent/model-config'
 import { logAnthropicCall } from '@/lib/observability/anthropic'
 import { accumulateSessionUsage } from '@/lib/observability/session-cost'
 import Anthropic from '@anthropic-ai/sdk'
@@ -356,7 +356,8 @@ export async function POST(request: Request) {
   const cachedSystem = cacheSystemPrompt(systemPrompt)
 
   // --- Stream + store the agent greeting ---
-  const chatModel = resolveChatModel() // same override as /api/chat (#184)
+  // Same resolution as /api/chat: the brief's choice, then CHAT_MODEL (#184, #189)
+  const chatModel = resolveChatModel(process.env, resolveBriefModel(sessionData, projectData))
   const stream = getAnthropic().messages.stream({
     model: chatModel,
     system: cachedSystem,

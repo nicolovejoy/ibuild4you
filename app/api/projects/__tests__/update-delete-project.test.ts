@@ -206,6 +206,28 @@ describe('PATCH /api/projects', () => {
     expect(res.status).toBe(400)
   })
 
+  it('stores an allowed model on PATCH (#189)', async () => {
+    const res = await PATCH(makePatchRequest({ project_id: 'proj-1', model: 'claude-sonnet-4-6' }))
+    expect(res.status).toBe(200)
+    expect((await res.json()).model).toBe('claude-sonnet-4-6')
+  })
+
+  it('stores null for model "" and null (back to Default)', async () => {
+    for (const model of ['', null]) {
+      const res = await PATCH(makePatchRequest({ project_id: 'proj-1', model }))
+      expect(res.status).toBe(200)
+      expect((await res.json()).model).toBeNull()
+    }
+  })
+
+  it('rejects an unknown model with 400 before any write', async () => {
+    mockDocUpdate.mockClear()
+    const res = await PATCH(makePatchRequest({ project_id: 'proj-1', model: 'gpt-4' }))
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toBe('model must be one of: claude-sonnet-4-6, claude-sonnet-5-5, claude-opus-5-5')
+    expect(mockDocUpdate).not.toHaveBeenCalled()
+  })
+
   it('rejects a non-boolean hide_title_in_previews', async () => {
     const res = await PATCH(makePatchRequest({ project_id: 'proj-1', hide_title_in_previews: 'yes' }))
     expect(res.status).toBe(400)

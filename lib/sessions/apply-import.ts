@@ -1,7 +1,9 @@
 import type { Firestore } from 'firebase-admin/firestore'
 import { welcomeToPost } from './welcome'
+import { briefModelSnapshot } from '@/lib/agent/model-choices'
 
-// Same five fields app/api/sessions/route.ts snapshots onto a new session.
+// Same five fields app/api/sessions/route.ts snapshots onto a new session
+// (plus agent_model, always written, below).
 const CONFIG_FIELDS = ['session_mode', 'seed_questions', 'builder_directives', 'welcome_message', 'identity'] as const
 
 // A builder imports a later payload (payload_pasted_at stamped) while a
@@ -60,6 +62,7 @@ export async function applyImportToOpenSession(
   for (const field of CONFIG_FIELDS) {
     if (project[field] !== undefined) sessionUpdate[field] = project[field]
   }
+  sessionUpdate.agent_model = briefModelSnapshot(project)
   batch.update(active.ref, {
     ...sessionUpdate,
     // With a welcome posted the conversation is already opened: stamp the kickoff

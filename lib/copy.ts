@@ -422,6 +422,18 @@ export const copy = {
     requiresIdentity: 'This app requires you to be signed in before sending feedback.',
   },
 
+  // --- Builder Setup tab: per-brief agent model (#189). English only. ---
+  agentModel: {
+    label: 'Agent model',
+    default: 'Default',
+    options: {
+      'claude-sonnet-4-6': 'Sonnet 4.6',
+      'claude-sonnet-5-5': 'Sonnet 5.5',
+      'claude-opus-5-5': 'Opus 5.5',
+    },
+    help: 'Which model Sam talks with on this brief. A change applies from the next conversation. Default follows the app-wide setting.',
+  },
+
   // --- Admin: Loop feedback inbox bulk actions (#232). English only. ---
   adminFeedback: {
     showArchived: 'Show archived',

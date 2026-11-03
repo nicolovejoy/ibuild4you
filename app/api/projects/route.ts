@@ -20,7 +20,10 @@ import { deleteS3Object } from '@/lib/s3/client'
 import { stampDecisionProvenance } from '@/lib/api/brief-merge'
 import { normalizeEmail, isValidEmail } from '@/lib/email/normalize'
 import { scheduleGarmGrantSync } from '@/lib/garm-grants'
+import { BRIEF_MODELS, isBriefModel, briefModelSnapshot } from '@/lib/agent/model-choices'
 import type { BriefRole, MemberRole } from '@/lib/types'
+
+const MODEL_ERROR = `model must be one of: ${BRIEF_MODELS.join(', ')}`
 
 // Ensure slug is unique by appending -2, -3, etc. if needed
 async function ensureUniqueSlug(db: FirebaseFirestore.Firestore, slug: string, excludeProjectId?: string): Promise<string> {
@@ -191,12 +194,16 @@ export async function PATCH(request: Request) {
   }
 
   // Only allow updating specific setup fields; unknown fields are ignored.
-  const allowed = ['welcome_message', 'nudge_message', 'voice_sample', 'seed_questions', 'context', 'title', 'builder_directives', 'session_mode', 'requester_first_name', 'requester_last_name', 'last_nudged_at', 'prep_copied_at', 'payload_pasted_at', 'payload_pasted_version', 'last_builder_activity_at', 'identity', 'github_repo', 'auto_reminders_enabled', 'language', 'hide_title_in_previews'] as const
+  const allowed = ['welcome_message', 'nudge_message', 'voice_sample', 'seed_questions', 'context', 'title', 'builder_directives', 'session_mode', 'requester_first_name', 'requester_last_name', 'last_nudged_at', 'prep_copied_at', 'payload_pasted_at', 'payload_pasted_version', 'last_builder_activity_at', 'identity', 'github_repo', 'auto_reminders_enabled', 'language', 'hide_title_in_previews', 'model'] as const
   if ('language' in updates && !isLocale(updates.language)) {
     return NextResponse.json({ error: 'language must be one of: en, fr' }, { status: 400 })
   }
   if ('hide_title_in_previews' in updates && typeof updates.hide_title_in_previews !== 'boolean') {
     return NextResponse.json({ error: 'hide_title_in_previews must be a boolean' }, { status: 400 })
+  }
+  // Blank or null clears the choice (back to Default); anything else must be an allowed id.
+  if ('model' in updates && updates.model !== '' && updates.model !== null && !isBriefModel(updates.model)) {
+    return NextResponse.json({ error: MODEL_ERROR }, { status: 400 })
   }
   const patch: Record<string, unknown> = { updated_at: new Date().toISOString() }
   for (const key of allowed) {
@@ -204,6 +211,7 @@ export async function PATCH(request: Request) {
       patch[key] = updates[key]
     }
   }
+  if ('model' in updates && !isBriefModel(updates.model)) patch.model = null
 
   // Regenerate slug when title changes
   if (patch.title && typeof patch.title === 'string') {
@@ -382,6 +390,13 @@ export async function POST(request: Request) {
   if (typeof body.hide_title_in_previews === 'boolean') {
     projectData.hide_title_in_previews = body.hide_title_in_previews
   }
+  // Optional per-brief chat model (#189). Absent/blank/null = Default (omitted).
+  if (body.model !== undefined && body.model !== null && body.model !== '') {
+    if (!isBriefModel(body.model)) {
+      return NextResponse.json({ error: MODEL_ERROR }, { status: 400 })
+    }
+    projectData.model = body.model
+  }
 
   // Build the participant roster. A brief can be seeded with any number of
   // people (makers, contributors, reviewers) in one create payload. The legacy
@@ -534,6 +549,7 @@ export async function POST(request: Request) {
       sessionData[field] = projectData[field]
     }
   }
+  sessionData.agent_model = briefModelSnapshot(projectData)
   const sessionRef = await db.collection('sessions').add(sessionData)
 
   // Persist the latest session timestamp on the project (mirrors the
