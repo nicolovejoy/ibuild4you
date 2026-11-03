@@ -615,6 +615,33 @@ describe('POST /api/chat', () => {
     expect(stored!.data.sender_display_name).toBe('Test User')
   })
 
+  // --- Builder-side tag (#254): kickoff must not read a builder turn as the maker ---
+
+  it.each(['owner', 'builder'])('tags a %s message and Sam\'s reply to it as builder-side', async (role) => {
+    mockGetProjectRole.mockResolvedValue(role)
+    await readSSE(await POST(makeRequest({ session_id: 's1', content: 'Ask about pickup' })))
+    const stored = addCalls.filter((c) => c.collection === 'messages')
+    expect(stored.map((c) => [c.data.role, c.data.sender_side])).toEqual([
+      ['user', 'builder'],
+      ['agent', 'builder'],
+    ])
+  })
+
+  it('tags a builder note posted with reply:false as builder-side', async () => {
+    mockGetProjectRole.mockResolvedValue('owner')
+    await POST(makeRequest({ session_id: 's1', content: 'A note', reply: false }))
+    const stored = addCalls.find((c) => c.collection === 'messages')
+    expect(stored!.data.sender_side).toBe('builder')
+  })
+
+  it.each(['maker', 'apprentice'])('leaves a %s turn untagged', async (role) => {
+    mockGetProjectRole.mockResolvedValue(role)
+    await readSSE(await POST(makeRequest({ session_id: 's1', content: 'Hi' })))
+    const stored = addCalls.filter((c) => c.collection === 'messages')
+    expect(stored).toHaveLength(2)
+    expect(stored.every((c) => !('sender_side' in c.data))).toBe(true)
+  })
+
   // --- Note mode: reply:false (#245) ---
 
   it.each(['owner', 'builder'])('%s with reply:false stores the message and returns 201 without calling the model', async (role) => {

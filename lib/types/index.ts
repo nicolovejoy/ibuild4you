@@ -144,6 +144,7 @@ export interface Message extends BaseEntity {
   sender_display_name?: string // cached display name at write time
   file_ids?: string[] // attached file IDs
   kind?: 'unqueued_greeting' // canned "nothing queued" greeting, not model output (#214)
+  sender_side?: 'builder' // an owner/builder turn or Sam's reply to it; kickoff ignores these (#254)
   rating?: 'up' | 'down' | null // maker's 👍/👎 on an agent message (#130)
 }
 

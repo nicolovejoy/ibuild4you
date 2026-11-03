@@ -93,4 +93,48 @@ describe('shouldKickoff', () => {
       shouldKickoff(messages, NOW, { projectLastMakerMessageAt: ago(2 * KICKOFF_GAP_MS) }),
     ).toBe(false)
   })
+
+  // #254: builder-side turns (an owner/builder note, and Sam's reply to one)
+  // are not maker activity and must not steer the greeting.
+  describe('builder-side turns (#254)', () => {
+    const builderNote = (msAgo: number) => ({ role: 'user' as const, sender_side: 'builder' as const, created_at: ago(msAgo) })
+    const replyToBuilder = (msAgo: number) => ({ role: 'agent' as const, sender_side: 'builder' as const, created_at: ago(msAgo) })
+
+    it('fires when a builder note is the last message after a maker break', () => {
+      const messages = [
+        { role: 'user' as const, created_at: ago(3 * KICKOFF_GAP_MS) },
+        { role: 'agent' as const, created_at: ago(3 * KICKOFF_GAP_MS) },
+        builderNote(60 * 1000),
+      ]
+      expect(shouldKickoff(messages, NOW)).toBe(true)
+    })
+
+    it('measures the gap from the maker, not from a recent builder exchange', () => {
+      const messages = [
+        { role: 'user' as const, created_at: ago(3 * KICKOFF_GAP_MS) },
+        { role: 'agent' as const, created_at: ago(3 * KICKOFF_GAP_MS) },
+        builderNote(2 * 60 * 1000),
+        replyToBuilder(60 * 1000),
+      ]
+      expect(shouldKickoff(messages, NOW)).toBe(true)
+    })
+
+    it('treats a return session holding only a builder exchange as empty', () => {
+      const messages = [builderNote(2 * 60 * 1000), replyToBuilder(60 * 1000)]
+      expect(
+        shouldKickoff(messages, NOW, { projectLastMakerMessageAt: ago(2 * KICKOFF_GAP_MS) }),
+      ).toBe(true)
+    })
+
+    it('still does not fire when only builders have ever spoken', () => {
+      expect(shouldKickoff([builderNote(2 * KICKOFF_GAP_MS)], NOW)).toBe(false)
+    })
+
+    it('still defers to an unanswered welcome followed by a builder note', () => {
+      const messages = [{ role: 'agent' as const, created_at: ago(2 * KICKOFF_GAP_MS) }, builderNote(60 * 1000)]
+      expect(
+        shouldKickoff(messages, NOW, { projectLastMakerMessageAt: ago(3 * KICKOFF_GAP_MS) }),
+      ).toBe(false)
+    })
+  })
 })

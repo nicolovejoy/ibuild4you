@@ -105,22 +105,47 @@ export async function POST(request: Request) {
       created_at: (data.created_at as string) || '',
       sender_email: (data.sender_email as string | undefined) || '',
       sender_display_name: (data.sender_display_name as string | undefined) || '',
+      sender_side: data.sender_side as 'builder' | undefined,
     }
+  })
+
+  // Builder-side turns (#254) are not maker activity: an owner/builder note and
+  // Sam's reply to it are left out of every guard below. Tagged at write time
+  // since #254; an older untagged note is recognised by its sender being a
+  // builder-side member. The members read is reused for the roster further down.
+  const humanSenders = new Set(
+    storedMessages.filter((m) => m.role === 'user' && m.sender_email).map((m) => m.sender_email),
+  )
+  const membersSnap =
+    humanSenders.size > 0
+      ? await db.collection('project_members').where('project_id', '==', projectId).get()
+      : null
+  const builderEmails = new Set(
+    (membersSnap?.docs ?? []).filter((d) => isBuilderSideRole(d.data().role)).map((d) => d.data().email as string),
+  )
+  // An untagged Sam reply that directly follows a builder turn answered that
+  // builder, so it belongs to the same exchange.
+  const makerSideMessages = storedMessages.filter((m, i) => {
+    const isBuilderTurn = (x: (typeof storedMessages)[number]) =>
+      x.sender_side === 'builder' || (x.role === 'user' && builderEmails.has(x.sender_email))
+    if (isBuilderTurn(m)) return false
+    const prev = storedMessages[i - 1]
+    return !(m.role === 'agent' && prev && prev.role === 'user' && isBuilderTurn(prev))
   })
 
   // --- Guards (server is the authority; mirrors lib/agent/kickoff.ts) ---
   // The maker is mid-turn if the last stored message is theirs — don't
   // interrupt. An empty session is fine: since #70 a return session starts with
   // no canned welcome, and we still want to greet if the project has history.
-  if (storedMessages.length > 0) {
-    const last = storedMessages[storedMessages.length - 1]
+  if (makerSideMessages.length > 0) {
+    const last = makerSideMessages[makerSideMessages.length - 1]
     if (last.role !== 'agent') return noop('maker_mid_turn')
   }
 
   // Prior maker activity to recap — judged at the project level, not just this
   // session (so a blank return session still qualifies). A true first-ever
   // session (no history anywhere) is declined; the welcome message greets them.
-  const makerMessages = storedMessages.filter((m) => m.role === 'user')
+  const makerMessages = makerSideMessages.filter((m) => m.role === 'user')
   const lastMakerInSessionMs = makerMessages.reduce((max, m) => {
     const t = m.created_at ? new Date(m.created_at).getTime() : 0
     return t > max ? t : max
@@ -133,7 +158,7 @@ export async function POST(request: Request) {
   // Opens with an agent message the maker hasn't answered — the welcome posted
   // at session creation (a return session with a welcome written for this
   // round). That is the greeting; don't add a second.
-  if (storedMessages.length > 0 && makerMessages.length === 0) return noop('opener_already_posted')
+  if (makerSideMessages.length > 0 && makerMessages.length === 0) return noop('opener_already_posted')
 
   // Claim this return: read last_kickoff_at and stamp it in one transaction,
   // before streaming. A plain read-then-write let two requests 68ms apart both
@@ -211,19 +236,9 @@ export async function POST(request: Request) {
   // --- Build the Claude conversation (text-only history) ---
   // Multi-human: prefix user turns with the speaker's name so Claude can tell
   // collaborators apart (matches /api/chat). Solo sessions stay unprefixed.
-  const humanSenders = new Set(
-    storedMessages.filter((m) => m.role === 'user' && m.sender_email).map((m) => m.sender_email),
-  )
   // #247: a builder-side sender forces the roster framing even when they are
   // the only one who has posted (matches /api/chat). Maker-only sessions keep
-  // the solo framing.
-  const membersSnap =
-    humanSenders.size > 0
-      ? await db.collection('project_members').where('project_id', '==', projectId).get()
-      : null
-  const builderEmails = new Set(
-    (membersSnap?.docs ?? []).filter((d) => isBuilderSideRole(d.data().role)).map((d) => d.data().email as string),
-  )
+  // the solo framing. humanSenders and builderEmails are read above (#254).
   const multiHuman = humanSenders.size > 1 || [...humanSenders].some((e) => builderEmails.has(e))
   const speakerName = (m: { sender_display_name: string; sender_email: string }) =>
     m.sender_display_name || m.sender_email.split('@')[0] || 'Someone'
