@@ -59,17 +59,19 @@ vi.mock('@/lib/query/hooks', () => ({
   useUpdateCurrentUser: () => mockUseUpdateCurrentUser(),
   useCreateSession: () => mockUseCreateSession(),
   useUploadFiles: () => mockUseUploadFiles(),
-  useRateMessage: () => ({ mutate: vi.fn() }),
+  useRateMessage: () => ({ mutate: mockRateMutate }),
   // BriefSwitcher in the header reads the brief list; empty = no switcher.
   useProjects: () => ({ data: [] }),
 }))
 
 const mockStreamMessage = vi.fn()
 let mockKickoffFailed = false
+const mockRateMutate = vi.fn()
+let mockChatMessages: Array<Record<string, unknown>> = []
 
 vi.mock('@/lib/hooks/useStreamingChat', () => ({
   useStreamingChat: () => ({
-    messages: [],
+    messages: mockChatMessages,
     setMessages: vi.fn(),
     streaming: false,
     error: null,
@@ -132,6 +134,7 @@ afterEach(() => {
 beforeEach(() => {
   vi.clearAllMocks()
   mockKickoffFailed = false
+  mockChatMessages = []
   // Restore the default implementations after clearAllMocks resets them.
   mockUseProject.mockReturnValue({ data: sampleProject, isLoading: false })
   mockUseSessions.mockReturnValue({
@@ -344,5 +347,46 @@ describe('composer layout (#183)', () => {
     renderView()
     const box = await screen.findByPlaceholderText('Type a message...')
     expect(box.className).toMatch(/\btext-base\b/)
+  })
+})
+
+// 👍/👎 with an optional "what was off?" after a 👎.
+describe('rating a reply', () => {
+  const reply = { id: 'a1', role: 'agent', content: 'What is your budget?', created_at: '2026-01-01T00:00:01Z' }
+
+  it('a 👎 saves at once and opens an optional reason box that sends with the 👎', async () => {
+    mockChatMessages = [reply]
+    renderView()
+    fireEvent.click(screen.getByTitle('Not helpful'))
+    expect(mockRateMutate).toHaveBeenLastCalledWith({ messageId: 'a1', sessionId: 's1', rating: 'down' })
+    const box = screen.getByPlaceholderText('What was off? (optional)')
+    fireEvent.change(box, { target: { value: 'you asked that already' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Send feedback' }))
+    expect(mockRateMutate).toHaveBeenLastCalledWith({
+      messageId: 'a1', sessionId: 's1', rating: 'down', reason: 'you asked that already',
+    })
+    expect(screen.queryByPlaceholderText('What was off? (optional)')).toBeNull()
+  })
+
+  it('skipping closes the box without sending anything else', () => {
+    mockChatMessages = [reply]
+    renderView()
+    fireEvent.click(screen.getByTitle('Not helpful'))
+    fireEvent.click(screen.getByRole('button', { name: 'Skip' }))
+    expect(screen.queryByPlaceholderText('What was off? (optional)')).toBeNull()
+    expect(mockRateMutate).toHaveBeenCalledTimes(1)
+  })
+
+  it('a 👍 opens no box', () => {
+    mockChatMessages = [reply]
+    renderView()
+    fireEvent.click(screen.getByTitle('Helpful'))
+    expect(screen.queryByPlaceholderText('What was off? (optional)')).toBeNull()
+  })
+
+  it('shows a reason already given under the reply', () => {
+    mockChatMessages = [{ ...reply, rating: 'down', rating_reason: 'off topic' }]
+    renderView()
+    expect(screen.getByText('“off topic”')).toBeTruthy()
   })
 })

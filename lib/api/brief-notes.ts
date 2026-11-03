@@ -68,9 +68,10 @@ export async function foldNotes(
 }
 
 export function isEmptyNote(
-  n: Pick<BriefNote, 'text' | 'decisions' | 'risks_added' | 'risks_resolved' | 'lock_reversals'>
+  n: Pick<BriefNote, 'text' | 'decisions' | 'risks_added' | 'risks_resolved' | 'lock_reversals' | 'thumbs_down'>
 ): boolean {
   return (
+    (n.thumbs_down?.length ?? 0) === 0 &&
     !n.text.trim() &&
     n.decisions.length === 0 &&
     n.risks_added.length === 0 &&

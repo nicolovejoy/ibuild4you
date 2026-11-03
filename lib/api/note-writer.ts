@@ -10,7 +10,7 @@
 // covered everything before it), else the very beginning.
 
 import Anthropic from '@anthropic-ai/sdk'
-import type { BriefContent, BriefDecision, BriefNote, BriefNoteLockReversal } from '@/lib/types'
+import type { BriefContent, BriefDecision, BriefNote, BriefNoteLockReversal, BriefNoteThumbsDown } from '@/lib/types'
 import { BRIEF_MODEL, BRIEF_TEMPERATURE, NOTE_MAX_TOKENS } from '@/lib/agent/constants'
 import { NOTE_SYSTEM_PROMPT, buildNoteUserContent } from '@/lib/agent/note-prompt'
 import { logAnthropicCall } from '@/lib/observability/anthropic'
@@ -23,6 +23,9 @@ import { isBuilderSideRole } from '@/lib/roles/member-role'
 
 // How many messages before the first new one go in as continuity context.
 const EARLIER_CONTEXT_COUNT = 6
+
+// How much of a 👎 reply the note quotes.
+const THUMBS_DOWN_EXCERPT_LENGTH = 160
 
 export const EMPTY_BRIEF: BriefContent = {
   problem: '',
@@ -81,7 +84,30 @@ const WRITE_NOTE_TOOL = {
   },
 }
 
-type Msg = { role: string; content: string; created_at: string; session_id: string; builder?: boolean }
+type Msg = {
+  role: string
+  content: string
+  created_at: string
+  session_id: string
+  builder?: boolean
+  // The maker's 👎 on an agent reply. Read by code only; the prompt builder
+  // never sees it.
+  thumbsDown?: { reason: string | null }
+}
+
+// Sam's 👎 replies among the new messages, as note entries: a short excerpt
+// (whitespace collapsed) and the maker's reason when they gave one.
+function thumbsDownEntries(messages: Msg[]): BriefNoteThumbsDown[] {
+  return messages
+    .filter((m) => m.thumbsDown)
+    .map((m) => {
+      const flat = (m.content ?? '').replace(/\s+/g, ' ').trim()
+      const excerpt =
+        flat.length > THUMBS_DOWN_EXCERPT_LENGTH ? `${flat.slice(0, THUMBS_DOWN_EXCERPT_LENGTH)}…` : flat
+      const reason = m.thumbsDown!.reason
+      return reason ? { excerpt, reason } : { excerpt }
+    })
+}
 
 const nonEmpty = (v: unknown): v is string => typeof v === 'string' && v.trim() !== ''
 
@@ -204,6 +230,9 @@ export async function writeNoteForProject(
         created_at: (d.created_at as string) ?? '',
         session_id: s.id,
         ...(d.role === 'user' && builderEmails.has(d.sender_email as string) ? { builder: true } : {}),
+        ...(d.role === 'agent' && d.rating === 'down'
+          ? { thumbsDown: { reason: (d.rating_reason as string | null | undefined) ?? null } }
+          : {}),
       })
     }
   }
@@ -282,7 +311,11 @@ export async function writeNoteForProject(
   )
   if (!toolUse) throw new Error('write_note_no_tool_use')
 
-  const body = coerceNote((toolUse.input ?? {}) as Record<string, unknown>)
+  const thumbsDown = thumbsDownEntries(newMessages)
+  const body = {
+    ...coerceNote((toolUse.input ?? {}) as Record<string, unknown>),
+    ...(thumbsDown.length > 0 && { thumbs_down: thumbsDown }),
+  }
 
   // Persist: note → notes_through_at → brief contest. A throw before
   // notes_through_at moves leaves it where it was, so the next run retries

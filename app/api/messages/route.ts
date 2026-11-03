@@ -1,5 +1,9 @@
 import { NextResponse } from 'next/server'
+import { FieldValue } from 'firebase-admin/firestore'
 import { getAuthenticatedUser, getAdminDb, getProjectRole, requireRole } from '@/lib/api/firebase-server-helpers'
+
+// Longest "what was off?" reason a maker can attach to a 👎.
+const MAX_REASON_LENGTH = 500
 
 // GET /api/messages?session_id=xxx — list messages for a session
 export async function GET(request: Request) {
@@ -39,7 +43,10 @@ export async function GET(request: Request) {
 
 // PATCH /api/messages — rate an agent message 👍/👎 (#130). Any member may
 // rate (makers are the point); only agent messages are ratable. Body:
-// { message_id, rating: 'up' | 'down' | null } — null clears the rating.
+// { message_id, rating: 'up' | 'down' | null, reason? } — null clears the
+// rating. `reason` is the maker's optional "what was off?" on a 👎; any other
+// rating drops it. projects.thumbs_down_count tracks the brief's 👎 replies for
+// the dashboard row, so the list needs no extra reads.
 export async function PATCH(request: Request) {
   const auth = await getAuthenticatedUser(request)
   if (auth.error) return auth.error
@@ -50,13 +57,16 @@ export async function PATCH(request: Request) {
   } catch {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
   }
-  const { message_id, rating } = body
+  const { message_id, rating, reason } = body
 
   if (!message_id) {
     return NextResponse.json({ error: 'message_id is required' }, { status: 400 })
   }
   if (rating !== 'up' && rating !== 'down' && rating !== null) {
     return NextResponse.json({ error: "rating must be 'up', 'down', or null" }, { status: 400 })
+  }
+  if (reason !== undefined && reason !== null && (typeof reason !== 'string' || reason.length > MAX_REASON_LENGTH)) {
+    return NextResponse.json({ error: `reason must be a string of at most ${MAX_REASON_LENGTH} characters` }, { status: 400 })
   }
 
   const db = getAdminDb()
@@ -81,10 +91,17 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
 
+  const ratingReason = rating === 'down' && typeof reason === 'string' && reason.trim() ? reason.trim() : null
   await db.collection('messages').doc(message_id).update({
     rating,
+    rating_reason: ratingReason,
     updated_at: new Date().toISOString(),
   })
+
+  const delta = (rating === 'down' ? 1 : 0) - (messageDoc.data()?.rating === 'down' ? 1 : 0)
+  if (delta !== 0) {
+    await db.collection('projects').doc(projectId).update({ thumbs_down_count: FieldValue.increment(delta) })
+  }
 
   return NextResponse.json({ message_id, rating })
 }
@@ -121,6 +138,9 @@ export async function DELETE(request: Request) {
   if (roleCheck) return roleCheck
 
   await db.collection('messages').doc(messageId).delete()
+  if (messageDoc.data()?.rating === 'down') {
+    await db.collection('projects').doc(projectId).update({ thumbs_down_count: FieldValue.increment(-1) })
+  }
 
   return NextResponse.json({ deleted: true, message_id: messageId })
 }

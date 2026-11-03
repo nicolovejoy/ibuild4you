@@ -215,6 +215,8 @@ export const copy = {
     noteRiskResolved: (text: string) => `Resolved: ${text}`,
     noteLockReversal: (topic: string, proposed: string, reason: string) =>
       `Wants to change locked ${topic}: ${proposed} (${reason})`,
+    noteThumbsDown: (excerpt: string, reason?: string) =>
+      `👎 on Sam’s reply “${excerpt}”${reason ? `: ${reason}` : ''}`,
     importStayHint: 'Brief updated. Read the note above, then continue.',
     importContinueButton: 'Continue to Conversations',
     emptyTitle: 'No brief yet',
