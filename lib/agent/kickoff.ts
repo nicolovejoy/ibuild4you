@@ -6,7 +6,9 @@ const ONE_HOUR_MS = 60 * 60 * 1000
 
 export const KICKOFF_GAP_MS = ONE_HOUR_MS
 
-type KickoffMessage = { role: 'user' | 'agent'; created_at?: string }
+// sender_side 'builder' marks a builder-side turn (#254): an owner/builder
+// note, or Sam's reply to one. Those are not maker activity.
+type KickoffMessage = { role: 'user' | 'agent'; created_at?: string; sender_side?: 'builder' }
 
 /**
  * Decide whether to fire an agent kickoff greeting on session open.
@@ -19,16 +21,22 @@ type KickoffMessage = { role: 'user' | 'agent'; created_at?: string }
  * recap. A true first-ever session (no maker history anywhere) is skipped: the
  * stored welcome message already greets them, so kicking off would double-greet.
  *
+ * Builder-side turns are left out entirely (#254): a builder's note is not the
+ * maker mid-turn, does not move the gap, and a session holding only a builder
+ * exchange counts as empty.
+ *
  * @param messages chronological (oldest first; last element is newest)
  * @param nowMs    current time in epoch ms
  * @param opts.projectLastMakerMessageAt latest maker message across the whole
  *        project (ISO). Lets an empty return session recognize prior history.
  */
 export function shouldKickoff(
-  messages: KickoffMessage[],
+  allMessages: KickoffMessage[],
   nowMs: number,
   opts?: { projectLastMakerMessageAt?: string | null },
 ): boolean {
+  const messages = allMessages.filter((m) => m.sender_side !== 'builder')
+
   // The maker is mid-turn if the last message is theirs — don't interrupt.
   const last = messages[messages.length - 1]
   if (last && last.role !== 'agent') return false

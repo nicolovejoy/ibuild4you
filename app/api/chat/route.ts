@@ -123,6 +123,10 @@ async function handleChat(
   const now = new Date().toISOString()
   const senderDisplayName = await getUserDisplayName(db, auth.uid, auth.email)
 
+  // A builder-side turn (#254): the owner/builder message and Sam's reply to it
+  // are tagged so kickoff never reads them as the maker returning.
+  const builderSide = !countsAsMakerActivity(role)
+
   // Store the user message
   await db.collection('messages').add({
     session_id,
@@ -130,6 +134,7 @@ async function handleChat(
     content: content?.trim() || '',
     sender_email: auth.email,
     sender_display_name: senderDisplayName,
+    ...(builderSide && { sender_side: 'builder' }),
     ...(file_ids?.length && { file_ids }),
     created_at: now,
     updated_at: now,
@@ -469,6 +474,7 @@ async function handleChat(
           session_id,
           role: 'agent',
           content: fullResponse,
+          ...(builderSide && { sender_side: 'builder' }),
           created_at: responseTime,
           updated_at: responseTime,
         })

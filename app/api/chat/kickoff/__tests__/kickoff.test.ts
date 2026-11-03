@@ -403,6 +403,9 @@ describe('POST /api/chat/kickoff', () => {
         msg('agent', 3 * HOUR),
       ],
       lastMakerMessageAt: iso(3 * HOUR),
+      // A queued round: a session holding only a builder exchange is an empty
+      // return (#254), which would otherwise take the nothing-queued path.
+      project: { payload_pasted_at: iso(HOUR) },
     })
     queryResults.project_members = [
       { id: 'pm1', data: () => ({ email: 'nico@x.com', role: 'owner', brief_role: 'reviewer' }) },
@@ -415,6 +418,56 @@ describe('POST /api/chat/kickoff', () => {
     expect(vi.mocked(buildSystemPromptParts)).toHaveBeenCalledWith(
       expect.objectContaining({ participants: [{ name: 'Nico', brief_role: 'reviewer', builder: true }] })
     )
+  })
+
+  // #254: builder-side turns are not maker activity.
+  it('greets when a tagged builder note is the last message after a maker break', async () => {
+    setup({
+      messages: [msg('user', 3 * HOUR), msg('agent', 3 * HOUR), msg('user', 60 * 1000, { sender_side: 'builder' })],
+      lastMakerMessageAt: iso(3 * HOUR),
+    })
+    const res = await POST(makeRequest({ session_id: 'sess-1' }))
+    expect(res.headers.get('Content-Type')).toBe('text/event-stream')
+  })
+
+  it('greets past an untagged note from a builder-side member (written before the tag)', async () => {
+    setup({
+      messages: [
+        msg('user', 3 * HOUR, { sender_email: 'sam@x.com' }),
+        msg('agent', 3 * HOUR),
+        msg('user', 60 * 1000, { sender_email: 'nico@x.com', sender_display_name: 'Nico' }),
+      ],
+      lastMakerMessageAt: iso(3 * HOUR),
+    })
+    queryResults.project_members = [
+      { id: 'pm1', data: () => ({ email: 'nico@x.com', role: 'owner', brief_role: 'reviewer' }) },
+      { id: 'pm2', data: () => ({ email: 'sam@x.com', role: 'maker', brief_role: 'originator' }) },
+    ]
+    const res = await POST(makeRequest({ session_id: 'sess-1' }))
+    expect(res.headers.get('Content-Type')).toBe('text/event-stream')
+  })
+
+  it('greets a return session that holds only a builder exchange', async () => {
+    setup({
+      messages: [
+        msg('user', 2 * 60 * 1000, { sender_side: 'builder' }),
+        msg('agent', 60 * 1000, { sender_side: 'builder' }),
+      ],
+      lastMakerMessageAt: iso(3 * HOUR),
+    })
+    const res = await POST(makeRequest({ session_id: 'sess-1' }))
+    expect(res.headers.get('Content-Type')).toBe('text/event-stream')
+  })
+
+  it('takes the nothing-queued path when the session holds only a builder note (#254)', async () => {
+    setup({
+      messages: [msg('user', 60 * 1000, { sender_side: 'builder' })],
+      lastMakerMessageAt: iso(3 * HOUR),
+    })
+    await drain(await POST(makeRequest({ session_id: 'sess-1' })))
+    expect(capturedStreamArgs).toBeNull()
+    const stored = addCalls.find((c) => c.collection === 'messages')
+    expect(stored?.data.kind).toBe('unqueued_greeting')
   })
 
   it('declines (no-op, no stream) when the maker is mid-turn', async () => {
