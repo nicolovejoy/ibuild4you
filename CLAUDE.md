@@ -187,8 +187,6 @@ Keep the code approachable — clarity over cleverness. Code should be:
 
 **Loose ends (no issue).**
 - Garm listing contract still unconfirmed (`GET /api/grants?project=X` → `{grants:[...]}`, active-only, unpaginated).
-- UptimeRobot monitor "ibuild4you production health": confirm Alert Contacts are assigned (an unassigned monitor shows green and pages nobody).
-- selected-projects (not this repo): tenet 1 and the about-page MachineNote still distinguish Claude's writing from Nico's; rewrite in Nico's voice.
 
 ## Gotchas and runbooks
 
