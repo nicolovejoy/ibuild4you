@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { Resend } from 'resend'
-import { getAuthenticatedUser, getAdminDb } from '@/lib/api/firebase-server-helpers'
+import { getAuthenticatedUser, getAdminDb, hasSystemRole } from '@/lib/api/firebase-server-helpers'
 import { requireFeedbackAccess } from '@/lib/api/feedback-access'
 import { feedbackReplyAddress } from '@/lib/feedback/inbound'
 import type { FeedbackStatus } from '@/lib/types'
@@ -72,6 +72,13 @@ export async function PATCH(
     patch.github_issue_url = u
   }
 
+  if ('archived' in body) {
+    if (typeof body.archived !== 'boolean') {
+      return NextResponse.json({ error: 'archived must be boolean' }, { status: 400 })
+    }
+    patch.archived_at = body.archived ? new Date().toISOString() : null
+  }
+
   await ref.update(patch)
 
   // Notify submitter on first transition into acknowledged/done.
@@ -104,4 +111,35 @@ export async function PATCH(
   }
 
   return NextResponse.json({ id, ...existing, ...patch })
+}
+
+// DELETE /api/admin/feedback/[id] — system admins only (not app owners or
+// collaborators): permanently removes the row and its replies.
+// A linked GitHub issue is deliberately left alone; this never touches GitHub.
+export async function DELETE(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const auth = await getAuthenticatedUser(request)
+  if (auth.error) return auth.error
+  if (!hasSystemRole(auth, 'admin')) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+  const { id } = await params
+  if (!id) {
+    return NextResponse.json({ error: 'id is required' }, { status: 400 })
+  }
+
+  const ref = getAdminDb().collection('feedback').doc(id)
+  const snap = await ref.get()
+  if (!snap.exists) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  }
+
+  // Firestore does not cascade: delete the replies subcollection first.
+  const replies = await ref.collection('replies').get()
+  await Promise.all(replies.docs.map((d) => d.ref.delete()))
+  await ref.delete()
+
+  return NextResponse.json({ id, deleted: true })
 }

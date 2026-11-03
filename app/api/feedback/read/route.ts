@@ -75,7 +75,7 @@ interface IdScan {
 }
 
 // Read one project_id newest first from `cursor`, in batches, keeping up to
-// limit + 1 non-spam rows (the extra one tells us there is more).
+// limit + 1 live rows, not spam or archived (the extra one tells us there is more).
 async function scanOneId(
   db: FirebaseFirestore.Firestore,
   id: string,
@@ -96,7 +96,7 @@ async function scanOneId(
       const data = doc.data() as Record<string, unknown>
       if (kept.length > limit) break
       lastScanned = data.created_at as string
-      if (data.status !== 'spam') kept.push({ id: doc.id, data })
+      if (data.status !== 'spam' && !data.archived_at) kept.push({ id: doc.id, data })
     }
     // Found the extra row: covered down to it (rows past it were not read).
     if (kept.length > limit) return { kept, coveredTo: kept[limit].data.created_at as string }

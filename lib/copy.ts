@@ -422,6 +422,21 @@ export const copy = {
     requiresIdentity: 'This app requires you to be signed in before sending feedback.',
   },
 
+  // --- Admin: Loop feedback inbox bulk actions (#232). English only. ---
+  adminFeedback: {
+    showArchived: 'Show archived',
+    archivedBadge: 'Archived',
+    selectRow: 'Select',
+    selectAll: 'Select all shown',
+    selectedCount: (n: number) => `${n} selected`,
+    archiveSelected: 'Archive selected',
+    unarchiveSelected: 'Unarchive selected',
+    deleteSelected: 'Delete selected',
+    confirmDelete: (n: number) =>
+      `Delete ${n} feedback item${n === 1 ? '' : 's'} for good? This cannot be undone. Linked GitHub issues are left alone.`,
+    bulkFailed: (failed: number, total: number) => `${failed} of ${total} could not be changed.`,
+  },
+
   // --- Admin: Loop apps (/admin/apps). Admin screens are English only; the
   // French twins in lib/copy-maker.ts cover maker-facing text, not admin. ---
   adminApps: {
