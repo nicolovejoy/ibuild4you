@@ -651,15 +651,16 @@ export function useDeleteMessage() {
   })
 }
 
-// Maker rates an agent message 👍/👎 (#130). rating null clears.
+// Maker rates an agent message 👍/👎 (#130). rating null clears. `reason` is
+// the optional "what was off?" sent with a 👎.
 export function useRateMessage() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: async ({ messageId, rating }: { messageId: string; sessionId: string; rating: 'up' | 'down' | null }) => {
+    mutationFn: async ({ messageId, rating, reason }: { messageId: string; sessionId: string; rating: 'up' | 'down' | null; reason?: string }) => {
       const res = await apiFetch('/api/messages', {
         method: 'PATCH',
-        body: JSON.stringify({ message_id: messageId, rating }),
+        body: JSON.stringify({ message_id: messageId, rating, ...(reason && { reason }) }),
       })
       if (!res.ok) {
         const data = await res.json()

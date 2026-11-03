@@ -14,6 +14,7 @@ export type ChatMessage = {
   sender_display_name?: string
   file_ids?: string[]
   rating?: 'up' | 'down' | null // maker's 👍/👎 on an agent message (#130)
+  rating_reason?: string | null // maker's optional "what was off?" on a 👎
 }
 
 /**

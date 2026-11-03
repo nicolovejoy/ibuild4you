@@ -349,6 +349,14 @@ function ProjectList({ isAdmin }: { isAdmin: boolean }) {
                         )}
                       </>
                     )}
+                    {builderSide && (project.thumbs_down_count ?? 0) > 0 && (
+                      <>
+                        {' '}&middot;{' '}
+                        <span className="text-rose-600" title={d.thumbsDownTitle(project.thumbs_down_count ?? 0)}>
+                          {d.thumbsDown(project.thumbs_down_count ?? 0)}
+                        </span>
+                      </>
+                    )}
                   </span>
                 )}
                 {builderSide && regenFailureNotice(project, project.brief_updated_at) && (

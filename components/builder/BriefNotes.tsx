@@ -60,6 +60,7 @@ function noteLines(n: BriefNote): string[] {
   for (const r of normalizeRisks(n.risks_added)) lines.push(c.noteRiskAdded(riskText(r), riskOwner(r)))
   for (const t of n.risks_resolved ?? []) lines.push(c.noteRiskResolved(t))
   for (const l of n.lock_reversals ?? []) lines.push(c.noteLockReversal(l.topic, l.proposed, l.reason))
+  for (const t of n.thumbs_down ?? []) lines.push(c.noteThumbsDown(t.excerpt, t.reason))
   return lines
 }
 

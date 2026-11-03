@@ -266,20 +266,38 @@ function MakerChat({
       setMessages(savedMessages.map((m) => ({
         id: m.id, role: m.role, content: m.content,
         created_at: m.created_at, sender_email: m.sender_email, sender_display_name: m.sender_display_name,
-        file_ids: m.file_ids, rating: m.rating,
+        file_ids: m.file_ids, rating: m.rating, rating_reason: m.rating_reason,
       })))
     }
   }, [savedMessages, streaming, setMessages])
 
   // Rate an agent message 👍/👎 (#130). Tapping the active thumb clears it.
   // Optimistic local flip; the mutation invalidates the query behind it.
+  // A 👎 saves at once, then opens an optional "what was off?" box under the
+  // reply; sending it re-saves the 👎 with the reason. Any tap drops an old
+  // reason (the server does the same).
   const rateMessage = useRateMessage()
+  const [reasonFor, setReasonFor] = useState<string | null>(null)
+  const [reasonDraft, setReasonDraft] = useState('')
   const handleRate = useCallback((messageId: string, current: 'up' | 'down' | null | undefined, tapped: 'up' | 'down') => {
     if (!sessionId) return
     const rating = current === tapped ? null : tapped
-    setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, rating } : m)))
+    setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, rating, rating_reason: null } : m)))
     rateMessage.mutate({ messageId, sessionId, rating })
+    if (rating === 'down') {
+      setReasonFor(messageId)
+      setReasonDraft('')
+    } else {
+      setReasonFor((open) => (open === messageId ? null : open))
+    }
   }, [sessionId, setMessages, rateMessage])
+  const sendReason = useCallback((messageId: string) => {
+    const reason = reasonDraft.trim()
+    setReasonFor(null)
+    if (!sessionId || !reason) return
+    setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, rating_reason: reason } : m)))
+    rateMessage.mutate({ messageId, sessionId, rating: 'down', reason })
+  }, [reasonDraft, sessionId, setMessages, rateMessage])
 
   // Agent kickoff (#31): when the maker opens a stale session, have the agent
   // greet them first (typing indicator + name-aware recap) instead of waiting
@@ -655,6 +673,35 @@ function MakerChat({
                       <ThumbsDown className={`h-3.5 w-3.5 ${msg.rating === 'down' ? 'text-rose-600 fill-rose-100' : 'text-gray-300 hover:text-gray-500'}`} />
                     </button>
                   </div>
+                )}
+                {msg.role === 'agent' && msg.id && reasonFor === msg.id && (
+                  <form
+                    className="flex flex-wrap items-center gap-2 mt-1"
+                    onSubmit={(e) => {
+                      e.preventDefault()
+                      sendReason(msg.id!)
+                    }}
+                  >
+                    {/* 16px text so iOS does not zoom on focus */}
+                    <input
+                      type="text"
+                      value={reasonDraft}
+                      onChange={(e) => setReasonDraft(e.target.value)}
+                      placeholder={c.reasonPlaceholder}
+                      maxLength={500}
+                      autoFocus
+                      className="flex-1 min-w-0 px-2 py-1 text-base sm:text-sm border border-gray-200 rounded focus:outline-none focus:border-brand-navy"
+                    />
+                    <button type="submit" className="px-2 py-1 text-xs text-brand-navy hover:underline">
+                      {c.sendReason}
+                    </button>
+                    <button type="button" onClick={() => setReasonFor(null)} className="px-2 py-1 text-xs text-gray-400 hover:text-gray-600">
+                      {c.skipReason}
+                    </button>
+                  </form>
+                )}
+                {msg.role === 'agent' && msg.rating === 'down' && msg.rating_reason && reasonFor !== msg.id && (
+                  <p className="text-xs text-gray-400 italic mt-0.5">“{msg.rating_reason}”</p>
                 )}
               </div>
             </div>

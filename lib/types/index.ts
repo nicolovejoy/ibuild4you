@@ -102,6 +102,7 @@ export interface Project extends BaseEntity {
   brief_decision_count?: number | null
   brief_feature_count?: number | null
   brief_maker_question_count?: number | null
+  thumbs_down_count?: number // Sam's replies the maker gave a 👎 (kept by PATCH/DELETE /api/messages)
   viewer_role?: MemberRole | 'admin' | null
   viewer_brief_role?: BriefRole | null // viewer's stored brief_role (chrome badges)
   viewer_archived?: boolean // whether the viewer archived this brief (per-viewer, from their membership)
@@ -146,6 +147,7 @@ export interface Message extends BaseEntity {
   kind?: 'unqueued_greeting' // canned "nothing queued" greeting, not model output (#214)
   sender_side?: 'builder' // an owner/builder turn or Sam's reply to it; kickoff ignores these (#254)
   rating?: 'up' | 'down' | null // maker's 👍/👎 on an agent message (#130)
+  rating_reason?: string | null // maker's optional "what was off?" on a 👎
 }
 
 // Files collection — uploaded files and artifacts within a project.
@@ -402,6 +404,14 @@ export interface BriefNote {
   risks_added: Array<string | BriefRisk>
   risks_resolved: string[]
   lock_reversals: BriefNoteLockReversal[]
+  // Sam's replies the maker gave a 👎 in this stretch, copied by code (not the
+  // model). Absent when there were none. Shown to the builder only.
+  thumbs_down?: BriefNoteThumbsDown[]
+}
+
+export interface BriefNoteThumbsDown {
+  excerpt: string
+  reason?: string
 }
 
 // #229: what a prep payload carries back as `_prep_stamp`.

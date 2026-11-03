@@ -75,4 +75,15 @@ describe('UnfoldedNotesList', () => {
     expect(screen.getByText('Resolved: Hosting')).toBeTruthy()
     expect(screen.getByText('Wants to change locked Stack: Vue (nephew knows it)')).toBeTruthy()
   })
+
+  it("lists each 👎 reply with the maker's reason when there is one", () => {
+    render(
+      <UnfoldedNotesList
+        notes={[{ ...note, thumbs_down: [{ excerpt: 'What is your budget?', reason: 'asked twice' }, { excerpt: 'Hmm' }] }]}
+      />
+    )
+    fireEvent.click(screen.getByRole('button', { name: /New since last curation/ }))
+    expect(screen.getByText('👎 on Sam’s reply “What is your budget?”: asked twice')).toBeTruthy()
+    expect(screen.getByText('👎 on Sam’s reply “Hmm”')).toBeTruthy()
+  })
 })

@@ -397,6 +397,7 @@ function TranscriptPane({ session }: { session: Session }) {
                   {msg.created_at ? ` · ${formatTimestamp(msg.created_at)}` : ''}
                   {/* Maker's rating (#130) — quiet signal for the builder */}
                   {msg.role === 'agent' && msg.rating ? (msg.rating === 'up' ? ' · 👍' : ' · 👎') : ''}
+                  {msg.role === 'agent' && msg.rating === 'down' && msg.rating_reason ? ` “${msg.rating_reason}”` : ''}
                 </p>
                 <MessageContent content={msg.content} />
                 <button

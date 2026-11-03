@@ -609,4 +609,63 @@ describe('writeNoteForProject', () => {
     expect(coll('briefs').size).toBe(0)
     expect(coll('projects').get('p1')!.notes_through_at).toBe('2026-10-01T00:00:01Z')
   })
+  // 👎 on Sam's replies: copied into the note by code, never by the model, and
+  // never shown to the model (Sam reads notes; the signal is for the builder).
+  describe('thumbs down', () => {
+    const emptyOutput = { text: '', decisions: [], risks_added: [], risks_resolved: [], lock_reversals: [] }
+
+    it('records each 👎 reply in the window with an excerpt and the reason', async () => {
+      seedProject({ notes_through_at: '2026-10-01T00:00:01Z' })
+      seedBrief(emptyBrief, '2026-09-01T00:00:00Z')
+      seedSession('s1', '2026-10-01T00:00:00Z')
+      coll('messages').set('old', {
+        session_id: 's1', created_at: '2026-10-01T00:00:01Z', role: 'agent', content: 'Before the window', rating: 'down',
+      })
+      seedMessage('m2', 's1', '2026-10-01T00:00:02Z', 'I sell bread')
+      coll('messages').set('m3', {
+        session_id: 's1', created_at: '2026-10-01T00:00:03Z', role: 'agent',
+        content: 'What   is your\npricing model?', rating: 'down', rating_reason: 'asked twice',
+      })
+      coll('messages').set('m4', {
+        session_id: 's1', created_at: '2026-10-01T00:00:04Z', role: 'agent', content: 'Great!', rating: 'up',
+      })
+      coll('messages').set('m5', {
+        session_id: 's1', created_at: '2026-10-01T00:00:05Z', role: 'agent', content: 'x'.repeat(300), rating: 'down',
+      })
+      mockMessagesCreate.mockResolvedValue(noteResponse(someNote))
+
+      await writeNoteForProject(db, 'p1')
+
+      expect(notes()[0].thumbs_down).toEqual([
+        { excerpt: 'What is your pricing model?', reason: 'asked twice' },
+        { excerpt: `${'x'.repeat(160)}…` },
+      ])
+      expect(userText(lastCall())).not.toMatch(/asked twice|rating/)
+    })
+
+    it('saves a note whose only content is a 👎', async () => {
+      seedProject()
+      seedSession('s1', '2026-10-01T00:00:00Z')
+      coll('messages').set('m1', {
+        session_id: 's1', created_at: '2026-10-01T00:00:01Z', role: 'agent', content: 'Hmm', rating: 'down',
+      })
+      mockMessagesCreate.mockResolvedValue(noteResponse(emptyOutput))
+
+      const res = await writeNoteForProject(db, 'p1')
+
+      expect(res.note_id).toBeTruthy()
+      expect(notes()[0].thumbs_down).toEqual([{ excerpt: 'Hmm' }])
+    })
+
+    it('leaves thumbs_down off a note with no 👎', async () => {
+      seedProject()
+      seedSession('s1', '2026-10-01T00:00:00Z')
+      seedMessage('m1', 's1', '2026-10-01T00:00:01Z', 'hello')
+      mockMessagesCreate.mockResolvedValue(noteResponse(someNote))
+
+      await writeNoteForProject(db, 'p1')
+
+      expect(notes()[0]).not.toHaveProperty('thumbs_down')
+    })
+  })
 })

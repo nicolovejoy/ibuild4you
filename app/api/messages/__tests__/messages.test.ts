@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { NextResponse } from 'next/server'
+import { FieldValue } from 'firebase-admin/firestore'
 import { GET, DELETE, PATCH } from '../route'
 
 // =============================================================================
@@ -24,6 +25,8 @@ import { GET, DELETE, PATCH } from '../route'
 const mockGetProjectRole = vi.fn()
 const mockDelete = vi.fn(async () => {})
 const mockUpdate = vi.fn(async () => {})
+// Updates to the project doc (the 👎 counter) are kept apart from message updates.
+const mockProjectUpdate = vi.fn(async () => {})
 
 // Data returned by doc(id).get() — keyed by collection name
 let docData: Record<string, { exists: boolean; data: () => Record<string, unknown> }>
@@ -43,9 +46,9 @@ const mockCollection = vi.fn((name: string) => {
   return {
     where: mockWhere,
     doc: vi.fn(() => ({
-      get: vi.fn(async () => docData[lastCollection] || { exists: false }),
+      get: vi.fn(async () => docData[name] || { exists: false }),
       delete: mockDelete,
-      update: mockUpdate,
+      update: name === 'projects' ? mockProjectUpdate : mockUpdate,
     })),
   }
 })
@@ -58,6 +61,14 @@ vi.mock('@/lib/api/firebase-server-helpers', () => ({
   })),
   getAdminDb: vi.fn(() => ({
     collection: mockCollection,
+    // Transactions run against the same doc mocks: tx.get/update/delete
+    // forward to the ref's own get/update/delete.
+    runTransaction: async (fn: (tx: unknown) => Promise<unknown>) =>
+      fn({
+        get: (ref: { get: () => Promise<unknown> }) => ref.get(),
+        update: (ref: { update: (d: unknown) => Promise<unknown> }, d: unknown) => ref.update(d),
+        delete: (ref: { delete: () => Promise<unknown> }) => ref.delete(),
+      }),
   })),
   getProjectRole: (...args: unknown[]) => mockGetProjectRole(...args),
   requireRole: (role: string | null, minimum: string) => {
@@ -174,6 +185,17 @@ describe('DELETE /api/messages', () => {
     expect(data.deleted).toBe(true)
     expect(data.message_id).toBe('m1')
     expect(mockDelete).toHaveBeenCalledTimes(1)
+    expect(mockProjectUpdate).not.toHaveBeenCalled()
+  })
+
+  it('deleting a 👎 reply takes one off the brief counter', async () => {
+    docData = {
+      ...docData,
+      messages: { exists: true, data: () => ({ session_id: 'session-1', role: 'agent', rating: 'down' }) },
+    }
+    const res = await DELETE(new Request('http://localhost/api/messages?message_id=m1', { method: 'DELETE' }))
+    expect(res.status).toBe(200)
+    expect(mockProjectUpdate).toHaveBeenCalledWith({ thumbs_down_count: FieldValue.increment(-1) })
   })
 })
 
@@ -255,5 +277,75 @@ describe('PATCH /api/messages', () => {
     const data = await res.json()
     expect(data).toEqual({ message_id: 'm1', rating: null })
     expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({ rating: null }))
+  })
+
+  // What was off? (optional reason on a 👎) and the brief's 👎 counter.
+  it('stores a trimmed reason with a 👎', async () => {
+    const res = await PATCH(patchReq({ message_id: 'm1', rating: 'down', reason: '  too many questions  ' }))
+    expect(res.status).toBe(200)
+    expect(mockUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ rating: 'down', rating_reason: 'too many questions' })
+    )
+  })
+
+  it('a blank reason is stored as null', async () => {
+    await PATCH(patchReq({ message_id: 'm1', rating: 'down', reason: '   ' }))
+    expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({ rating_reason: null }))
+  })
+
+  it('a 👍 or a cleared rating drops any reason', async () => {
+    await PATCH(patchReq({ message_id: 'm1', rating: 'up', reason: 'ignored' }))
+    expect(mockUpdate).toHaveBeenLastCalledWith(expect.objectContaining({ rating: 'up', rating_reason: null }))
+    await PATCH(patchReq({ message_id: 'm1', rating: null }))
+    expect(mockUpdate).toHaveBeenLastCalledWith(expect.objectContaining({ rating: null, rating_reason: null }))
+  })
+
+  it('returns 400 on a reason that is not a string or is over 500 characters', async () => {
+    expect((await PATCH(patchReq({ message_id: 'm1', rating: 'down', reason: 42 }))).status).toBe(400)
+    expect((await PATCH(patchReq({ message_id: 'm1', rating: 'down', reason: 'x'.repeat(501) }))).status).toBe(400)
+    expect(mockUpdate).not.toHaveBeenCalled()
+  })
+
+  it('a new 👎 adds one to the brief counter', async () => {
+    await PATCH(patchReq({ message_id: 'm1', rating: 'down' }))
+    expect(mockProjectUpdate).toHaveBeenCalledWith({ thumbs_down_count: FieldValue.increment(1) })
+  })
+
+  it('moving off a 👎 takes one off the brief counter', async () => {
+    docData = {
+      ...docData,
+      messages: { exists: true, data: () => ({ session_id: 'session-1', role: 'agent', rating: 'down' }) },
+    }
+    await PATCH(patchReq({ message_id: 'm1', rating: 'up' }))
+    expect(mockProjectUpdate).toHaveBeenCalledWith({ thumbs_down_count: FieldValue.increment(-1) })
+  })
+
+  it('re-sending a 👎 with a reason leaves the counter alone', async () => {
+    docData = {
+      ...docData,
+      messages: { exists: true, data: () => ({ session_id: 'session-1', role: 'agent', rating: 'down' }) },
+    }
+    await PATCH(patchReq({ message_id: 'm1', rating: 'down', reason: 'off topic' }))
+    expect(mockProjectUpdate).not.toHaveBeenCalled()
+  })
+
+  it('counts from the rating as read inside the transaction, not the earlier read', async () => {
+    // The first read (access check) still sees no rating; by the time the
+    // transaction reads, the 👎 from a moment ago has landed.
+    let reads = 0
+    Object.defineProperty(docData, 'messages', {
+      enumerable: true,
+      get: () => {
+        const rating = reads++ === 0 ? undefined : 'down'
+        return { exists: true, data: () => ({ session_id: 'session-1', role: 'agent', rating }) }
+      },
+    })
+    await PATCH(patchReq({ message_id: 'm1', rating: 'down', reason: 'off topic' }))
+    expect(mockProjectUpdate).not.toHaveBeenCalled()
+  })
+
+  it('a 👍 leaves the counter alone', async () => {
+    await PATCH(patchReq({ message_id: 'm1', rating: 'up' }))
+    expect(mockProjectUpdate).not.toHaveBeenCalled()
   })
 })
