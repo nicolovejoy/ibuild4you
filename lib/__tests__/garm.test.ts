@@ -129,6 +129,58 @@ describe('garmCheck — hardening', () => {
   })
 })
 
+// Garm records nothing for a 401, so a revoked or mis-scoped key looks like an
+// idle app from Garm's side. Sign-in fails closed, so a silent 401 locks every
+// non-admin out. These logs are the only place that failure can surface.
+describe('garmCheck — failure logging', () => {
+  it('logs a 401 at error with a key-misconfiguration hint, not at warn', async () => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    vi.stubGlobal('fetch', mockFetchOnce({ error: 'bad key' }, { ok: false, status: 401 }))
+    await garmCheck('sam@example.com', 'ibuild4you')
+    expect(err).toHaveBeenCalledTimes(1)
+    expect(String(err.mock.calls[0][0])).toMatch(/GARM key revoked or misconfigured/)
+    expect(String(err.mock.calls[0][0])).toMatch(/401/)
+    expect(warn).not.toHaveBeenCalled()
+  })
+
+  it('never logs the email it was checking', async () => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.stubGlobal('fetch', mockFetchOnce({}, { ok: false, status: 401 }))
+    await garmCheck('sam@example.com', 'ibuild4you')
+    expect(JSON.stringify(err.mock.calls)).not.toContain('sam@example.com')
+  })
+
+  it('logs an unset GARM_URL/GARM_KEY at error (it denies every sign-in)', async () => {
+    delete process.env.GARM_KEY
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    vi.stubGlobal('fetch', vi.fn())
+    await garmCheck('sam@example.com', 'ibuild4you')
+    expect(err).toHaveBeenCalledTimes(1)
+    expect(String(err.mock.calls[0][0])).toMatch(/GARM_URL\/GARM_KEY not set/)
+    expect(warn).not.toHaveBeenCalled()
+  })
+
+  it('logs any other non-2xx at error too, without the key hint', async () => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.stubGlobal('fetch', mockFetchOnce({}, { ok: false, status: 500 }))
+    await garmCheck('sam@example.com', 'ibuild4you')
+    expect(err).toHaveBeenCalledTimes(1)
+    expect(String(err.mock.calls[0][0])).toMatch(/500/)
+    expect(String(err.mock.calls[0][0])).not.toMatch(/revoked or misconfigured/)
+  })
+
+  it('keeps a network failure or timeout at warn (transient)', async () => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('network down') }))
+    await garmCheck('sam@example.com', 'ibuild4you')
+    expect(warn).toHaveBeenCalledTimes(1)
+    expect(err).not.toHaveBeenCalled()
+  })
+})
+
 describe('garmCheck — caching', () => {
   it('serves a cache hit within the TTL without a second fetch', async () => {
     const f = mockFetchOnce({ allowed: true, role: 'owner' })

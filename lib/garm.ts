@@ -90,7 +90,8 @@ export async function garmCheck(
   const url = process.env.GARM_URL
   const key = process.env.GARM_KEY
   if (!url || !key) {
-    console.warn('[garm] GARM_URL/GARM_KEY not set — denying by default')
+    // Error, not warn: with sign-in failing closed this denies every non-admin.
+    console.error('[garm] GARM_URL/GARM_KEY not set — denying by default')
     return closed
   }
 
@@ -110,11 +111,22 @@ export async function garmCheck(
       cache: 'no-store',
       signal: AbortSignal.timeout(TIMEOUT_MS),
     })
-    if (!res.ok) throw new Error(`garm returned ${res.status}`)
+    if (!res.ok) {
+      // A non-2xx answer is Garm (or our key) misbehaving, not a blip, so it
+      // logs at error. Garm records nothing for a 401: a revoked or mis-scoped
+      // key looks like an idle app from its side, so this line is the only
+      // place that failure surfaces. Never log the email.
+      const hint = res.status === 401 ? ' — GARM key revoked or misconfigured (check GARM_KEY)' : ''
+      console.error(
+        `[garm] check for ${project} returned ${res.status}${hint} (fail-${opts.failOpen ? 'open' : 'closed'})`
+      )
+      return closed
+    }
     const result = interpret(await res.json())
     cache.set(cacheKey, { at: Date.now(), result })
     return result
   } catch (err) {
+    // Network failure or timeout: transient, so warn.
     // Fail closed (or open if explicitly opted in). We deliberately do NOT cache
     // a failure — a transient blip must not lock a valid member out for 60s.
     console.warn(
