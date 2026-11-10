@@ -8,7 +8,9 @@
    and is tested against this file):
      muted   = color-mix(in oklab, blue 72%, #8a9099)  -> #414f7f
      hover   = color-mix(in oklab, blue 85%, white)    -> #435388
-     tint    = color-mix(in oklab, blue 10%, white)    -> #e7e9f1 */
+     tint    = color-mix(in oklab, blue 10%, white)    -> #e7e9f1
+   --h-faint is the small readable grey, darkened from the mock's #9ca3af to
+   the minimum that reaches 4.5:1 on both the background and white. */
 
 [data-home] {
   background: var(--h-bg);
@@ -68,7 +70,7 @@
   --h-text-2: #374151;
   --h-muted: #414f7f;
   --h-caption: #6b7280;
-  --h-faint: #9ca3af;
+  --h-faint: #6e727b;
   --h-line: #e5e7eb;
   --h-line-input: #d1d5db;
   --h-surface: #ffffff;

@@ -1,5 +1,5 @@
-import { LandingPage } from '@/components/public/landing-page'
+import { HomePage } from '@/components/public/home-page'
 
-export default function HomePage() {
-  return <LandingPage locale="en" />
+export default function Home() {
+  return <HomePage locale="en" />
 }

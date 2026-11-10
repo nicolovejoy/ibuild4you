@@ -1,6 +1,6 @@
-// Public-page copy (landing + About) in English and French.
+// Public-page copy (home + About) in English and French.
 //
-// English mirrors what the live pages render (the landing text was hardcoded in
+// English mirrors what the live pages render (the home text was hardcoded in
 // app/page.tsx; About reads copy.about / copy.glossary in lib/copy.ts, which stay
 // the source of truth for English). French lives only here. Only the public,
 // signed-out pages are translated — the app behind sign-in is English.
@@ -248,29 +248,8 @@ const en = {
     hideConversation: 'Hide the conversation',
     script: { later: heroLaterEn },
   },
+  // The interest form (components/public/interest-form.tsx).
   landing: {
-    tagline:
-      'Have an idea for an app or website but not sure where to start? Our AI guides you through the details, and we turn your idea into a working web app in a few days — no technical knowledge needed.',
-    signIn: 'Sign in',
-    learnMore: 'Learn more about how it works',
-    howItWorks: 'How it works',
-    steps: [
-      {
-        title: 'Tell us your idea',
-        desc: 'Chat with our AI assistant about what you want to build. No jargon, just a conversation.',
-      },
-      {
-        title: 'We build a brief',
-        desc: "As you talk, we create a structured brief that captures everything you've described.",
-      },
-      {
-        title: 'Refine over time',
-        desc: 'Come back anytime to add more details. Your brief evolves as your thinking does.',
-      },
-    ],
-    interestTitle: 'Interested?',
-    interestSubtitle:
-      "We're invite-only right now. Let us know you're interested and we'll be in touch.",
     interestSuccess: 'Thanks for your interest!',
     interestSuccessDetail: "We'll be in touch when we have a spot for you.",
     form: {
@@ -334,29 +313,8 @@ const fr: PublicCopy = {
     hideConversation: 'Masquer la conversation',
     script: { later: heroLaterFr },
   },
+  // The interest form (components/public/interest-form.tsx).
   landing: {
-    tagline:
-      'Vous avez une idée d’application ou de site web, sans savoir par où commencer ? Notre IA vous aide à préciser chaque détail, et nous transformons votre idée en application web en quelques jours — aucune connaissance technique requise.',
-    signIn: 'Se connecter',
-    learnMore: 'En savoir plus sur le fonctionnement',
-    howItWorks: 'Comment ça marche',
-    steps: [
-      {
-        title: 'Racontez-nous votre idée',
-        desc: 'Discutez avec notre assistant IA de ce que vous voulez construire. Pas de jargon, juste une conversation.',
-      },
-      {
-        title: 'Nous rédigeons un brief',
-        desc: 'Au fil de la discussion, nous construisons un brief structuré qui reprend tout ce que vous avez décrit.',
-      },
-      {
-        title: 'Affinez avec le temps',
-        desc: 'Revenez quand vous voulez pour ajouter des détails. Votre brief évolue avec votre réflexion.',
-      },
-    ],
-    interestTitle: 'Intéressé·e ?',
-    interestSubtitle:
-      'Pour l’instant, l’accès se fait sur invitation. Dites-nous que cela vous intéresse et nous reviendrons vers vous.',
     interestSuccess: 'Merci de votre intérêt !',
     interestSuccessDetail: 'Nous vous recontacterons dès qu’une place se libérera.',
     form: {

@@ -22,6 +22,12 @@ describe('home palette contrast (WCAG AA body text, 4.5:1)', () => {
   it('muted text reads on white panels', () => {
     expect(contrastRatio(p.muted, WHITE)).toBeGreaterThanOrEqual(4.5)
   })
+  it('faint text (conversation title, placeholder, version, provenance) reads on the page background', () => {
+    expect(contrastRatio(p.faint, p.bg)).toBeGreaterThanOrEqual(4.5)
+  })
+  it('faint text reads on white panels', () => {
+    expect(contrastRatio(p.faint, WHITE)).toBeGreaterThanOrEqual(4.5)
+  })
   it('black text reads on the page background', () => {
     expect(contrastRatio(p.black, p.bg)).toBeGreaterThanOrEqual(4.5)
   })

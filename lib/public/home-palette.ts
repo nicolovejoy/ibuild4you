@@ -11,6 +11,10 @@ export const HOME_PALETTE = {
   black: '#24211d',
   // color-mix(in oklab, blue 72%, #8a9099): secondary text and bullets.
   muted: '#414f7f',
+  // Small readable grey (conversation title, composer placeholder, "Brief v7 -> v8",
+  // provenance suffix). The mock's #9ca3af reached only ~2.4:1; this is that grey
+  // scaled down to the minimum that clears 4.5:1 on both the bg and white.
+  faint: '#6e727b',
   // color-mix(in oklab, blue 85%, white): button hover.
   hover: '#435388',
   // color-mix(in oklab, blue 10%, white): the "<Maker> decides" tag background.

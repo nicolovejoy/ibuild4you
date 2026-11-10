@@ -1,7 +1,7 @@
-import { LandingPage } from '@/components/public/landing-page'
+import { HomePage } from '@/components/public/home-page'
 
-// French public landing page. Only the signed-out public pages are translated;
+// French public home page. Only the signed-out public pages are translated;
 // sign-in and the app itself stay English.
-export default function FrenchHomePage() {
-  return <LandingPage locale="fr" />
+export default function FrenchHome() {
+  return <HomePage locale="fr" />
 }
