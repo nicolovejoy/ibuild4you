@@ -1,14 +1,17 @@
 @import 'tailwindcss';
 
 :root {
-  --background: #f8f8f0;
-  --foreground: #333333;
-  --brand-navy: #1a3c6b;
-  --brand-navy-light: #234d85;
-  --brand-navy-dark: #132d50;
-  --brand-cream: #f8f8f0;
-  --brand-slate: #4a6e91;
-  --brand-charcoal: #333333;
+  /* Palette 3, "Ivory and indigo", site-wide since 2026-11-10. The token
+     names predate it (navy is now indigo). Values match lib/public/home-palette.ts
+     (bg, black, blue, hover, muted); lib/__tests__/site-palette.test.ts keeps
+     them in step and checks AA contrast for the pairings the app uses. */
+  --background: #fbf8f1;
+  --foreground: #24211d;
+  --brand-navy: #283673;
+  --brand-navy-light: #435388;
+  --brand-cream: #fbf8f1;
+  --brand-slate: #414f7f;
+  --brand-charcoal: #24211d;
 }
 
 @theme inline {
@@ -16,7 +19,6 @@
   --color-foreground: var(--foreground);
   --color-brand-navy: var(--brand-navy);
   --color-brand-navy-light: var(--brand-navy-light);
-  --color-brand-navy-dark: var(--brand-navy-dark);
   --color-brand-cream: var(--brand-cream);
   --color-brand-slate: var(--brand-slate);
   --color-brand-charcoal: var(--brand-charcoal);

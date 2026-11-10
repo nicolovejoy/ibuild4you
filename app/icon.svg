@@ -1,12 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
   <style>
     @media (prefers-color-scheme: dark) {
-      .icon-fill { fill: #f8f8f0; }
-      .icon-stroke { stroke: #f8f8f0; }
+      .icon-fill { fill: #fbf8f1; }
+      .icon-stroke { stroke: #fbf8f1; }
     }
     @media (prefers-color-scheme: light) {
-      .icon-fill { fill: #1a3c6b; }
-      .icon-stroke { stroke: #1a3c6b; }
+      .icon-fill { fill: #283673; }
+      .icon-stroke { stroke: #283673; }
     }
   </style>
   <!-- Base/ground -->

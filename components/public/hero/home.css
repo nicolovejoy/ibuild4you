@@ -1,6 +1,7 @@
 /* Signed-out home page (`/`, `/fr`). Every colour, font and corner the page
    uses comes from the --h-* tokens below, scoped to the page's root element
-   (`data-home`) so the signed-in app's --brand-* tokens are untouched.
+   (`data-home`). Since 2026-11-10 the signed-in app's --brand-* tokens in
+   app/globals.css carry the same palette (lib/__tests__/site-palette.test.ts).
 
    Palette 3, "Ivory and indigo": background #fbf8f1, blue #283673, black
    #24211d. The three derived shades are the mock's color-mix() values resolved
