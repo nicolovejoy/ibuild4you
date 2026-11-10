@@ -121,6 +121,15 @@ describe('HomePage', () => {
     expect(page).toContain(publicCopy.fr.home.headline)
     for (const s of differing) expect(page).not.toContain(s)
     expect(container.querySelector('[data-home]')?.getAttribute('lang')).toBe('fr')
+
+    // Decision provenance ("conv 1 · Jul 11, revised conv 4 · Oct 17") is
+    // built from words and dates outside the copy walk above; none of its
+    // English may reach the French page.
+    for (const s of ['revised', 'added', 'conv 1 ·', 'Jul', 'Aug', 'Sep', 'Oct']) {
+      expect(page).not.toContain(s)
+    }
+    // ...and the French form is there: a décision is feminine.
+    expect(page).toContain('conv. 1 · 11 juil., révisée conv. 4 · 17 oct.')
   })
 
   it('redirects a signed-in visitor to the dashboard and renders nothing', () => {

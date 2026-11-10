@@ -48,7 +48,7 @@
   color: var(--h-btn-fg);
   border: 1px solid var(--h-btn-border);
 }
-[data-home] .hero-btn:hover {
+[data-home] .hero-btn:hover:not(:disabled) {
   background: var(--h-btn-hover-bg);
   color: var(--h-btn-hover-fg);
 }

@@ -60,15 +60,17 @@ export function HomeShell({ locale, children }: { locale: Locale; children: Reac
         </header>
       </div>
 
-      {children}
+      <main>
+        {children}
 
-      <section id={INTEREST_ANCHOR} className="scroll-mt-6 border-t border-(--h-line) bg-(--h-surface) py-16">
-        <div className="mx-auto max-w-lg px-4">
-          <h2 className="mb-2 text-center text-2xl">{h.cta}</h2>
-          <p className="mb-8 text-center text-(--h-muted)">{h.ctaHint}</p>
-          <InterestForm locale={locale} />
-        </div>
-      </section>
+        <section id={INTEREST_ANCHOR} className="scroll-mt-6 border-t border-(--h-line) bg-(--h-surface) py-16">
+          <div className="mx-auto max-w-lg px-4">
+            <h2 className="mb-2 text-center text-2xl">{h.cta}</h2>
+            <p className="mb-8 text-center text-(--h-muted)">{h.ctaHint}</p>
+            <InterestForm locale={locale} />
+          </div>
+        </section>
+      </main>
     </div>
   )
 }

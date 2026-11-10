@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { publicCopy, type Locale } from '@/lib/copy-public'
 import { revealedIds } from '@/lib/public/hero-script'
+import { HOME_PALETTE } from '@/lib/public/home-palette'
 import { usePublicPageLocale } from '@/components/public/lang'
 import { HeroChat } from '@/components/public/hero/HeroChat'
 import { HeroBrief } from '@/components/public/hero/HeroBrief'
@@ -27,8 +28,12 @@ export function HomePage({ locale }: { locale: Locale }) {
   }, [loading, isAuthenticated, router])
 
   if (loading) {
+    // The home background, so the colour doesn't jump when the page swaps in.
     return (
-      <div className="min-h-screen bg-brand-cream flex items-center justify-center">
+      <div
+        className="min-h-screen flex items-center justify-center"
+        style={{ background: HOME_PALETTE.bg }}
+      >
         <div className="animate-pulse text-brand-slate">{t.loading}</div>
       </div>
     )
@@ -76,7 +81,7 @@ function Demo({ locale }: { locale: Locale }) {
   const all = revealedIds(script, script.turns.length)
   const [open, setOpen] = useState(false)
   return (
-    <main className="mx-auto max-w-6xl px-4 pb-20 pt-10 sm:pt-14">
+    <div className="mx-auto max-w-6xl px-4 pb-20 pt-10 sm:pt-14">
       <Headline locale={locale} />
       <p className="mx-auto mt-10 mb-3 max-w-3xl text-center text-sm text-(--h-caption)">{h.demoCaptionLater}</p>
       <Window>
@@ -107,6 +112,6 @@ function Demo({ locale }: { locale: Locale }) {
           )}
         </div>
       </Window>
-    </main>
+    </div>
   )
 }

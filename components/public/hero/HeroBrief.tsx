@@ -2,12 +2,13 @@
 
 import { Lock } from 'lucide-react'
 import { publicCopy, type Locale } from '@/lib/copy-public'
-import { sessionNumberById, decisionProvenanceSuffix } from '@/lib/builder/decision-provenance'
+import { sessionNumberById } from '@/lib/builder/decision-provenance'
+import { heroProvenance } from '@/lib/public/hero-provenance'
 import { HERO_SESSIONS, type HeroScript } from '@/lib/public/hero-script'
 
 // The brief half of the home-page demo. Lines not in `revealed` are hidden in
-// place (the panel keeps its final height). Decision provenance and the
-// Locked badge use the product's own helper and markup (BriefEditor).
+// place (the panel keeps its final height). Decision provenance follows the
+// product's rules (BriefEditor) but is worded and dated per locale.
 export function HeroBrief({
   script,
   locale,
@@ -65,7 +66,7 @@ export function HeroBrief({
         <Section label={t.decisions}>
           <ul className="space-y-2">
             {b.decisions.map((d) => {
-              const suffix = decisionProvenanceSuffix(d, numbers)
+              const suffix = heroProvenance(d, numbers, t.provenance)
               return (
                 <li key={d.id} className={lineClass(d.id)}>
                   {d.locked && (
@@ -122,9 +123,9 @@ export function HeroBrief({
 function Section({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <h3 className="hero-label mb-1.5 text-[11px] font-semibold uppercase text-(--h-muted)">
+      <p className="hero-label mb-1.5 text-[11px] font-semibold uppercase text-(--h-muted)">
         {label}
-      </h3>
+      </p>
       {children}
     </div>
   )

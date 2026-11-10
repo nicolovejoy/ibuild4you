@@ -30,7 +30,7 @@ export function HeroChat({
           {script.brief.title}
         </span>
       </div>
-      <ol className="flex-1 space-y-3 p-4" aria-live="polite">
+      <ol className="flex-1 space-y-3 p-4">
         {script.turns.map((turn, i) => {
           const visible = i < shown
           const maker = turn.role === 'maker'

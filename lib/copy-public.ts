@@ -246,6 +246,15 @@ const en = {
     ownerBuilder: 'Builder decides',
     showConversation: 'Show the conversation',
     hideConversation: 'Hide the conversation',
+    // Decision provenance under each decision (lib/public/hero-provenance.ts).
+    // `date` arrives already formatted for the locale ("Jul 11" / "11 juil.").
+    provenance: {
+      dateLocale: 'en-US',
+      conv: (n: number, date: string) => `conv ${n} · ${date}`,
+      added: (date: string) => `added ${date}`,
+      revisedConv: (n: number, date: string) => `revised conv ${n} · ${date}`,
+      revised: (date: string) => `revised ${date}`,
+    },
     script: { later: heroLaterEn },
   },
   // The interest form (components/public/interest-form.tsx).
@@ -311,6 +320,15 @@ const fr: PublicCopy = {
     ownerBuilder: 'Le développeur décide',
     showConversation: 'Voir la conversation',
     hideConversation: 'Masquer la conversation',
+    // A décision is feminine, so "révisée". Glossary: conversation stays
+    // conversation; "conv." is the same abbreviation the English "conv" is.
+    provenance: {
+      dateLocale: 'fr-FR',
+      conv: (n: number, date: string) => `conv. ${n} · ${date}`,
+      added: (date: string) => `ajoutée le ${date}`,
+      revisedConv: (n: number, date: string) => `révisée conv. ${n} · ${date}`,
+      revised: (date: string) => `révisée le ${date}`,
+    },
     script: { later: heroLaterFr },
   },
   // The interest form (components/public/interest-form.tsx).
