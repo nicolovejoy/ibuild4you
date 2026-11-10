@@ -182,7 +182,7 @@ Keep the code approachable — clarity over cleverness. Code should be:
 **Watch.**
 - musicforge's read-key smoke PASSED 2026-11-02 (limit=5: 5 items, sender tags, no email in the body). Still to come: their from-server smoke once the musicforge Fly route ships (#244; key at `op://dev-secrets/loop-read-key-musicforge/password`). Embed spike (Loop Phase 2) only if their panel proves not enough.
 
-**Queue.** Palette 3 site-wide is the `feat/site-palette` PR (tokens in `app/globals.css`, kept in step with `lib/public/home-palette.ts` by `lib/__tests__/site-palette.test.ts`). Garm's two asks closed 2026-11-08: 401 logging is PR #257, and the four `@example.com` test grants are revoked (Garm confirmed); `test@ibuild4you.com` keeps owner on purpose, because the prod sign-in e2e sets a one-run random password. Open follow-up: on the read-key form 1Password also offers "Sign in" with a saved ibuild4you login, which would overwrite the shown-once key; dismiss it, or suppress it if it bites.
+**Queue.** Empty. Palette 3 is site-wide since PR #259 (tokens in `app/globals.css`, kept in step with `lib/public/home-palette.ts` by `lib/__tests__/site-palette.test.ts`). Garm's two asks closed 2026-11-08: 401 logging is PR #257, and the four `@example.com` test grants are revoked (Garm confirmed); `test@ibuild4you.com` keeps owner on purpose, because the prod sign-in e2e sets a one-run random password. The read-key overwrite risk is closed by PR #260 (plain read-only key + Copy, autofill suppressed; replaces #246's save-to-password-manager form).
 
 **Loose ends (no issue).**
 - Garm listing contract still unconfirmed (`GET /api/grants?project=X` → `{grants:[...]}`, active-only, unpaginated).
