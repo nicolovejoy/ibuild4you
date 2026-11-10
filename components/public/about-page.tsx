@@ -62,7 +62,7 @@ export function AboutPage({ locale }: { locale: Locale }) {
         {/* Signature */}
         <div className="text-right pt-2">
           <p className="text-sm italic text-brand-slate">— Nico Lovejoy</p>
-          <p className="text-xs text-brand-slate/70 mt-1">{a.voiceNote}</p>
+          <p className="text-xs text-brand-slate mt-1">{a.voiceNote}</p>
         </div>
       </div>
     </div>

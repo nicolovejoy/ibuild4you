@@ -3,7 +3,9 @@
 // and ownerTint are the mock's color-mix(in oklab, ...) shades resolved once at
 // build time, so no browser has to mix them. The same values sit in
 // components/public/hero/home.css as --h-* tokens; home-palette.test.ts keeps
-// the two in step and checks the contrast pairs the page relies on.
+// the two in step and checks the contrast pairs the page relies on. Since
+// 2026-11-10 the palette is site-wide: app/globals.css --brand-* tokens use
+// these values too (lib/__tests__/site-palette.test.ts).
 
 export const HOME_PALETTE = {
   bg: '#fbf8f1',

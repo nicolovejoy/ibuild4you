@@ -9,9 +9,9 @@ import { previewCopy, truncateTitle } from './preview-copy'
 
 export const OG_SIZE = { width: 1200, height: 630 }
 
-const NAVY = '#1a3c6b'
-const CREAM = '#f8f8f0'
-const SLATE = '#4a6e91'
+const NAVY = '#283673'
+const CREAM = '#fbf8f1'
+const SLATE = '#414f7f'
 
 // Glyph shapes as SVG polygon point strings (100×100 viewBox). Same shape family
 // as BriefBadge's lucide glyphs — consistency of *which* shape, not pixel-match.
