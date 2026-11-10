@@ -3,7 +3,9 @@ import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react'
 import React from 'react'
 
-// #246: the revealed read key sits in a form a password manager can save from.
+// The revealed read key is shown once. It sits in a plain read-only field with
+// password-manager autofill suppressed, so 1Password cannot offer to overwrite
+// it with a saved ibuild4you login (supersedes the #246 save-to-1Password form).
 
 const mintMock = vi.fn()
 const revokeMock = vi.fn()
@@ -45,52 +47,41 @@ async function mintKey(key = 'lrk_test_123') {
   await screen.findByLabelText('Read key')
 }
 
-describe('ReadKeyPanel reveal form', () => {
-  it('renders a username field and a masked key field in a form', async () => {
+describe('ReadKeyPanel reveal', () => {
+  it('shows the key in a plain read-only text field outside any form', async () => {
     const { container } = render(<ReadKeyPanel slug="l6-music" />)
     await mintKey()
-    const form = container.querySelector('form')!
-    expect(form).toBeTruthy()
-    const user = screen.getByLabelText('Item name') as HTMLInputElement
-    expect(form.contains(user)).toBe(true)
-    expect(user.value).toBe('loop-read-key-l6-music')
-    expect(user.getAttribute('autocomplete')).toBe('username')
-    expect(user.readOnly).toBe(false)
     const key = screen.getByLabelText('Read key') as HTMLInputElement
-    expect(form.contains(key)).toBe(true)
-    expect(key.type).toBe('password')
-    expect(key.getAttribute('autocomplete')).toBe('new-password')
     expect(key.value).toBe('lrk_test_123')
-    expect(key.readOnly).toBe(false)
-    expect(form.hasAttribute('action')).toBe(false)
+    expect(key.readOnly).toBe(true)
+    // Not a login-looking form: no <form>, no password field, no username field.
+    expect(container.querySelector('form')).toBeNull()
+    expect(container.querySelector('input[type="password"]')).toBeNull()
+    expect(screen.queryByLabelText('Item name')).toBeNull()
   })
 
-  it('never submits: preventDefault, no network call', async () => {
-    const { container } = render(<ReadKeyPanel slug="l6-music" />)
+  it('suppresses password-manager autofill on the key field', async () => {
+    render(<ReadKeyPanel slug="l6-music" />)
     await mintKey()
-    const form = container.querySelector('form')!
-    const prevented: boolean[] = []
-    // React handles events at the root, so observe at document (after it ran).
-    const onSubmit = (e: Event) => prevented.push(e.defaultPrevented)
-    document.addEventListener('submit', onSubmit)
-    try {
-      fireEvent.click(screen.getByRole('button', { name: 'Save to password manager' }))
-      const notCancelled = fireEvent.submit(form)
-      expect(notCancelled).toBe(false)
-      expect(prevented.length).toBeGreaterThan(0)
-      // defaultPrevented is the load-bearing no-submit assertion.
-      expect(prevented.every(Boolean)).toBe(true)
-    } finally {
-      document.removeEventListener('submit', onSubmit)
-    }
+    const key = screen.getByLabelText('Read key') as HTMLInputElement
+    expect(key.type).toBe('text')
+    expect(key.getAttribute('autocomplete')).toBe('off')
+    expect(key.hasAttribute('data-1p-ignore')).toBe(true)
+    expect(key.getAttribute('data-lpignore')).toBe('true')
+    expect(key.getAttribute('data-form-type')).toBe('other')
+    expect(key.getAttribute('name')).not.toMatch(/pass|user|login/i)
+  })
+
+  it('makes no network call on its own after minting', async () => {
+    render(<ReadKeyPanel slug="l6-music" />)
+    await mintKey()
     expect(fetchSpy).not.toHaveBeenCalled()
     expect(apiFetchMock).not.toHaveBeenCalled()
   })
 
-  it('Copy writes the minted key even after the field was edited', async () => {
+  it('Copy writes the minted key', async () => {
     render(<ReadKeyPanel slug="l6-music" />)
     await mintKey()
-    fireEvent.change(screen.getByLabelText('Read key'), { target: { value: 'edited' } })
     fireEvent.click(screen.getByRole('button', { name: 'Copy' }))
     await waitFor(() => expect(writeText).toHaveBeenCalledWith('lrk_test_123'))
   })
@@ -105,11 +96,11 @@ describe('ReadKeyPanel reveal form', () => {
     )
   })
 
-  it('revoke removes the form', async () => {
-    const { container } = render(<ReadKeyPanel slug="l6-music" />)
+  it('revoke removes the key field', async () => {
+    render(<ReadKeyPanel slug="l6-music" />)
     await mintKey()
     revokeMock.mockResolvedValueOnce({})
     fireEvent.click(screen.getByRole('button', { name: 'Revoke' }))
-    await waitFor(() => expect(container.querySelector('form')).toBeNull())
+    await waitFor(() => expect(screen.queryByLabelText('Read key')).toBeNull())
   })
 })

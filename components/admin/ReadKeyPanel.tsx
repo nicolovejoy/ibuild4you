@@ -20,9 +20,6 @@ export function ReadKeyPanel({ slug }: { slug: string }) {
   const mint = useMintAppReadKey(slug)
   const revoke = useRevokeAppReadKey(slug)
   const [revealed, setRevealed] = useState<string | null>(null)
-  // Editable copies shown in the reveal form. Copy reads `revealed`, never these.
-  const [keyField, setKeyField] = useState('')
-  const [usernameField, setUsernameField] = useState('')
   const [copied, setCopied] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -44,8 +41,6 @@ export function ReadKeyPanel({ slug }: { slug: string }) {
     try {
       const res = await mint.mutateAsync()
       setRevealed(res.key)
-      setKeyField(res.key)
-      setUsernameField(`loop-read-key-${slug}`)
     } catch {
       setError(t.readKeyError)
     }
@@ -57,8 +52,6 @@ export function ReadKeyPanel({ slug }: { slug: string }) {
     try {
       await revoke.mutateAsync()
       setRevealed(null)
-      setKeyField('')
-      setUsernameField('')
     } catch {
       setError(t.readKeyError)
     }
@@ -120,59 +113,41 @@ export function ReadKeyPanel({ slug }: { slug: string }) {
       )}
 
       {revealed && (
-        // This is a form only so a password manager (e.g. 1Password) offers to
-        // save the key: it looks for a username + new-password pair and a submit.
-        // It never submits anywhere: no action, preventDefault, and nothing here
-        // sends the key over the network.
-        <form onSubmit={(e) => e.preventDefault()} className="space-y-2">
-          <div>
-            <label
-              htmlFor={`read-key-username-${slug}`}
-              className="block text-xs text-gray-500 mb-0.5"
-            >
-              {t.readKeyUsernameLabel}
-            </label>
+        // The key is shown once. This is deliberately NOT a login-looking form:
+        // no <form>, no username field, not type="password", and autofill is
+        // switched off for the common password managers. Otherwise 1Password
+        // offers "Sign in" with a saved ibuild4you login on this field, and
+        // accepting it would overwrite the shown-once key.
+        <div className="space-y-2">
+          <label
+            htmlFor={`read-key-value-${slug}`}
+            className="block text-xs text-gray-500 mb-0.5"
+          >
+            {t.readKeyHeading}
+          </label>
+          <div className="flex items-center gap-2">
             <input
               type="text"
-              name="username"
-              autoComplete="username"
-              id={`read-key-username-${slug}`}
-              value={usernameField}
-              onChange={(e) => setUsernameField(e.target.value)}
+              id={`read-key-value-${slug}`}
+              name={`loop-read-key-${slug}`}
+              value={revealed}
+              readOnly
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="off"
+              spellCheck={false}
+              data-1p-ignore
+              data-lpignore="true"
+              data-form-type="other"
+              onFocus={(e) => e.currentTarget.select()}
               className="flex-1 px-2 py-1 text-sm font-mono border border-gray-200 rounded"
             />
-          </div>
-          <div>
-            <label
-              htmlFor={`read-key-value-${slug}`}
-              className="block text-xs text-gray-500 mb-0.5"
-            >
-              {t.readKeyHeading}
-            </label>
-            <div className="flex items-center gap-2">
-              <input
-                type="password"
-                name="password"
-                autoComplete="new-password"
-                id={`read-key-value-${slug}`}
-                value={keyField}
-                onChange={(e) => setKeyField(e.target.value)}
-                onFocus={(e) => e.currentTarget.select()}
-                className="flex-1 px-2 py-1 text-sm font-mono border border-gray-200 rounded"
-              />
-              <button type="button" onClick={onCopy} className={button}>
-                {copied ? t.readKeyCopied : t.readKeyCopy}
-              </button>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <button type="submit" className={button}>
-              {t.readKeySave}
+            <button type="button" onClick={onCopy} className={button}>
+              {copied ? t.readKeyCopied : t.readKeyCopy}
             </button>
           </div>
           <p className="text-xs text-gray-500">{t.readKeyRevealNote}</p>
-          <p className="text-xs text-gray-500">{t.readKeySaveNote}</p>
-        </form>
+        </div>
       )}
 
       {(error || loadError) && (
