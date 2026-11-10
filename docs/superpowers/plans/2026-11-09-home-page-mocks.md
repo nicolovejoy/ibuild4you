@@ -34,6 +34,21 @@ Expected recommendation (confirm on screenshots): B1 or B2 as the hero, with A a
 
 Reply on the selected-projects handoff with the four preview URLs, the screenshots, and one recommendation. Nico picks; then build the chosen one on a feature branch with tests for the "Tell us your idea" scroll and the reduced-motion still, ship it via PR and preview, and delete the mock routes.
 
+## Decision (Nico, 2026-11-09)
+
+- **Variant A**: the static split view at conversation 4 (brief v7 → v8), with the layout, type (Montserrat headings, Open Sans body) and component shapes exactly as mocked. B1, B2 and the theme feels (paper, press, warm on `?theme=`) are dropped. C (real Tideline turns) stays parked under "Later".
+- **Palette 3, "Ivory and indigo"**: background `#fbf8f1`, blue `#283673`, black `#24211d`. In the mock, the secondary shades were mixed from the blue: muted text `color-mix(in oklab, #283673 72%, #8a9099)`, hover `color-mix(in oklab, #283673 85%, white)`, the maker-tag tint `color-mix(in oklab, #283673 10%, white)`. Resolve each to a fixed hex at build time and check AA contrast (muted text on `#fbf8f1` and white must reach 4.5:1).
+- Mocks for reference until the build ships: `https://preview.ibuild4you.com/mocks/home/a` and `https://preview.ibuild4you.com/mocks/home/palettes` (branch `mocks/home-page`, commits c7def75, 2a6048f, 9363f5f).
+
+## Build plan (next session)
+
+1. **Branch from main** (`feat/home-page-a`), not from `mocks/home-page`. Bring over only what A needs: `lib/public/hero-script.ts` + its test, the `home` block of `lib/copy-public.ts` (EN + FR), `HeroChat`, `HeroBrief`, `HomeShell` (header with Sign in as a corner link, interest form at the bottom) and A's layout. Leave behind B1/B2, `useHeroPlayer`, the theme tokens (`hero-themes.css`, `themes.ts`), `PaletteSamples`, the mock fonts and every `app/mocks` route.
+2. **Colours, an open question for Nico**: palette 3 on the signed-out pages only, or site-wide by changing the `--brand-*` tokens in `app/globals.css` (the dashboard and maker chat use the same navy, cream and charcoal)? Default if not answered: signed-out pages only, through new public tokens, so the signed-in app doesn't change by accident.
+3. **Wire it in**: `/` and `/fr` render A in place of `components/public/landing-page.tsx`'s hero; keep the signed-in redirect to `/dashboard`; keep `InterestForm` and restyle it to the palette. "Tell us your idea" and the demo's composer both scroll to the form and focus its first input.
+4. **Tests first** (vitest + RTL): the CTA and the composer call the scroll and focus the first input; the phone fold toggles the conversation (`aria-expanded`); FR renders every A string (no English leaking through); the signed-in redirect still fires.
+5. **Quality floor**: no horizontal scroll at 375px, visible focus, AA contrast for the palette, and no change to the OG preview copy.
+6. **Ship**: PR, CI green, `npm run build` + `npm run type-check`; push to preview and screenshot `/` and `/fr` at 1280 and 390 headless; merge; delete `mocks/home-page` (local and remote); reply on the selected-projects handoff that the page is live.
+
 ## Later (not this pass)
 
 Shipped-work grid below the hero: wait for five or six projects with client approval. It needs a public, cached, counts-only endpoint (no names or brief contents, the same rule as link previews). Danny's L6 quote: ask Nico for the final approved text; don't copy a draft.
