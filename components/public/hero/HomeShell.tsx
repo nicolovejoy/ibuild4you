@@ -42,7 +42,7 @@ export function HomeShell({ locale, children }: { locale: Locale; children: Reac
           <nav className="flex shrink-0 items-center gap-1 whitespace-nowrap text-sm">
             <Link
               href={t.aboutHref}
-              className="hidden rounded px-2 py-1 text-(--h-muted) hover:text-(--h-ink) focus:outline-none focus-visible:ring-2 focus-visible:ring-(--h-ink) sm:inline"
+              className="rounded px-2 py-1 text-(--h-muted) hover:text-(--h-ink) focus:outline-none focus-visible:ring-2 focus-visible:ring-(--h-ink)"
             >
               {h.about}
             </Link>
