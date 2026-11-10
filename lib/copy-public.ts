@@ -1,6 +1,6 @@
-// Public-page copy (landing + About) in English and French.
+// Public-page copy (home + About) in English and French.
 //
-// English mirrors what the live pages render (the landing text was hardcoded in
+// English mirrors what the live pages render (the home text was hardcoded in
 // app/page.tsx; About reads copy.about / copy.glossary in lib/copy.ts, which stay
 // the source of truth for English). French lives only here. Only the public,
 // signed-out pages are translated — the app behind sign-in is English.
@@ -9,38 +9,256 @@
 // the other fails type-check.
 
 import { copy } from './copy'
+import type { HeroScript } from './public/hero-script'
 
 import type { Locale } from './locale'
 export type { Locale }
+
+// Home-page demo script. One made-up project (a reminder for occasional
+// household chores) in its fourth conversation: the brief is mature, with
+// provenance, a lock, owned risks and a version bump (v7 -> v8). The brief here
+// is shown in the page's language, unlike a real brief, which stays English for
+// the builder.
+const heroLaterEn: HeroScript = {
+  makerName: 'Jo',
+  turns: [
+    {
+      role: 'agent',
+      text: 'Welcome back, Jo. Since last time the Sunday text went live. Two things are open: whether the furnace filter should follow the seasons, and the shared list you mentioned. Where do you want to start?',
+    },
+    {
+      role: 'maker',
+      text: 'The seasons. I run the furnace much more in winter, so the filter should be every 2 months from October to March, and every 3 the rest of the year.',
+      effects: [{ id: 'd-filter', kind: 'update' }],
+    },
+    {
+      role: 'agent',
+      text: 'Two months in winter, three otherwise. That changes the fixed three-month interval we settled on in July. Shall I record the change?',
+    },
+    {
+      role: 'maker',
+      text: 'Yes. And add my partner now, we moved in together.',
+      effects: [
+        { id: 'd-who', kind: 'update' },
+        { id: 'q-shared', kind: 'update' },
+      ],
+    },
+    {
+      role: 'agent',
+      text: 'Will do. One shared list and you both get the Sunday text? Or does each of you get your own chores?',
+    },
+    {
+      role: 'maker',
+      text: 'One list, both get the text. Whoever does it ticks it off.',
+      effects: [
+        { id: 'f-shared', kind: 'add' },
+        { id: 'r-whodid', kind: 'add' },
+      ],
+    },
+  ],
+  brief: {
+    title: 'Household chores reminder',
+    summary: {
+      id: 'summary',
+      text: 'A reminder for the chores that come round every few months. One Sunday text lists what is due; Jo ticks things off and adjusts how often each comes round.',
+    },
+    features: [
+      { id: 'f-remind', text: 'Reminders for occasional chores, bundled into one Sunday text' },
+      { id: 'f-starter', text: 'Starter list of common chores with intervals Jo can change' },
+      { id: 'f-shared', text: 'One shared list; whoever does a chore ticks it off' },
+    ],
+    decisions: [
+      {
+        id: 'd-channel',
+        topic: 'Reminder channel',
+        decision: 'One text message, Sunday morning, never more than one a week',
+        locked: true,
+        decided_in_session: 'hero-s1',
+        decided_at: '2026-07-11T18:20:00.000Z',
+      },
+      {
+        id: 'd-filter',
+        topic: 'Furnace filter interval',
+        decision: 'Every 2 months October to March, every 3 months otherwise',
+        decided_in_session: 'hero-s1',
+        decided_at: '2026-07-11T18:40:00.000Z',
+        revised_in_session: 'hero-s4',
+        revised_at: '2026-10-17T19:05:00.000Z',
+      },
+      {
+        id: 'd-who',
+        topic: 'Who it is for',
+        decision: 'Jo and their partner, one shared list',
+        decided_in_session: 'hero-s2',
+        decided_at: '2026-08-03T18:30:00.000Z',
+        revised_in_session: 'hero-s4',
+        revised_at: '2026-10-17T19:12:00.000Z',
+      },
+    ],
+    risks: [
+      {
+        id: 'r-whodid',
+        owner: 'maker',
+        text: 'When a chore is ticked off, does the other person need to see who did it?',
+      },
+      {
+        id: 'r-season',
+        owner: 'builder',
+        text: 'Are the winter months fixed, or should they follow the local climate?',
+      },
+    ],
+    queued: [{ id: 'q-shared', text: 'Shared list: now in the brief, not yet built' }],
+    versionBefore: 7,
+    versionAfter: 8,
+    conversation: 4,
+  },
+}
+
+const heroLaterFr: HeroScript = {
+  makerName: 'Jo',
+  turns: [
+    {
+      role: 'agent',
+      text: 'Bon retour, Jo. Depuis la dernière fois, le SMS du dimanche est en service. Deux points restent ouverts : si le filtre de la chaudière doit suivre les saisons, et la liste partagée dont vous aviez parlé. Par où voulez-vous commencer ?',
+    },
+    {
+      role: 'maker',
+      text: 'Les saisons. La chaudière tourne bien plus l’hiver, donc le filtre devrait être tous les 2 mois d’octobre à mars, et tous les 3 mois le reste de l’année.',
+      effects: [{ id: 'd-filter', kind: 'update' }],
+    },
+    {
+      role: 'agent',
+      text: 'Deux mois en hiver, trois sinon. Ça change l’intervalle fixe de trois mois décidé en juillet. Je note le changement ?',
+    },
+    {
+      role: 'maker',
+      text: 'Oui. Et ajoutez ma partenaire maintenant, on a emménagé ensemble.',
+      effects: [
+        { id: 'd-who', kind: 'update' },
+        { id: 'q-shared', kind: 'update' },
+      ],
+    },
+    {
+      role: 'agent',
+      text: 'D’accord. Une seule liste partagée et vous recevez tous les deux le SMS du dimanche ? Ou chacun ses corvées ?',
+    },
+    {
+      role: 'maker',
+      text: 'Une liste, les deux reçoivent le SMS. Celui ou celle qui le fait coche.',
+      effects: [
+        { id: 'f-shared', kind: 'add' },
+        { id: 'r-whodid', kind: 'add' },
+      ],
+    },
+  ],
+  brief: {
+    title: 'Rappel des corvées de la maison',
+    summary: {
+      id: 'summary',
+      text: 'Un rappel pour les corvées qui reviennent tous les quelques mois. Un SMS le dimanche liste ce qui est dû ; Jo coche ce qui est fait et ajuste la fréquence de chaque corvée.',
+    },
+    features: [
+      {
+        id: 'f-remind',
+        text: 'Rappels pour les corvées occasionnelles, regroupés dans un SMS le dimanche',
+      },
+      {
+        id: 'f-starter',
+        text: 'Liste de départ des corvées courantes, avec des fréquences que Jo peut changer',
+      },
+      { id: 'f-shared', text: 'Une liste partagée ; celui ou celle qui fait la corvée la coche' },
+    ],
+    decisions: [
+      {
+        id: 'd-channel',
+        topic: 'Canal de rappel',
+        decision: 'Un SMS, le dimanche matin, jamais plus d’un par semaine',
+        locked: true,
+        decided_in_session: 'hero-s1',
+        decided_at: '2026-07-11T18:20:00.000Z',
+      },
+      {
+        id: 'd-filter',
+        topic: 'Fréquence du filtre de chaudière',
+        decision: 'Tous les 2 mois d’octobre à mars, tous les 3 mois sinon',
+        decided_in_session: 'hero-s1',
+        decided_at: '2026-07-11T18:40:00.000Z',
+        revised_in_session: 'hero-s4',
+        revised_at: '2026-10-17T19:05:00.000Z',
+      },
+      {
+        id: 'd-who',
+        topic: 'Pour qui',
+        decision: 'Jo et sa partenaire, une seule liste partagée',
+        decided_in_session: 'hero-s2',
+        decided_at: '2026-08-03T18:30:00.000Z',
+        revised_in_session: 'hero-s4',
+        revised_at: '2026-10-17T19:12:00.000Z',
+      },
+    ],
+    risks: [
+      {
+        id: 'r-whodid',
+        owner: 'maker',
+        text: 'Quand une corvée est cochée, l’autre personne doit-elle voir qui l’a faite ?',
+      },
+      {
+        id: 'r-season',
+        owner: 'builder',
+        text: 'Les mois d’hiver sont-ils fixes, ou doivent-ils suivre le climat local ?',
+      },
+    ],
+    queued: [{ id: 'q-shared', text: 'Liste partagée : dans le brief, pas encore construite' }],
+    versionBefore: 7,
+    versionAfter: 8,
+    conversation: 4,
+  },
+}
 
 const en = {
   langSwitch: { label: 'FR', aria: 'Lire en français', href: '/fr' },
   aboutHref: '/about',
   header: { about: 'About' },
   loading: 'Loading...',
-  landing: {
-    tagline:
-      'Have an idea for an app or website but not sure where to start? Our AI guides you through the details, and we turn your idea into a working web app in a few days — no technical knowledge needed.',
+  // Signed-out home page: shell chrome, headline, interest section and the demo.
+  home: {
     signIn: 'Sign in',
-    learnMore: 'Learn more about how it works',
-    howItWorks: 'How it works',
-    steps: [
-      {
-        title: 'Tell us your idea',
-        desc: 'Chat with our AI assistant about what you want to build. No jargon, just a conversation.',
-      },
-      {
-        title: 'We build a brief',
-        desc: "As you talk, we create a structured brief that captures everything you've described.",
-      },
-      {
-        title: 'Refine over time',
-        desc: 'Come back anytime to add more details. Your brief evolves as your thinking does.',
-      },
-    ],
-    interestTitle: 'Interested?',
-    interestSubtitle:
-      "We're invite-only right now. Let us know you're interested and we'll be in touch.",
+    about: 'About',
+    headline: 'Tell us your idea. We turn it into a brief, then an app.',
+    subline:
+      'You talk it through with Sam, our assistant, in plain words. Every answer lands in a living brief the builder works from. No technical knowledge needed.',
+    cta: 'Tell us your idea',
+    ctaHint: 'Invite-only for now. Leave your details and we will be in touch.',
+    demoCaptionLater:
+      'A made-up project, Jo’s chores reminder, in its fourth conversation. The brief carries what was decided, when, and what is still open.',
+    composerPlaceholder: 'Your idea goes here…',
+    agentLabel: 'Sam',
+    conversationLabel: (n: number) => `Conversation ${n}`,
+    briefLabel: 'Living brief',
+    briefVersion: (before: number, after: number) => `Brief v${before} → v${after}`,
+    summary: 'Summary',
+    features: 'Features',
+    decisions: 'Decisions',
+    openQuestions: 'Open questions',
+    queued: 'Later',
+    locked: 'Locked',
+    ownerMaker: (name: string) => `${name} decides`,
+    ownerBuilder: 'Builder decides',
+    showConversation: 'Show the conversation',
+    hideConversation: 'Hide the conversation',
+    // Decision provenance under each decision (lib/public/hero-provenance.ts).
+    // `date` arrives already formatted for the locale ("Jul 11" / "11 juil.").
+    provenance: {
+      dateLocale: 'en-US',
+      conv: (n: number, date: string) => `conv ${n} · ${date}`,
+      added: (date: string) => `added ${date}`,
+      revisedConv: (n: number, date: string) => `revised conv ${n} · ${date}`,
+      revised: (date: string) => `revised ${date}`,
+    },
+    script: { later: heroLaterEn },
+  },
+  // The interest form (components/public/interest-form.tsx).
+  landing: {
     interestSuccess: 'Thanks for your interest!',
     interestSuccessDetail: "We'll be in touch when we have a spot for you.",
     form: {
@@ -76,29 +294,45 @@ const fr: PublicCopy = {
   aboutHref: '/fr/about',
   header: { about: 'À propos' },
   loading: 'Chargement…',
-  landing: {
-    tagline:
-      'Vous avez une idée d’application ou de site web, sans savoir par où commencer ? Notre IA vous aide à préciser chaque détail, et nous transformons votre idée en application web en quelques jours — aucune connaissance technique requise.',
+  home: {
     signIn: 'Se connecter',
-    learnMore: 'En savoir plus sur le fonctionnement',
-    howItWorks: 'Comment ça marche',
-    steps: [
-      {
-        title: 'Racontez-nous votre idée',
-        desc: 'Discutez avec notre assistant IA de ce que vous voulez construire. Pas de jargon, juste une conversation.',
-      },
-      {
-        title: 'Nous rédigeons un brief',
-        desc: 'Au fil de la discussion, nous construisons un brief structuré qui reprend tout ce que vous avez décrit.',
-      },
-      {
-        title: 'Affinez avec le temps',
-        desc: 'Revenez quand vous voulez pour ajouter des détails. Votre brief évolue avec votre réflexion.',
-      },
-    ],
-    interestTitle: 'Intéressé·e ?',
-    interestSubtitle:
-      'Pour l’instant, l’accès se fait sur invitation. Dites-nous que cela vous intéresse et nous reviendrons vers vous.',
+    about: 'À propos',
+    headline: 'Racontez-nous votre idée. Nous en faisons un brief, puis une application.',
+    subline:
+      'Vous en discutez avec Sam, notre assistant, avec vos mots. Chaque réponse prend place dans un brief vivant, sur lequel le développeur s’appuie. Aucune connaissance technique requise.',
+    cta: 'Racontez-nous votre idée',
+    ctaHint:
+      'Sur invitation pour l’instant. Laissez vos coordonnées et nous reviendrons vers vous.',
+    demoCaptionLater:
+      'Un projet fictif, le rappel des corvées de Jo, à sa quatrième conversation. Le brief garde ce qui a été décidé, quand, et ce qui reste ouvert.',
+    composerPlaceholder: 'Votre idée ici…',
+    agentLabel: 'Sam',
+    conversationLabel: (n: number) => `Conversation ${n}`,
+    briefLabel: 'Brief vivant',
+    briefVersion: (before: number, after: number) => `Brief v${before} → v${after}`,
+    summary: 'Résumé',
+    features: 'Fonctionnalités',
+    decisions: 'Décisions',
+    openQuestions: 'Questions ouvertes',
+    queued: 'Plus tard',
+    locked: 'Verrouillé',
+    ownerMaker: (name: string) => `${name} décide`,
+    ownerBuilder: 'Le développeur décide',
+    showConversation: 'Voir la conversation',
+    hideConversation: 'Masquer la conversation',
+    // A décision is feminine, so "révisée". Glossary: conversation stays
+    // conversation; "conv." is the same abbreviation the English "conv" is.
+    provenance: {
+      dateLocale: 'fr-FR',
+      conv: (n: number, date: string) => `conv. ${n} · ${date}`,
+      added: (date: string) => `ajoutée le ${date}`,
+      revisedConv: (n: number, date: string) => `révisée conv. ${n} · ${date}`,
+      revised: (date: string) => `révisée le ${date}`,
+    },
+    script: { later: heroLaterFr },
+  },
+  // The interest form (components/public/interest-form.tsx).
+  landing: {
     interestSuccess: 'Merci de votre intérêt !',
     interestSuccessDetail: 'Nous vous recontacterons dès qu’une place se libérera.',
     form: {
