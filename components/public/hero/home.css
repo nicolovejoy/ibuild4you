@@ -1,0 +1,114 @@
+/* Signed-out home page (`/`, `/fr`). Every colour, font and corner the page
+   uses comes from the --h-* tokens below, scoped to the page's root element
+   (`data-home`) so the signed-in app's --brand-* tokens are untouched.
+
+   Palette 3, "Ivory and indigo": background #fbf8f1, blue #283673, black
+   #24211d. The three derived shades are the mock's color-mix() values resolved
+   to fixed hex (see lib/public/home-palette.ts, which holds the same values
+   and is tested against this file):
+     muted   = color-mix(in oklab, blue 72%, #8a9099)  -> #414f7f
+     hover   = color-mix(in oklab, blue 85%, white)    -> #435388
+     tint    = color-mix(in oklab, blue 10%, white)    -> #e7e9f1 */
+
+[data-home] {
+  background: var(--h-bg);
+  color: var(--h-text);
+  font-family: var(--h-font-body);
+}
+[data-home] h1,
+[data-home] h2 {
+  font-family: var(--h-font-head);
+  font-weight: var(--h-head-weight);
+  letter-spacing: var(--h-head-tracking);
+  color: var(--h-ink);
+}
+[data-home] .hero-label {
+  font-family: var(--h-font-label);
+  letter-spacing: var(--h-label-tracking);
+}
+[data-home] .hero-meta {
+  font-family: var(--h-font-meta);
+}
+[data-home] .hero-dots {
+  display: var(--h-dots);
+}
+[data-home] .hero-window {
+  border-radius: var(--h-radius-win);
+  box-shadow: var(--h-win-shadow);
+  border: var(--h-win-border);
+}
+[data-home] .hero-bubble {
+  border-radius: var(--h-radius);
+}
+[data-home] .hero-btn {
+  border-radius: var(--h-radius-btn);
+  background: var(--h-btn-bg);
+  color: var(--h-btn-fg);
+  border: 1px solid var(--h-btn-border);
+}
+[data-home] .hero-btn:hover {
+  background: var(--h-btn-hover-bg);
+  color: var(--h-btn-hover-fg);
+}
+[data-home] .hero-badge {
+  border-radius: var(--h-radius-badge);
+  background: var(--h-badge-bg);
+  color: var(--h-badge-fg);
+  box-shadow: inset 0 0 0 1px var(--h-badge-border);
+  font-family: var(--h-font-meta);
+}
+[data-home] .hero-header {
+  border-bottom: var(--h-header-rule);
+}
+
+[data-home] {
+  --h-bg: #fbf8f1;
+  --h-ink: #24211d;
+  --h-text: #1f2937;
+  --h-text-2: #374151;
+  --h-muted: #414f7f;
+  --h-caption: #6b7280;
+  --h-faint: #9ca3af;
+  --h-line: #e5e7eb;
+  --h-line-input: #d1d5db;
+  --h-surface: #ffffff;
+  --h-panel: #fbf8f1;
+  --h-agent-bg: #ffffff;
+  --h-agent-fg: #1f2937;
+  --h-agent-border: #e5e7eb;
+  --h-maker-bg: #283673;
+  --h-maker-fg: #ffffff;
+  --h-maker-meta: rgb(255 255 255 / 0.7);
+  --h-mark: #283673;
+  --h-wordmark: #24211d;
+  --h-btn-bg: #283673;
+  --h-btn-fg: #ffffff;
+  --h-btn-border: #283673;
+  --h-btn-hover-bg: #435388;
+  --h-btn-hover-fg: #ffffff;
+  --h-send-bg: #283673;
+  --h-send-fg: #ffffff;
+  --h-badge-bg: #fef3c7;
+  --h-badge-fg: #92400e;
+  --h-badge-border: transparent;
+  --h-owner-bg: #e7e9f1;
+  --h-owner-fg: #283673;
+  --h-owner2-bg: #f3f4f6;
+  --h-owner2-fg: #4b5563;
+  --h-bullet: #414f7f;
+  --h-radius: 0.5rem;
+  --h-radius-btn: 0.5rem;
+  --h-radius-badge: 0.25rem;
+  --h-radius-win: 0.75rem;
+  --h-win-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --h-win-border: 1px solid #e5e7eb;
+  --h-header-rule: 0;
+  --h-dots: flex;
+  --h-font-head: var(--font-montserrat), var(--font-open-sans), sans-serif;
+  --h-font-body: var(--font-open-sans), Arial, sans-serif;
+  --h-font-label: var(--h-font-body);
+  --h-font-meta: var(--h-font-body);
+  --h-head-weight: 700;
+  --h-head-tracking: normal;
+  --h-label-tracking: 0.05em;
+}
