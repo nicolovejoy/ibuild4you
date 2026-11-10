@@ -39,7 +39,7 @@ export function BriefSwitcher({
   ) : (
     <>
       {currentId && <BriefBadge id={currentId} size={16} />}
-      <span className="font-semibold text-brand-charcoal truncate">
+      <span className="font-semibold text-brand-charcoal truncate min-w-0">
         {loading ? '...' : currentTitle}
       </span>
     </>
@@ -51,10 +51,10 @@ export function BriefSwitcher({
   }
 
   return (
-    <div className="relative min-w-0 shrink-0">
+    <div className="relative min-w-0">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-1.5 min-w-0 hover:opacity-80"
+        className="flex items-center gap-1.5 min-w-0 max-w-full hover:opacity-80"
         title={c.switchBrief}
       >
         {label}
