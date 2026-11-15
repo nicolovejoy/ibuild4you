@@ -644,9 +644,14 @@ function BriefTab({
       await navigator.clipboard.writeText(prompt)
       setPayloadCopied(true)
       setTimeout(() => setPayloadCopied(false), 2000)
-      // Both notices can apply; the no-new-notes one comes first.
+      // Both notices can apply; the no-new-notes one comes first. With reports
+      // the prep is not "only the brief as it stands", so its shorter form is used.
       const notices: string[] = []
-      if (notes.length === 0) notices.push(copy.brief.copyPrepNoNewNotes)
+      if (notes.length === 0) {
+        notices.push(
+          reports.length > 0 ? copy.brief.copyPrepNoNewNotesWithReports : copy.brief.copyPrepNoNewNotes
+        )
+      }
       if (reports.length > 0) notices.push(copy.brief.copyPrepReports(reports.length))
       if (notices.length > 0) setCopyPrepNotice(notices.join(' '))
       // "Prep copied" stamp. Fire-and-forget: a failed stamp write must not

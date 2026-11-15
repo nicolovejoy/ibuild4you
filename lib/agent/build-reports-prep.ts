@@ -27,23 +27,30 @@ function pacificMinute(iso: string): string {
   return `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute} PT`
 }
 
+// "YYYY-MM-DD": the Pacific calendar day, for the report's `day` attribute.
+function pacificDate(iso: string): string {
+  const p = pacificParts(iso)
+  return `${p.year}-${p.month}-${p.day}`
+}
+
 // "YYYY-MM-DD PT"
 function pacificDay(iso: string): string {
-  const p = pacificParts(iso)
-  return `${p.year}-${p.month}-${p.day} PT`
+  return `${pacificDate(iso)} PT`
 }
 
 // Report text comes from a build repo. Swapping the angle brackets for
-// look-alikes means it can never close this block or open a <prep_stamp>.
+// look-alikes means it can never close this block or open a <prep_stamp>, and
+// folding line breaks into one space keeps each item on its own line, so it
+// cannot fake a heading such as "Live (checked in production):".
 function neutralize(text: string): string {
-  return text.replace(/</g, '‹').replace(/>/g, '›')
+  return text.replace(/</g, '‹').replace(/>/g, '›').replace(/[\r\n]+/g, ' ')
 }
 
 // One <report>…</report>. The stale line appears when the report was made
 // against an older brief version than the live one.
 function renderReport(report: BuildReport, liveBriefVersion: number): string {
   const lines = [
-    `<report id="${report.id}" posted="${pacificMinute(report.posted_at)}" brief_version="${report.brief_version_checked}">`,
+    `<report id="${report.id}" posted="${pacificMinute(report.posted_at)}" day="${pacificDate(report.posted_at)}" brief_version="${report.brief_version_checked}">`,
   ]
   if (report.brief_version_checked < liveBriefVersion) {
     lines.push(

@@ -121,7 +121,15 @@ describe('Brief tab: copy next-convo prep with build reports', () => {
     setAnswers({ reports: { reports: [report('r1')], latest_posted_at: '2026-11-14T18:00:00.000Z' } })
     await clickCopyPrep()
     const notice = await screen.findByText(new RegExp(copy.brief.copyPrepReports(1)))
-    expect(notice.textContent).toBe(`${copy.brief.copyPrepNoNewNotes} Includes 1 build report from Code.`)
+    // With reports, the prep is not "only the brief as it stands", so the
+    // no-new-notes notice drops that clause.
+    expect(notice.textContent).toBe(
+      'Prep copied. There are no new notes since the brief was last curated. Includes 1 build report from Code.'
+    )
+    expect(notice.textContent).not.toContain('carries only the brief')
+    expect(copy.brief.copyPrepNoNewNotesWithReports).toBe(
+      'Prep copied. There are no new notes since the brief was last curated.'
+    )
   })
 
   it('says nothing about reports when there are none, and stamps an empty list', async () => {

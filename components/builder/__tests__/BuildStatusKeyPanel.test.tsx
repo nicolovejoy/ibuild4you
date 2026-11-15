@@ -113,11 +113,15 @@ describe('BuildStatusKeyPanel keys', () => {
 
     const op = screen.getByLabelText('1Password command') as HTMLInputElement
     expect(op.readOnly).toBe(true)
+    // zsh-safe: no unquoted [...] glob; the key is read at a prompt, never typed in the line.
     expect(op.value).toBe(
-      'op item create --category password --vault dev-secrets --title ibuild4you-build-status-nicolovejoy-l6-music password[password]'
+      `read -rs "K?Paste key: " && echo && jq -n --arg p "$K" '{title:"ibuild4you-build-status-nicolovejoy-l6-music",category:"PASSWORD",fields:[{id:"password",type:"CONCEALED",purpose:"PASSWORD",value:$p}]}' | op item create --vault dev-secrets --format json | jq -r '.title + " saved in " + .vault.name'; unset K`
     )
+    expect(op.value).toContain('ibuild4you-build-status-nicolovejoy-l6-music')
+    expect(op.value).toContain('read -rs')
+    expect(op.value).not.toContain('password[password]')
     expect(op.value).not.toContain(KEY)
-    expect(screen.getByText('Run this, then paste the key when 1Password asks.')).toBeTruthy()
+    expect(screen.getByText('Run this, then paste the key at the "Paste key:" prompt.')).toBeTruthy()
 
     // Once minted the panel offers a new key and Revoke.
     expect(await screen.findByRole('button', { name: 'Mint a new key' })).toBeTruthy()

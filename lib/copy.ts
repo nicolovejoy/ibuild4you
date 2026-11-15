@@ -213,6 +213,9 @@ export const copy = {
     // prep for a new one.
     copyPrepNoNewNotes:
       'Prep copied. There are no new notes since the brief was last curated, so it carries only the brief as it stands.',
+    // Same, when the prep still carries build reports: then it is not "only the
+    // brief", and the reports notice follows.
+    copyPrepNoNewNotesWithReports: 'Prep copied. There are no new notes since the brief was last curated.',
     // The prep carries unfolded build reports from Code (the build repo's
     // Claude Code). The count is every unfolded report, including any a long
     // prep leaves out for length, since the paste folds them all.
@@ -558,10 +561,13 @@ export const copy = {
     keyLabel: 'Build status key',
     shownOnce: 'Shown once. Minting again stops the old key at once.',
     opLabel: '1Password command',
-    // The key is never part of this line: 1Password asks for it when it runs.
+    // The key is never part of this line: `read -rs` asks for it without echo,
+    // jq builds the item JSON, and op reads it from stdin. Nothing in it is an
+    // unquoted zsh glob. `$K` and `$p` are shell and jq variables, not
+    // template placeholders (no braces), so they reach the line as written.
     opCommand: (repo: string) =>
-      `op item create --category password --vault dev-secrets --title ibuild4you-build-status-${repo.replace('/', '-')} password[password]`,
-    opNote: 'Run this, then paste the key when 1Password asks.',
+      `read -rs "K?Paste key: " && echo && jq -n --arg p "$K" '{title:"ibuild4you-build-status-${repo.replace('/', '-')}",category:"PASSWORD",fields:[{id:"password",type:"CONCEALED",purpose:"PASSWORD",value:$p}]}' | op item create --vault dev-secrets --format json | jq -r '.title + " saved in " + .vault.name'; unset K`,
+    opNote: 'Run this, then paste the key at the "Paste key:" prompt.',
     copy: 'Copy',
     copied: 'Copied',
     loading: 'Loading…',
