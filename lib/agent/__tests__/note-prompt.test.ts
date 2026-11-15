@@ -56,3 +56,25 @@ describe('buildNoteUserContent brief', () => {
     expect(content).not.toMatch(/decided_in_session|decided_at/)
   })
 })
+
+describe('NOTE_SYSTEM_PROMPT keeps what the maker said', () => {
+  // "Start over button?" was closed with nothing recording what was decided.
+  it('asks for the answer on every settled risk', () => {
+    expect(NOTE_SYSTEM_PROMPT).toMatch(/risks_resolved: .*\{ text, resolution \}/)
+    expect(NOTE_SYSTEM_PROMPT).toMatch(/Never mark a risk settled without saying how/)
+  })
+
+  // "The two games stay separate" was noted as a revision of a decision that
+  // also held bar ranges; applied literally it would have erased them.
+  it('has a revised decision restated whole, and a separate point given its own topic', () => {
+    expect(NOTE_SYSTEM_PROMPT).toMatch(/write the whole decision as it now stands/)
+    expect(NOTE_SYSTEM_PROMPT).toMatch(/keeping everything in the brief's text that still holds/)
+    expect(NOTE_SYSTEM_PROMPT).toMatch(/give it its own topic/)
+  })
+
+  // "Details to follow" and "will report back" were noted with nothing to follow up on.
+  it('turns a promise to follow up into an open risk with an owner', () => {
+    expect(NOTE_SYSTEM_PROMPT).toMatch(/will send, check or decide something later/)
+    expect(NOTE_SYSTEM_PROMPT).toMatch(/worded as what is still owed/)
+  })
+})

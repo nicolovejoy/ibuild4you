@@ -17,7 +17,7 @@ import { logAnthropicCall } from '@/lib/observability/anthropic'
 import { addNote, isEmptyNote, listUnfoldedNotes } from '@/lib/api/brief-notes'
 import { upsertBrief } from '@/lib/api/briefs'
 import { contestFor, normalizeDecisionText, topicKey } from '@/lib/api/brief-merge'
-import { normalizeRisks } from '@/lib/brief/risks'
+import { normalizeResolvedRisks, normalizeRisks } from '@/lib/brief/risks'
 import { isArchivedSession } from '@/lib/sessions/active'
 import { isBuilderSideRole } from '@/lib/roles/member-role'
 
@@ -66,7 +66,14 @@ const WRITE_NOTE_TOOL = {
           required: ['text'],
         },
       },
-      risks_resolved: { type: 'array', items: { type: 'string' } },
+      risks_resolved: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: { text: { type: 'string' }, resolution: { type: 'string' } },
+          required: ['text', 'resolution'],
+        },
+      },
       lock_reversals: {
         type: 'array',
         items: {
@@ -123,9 +130,6 @@ function coerceNote(raw: Record<string, unknown>) {
         )
         .map((d) => ({ topic: d.topic.trim(), decision: d.decision.trim() }))
     : []
-  const risks_resolved = Array.isArray(raw.risks_resolved)
-    ? raw.risks_resolved.filter(nonEmpty).map((s) => s.trim())
-    : []
   const lock_reversals: BriefNoteLockReversal[] = Array.isArray(raw.lock_reversals)
     ? raw.lock_reversals
         .filter((r): r is BriefNoteLockReversal => {
@@ -142,7 +146,7 @@ function coerceNote(raw: Record<string, unknown>) {
     text: typeof raw.text === 'string' ? raw.text.trim() : '',
     decisions,
     risks_added: normalizeRisks(raw.risks_added),
-    risks_resolved,
+    risks_resolved: normalizeResolvedRisks(raw.risks_resolved),
     lock_reversals,
   }
 }

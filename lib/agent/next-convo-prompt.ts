@@ -1,6 +1,6 @@
 import type { BriefContent, BriefNote, PrepStamp } from '@/lib/types'
 import { LOCALE_NAMES, toLocale, type Locale } from '@/lib/locale'
-import { riskOwner, riskText } from '@/lib/brief/risks'
+import { resolvedLine, riskOwner, riskText } from '@/lib/brief/risks'
 import { briefWithoutProvenance } from '@/lib/api/brief-merge'
 import { BRIEF_CHAR_BUDGET, briefSizeChars } from './brief-size'
 import { BRIEF_CURATION_GUIDE } from './curation-guide'
@@ -69,7 +69,7 @@ Rules:
 - Keep every decision still in force. A note's decision on a topic the brief already has is a revision: the decision keeps its \`topic\` text exactly as on the brief (the app matches provenance by topic) and only \`decision\` changes.
 - A decision may carry \`"locked": true\` — a durable constraint (e.g. a locked convention or do-not-use rule). NEVER drop, reword, or unset a locked decision; carry it forward verbatim with \`"locked": true\`. When a note says the maker asked to reverse a locked decision, that request is already on the brief as \`contested\` (the app put it there when it wrote the note): carry \`contested\` and \`contest_dismissed\` exactly as they appear, and never add, change or remove them yourself. A builder decides whether the lock changes.
 - Do not write \`decided_in_session\`, \`decided_at\`, \`revised_in_session\` or \`revised_at\` on a decision. The app keeps each decision's history itself, matched by \`topic\`, which is one more reason a revised decision keeps its \`topic\` text exactly.
-- Open risks = things that are unresolved, unclear, or risky. Every open risk carries \`"owner": "maker"\` when only the maker can settle it (their preference, a fact about their world, a decision that is theirs to make) or \`"owner": "builder"\` when it is the builder's to resolve (technical, scheduling, something the builder said they would look into). Carry an existing owner forward. Drop a risk a note marks as settled.
+- Open risks = things that are unresolved, unclear, or risky. Every open risk carries \`"owner": "maker"\` when only the maker can settle it (their preference, a fact about their world, a decision that is theirs to make) or \`"owner": "builder"\` when it is the builder's to resolve (technical, scheduling, something the builder said they would look into). Carry an existing owner forward. A note lists each settled risk with its answer after an arrow. Drop a settled risk only after you write its answer into the brief: as a decision when the maker committed to a choice, otherwise in the field that fits.
 
 ${BRIEF_CURATION_GUIDE}
 
@@ -102,7 +102,7 @@ function renderNote(n: BriefNote): string {
     )
   }
   if (n.risks_resolved.length > 0) {
-    lines.push('Risks settled:', ...n.risks_resolved.map((t) => `- ${t}`))
+    lines.push('Risks settled:', ...n.risks_resolved.map((r) => `- ${resolvedLine(r)}`))
   }
   if (n.lock_reversals.length > 0) {
     lines.push(

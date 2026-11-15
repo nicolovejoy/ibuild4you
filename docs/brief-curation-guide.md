@@ -23,7 +23,7 @@ Merge
 Drop
 - History: who said what and when, how a decision was reached, earlier wording. The app keeps every past version.
 - Detail a later decision superseded.
-- Open risks a note marks as settled.
+- An open risk a note marks as settled, once its answer is recorded in the brief (as a decision when the maker committed to a choice, otherwise in the field that fits).
 
 Decisions
 - A locked decision ("locked": true) is copied verbatim, every field. Never reword it, never drop it, never unset the lock.
