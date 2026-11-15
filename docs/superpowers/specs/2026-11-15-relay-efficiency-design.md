@@ -123,6 +123,8 @@ No code. These go in the build repo's CLAUDE.md, starting with l6-music. If they
 
 ## Project 3: Code reads the brief and notes directly
 
+**Re-scoped 2026-11-15, after the design pass.** Two facts changed the picture. A read-only reader for build repos already exists (`scripts/mcp-briefs.mjs`, #133) and only lacked notes, a registration in l6-music and a start that works on the laptop. And three of the eight build repos are public (tideline, prntd, ibuild4you), so a mirror would have to refuse them. Nico's decision: fix the reader now (`2026-11-15-brief-reader-notes-design.md`), and treat option A below as a separate, later project whose point is the return leg (Code posts its status as a comment and the prep picks it up) and cloud sessions. The options below are kept as written for that project's design pass.
+
 Problem: Code's reports list answered questions as owed and repeat stale facts, because Code sees the brief only when Nico pastes it.
 
 Options:
