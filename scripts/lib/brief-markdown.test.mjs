@@ -261,6 +261,24 @@ describe('renderBriefMd notes, shipped, queued, contested', () => {
     expect(md).toContain('## Queued\n\n- Loyalty card')
   })
 
+  it('renders only the string items of a shipped batch', () => {
+    const b = { ...brief, content: { ...brief.content, shipped: [{ date: '2026-03-01', items: ['Ordering', 42, null] }] } }
+    const md = renderBriefMd({ project, brief: b, sessions, reviews })
+    expect(md).toContain('## Shipped\n\n### 2026-03-01\n- Ordering')
+    expect(md).not.toContain('- 42')
+    expect(md).not.toContain('- null')
+  })
+
+  it('skips a coverage stamp that does not parse instead of throwing', () => {
+    const p = { ...project, notes_through_at: 'not a date', last_maker_message_at: '2026-03-05T20:00:00Z' }
+    let md
+    expect(() => {
+      md = renderBriefMd({ project: p, brief, sessions, reviews })
+    }).not.toThrow()
+    expect(md).toContain('Maker last wrote ')
+    expect(md).not.toContain('Notes cover')
+  })
+
   it('omits shipped and queued when empty', () => {
     const md = renderBriefMd({ project, brief, sessions, reviews })
     expect(md).not.toContain('## Shipped')

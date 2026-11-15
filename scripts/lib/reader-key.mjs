@@ -43,7 +43,7 @@ export function parseServiceAccountKey(text) {
 
 // Only a short token-like value is allowed into a message, so even an odd
 // `code` cannot smuggle in output or a newline.
-const safeToken = (v) => (['string', 'number'].includes(typeof v) && /^[A-Za-z0-9_-]{1,40}$/.test(String(v)) ? String(v) : null)
+export const safeToken = (v) => (['string', 'number'].includes(typeof v) && /^[A-Za-z0-9_-]{1,40}$/.test(String(v)) ? String(v) : null)
 
 // env.FIREBASE_SERVICE_ACCOUNT_RO wins when set (a person or test supplying the
 // key directly); otherwise fetchFromOnePassword() supplies it.
@@ -57,11 +57,23 @@ export function resolveReaderKey({ env, fetchFromOnePassword }) {
   try {
     text = fetchFromOnePassword()
   } catch (err) {
-    // Report only the error's code or exit status, never message/stdout/stderr.
+    // Report only a safe code or exit status, never message/stdout/stderr, and
+    // map it to fixed guidance on what to do next.
     const code = safeToken(err?.code)
     const status = safeToken(err?.status)
-    const detail = code ? ` (${code})` : status ? ` (exit status ${status})` : ''
-    throw new ReaderKeyError(`could not get the read-only key from 1Password${detail}.`)
+    const prefix = 'could not get the read-only key from 1Password'
+    if (code === 'ENOENT') {
+      throw new ReaderKeyError(`${prefix} (ENOENT): the op CLI was not found on PATH.`)
+    }
+    if (code === 'ETIMEDOUT') {
+      throw new ReaderKeyError(
+        `${prefix} (ETIMEDOUT): no answer in time, a Touch ID prompt may have been missed. Reconnect the reader (/mcp) to retry.`
+      )
+    }
+    const detail = code ?? (status ? `exit status ${status}` : 'unknown error')
+    throw new ReaderKeyError(
+      `${prefix} (${detail}): check that op is signed in and that the document ibuild4you-firestore-ro is in the dev-secrets vault, then reconnect the reader (/mcp).`
+    )
   }
   return { key: parseServiceAccountKey(text), source: '1password' }
 }

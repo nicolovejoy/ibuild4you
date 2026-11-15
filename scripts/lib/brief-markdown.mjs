@@ -29,7 +29,10 @@ const day = (iso) => (iso || '').slice(0, 10)
 const pacificDay = (iso) => new Date(iso).toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' })
 
 // Pacific "YYYY-MM-DD HH:MM PT" (24-hour) for the coverage line.
+// Returns null for a stamp that does not parse, so one bad value cannot abort the render.
 const pacificMinute = (iso) => {
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return null
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'America/Los_Angeles',
     year: 'numeric',
@@ -38,7 +41,7 @@ const pacificMinute = (iso) => {
     hour: '2-digit',
     minute: '2-digit',
     hourCycle: 'h23',
-  }).formatToParts(new Date(iso))
+  }).formatToParts(date)
   const get = (type) => parts.find((p) => p.type === type).value
   return `${get('year')}-${get('month')}-${get('day')} ${get('hour')}:${get('minute')} PT`
 }
@@ -77,8 +80,10 @@ export function renderBriefMd({ project, brief, sessions, reviews, files = [], n
   // Coverage: how far the notes reach and when the maker last wrote, so a
   // reader can judge how stale the brief is. No line when neither is known.
   const coverage = []
-  if (project.notes_through_at) coverage.push(`Notes cover conversations through ${pacificMinute(project.notes_through_at)}.`)
-  if (project.last_maker_message_at) coverage.push(`Maker last wrote ${pacificMinute(project.last_maker_message_at)}.`)
+  const notesThrough = project.notes_through_at ? pacificMinute(project.notes_through_at) : null
+  const makerLast = project.last_maker_message_at ? pacificMinute(project.last_maker_message_at) : null
+  if (notesThrough) coverage.push(`Notes cover conversations through ${notesThrough}.`)
+  if (makerLast) coverage.push(`Maker last wrote ${makerLast}.`)
   if (coverage.length) b.push(coverage.join(' '))
   if (project.context) b.push(`\n## Builder-provided context\n\n${project.context}`)
   if (brief) {

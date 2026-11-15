@@ -52,6 +52,7 @@ if (!sa) {
   process.exit(1)
 }
 initializeApp({ credential: cert(JSON.parse(sa)) })
+delete process.env.FIREBASE_SERVICE_ACCOUNT // the credential object holds the key from here; nothing else needs it in the environment
 const db = getFirestore()
 
 // --- data access (all single-field queries, sort in memory; no indexes) ---
@@ -144,7 +145,7 @@ server.registerTool(
   {
     title: 'List briefs',
     description:
-      `List the ibuild4you briefs for ${REPO}: slug, title, brief version, last update, and conversation count. Use a slug with get_brief or get_conversation.`,
+      `List the ibuild4you briefs for ${REPO}: slug, title, brief version, last update, conversation count, and new_notes (notes written since the brief was last curated; get_brief includes them). Use a slug with get_brief or get_conversation.`,
     inputSchema: {},
   },
   async () => asText(JSON.stringify(await listRows(), null, 2))

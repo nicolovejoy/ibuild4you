@@ -13,20 +13,22 @@
 //   }
 //
 // At start it fetches the datastore.viewer-only key from 1Password
-// (dev-secrets / ibuild4you-firestore-ro), which costs one Touch ID per start,
-// and hands it to the reader through the FIREBASE_SERVICE_ACCOUNT variable of
-// the child process. The key is held in memory only: never written to disk,
-// never printed. If FIREBASE_SERVICE_ACCOUNT_RO is already set, that is used
-// and 1Password is not called.
+// (dev-secrets / ibuild4you-firestore-ro), which costs one Touch ID per start.
+// The reader runs in this launcher's own process (no child), so the key is
+// never in any process's start-up environment, which other same-user processes
+// can read with ps. It is set as FIREBASE_SERVICE_ACCOUNT at run time, and the
+// reader removes it from the environment once its credential is built. The key
+// is held in memory only: never written to disk, never printed. If
+// FIREBASE_SERVICE_ACCOUNT_RO is already set, that is used and 1Password is not
+// called; that variable is then visible in the launcher's environment, and that
+// is the caller's choice.
 //
 // stdout belongs to the reader's protocol; this launcher only writes to stderr.
 //
 // Usage: node scripts/brief-reader.mjs --repo owner/name [--check]
 
-import { execFileSync, spawn } from 'node:child_process'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
-import { ReaderKeyError, resolveReaderKey } from './lib/reader-key.mjs'
+import { execFileSync } from 'node:child_process'
+import { ReaderKeyError, resolveReaderKey, safeToken } from './lib/reader-key.mjs'
 
 const args = process.argv.slice(2)
 
@@ -59,20 +61,20 @@ try {
   process.exit(1)
 }
 
-const scriptsDir = dirname(fileURLToPath(import.meta.url))
-const env = { ...process.env, FIREBASE_SERVICE_ACCOUNT: key }
-delete env.FIREBASE_SERVICE_ACCOUNT_RO
+// Run the reader in this process. A variable set now is not visible to ps.
+process.env.FIREBASE_SERVICE_ACCOUNT = key
+delete process.env.FIREBASE_SERVICE_ACCOUNT_RO
 
-const child = spawn(process.execPath, [join(scriptsDir, 'mcp-briefs.mjs'), ...args], {
-  cwd: dirname(scriptsDir), // the repo root, whatever directory we were started from
-  env,
-  stdio: 'inherit',
-})
-child.on('error', () => {
-  console.error('brief-reader: could not start the reader.')
+try {
+  // mcp-briefs.mjs reads process.argv.slice(2), the same here, and resolves its
+  // own imports from its own location. Its top-level await keeps this open
+  // while serving; --check finishes and exits inside it.
+  await import(new URL('./mcp-briefs.mjs', import.meta.url).href)
+} catch (err) {
+  // One plain line. Only a safe code or name from the error, never its
+  // message, stack or the object itself: a Firestore auth failure can quote
+  // parts of the credential.
+  const detail = safeToken(err?.code) ?? safeToken(err?.name) ?? 'unknown error'
+  console.error(`brief-reader: the reader failed to start (${detail}).`)
   process.exit(1)
-})
-child.on('exit', (code, signal) => {
-  if (signal) process.kill(process.pid, signal)
-  else process.exit(code ?? 1)
-})
+}
