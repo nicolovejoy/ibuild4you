@@ -890,6 +890,17 @@ describe('unfolded notes block (#229)', () => {
     expect(stable).toContain('Maker asked to reverse a locked decision:\n- Hosting → Self-host')
   })
 
+  it('shows the answer on a settled risk', () => {
+    const { stable } = buildSystemPromptParts({
+      ...minimalInput,
+      briefContent: brief,
+      unfoldedNotes: [
+        note({ risks_resolved: [{ text: 'Start over button?', resolution: 'Yes, on the results page' }, 'Old risk'] }),
+      ],
+    })
+    expect(stable).toContain('Settled:\n- Start over button? → Yes, on the results page\n- Old risk')
+  })
+
   it('heads each note with its Pacific day', () => {
     const { stable } = buildSystemPromptParts({
       ...minimalInput,

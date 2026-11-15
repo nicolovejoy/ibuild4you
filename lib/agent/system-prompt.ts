@@ -7,7 +7,7 @@ import { renderArtifactContextBlock, type ArtifactContextItem } from './artifact
 import { renderSiblingDecisionsBlock, type SiblingDecision } from './sibling-decisions'
 import { renderPreviousConversationsBlock, type PreviousConversation } from './previous-conversations'
 import type { BriefContent, BriefDecision, BriefNote, BriefRole } from '@/lib/types'
-import { riskText, riskOwner } from '@/lib/brief/risks'
+import { riskText, riskOwner, resolvedLine } from '@/lib/brief/risks'
 import { LOCALE_NAMES, type Locale } from '@/lib/locale'
 
 // Maker name and gap-since-last-message are read live per request (not
@@ -97,7 +97,7 @@ export function renderUnfoldedNotesBlock(notes: BriefNote[]): string | null {
       )
     }
     if (n.risks_resolved.length > 0) {
-      lines.push('Settled:', ...n.risks_resolved.map((t) => `- ${t}`))
+      lines.push('Settled:', ...n.risks_resolved.map((r) => `- ${resolvedLine(r)}`))
     }
     if (n.lock_reversals.length > 0) {
       lines.push(

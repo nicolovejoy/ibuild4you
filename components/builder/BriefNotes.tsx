@@ -11,7 +11,7 @@ import { ChevronDown, ChevronRight, NotebookPen } from 'lucide-react'
 import { StatusMessage } from '@/components/ui/StatusMessage'
 import { LoadingButton } from '@/components/ui/LoadingButton'
 import { copy } from '@/lib/copy'
-import { normalizeRisks, riskOwner, riskText } from '@/lib/brief/risks'
+import { normalizeRisks, resolvedLine, riskOwner, riskText } from '@/lib/brief/risks'
 import type { StalePrepInfo } from '@/lib/query/hooks'
 import type { BriefNote } from '@/lib/types'
 
@@ -58,7 +58,7 @@ function noteLines(n: BriefNote): string[] {
   if (n.text?.trim()) lines.push(n.text.trim())
   for (const d of n.decisions ?? []) lines.push(c.noteDecision(d.topic, d.decision))
   for (const r of normalizeRisks(n.risks_added)) lines.push(c.noteRiskAdded(riskText(r), riskOwner(r)))
-  for (const t of n.risks_resolved ?? []) lines.push(c.noteRiskResolved(t))
+  for (const r of n.risks_resolved ?? []) lines.push(c.noteRiskResolved(resolvedLine(r)))
   for (const l of n.lock_reversals ?? []) lines.push(c.noteLockReversal(l.topic, l.proposed, l.reason))
   for (const t of n.thumbs_down ?? []) lines.push(c.noteThumbsDown(t.excerpt, t.reason))
   return lines

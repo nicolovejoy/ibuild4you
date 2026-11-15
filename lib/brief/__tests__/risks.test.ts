@@ -1,6 +1,15 @@
 import { describe, it, expect } from 'vitest'
 import type { BriefContent } from '@/lib/types'
-import { riskText, riskOwner, normalizeRisks, makerQuestions, carryRiskOwners } from '@/lib/brief/risks'
+import {
+  riskText,
+  riskOwner,
+  normalizeRisks,
+  makerQuestions,
+  carryRiskOwners,
+  resolvedText,
+  resolvedAnswer,
+  normalizeResolvedRisks,
+} from '@/lib/brief/risks'
 
 describe('riskText / riskOwner', () => {
   it('reads both shapes', () => {
@@ -63,5 +72,33 @@ describe('makerQuestions hardening', () => {
   })
   it('tolerates a non-array', () => {
     expect(makerQuestions({ ...base, open_risks: 'oops' as unknown as BriefContent['open_risks'] })).toEqual([])
+  })
+})
+
+// A settled risk used to be its text only, so the answer was lost ("Start over
+// button?" closed with nothing saying what the maker chose).
+describe('settled risks', () => {
+  it('reads the text and the answer from either shape', () => {
+    expect(resolvedText('Hosting')).toBe('Hosting')
+    expect(resolvedAnswer('Hosting')).toBeUndefined()
+    const r = { text: 'Start over button?', resolution: 'Yes, on the results page' }
+    expect(resolvedText(r)).toBe('Start over button?')
+    expect(resolvedAnswer(r)).toBe('Yes, on the results page')
+  })
+
+  it('normalizes untrusted input: trims, drops empties, collapses an answerless object to its text', () => {
+    expect(
+      normalizeResolvedRisks([
+        '  Hosting  ',
+        '',
+        { text: ' Start over button? ', resolution: ' Yes ' },
+        { text: 'No answer given' },
+        { text: 'Blank answer', resolution: '   ' },
+        { resolution: 'orphan' },
+        null,
+        7,
+      ])
+    ).toEqual(['Hosting', { text: 'Start over button?', resolution: 'Yes' }, 'No answer given', 'Blank answer'])
+    expect(normalizeResolvedRisks(undefined)).toEqual([])
   })
 })

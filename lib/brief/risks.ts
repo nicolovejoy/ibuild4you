@@ -6,7 +6,7 @@
 // and semantically unchanged after normalization (strings are trimmed, empties
 // dropped). This is the only module that knows
 // the shape; everything else goes through these helpers.
-import type { BriefContent, BriefRisk, BriefRiskOwner } from '@/lib/types'
+import type { BriefContent, BriefNoteResolvedRisk, BriefRisk, BriefRiskOwner } from '@/lib/types'
 
 type Risk = string | BriefRisk
 
@@ -57,4 +57,44 @@ export function carryRiskOwners(current: Risk[] | undefined, next: Risk[]): Risk
     const o = owners.get(key(r))
     return o ? { text: riskText(r), owner: o } : r
   })
+}
+
+// --- Settled risks on a note ---
+//
+// Canonical form: a settled risk with no recorded answer is a plain string
+// (its text); one with an answer is { text, resolution }. Same idea as the
+// owner on an open risk: old notes stay valid and read unchanged.
+type Resolved = string | BriefNoteResolvedRisk
+
+export function resolvedText(r: Resolved): string {
+  return typeof r === 'string' ? r : r.text
+}
+
+export function resolvedAnswer(r: Resolved): string | undefined {
+  return typeof r === 'string' ? undefined : r.resolution
+}
+
+// One line for prompts and the Brief tab: the risk, then its answer if any.
+export function resolvedLine(r: Resolved): string {
+  const answer = resolvedAnswer(r)
+  return answer ? `${resolvedText(r)} → ${answer}` : resolvedText(r)
+}
+
+// Coerce untrusted input (model output) into canonical form.
+export function normalizeResolvedRisks(raw: unknown): Resolved[] {
+  if (!Array.isArray(raw)) return []
+  const out: Resolved[] = []
+  for (const item of raw) {
+    if (typeof item === 'string') {
+      const text = item.trim()
+      if (text) out.push(text)
+    } else if (item && typeof item === 'object') {
+      const { text, resolution } = item as { text?: unknown; resolution?: unknown }
+      if (typeof text !== 'string' || !text.trim()) continue
+      if (typeof resolution === 'string' && resolution.trim()) {
+        out.push({ text: text.trim(), resolution: resolution.trim() })
+      } else out.push(text.trim())
+    }
+  }
+  return out
 }

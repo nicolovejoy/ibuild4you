@@ -394,6 +394,14 @@ export interface BriefNoteLockReversal {
   reason: string
 }
 
+// A risk a conversation settled. A plain string is the risk's text alone (every
+// note written before 2026-11-15); the object adds what the maker decided or
+// said that settled it, so the answer is not lost when the risk is dropped.
+export interface BriefNoteResolvedRisk {
+  text: string
+  resolution: string
+}
+
 export interface BriefNote {
   id: string
   session_id: string | null
@@ -402,7 +410,7 @@ export interface BriefNote {
   text: string
   decisions: { topic: string; decision: string }[]
   risks_added: Array<string | BriefRisk>
-  risks_resolved: string[]
+  risks_resolved: Array<string | BriefNoteResolvedRisk>
   lock_reversals: BriefNoteLockReversal[]
   // Sam's replies the maker gave a 👎 in this stretch, copied by code (not the
   // model). Absent when there were none. Shown to the builder only.

@@ -190,6 +190,42 @@ describe('writeNoteForProject', () => {
     expect(nm).not.toContain('old two')
   })
 
+  it('stores a settled risk with its answer, and still accepts a bare text', async () => {
+    seedProject({ notes_through_at: '2026-10-28T10:00:00.000Z' })
+    seedBrief({ problem: 'p', decisions: [], open_risks: ['Start over button?', 'Hosting'] }, '2026-10-27T00:00:00.000Z')
+    seedSession('s1', '2026-10-28T09:00:00.000Z')
+    seedMessage('m1', 's1', '2026-10-28T11:00:00.000Z', 'Yes to start over, on the results page')
+    mockMessagesCreate.mockResolvedValue(
+      noteResponse({
+        ...someNote,
+        risks_resolved: [
+          { text: ' Start over button? ', resolution: ' Yes, on the results page ' },
+          'Hosting',
+          { text: 'No answer' },
+        ],
+      })
+    )
+    await writeNoteForProject(db, 'p1')
+    expect(notes()[0].risks_resolved).toEqual([
+      { text: 'Start over button?', resolution: 'Yes, on the results page' },
+      'Hosting',
+      'No answer',
+    ])
+  })
+
+  it('asks the model for a resolution on each settled risk', async () => {
+    seedProject({ notes_through_at: '2026-10-28T10:00:00.000Z' })
+    seedSession('s1', '2026-10-28T09:00:00.000Z')
+    seedMessage('m1', 's1', '2026-10-28T11:00:00.000Z', 'hello')
+    mockMessagesCreate.mockResolvedValue(noteResponse(someNote))
+    await writeNoteForProject(db, 'p1')
+    const tool = (lastCall().tools[0] as unknown as {
+      input_schema: { properties: { risks_resolved: { items: { properties: Record<string, unknown>; required: string[] } } } }
+    }).input_schema.properties.risks_resolved.items
+    expect(Object.keys(tool.properties)).toEqual(['text', 'resolution'])
+    expect(tool.required).toEqual(['text', 'resolution'])
+  })
+
   it('labels messages from an owner/builder member Builder: (#245)', async () => {
     seedProject()
     seedSession('s1', '2026-10-01T00:00:00Z')

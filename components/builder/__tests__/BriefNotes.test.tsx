@@ -55,7 +55,7 @@ describe('UnfoldedNotesList', () => {
     text: 'Maker wants pickup slots.',
     decisions: [{ topic: 'Payment', decision: 'Square' }],
     risks_added: [{ text: 'Who prints menus?', owner: 'maker' }],
-    risks_resolved: ['Hosting'],
+    risks_resolved: ['Hosting', { text: 'Start over button?', resolution: 'Yes, on the results page' }],
     lock_reversals: [{ topic: 'Stack', proposed: 'Vue', reason: 'nephew knows it' }],
   }
 
@@ -73,6 +73,7 @@ describe('UnfoldedNotesList', () => {
     expect(screen.getByText('Decision: Payment: Square')).toBeTruthy()
     expect(screen.getByText('Open risk (maker): Who prints menus?')).toBeTruthy()
     expect(screen.getByText('Resolved: Hosting')).toBeTruthy()
+    expect(screen.getByText('Resolved: Start over button? → Yes, on the results page')).toBeTruthy()
     expect(screen.getByText('Wants to change locked Stack: Vue (nephew knows it)')).toBeTruthy()
   })
 

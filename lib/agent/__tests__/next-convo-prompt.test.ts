@@ -286,3 +286,24 @@ describe('welcome keeps live, proposed and to-test apart', () => {
     expect(NEXT_CONVO_SYSTEM_PROMPT).toMatch(/as if the maker can already see it/i)
   })
 })
+
+describe('a settled risk keeps its answer', () => {
+  it('renders the answer beside the settled risk', () => {
+    const p = buildNextConvoUserContent({
+      ...emptyInput,
+      currentBrief: brief,
+      notes: [
+        note({
+          risks_resolved: [{ text: 'Opening hours unclear', resolution: 'Closed on Mondays' }, 'Hosting'],
+        }),
+      ],
+      stamp: { brief_version: 7, note_ids: ['noteA1'] },
+    })
+    expect(p).toContain('Risks settled:\n- Opening hours unclear → Closed on Mondays\n- Hosting')
+  })
+
+  it('tells the comms agent to record the answer before dropping the risk', () => {
+    expect(NEXT_CONVO_SYSTEM_PROMPT).toMatch(/write its answer into the brief/)
+    expect(BRIEF_CURATION_GUIDE).toMatch(/once its answer is recorded in the brief/)
+  })
+})
