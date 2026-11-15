@@ -1,7 +1,8 @@
 import type { BriefContent, BriefNote, PrepStamp } from '@/lib/types'
 import { LOCALE_NAMES, toLocale, type Locale } from '@/lib/locale'
 import { riskOwner, riskText } from '@/lib/brief/risks'
-import { BRIEF_CHAR_BUDGET } from './brief-size'
+import { briefWithoutProvenance } from '@/lib/api/brief-merge'
+import { BRIEF_CHAR_BUDGET, briefSizeChars } from './brief-size'
 import { BRIEF_CURATION_GUIDE } from './curation-guide'
 
 interface NextConvoPromptInput {
@@ -37,7 +38,7 @@ When I say "give me the output", produce ONLY valid JSON matching this schema (n
     "features": ["Feature 1", "Feature 2"],
     "constraints": "Any constraints, limitations, or things the user explicitly doesn't want",
     "additional_context": "Any other relevant information that doesn't fit the above categories",
-    "decisions": [{ "topic": "short label", "decision": "what was decided", "decided_in_session": "optional session id", "decided_at": "optional ISO timestamp", "revised_in_session": "optional session id", "revised_at": "optional ISO timestamp" }],
+    "decisions": [{ "topic": "short label", "decision": "what was decided" }],
     "open_risks": [{ "text": "plain-language description of something unresolved, unclear, or risky", "owner": "maker" }],
     "shipped": [{ "date": "YYYY-MM-DD", "items": ["something built and available to the maker"] }],
     "queued": ["something planned but not built yet"]
@@ -57,6 +58,7 @@ Rules:
 - Always include the whole \`brief\`, rewritten: every field, even unchanged ones. Anything you leave out of it is gone from the brief.
 - For the other top-level fields, include only what our discussion actually addressed. Omit the rest — don't invent a \`nudge_message\` or \`voice_sample\` from thin air.
 - \`session_opener\` is accepted as a legacy alias for \`welcome_message\` — prefer \`welcome_message\`.
+- In \`welcome_message\`, keep three kinds of statement apart, each in its own short paragraph, and only when there is something to say: what is live now, what is proposed and not built, and what you would like them to try. "Live" means it is in \`shipped\`, or the builder told you in this chat that it is deployed. Say plainly that a proposed thing does not exist yet. Give test steps only for things that are live. Never describe a proposed screen, button or choice as if the maker can already see it.
 - The maker's language is given in the <project> block. Write \`welcome_message\` and \`nudge_message\` in that language. The project's language setting already makes the agent use it, so don't add a directive for it. The brief itself always stays in English, because the agents that read it (Sam, the comms agent, Claude Code) work in English: translate anything the maker said in another language.
 - Build the brief ONLY from the current brief and the notes. Do not invent or assume.
 - If a brief field has no information yet, use an empty string (or empty array for features/decisions/open_risks). \`shipped\` and \`queued\` may be omitted when empty.
@@ -66,7 +68,7 @@ Rules:
 - A decision answers the question it was given. Keep it within that question's scope: don't turn an answer about one feature into a general rule, or into a separate decision. Use the maker's own words, quoting them when they're short. Don't record consequences or follow-on changes the maker didn't state.
 - Keep every decision still in force. A note's decision on a topic the brief already has is a revision: the decision keeps its \`topic\` text exactly as on the brief (the app matches provenance by topic) and only \`decision\` changes.
 - A decision may carry \`"locked": true\` — a durable constraint (e.g. a locked convention or do-not-use rule). NEVER drop, reword, or unset a locked decision; carry it forward verbatim with \`"locked": true\`. When a note says the maker asked to reverse a locked decision, that request is already on the brief as \`contested\` (the app put it there when it wrote the note): carry \`contested\` and \`contest_dismissed\` exactly as they appear, and never add, change or remove them yourself. A builder decides whether the lock changes.
-- A decision may carry \`decided_in_session\` / \`decided_at\` and \`revised_in_session\` / \`revised_at\` — provenance stamps. Carry them through unchanged; never invent them (the system stamps new and revised decisions itself).
+- Do not write \`decided_in_session\`, \`decided_at\`, \`revised_in_session\` or \`revised_at\` on a decision. The app keeps each decision's history itself, matched by \`topic\`, which is one more reason a revised decision keeps its \`topic\` text exactly.
 - Open risks = things that are unresolved, unclear, or risky. Every open risk carries \`"owner": "maker"\` when only the maker can settle it (their preference, a fact about their world, a decision that is theirs to make) or \`"owner": "builder"\` when it is the builder's to resolve (technical, scheduling, something the builder said they would look into). Carry an existing owner forward. Drop a risk a note marks as settled.
 
 ${BRIEF_CURATION_GUIDE}
@@ -122,7 +124,10 @@ export function buildNextConvoUserContent({
   sessionCount,
   language,
 }: NextConvoPromptInput): string {
-  const size = currentBrief ? JSON.stringify(currentBrief).length : 0
+  // The comms agent gets the brief without provenance stamps (it neither reads
+  // nor writes them), and the size is counted the same way.
+  const shown = currentBrief ? briefWithoutProvenance(currentBrief) : null
+  const size = shown ? briefSizeChars(shown) : 0
   return [
     `<project>
 Title: ${projectTitle}
@@ -130,8 +135,8 @@ Sessions so far: ${sessionCount}
 Maker's language: ${LOCALE_NAMES[toLocale(language)]}
 </project>`,
     `<current_brief version="${stamp.brief_version}">
-Current size: ${size.toLocaleString('en-US')} characters (budget ${BRIEF_CHAR_BUDGET.toLocaleString('en-US')})
-${currentBrief ? JSON.stringify(currentBrief, null, 2) : 'No brief yet'}
+Current size: ${size.toLocaleString('en-US')} characters (budget ${BRIEF_CHAR_BUDGET.toLocaleString('en-US')}). The size is counted without spacing and line breaks, so the layout below does not add to it.
+${shown ? JSON.stringify(shown, null, 2) : 'No brief yet'}
 </current_brief>`,
     `<notes>
 ${notes.length > 0 ? notes.map(renderNote).join('\n\n') : 'No new notes since the brief was last curated.'}

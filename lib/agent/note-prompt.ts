@@ -4,6 +4,7 @@
 // the brief.
 
 import type { BriefContent, BriefNote } from '@/lib/types'
+import { briefWithoutProvenance } from '@/lib/api/brief-merge'
 
 // `builder`: sent by an owner/builder member (#245); labelled Builder, not User.
 type Message = { role: string; content: string; builder?: boolean }
@@ -52,7 +53,7 @@ export function buildNoteUserContent(args: {
   }))
   return [
     `<current_brief>
-${args.currentBrief ? JSON.stringify(args.currentBrief, null, 2) : 'No brief yet'}
+${args.currentBrief ? JSON.stringify(briefWithoutProvenance(args.currentBrief), null, 2) : 'No brief yet'}
 </current_brief>`,
     `<notes_since_curation>
 ${notes.length > 0 ? JSON.stringify(notes, null, 2) : 'None'}

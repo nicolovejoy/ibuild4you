@@ -507,6 +507,8 @@ function BriefTab({
   const [loadingPayload, setLoadingPayload] = useState(false)
   // Copy prep failed (nothing on the clipboard): shown in the desk's notices.
   const [copyPrepError, setCopyPrepError] = useState<string | null>(null)
+  // Shown after a copy that had no unfolded notes to carry (cleared on the next copy).
+  const [copyPrepNotice, setCopyPrepNotice] = useState<string | null>(null)
   // Covers the whole import (brief save + optional config PATCH + paste
   // stamp), not just the brief mutation.
   const [importing, setImporting] = useState(false)
@@ -570,6 +572,7 @@ function BriefTab({
     if (!project) return
     setLoadingPayload(true)
     setCopyPrepError(null)
+    setCopyPrepNotice(null)
     try {
       // #229: the prep carries the brief plus the notes not yet folded into
       // it (no transcript), and a stamp the paste guard checks on the way back.
@@ -612,6 +615,7 @@ function BriefTab({
       await navigator.clipboard.writeText(prompt)
       setPayloadCopied(true)
       setTimeout(() => setPayloadCopied(false), 2000)
+      if (notes.length === 0) setCopyPrepNotice(copy.brief.copyPrepNoNewNotes)
       // "Prep copied" stamp. Fire-and-forget: a failed stamp write must not
       // undo or hide a copy that already landed on the clipboard.
       updateProject.mutate(
@@ -800,9 +804,10 @@ function BriefTab({
             <OpenQuestionsCard title={project?.title ?? ''} makerName={makerName} questions={questions} />
           }
           notices={
-            (copyPrepError || regenNotice || sizeNotice || importWarnings || stalePrep) && (
+            (copyPrepError || copyPrepNotice || regenNotice || sizeNotice || importWarnings || stalePrep) && (
               <>
                 {copyPrepError && <StatusMessage type="error" message={copyPrepError} />}
+                {copyPrepNotice && <StatusMessage type="info" message={copyPrepNotice} />}
                 {/* #229: the server refused a stale prep; nothing was saved.
                     Save anyway resends the same parsed payload with force. */}
                 {stalePrep && (

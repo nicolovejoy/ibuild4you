@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildNextConvoPrompt, NEXT_CONVO_SYSTEM_PROMPT } from '../next-convo-prompt'
+import { buildNextConvoPrompt, buildNextConvoUserContent, NEXT_CONVO_SYSTEM_PROMPT } from '../next-convo-prompt'
 import { NEXT_CONVO_IMPORT_FIELDS } from '@/lib/api/import-payload'
 import { BRIEF_CURATION_GUIDE } from '../curation-guide'
 import type { BriefContent, BriefNote } from '@/lib/types'
@@ -228,5 +228,61 @@ describe('curation prep (#229)', () => {
     const result = buildNextConvoPrompt(emptyInput)
     expect(result).toMatch(/carry `?shipped`? and `?queued`? forward/i)
     expect(result).toMatch(/out of `?additional_context`?/)
+  })
+})
+
+// The server carries each decision's stamps from the stored brief by topic and
+// ignores incoming ones (stampDecisionProvenance, rule 2), and no agent reads
+// them. So the comms agent neither sees nor writes them, and they do not count
+// toward the size it is asked to keep.
+describe('provenance stamps stay out of the prep', () => {
+  const stamped: BriefContent = {
+    ...brief,
+    decisions: [
+      {
+        topic: 'Payments',
+        decision: 'Stripe only',
+        locked: true,
+        decided_in_session: 'sessOrigin',
+        decided_at: '2026-10-12T00:00:00.000Z',
+        revised_in_session: 'sessRevised',
+        revised_at: '2026-11-01T00:00:00.000Z',
+      },
+    ],
+  }
+  const input = { ...emptyInput, currentBrief: stamped, stamp: { brief_version: 3, note_ids: [] } }
+
+  it('renders the brief without any stamp field', () => {
+    const content = buildNextConvoUserContent(input)
+    expect(content).toContain('Stripe only')
+    expect(content).toContain('"locked": true')
+    expect(content).not.toMatch(/decided_in_session|decided_at|revised_in_session|revised_at/)
+    expect(content).not.toContain('sessOrigin')
+    expect(content).not.toContain('2026-11-01T00:00:00.000Z')
+  })
+
+  it('reports the size without stamps, and says spacing does not count', () => {
+    const content = buildNextConvoUserContent(input)
+    expect(content).toContain(`Current size: ${JSON.stringify(brief).length.toLocaleString('en-US')} characters`)
+    expect(content).toMatch(/spacing and line breaks/i)
+  })
+
+  it('leaves the stamp fields out of the schema and tells the agent not to write them', () => {
+    expect(NEXT_CONVO_SYSTEM_PROMPT).not.toMatch(/"decided_in_session"\s*:/)
+    expect(NEXT_CONVO_SYSTEM_PROMPT).not.toMatch(/Carry them through unchanged/)
+    expect(NEXT_CONVO_SYSTEM_PROMPT).toMatch(/Do not write `decided_in_session`/)
+    expect(BRIEF_CURATION_GUIDE).toMatch(/Leave out decided_in_session/)
+    expect(BRIEF_CURATION_GUIDE).not.toMatch(/through unchanged/)
+  })
+})
+
+// A welcome once listed "placeholder choices" for screens that were only
+// proposed; the maker tested for them and reported them missing.
+describe('welcome keeps live, proposed and to-test apart', () => {
+  it('asks for the three kinds of statement in separate paragraphs', () => {
+    expect(NEXT_CONVO_SYSTEM_PROMPT).toMatch(/what is live now/i)
+    expect(NEXT_CONVO_SYSTEM_PROMPT).toMatch(/proposed and not built/i)
+    expect(NEXT_CONVO_SYSTEM_PROMPT).toMatch(/test steps only for things that are live/i)
+    expect(NEXT_CONVO_SYSTEM_PROMPT).toMatch(/as if the maker can already see it/i)
   })
 })
