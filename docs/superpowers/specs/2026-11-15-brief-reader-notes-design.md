@@ -1,6 +1,6 @@
 # Brief reader for build repos: notes, shipped and queued, and a start that works on the laptop
 
-Date: 2026-11-15. Status: short design, awaiting Nico's approval. This is project 3 of the relay-efficiency programme (`2026-11-15-relay-efficiency-design.md`), re-scoped after the design pass.
+Date: 2026-11-15. Status: short design, approved by Nico 2026-11-15 with the 1Password start. This is project 3 of the relay-efficiency programme (`2026-11-15-relay-efficiency-design.md`), re-scoped after the design pass.
 
 ## Why
 
@@ -10,7 +10,7 @@ The programme spec recommended mirroring the brief to a GitHub issue. The design
 
 1. It predates notes (#229), `shipped` and `queued` (#219), and contested locks (#197). Since #229 the brief is no longer rewritten after each conversation, so the reader shows a brief that can be several conversations behind with nothing saying so.
 2. It is not registered in l6-music.
-3. It cannot start on the laptop. `scripts/with-prod-env-ro.mjs` reads the local env file from the current directory, which for a server started from a build repo is that repo, and the laptop's ibuild4you env file has no read-only key.
+3. It cannot start on the laptop. `scripts/with-prod-env-ro.mjs` reads the local env file from the current directory, which for a server started from a build repo is that repo, and the laptop's ibuild4you env file has no read-only key (and should not get one, see the design).
 
 ## Goals
 
@@ -55,22 +55,33 @@ The wording follows the prep's note block (`renderNote` in `lib/agent/next-convo
 
 `scripts/mcp-briefs.mjs` and `scripts/export-brief.mjs` read `briefs/{id}/notes`, keep notes with no `folded_at`, sort oldest first and pass them in. `get_brief`'s description says it includes notes, shipped and queued. `list_briefs` adds a count of unfolded notes per brief.
 
-### 3. The start (`scripts/with-prod-env-ro.mjs`)
+### 3. The start: a launcher that gets the key from 1Password (Nico's choice, 2026-11-15)
 
-The wrapper reads the env file that sits beside its own repo, not the one in the current directory. Run from the ibuild4you root, nothing changes. It still refuses to run without the read-only key.
+The read-only key reads all of production Firestore (every maker conversation and email, and the Loop signing secrets), so it stays off the laptop's disk. A new launcher, `scripts/brief-reader.mjs`, is what a build repo registers:
 
-### 4. One-time laptop setup (Nico)
+- It takes the same arguments as the reader (`--repo owner/name`, required).
+- If `FIREBASE_SERVICE_ACCOUNT_RO` is already in its environment it uses that. Otherwise it fetches the 1Password document `ibuild4you-firestore-ro` (vault `dev-secrets`) with the `op` CLI, which asks for Touch ID.
+- It checks that what came back is a service-account key (parses, has a client email and a private key) and never prints it. On any failure it exits with one plain line on stderr saying what to do.
+- It starts `scripts/mcp-briefs.mjs` with the key in `FIREBASE_SERVICE_ACCOUNT`, from its own repo, whatever directory it was called from.
 
-Nico adds the read-only key to the laptop's ibuild4you local env file with one command (1Password document `ibuild4you-firestore-ro`). My call, over starting the server through `op run`: that would ask for Touch ID at the start of every session in a build repo, and a missed prompt leaves Code with no brief tools and no error. The key is viewer-only and this is the wrapper's documented home for it.
+Known cost: a Touch ID prompt when a session starts in a build repo. A missed prompt means no brief tools until the reader is reconnected (`/mcp`).
+
+A build repo's `.mcp.json` then holds only the launcher's path and the repo name, so how the key is fetched can change later in one place.
+
+`scripts/with-prod-env-ro.mjs` is not changed. byside's and prntd's registrations still point at it and should move to the launcher; that is a follow-up, not part of this change.
+
+### 4. A check that prints no brief content
+
+`scripts/mcp-briefs.mjs --check` (passed through by the launcher) prints one line per brief in scope (slug, version, last update, conversations, unfolded notes) and exits, instead of serving. Nico runs it once from another directory to prove the start works; the agent does not, because the secrets hook keeps `op` out of its hands on purpose.
 
 ### 5. l6-music
 
-A handoff entry asks the l6-music session to add `.mcp.json` (the byside file with its own repo name) and to change its third build-status rule: read the brief with `get_brief` and name the version and dates from its header; ask Nico only when the tools are missing (a cloud session). Posted once the change is merged and a read from the laptop has been checked.
+A handoff entry asks the l6-music session to add `.mcp.json` (the launcher's path and its own repo name) and to change its third build-status rule: read the brief with `get_brief` and name the version and dates from its header; ask Nico only when the tools are missing (a cloud session, or a missed Touch ID). Posted once the change is merged and Nico's check has passed.
 
 ## Checks
 
-- Unit tests for every new part of the markdown, written first.
-- From the laptop, after Nico's setup: start the reader from another directory, scoped to l6-music, and confirm it lists the brief with its version and note count. No brief content is printed into the session.
+- Unit tests for every new part of the markdown and for the launcher's key handling (which source it uses, what it rejects), written first.
+- From the laptop: Nico runs the launcher with `--check` from another directory, scoped to l6-music, and confirms it lists the brief with its version and note count.
 - What tests cannot show: whether Code's reports improve. First check: the next l6-music status report.
 
 ## Docs
@@ -79,4 +90,4 @@ CLAUDE.md gains a runbook line on the reader; `docs/changelog.md` gets its entry
 
 ## Left to the builder
 
-Exact markdown wording, test names, and how the wrapper finds its own repo.
+Exact markdown wording, test names, and how the launcher is split so its key handling can be tested without 1Password.
