@@ -1,10 +1,11 @@
 'use client'
 
-import React, { useId, useState } from 'react'
+import React, { useId, useMemo, useState } from 'react'
 import { Upload, ClipboardCopy, Check, ChevronRight, ChevronDown } from 'lucide-react'
 import { LoadingButton } from '@/components/ui/LoadingButton'
 import { StatusMessage } from '@/components/ui/StatusMessage'
 import { copy } from '@/lib/copy'
+import { parseNextConvoPayload } from '@/lib/api/import-payload'
 import type { FerryStamp, FerryStamps, StampRecency } from '@/lib/builder/ferry-stamps'
 
 // The Brief tab's "ferry desk": copy the prep out, paste the payload back,
@@ -115,6 +116,19 @@ export function FerryDesk({
     .filter(Boolean)
     .join(' · ')
 
+  // Which brief version the pasted payload was prepped from, shown before
+  // Import so a stale paste is visible up front. Nothing when the box is
+  // empty, the JSON doesn't parse yet, or there is no prep stamp.
+  const pasteVersionLine = useMemo(() => {
+    if (pasteValue.trim() === '' || briefVersion == null) return null
+    const parsed = parseNextConvoPayload(pasteValue)
+    if (!parsed.ok || !parsed.value.stamp) return null
+    const prepV = parsed.value.stamp.brief_version
+    return prepV < briefVersion
+      ? { text: copy.brief.pasteVersionStale(prepV, briefVersion), stale: true }
+      : { text: copy.brief.pasteVersionMatches(prepV), stale: false }
+  }, [pasteValue, briefVersion])
+
   // The page-level useEscapeBack ignores keydowns inside a textarea, so the
   // paste box handles Escape itself: empty box → leave, filled box → blur
   // (so a stray Esc never throws away a pasted payload). stopPropagation
@@ -128,7 +142,10 @@ export function FerryDesk({
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
+      <div className="flex items-center justify-between gap-3">
+        <span data-testid="brief-version" className="text-base font-semibold text-brand-navy">
+          {copy.brief.versionLine(briefVersion, sessionCount)}
+        </span>
         <kbd className="rounded border border-gray-300 px-1.5 py-0.5 font-sans text-xs text-gray-400">
           {copy.brief.escHint}
         </kbd>
@@ -166,6 +183,15 @@ export function FerryDesk({
         className="w-full min-h-[55vh] rounded-lg border border-gray-300 bg-white p-3 font-mono text-sm focus:border-brand-navy focus:outline-none"
       />
 
+      {pasteVersionLine && (
+        <p
+          data-testid="paste-version"
+          className={`text-sm ${pasteVersionLine.stale ? 'font-medium text-amber-700' : 'text-gray-500'}`}
+        >
+          {pasteVersionLine.text}
+        </p>
+      )}
+
       {pasteError && <StatusMessage type="error" message={pasteError} />}
 
       <div className="flex flex-wrap items-center gap-3">
@@ -187,9 +213,6 @@ export function FerryDesk({
         >
           {prepCopied ? copy.brief.copied : copy.brief.copyPrep}
         </LoadingButton>
-        <span className="ml-auto text-sm text-gray-400">
-          {copy.brief.versionLine(briefVersion, sessionCount)}
-        </span>
       </div>
 
       {/* Next to the Import button on purpose: after an import with ignored

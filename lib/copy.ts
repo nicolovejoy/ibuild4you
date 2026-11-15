@@ -273,6 +273,11 @@ export const copy = {
     pastedVersion: (v: number) => `v${v}`,
     versionLine: (version: number | null, sessions: number | undefined) =>
       `${version == null ? 'No brief yet' : `Brief v${version}`}${sessions === undefined ? '' : ` · session ${sessions}`}`,
+    // Under the paste box, from the payload's _prep_stamp, before Import is clicked.
+    // The stale case matches what the server's paste guard then does (stalePrepNote).
+    pasteVersionMatches: (v: number) => `Prepped from v${v} · matches the brief`,
+    pasteVersionStale: (prepV: number, liveV: number) =>
+      `Prepped from v${prepV} · the brief is now v${liveV}. Import will stop and ask before saving.`,
   },
 
   // --- Chat ---

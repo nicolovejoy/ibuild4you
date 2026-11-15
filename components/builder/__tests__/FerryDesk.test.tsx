@@ -210,6 +210,42 @@ describe('FerryDesk', () => {
     expect(document.activeElement).not.toBe(box)
   })
 
+  it('shows the brief version as a label at the top of the desk, before the stamps', () => {
+    renderDesk()
+    const label = screen.getByTestId('brief-version')
+    expect(label.textContent).toBe('Brief v4 · session 3')
+    const firstStamp = screen.getByTestId('stamp-copied')
+    expect(label.compareDocumentPosition(firstStamp) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  const pasteWithStamp = (v: number) =>
+    JSON.stringify({ _payload_type: 'next-convo', _prep_stamp: { brief_version: v, note_ids: [] }, brief: {} })
+
+  it('under the paste box, says the payload matches when its prep version is the live one', () => {
+    renderDesk({ pasteValue: pasteWithStamp(4) })
+    const line = screen.getByTestId('paste-version')
+    expect(line.textContent).toBe('Prepped from v4 · matches the brief')
+  })
+
+  it('under the paste box, warns when the payload was prepped from an older version', () => {
+    renderDesk({ pasteValue: pasteWithStamp(3) })
+    const line = screen.getByTestId('paste-version')
+    expect(line.textContent).toBe(
+      'Prepped from v3 · the brief is now v4. Import will stop and ask before saving.'
+    )
+  })
+
+  it('shows no paste version line for an empty box, bad JSON, or a payload without a prep stamp', () => {
+    renderDesk()
+    expect(screen.queryByTestId('paste-version')).toBeNull()
+    cleanup()
+    renderDesk({ pasteValue: '{"brief":' })
+    expect(screen.queryByTestId('paste-version')).toBeNull()
+    cleanup()
+    renderDesk({ pasteValue: '{"brief":{}}' })
+    expect(screen.queryByTestId('paste-version')).toBeNull()
+  })
+
   it('renders the openQuestions slot', () => {
     renderDesk({ openQuestions: <div data-testid="oq-slot">questions</div> })
     expect(screen.getByTestId('oq-slot')).toBeTruthy()
