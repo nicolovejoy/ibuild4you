@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { noKeyMessage, postBuildStatus, resolveStatusKey, statusKeyItem } from './build-status-post.mjs'
+import { noKeyMessage, postBuildStatus, resolveStatusKey, statusKeyItem, validStatusBase } from './build-status-post.mjs'
 
 const KEY = 'bsk_SECRETKEYBODY_123456'
 
@@ -7,6 +7,33 @@ describe('statusKeyItem', () => {
   it('names the 1Password item after the normalised repo', () => {
     expect(statusKeyItem('NicoLovejoy/L6-Music')).toBe('ibuild4you-build-status-nicolovejoy-l6-music')
     expect(statusKeyItem('nicolovejoy/byside')).toBe('ibuild4you-build-status-nicolovejoy-byside')
+  })
+})
+
+describe('validStatusBase', () => {
+  it('accepts an https base', () => {
+    expect(validStatusBase('https://ibuild4you.com')).toBe(true)
+    expect(validStatusBase('https://preview.ibuild4you.com/')).toBe(true)
+    expect(validStatusBase('HTTPS://ibuild4you.com')).toBe(true)
+  })
+  it('accepts plain http only for localhost or 127.0.0.1, with an optional port', () => {
+    expect(validStatusBase('http://localhost')).toBe(true)
+    expect(validStatusBase('http://localhost:3000')).toBe(true)
+    expect(validStatusBase('http://localhost:3000/')).toBe(true)
+    expect(validStatusBase('http://127.0.0.1')).toBe(true)
+    expect(validStatusBase('http://127.0.0.1:8080')).toBe(true)
+  })
+  it('refuses anything else', () => {
+    expect(validStatusBase('http://ibuild4you.com')).toBe(false)
+    expect(validStatusBase('http://localhost.evil.com')).toBe(false)
+    expect(validStatusBase('http://localhost:3000@evil.com')).toBe(false)
+    expect(validStatusBase('http://127.0.0.1.evil.com')).toBe(false)
+    expect(validStatusBase('ftp://ibuild4you.com')).toBe(false)
+    expect(validStatusBase('ibuild4you.com')).toBe(false)
+    expect(validStatusBase('https://')).toBe(false)
+    expect(validStatusBase('')).toBe(false)
+    expect(validStatusBase(null)).toBe(false)
+    expect(validStatusBase(undefined)).toBe(false)
   })
 })
 
@@ -93,9 +120,17 @@ describe('postBuildStatus', () => {
     ['200 duplicate', () => answer(200, { ok: true, posted_at: 'x', duplicate: true }), true, 'Already posted (identical report a few minutes ago); nothing added.'],
     ['400', () => answer(400, { error: 'live[0] has no "checked" (say what you checked).' }), false, 'The report was refused: live[0] has no "checked" (say what you checked).'],
     ['401', () => answer(401, { error: 'Unauthorized' }), false, 'The app refused the key for NicoLovejoy/L6-Music. Give your report to Nico instead.'],
-    ['403', () => answer(403, { error: 'This key cannot post to that project.' }), false, 'The app refused the key for NicoLovejoy/L6-Music. Give your report to Nico instead.'],
+    ['401 with a non-JSON body', () => answer(401, 'nope'), false, 'The app refused the key for NicoLovejoy/L6-Music. Give your report to Nico instead.'],
+    // The server's reason comes through; its own closing period is not doubled.
+    ['403', () => answer(403, { error: 'This key cannot post to that project.' }), false, 'The app refused this post: This key cannot post to that project. Check the slug with list_briefs. If it still fails, give your report to Nico instead.'],
+    ['403 without a period', () => answer(403, { error: 'Wrong project' }), false, 'The app refused this post: Wrong project. Check the slug with list_briefs. If it still fails, give your report to Nico instead.'],
+    ['403 with no string error', () => answer(403, { error: 7 }), false, 'The app refused the key for NicoLovejoy/L6-Music. Give your report to Nico instead.'],
+    ['403 with a non-JSON body', () => answer(403, 'Forbidden'), false, 'The app refused the key for NicoLovejoy/L6-Music. Give your report to Nico instead.'],
+    ['429', () => answer(429, { error: 'Too many unread build reports for this project.' }), false, 'The app is holding too many unread reports for f4fc. Give your report to Nico instead.'],
+    ['429 with a non-JSON body', () => answer(429, 'slow down'), false, 'The app is holding too many unread reports for f4fc. Give your report to Nico instead.'],
     ['502 with HTML', () => answer(502, '<html>Bad gateway</html>'), false, 'Could not reach the app (502). Give your report to Nico instead.'],
-    ['201 with a non-JSON body', () => answer(201, 'not json'), false, 'Could not reach the app (201). Give your report to Nico instead.'],
+    ['201 with a non-JSON body', () => answer(201, 'not json'), true, 'Posted. The next prep for f4fc will include it.'],
+    ['200 with a non-JSON body (duplicate unknown)', () => answer(200, ''), true, 'Posted. The next prep for f4fc will include it.'],
     ['500', () => answer(500, { error: 'boom' }), false, 'Could not reach the app (500). Give your report to Nico instead.'],
   ]
   it.each(cases)('%s', async (_name, respond, ok, text) => {
@@ -116,9 +151,34 @@ describe('postBuildStatus', () => {
     expect(result.text).toBe('Could not reach the app (ENOTFOUND). Give your report to Nico instead.')
   })
 
+  it('says timeout for a fetch timeout, not the DOMException code', async () => {
+    // AbortSignal.timeout rejects with a DOMException named TimeoutError, code 23.
+    const timeout = Object.assign(new Error('The operation was aborted due to timeout'), { name: 'TimeoutError', code: 23 })
+    expect((await post(async () => { throw timeout })).text).toBe(
+      'Could not reach the app (timeout). Give your report to Nico instead.'
+    )
+    const abort = Object.assign(new Error('This operation was aborted'), { name: 'AbortError', code: 20 })
+    expect((await post(async () => { throw abort })).text).toBe(
+      'Could not reach the app (timeout). Give your report to Nico instead.'
+    )
+  })
+
+  it('uses err.code and err.cause.code only when they are strings', async () => {
+    const numeric = Object.assign(new TypeError('fetch failed'), { code: 23, cause: { code: 99 } })
+    expect((await post(async () => { throw numeric })).text).toBe(
+      'Could not reach the app (TypeError). Give your report to Nico instead.'
+    )
+    const causeOnly = Object.assign(new TypeError('fetch failed'), { code: 5, cause: { code: 'ECONNRESET' } })
+    expect((await post(async () => { throw causeOnly })).text).toBe(
+      'Could not reach the app (ECONNRESET). Give your report to Nico instead.'
+    )
+  })
+
   it('never returns the key, even if the server quotes it', async () => {
-    const result = await post(async () => answer(400, { error: `bad key ${KEY}` }))
-    expect(result.ok).toBe(false)
-    expect(result.text).not.toContain(KEY)
+    for (const status of [400, 403]) {
+      const result = await post(async () => answer(status, { error: `bad key ${KEY}` }))
+      expect(result.ok).toBe(false)
+      expect(result.text).not.toContain(KEY)
+    }
   })
 })

@@ -44,6 +44,15 @@ export function resolveStatusKey({ env, fetchFromOnePassword }) {
   return { key }
 }
 
+// The key goes out as a Bearer header, so only post where it cannot be read on
+// the wire: any https base, or plain http to this machine (local dev), with an
+// optional port. Anything else and the reader drops the key at start.
+export function validStatusBase(base) {
+  if (typeof base !== 'string') return false
+  if (/^https:\/\/\S+$/i.test(base)) return true
+  return /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\/?$/i.test(base)
+}
+
 export const noKeyMessage = (repo, reason) =>
   `No build status key for ${repo} (${reason}). Give your report to Nico instead.`
 
@@ -70,32 +79,59 @@ async function postAndDescribe({ fetch, base, key, repo, slug, briefVersion, rep
       signal: AbortSignal.timeout(30_000),
     })
   } catch (err) {
-    // Only a safe code or name, never the error's message: Node's fetch puts
-    // the real code on err.cause.
-    const detail = safeToken(err?.code) ?? safeToken(err?.cause?.code) ?? safeToken(err?.name) ?? 'network error'
-    return { ok: false, text: unreachable(detail) }
+    return { ok: false, text: unreachable(networkDetail(err)) }
   }
 
   const status = res.status
-  if (status === 401 || status === 403) {
-    return { ok: false, text: `The app refused the key for ${repo}. Give your report to Nico instead.` }
-  }
-
-  let body
+  // Parsed once; null when the body is not JSON. Only `error` and `duplicate`
+  // are ever read from it.
+  let body = null
   try {
     body = JSON.parse(await res.text())
   } catch {
-    return { ok: false, text: unreachable(safeToken(status) ?? 'no answer') }
+    // Not JSON (or the body never arrived): body stays null.
   }
+  const error = typeof body?.error === 'string' ? body.error : null
 
-  if (status === 201) {
-    return { ok: true, text: `Posted. The next prep for ${slug} will include it.` }
+  if (status === 201) return { ok: true, text: posted(slug) }
+  if (status === 200) {
+    if (body?.duplicate === true) {
+      return { ok: true, text: 'Already posted (identical report a few minutes ago); nothing added.' }
+    }
+    // A 200 the reader cannot read (say, a proxy ate the body) still stored or
+    // matched a report; whether it was a duplicate is unknown.
+    if (body === null) return { ok: true, text: posted(slug) }
   }
-  if (status === 200 && body?.duplicate === true) {
-    return { ok: true, text: 'Already posted (identical report a few minutes ago); nothing added.' }
+  if (status === 401 || (status === 403 && error === null)) {
+    return { ok: false, text: `The app refused the key for ${repo}. Give your report to Nico instead.` }
   }
-  if (status === 400 && typeof body?.error === 'string') {
-    return { ok: false, text: `The report was refused: ${body.error}` }
+  if (status === 403) {
+    // The server's message ends with its own period; do not double it.
+    const reason = error.replace(/\.+$/, '')
+    return {
+      ok: false,
+      text: `The app refused this post: ${reason}. Check the slug with list_briefs. If it still fails, give your report to Nico instead.`,
+    }
+  }
+  if (status === 429) {
+    return { ok: false, text: `The app is holding too many unread reports for ${slug}. Give your report to Nico instead.` }
+  }
+  if (status === 400 && error !== null) {
+    return { ok: false, text: `The report was refused: ${error}` }
   }
   return { ok: false, text: unreachable(safeToken(status) ?? 'no answer') }
+}
+
+const posted = (slug) => `Posted. The next prep for ${slug} will include it.`
+
+// A short, safe word for a failed fetch, never the error's message. A timeout
+// (AbortSignal.timeout's TimeoutError, or an AbortError) reads "timeout";
+// otherwise the error's code, or Node fetch's err.cause.code, when it is a
+// string (a DOMException's numeric code such as 23 means nothing to a reader);
+// then the error's name.
+function networkDetail(err) {
+  if (err?.name === 'TimeoutError' || err?.name === 'AbortError') return 'timeout'
+  const code = typeof err?.code === 'string' ? safeToken(err.code) : null
+  const causeCode = typeof err?.cause?.code === 'string' ? safeToken(err.cause.code) : null
+  return code ?? causeCode ?? safeToken(err?.name) ?? 'network error'
 }

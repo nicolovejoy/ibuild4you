@@ -37,7 +37,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod'
 import { repoMatches, renderBriefMd, renderSessionMd, unfoldedNotes } from './lib/brief-markdown.mjs'
-import { noKeyMessage, postBuildStatus } from './lib/build-status-post.mjs'
+import { noKeyMessage, postBuildStatus, validStatusBase } from './lib/build-status-post.mjs'
 
 const argv = process.argv.slice(2)
 const flagValue = (name) => {
@@ -64,12 +64,17 @@ delete process.env.FIREBASE_SERVICE_ACCOUNT // the credential object holds the k
 const db = getFirestore()
 
 // The status key, held in memory only and never printed or returned. Without
-// the launcher neither variable is set, which reads as no key.
-const STATUS_KEY = process.env.BUILD_STATUS_KEY || null
-const STATUS_KEY_REASON = process.env.BUILD_STATUS_KEY_REASON || 'not started through brief-reader.mjs'
+// the launcher neither variable is set, which reads as no key. The key rides a
+// Bearer header, so a --status-base that is not https (or local http) discards
+// it: the reader still starts, and post_build_status says why it cannot post.
+const STATUS_BASE = flagValue('--status-base') || 'https://ibuild4you.com'
+const STATUS_BASE_OK = validStatusBase(STATUS_BASE)
+const STATUS_KEY = STATUS_BASE_OK ? process.env.BUILD_STATUS_KEY || null : null
+const STATUS_KEY_REASON = STATUS_BASE_OK
+  ? process.env.BUILD_STATUS_KEY_REASON || 'not started through brief-reader.mjs'
+  : '--status-base must be https'
 delete process.env.BUILD_STATUS_KEY
 delete process.env.BUILD_STATUS_KEY_REASON
-const STATUS_BASE = flagValue('--status-base') || 'https://ibuild4you.com'
 
 // --- data access (all single-field queries, sort in memory; no indexes) ---
 
@@ -187,7 +192,7 @@ server.registerTool(
       return asError(e.message)
     }
     const { brief, sessions, reviews, files, notes } = await loadBriefBundle(project)
-    servedVersion.set(slug, brief ? brief.version : 0)
+    servedVersion.set(slug, brief?.version ?? 0)
     return asText(renderBriefMd({ project, brief, sessions, reviews, files, notes }))
   }
 )
