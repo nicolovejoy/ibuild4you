@@ -87,6 +87,15 @@ describe('BuildStatusKeyPanel visibility', () => {
     expect(screen.queryByRole('button', { name: 'Mint' })).toBeNull()
     expect(apiFetchMock).not.toHaveBeenCalled()
   })
+
+  it('treats a repo with shell characters like a bare name: no Mint, no op line', () => {
+    renderPanel({ githubRepo: `x/y'"$(id)"'` })
+    expect(
+      screen.getByText('Set the GitHub repo to owner/name to mint a build status key.')
+    ).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Mint' })).toBeNull()
+    expect(apiFetchMock).not.toHaveBeenCalled()
+  })
 })
 
 describe('BuildStatusKeyPanel keys', () => {

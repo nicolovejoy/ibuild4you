@@ -201,6 +201,12 @@ describe('POST /api/build-status: auth', () => {
     expect(await res.text()).toBe(UNAUTHORIZED)
   })
 
+  it('a repo with shell characters → 401', async () => {
+    const res = await POST(req({ ...goodBody, repo: `nicolovejoy/l6-music'"$(id)"'` }, L6_AUTH))
+    expect(res.status).toBe(401)
+    expect(await res.text()).toBe(UNAUTHORIZED)
+  })
+
   it('a missing or non-string repo → 401', async () => {
     const noRepo: Record<string, unknown> = { ...goodBody }
     delete noRepo.repo

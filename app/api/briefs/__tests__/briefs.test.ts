@@ -747,6 +747,16 @@ describe('PUT /api/briefs — paste guard (#229)', () => {
     expect((await res.json()).folded_reports).toEqual([])
   })
 
+  it('a mangled report_ids still saves and folds the listed notes, but no reports', async () => {
+    liveBrief(3)
+    mockListUnfoldedNotes.mockResolvedValue([note('aaa')])
+    const res = await put({ prep_stamp: { brief_version: 3, note_ids: ['aaa'], report_ids: 'oops' } })
+    expect(res.status).toBe(200)
+    expect(mockFoldNotes).toHaveBeenCalledWith(expect.anything(), 'brief-1', ['aaa'], expect.any(String))
+    expect(mockFoldReports).not.toHaveBeenCalled()
+    expect((await res.json()).folded_reports).toEqual([])
+  })
+
   it('a stamp with an empty report_ids list does not call foldReports', async () => {
     liveBrief(3)
     const res = await put({ prep_stamp: { brief_version: 3, note_ids: [], report_ids: [] } })

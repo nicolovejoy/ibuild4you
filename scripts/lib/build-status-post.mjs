@@ -103,11 +103,13 @@ async function postAndDescribe({ fetch, base, key, repo, slug, briefVersion, rep
     if (body === null) return { ok: true, text: posted(slug) }
   }
   if (status === 401 || (status === 403 && error === null)) {
-    return { ok: false, text: `The app refused the key for ${repo}. Give your report to Nico instead.` }
+    return { ok: false, text: refusedKey(repo) }
   }
   if (status === 403) {
     // The server's message ends with its own period; do not double it.
     const reason = error.replace(/\.+$/, '')
+    // Nothing left to say (no message, or only periods): same line as a bare 403.
+    if (reason.trim() === '') return { ok: false, text: refusedKey(repo) }
     return {
       ok: false,
       text: `The app refused this post: ${reason}. Check the slug with list_briefs. If it still fails, give your report to Nico instead.`,
@@ -121,6 +123,8 @@ async function postAndDescribe({ fetch, base, key, repo, slug, briefVersion, rep
   }
   return { ok: false, text: unreachable(safeToken(status) ?? 'no answer') }
 }
+
+const refusedKey = (repo) => `The app refused the key for ${repo}. Give your report to Nico instead.`
 
 const posted = (slug) => `Posted. The next prep for ${slug} will include it.`
 

@@ -44,6 +44,7 @@ beforeEach(() => {
   data.set('projects/p-l6-twin', { github_repo: 'https://github.com/NicoLovejoy/l6-music' })
   data.set('projects/p-bare', { github_repo: 'byside' })
   data.set('projects/p-none', {})
+  data.set('projects/p-shell', { github_repo: `x/y'"$(id)"'` })
   mockAuth.mockReset()
   mockAuth.mockResolvedValue(adminAuth)
   logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
@@ -82,6 +83,15 @@ describe('project and repo', () => {
   it('400s needs_full_repo for a bare repo name, and mints nothing', async () => {
     for (const fn of [GET, POST, DELETE]) {
       const res = await fn(req('X', 'p-bare'))
+      expect(res.status).toBe(400)
+      expect(await res.json()).toEqual({ error: 'needs_full_repo' })
+    }
+    expect([...data.keys()].some((k) => k.startsWith('build_status_keys/'))).toBe(false)
+  })
+
+  it('400s needs_full_repo for a repo with shell characters, and mints nothing', async () => {
+    for (const fn of [GET, POST, DELETE]) {
+      const res = await fn(req('X', 'p-shell'))
       expect(res.status).toBe(400)
       expect(await res.json()).toEqual({ error: 'needs_full_repo' })
     }
