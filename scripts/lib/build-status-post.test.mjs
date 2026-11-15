@@ -1,0 +1,124 @@
+import { describe, it, expect, vi } from 'vitest'
+import { noKeyMessage, postBuildStatus, resolveStatusKey, statusKeyItem } from './build-status-post.mjs'
+
+const KEY = 'bsk_SECRETKEYBODY_123456'
+
+describe('statusKeyItem', () => {
+  it('names the 1Password item after the normalised repo', () => {
+    expect(statusKeyItem('NicoLovejoy/L6-Music')).toBe('ibuild4you-build-status-nicolovejoy-l6-music')
+    expect(statusKeyItem('nicolovejoy/byside')).toBe('ibuild4you-build-status-nicolovejoy-byside')
+  })
+})
+
+describe('noKeyMessage', () => {
+  it('says there is no key and where the report goes instead', () => {
+    expect(noKeyMessage('nicolovejoy/l6-music', 'not minted')).toBe(
+      'No build status key for nicolovejoy/l6-music (not minted). Give your report to Nico instead.'
+    )
+  })
+})
+
+describe('resolveStatusKey', () => {
+  const STDERR = '"ibuild4you-build-status-x" isn\'t an item in the "dev-secrets" vault SECRET-STDERR'
+  const failWith = (props) => {
+    const boom = Object.assign(new Error('op: SECRET-STDERR in message'), props)
+    return resolveStatusKey({ env: {}, repo: 'nicolovejoy/l6-music', fetchFromOnePassword: () => { throw boom } })
+  }
+
+  it('uses the environment key and does not call 1Password', () => {
+    const fetchFromOnePassword = vi.fn()
+    expect(resolveStatusKey({ env: { BUILD_STATUS_KEY: KEY }, repo: 'a/b', fetchFromOnePassword })).toEqual({ key: KEY })
+    expect(fetchFromOnePassword).not.toHaveBeenCalled()
+  })
+  it('fetches from 1Password when the environment has none, trimming the answer', () => {
+    expect(resolveStatusKey({ env: {}, repo: 'a/b', fetchFromOnePassword: () => 'bsk_abcdefghijklmnop\n' })).toEqual({
+      key: 'bsk_abcdefghijklmnop',
+    })
+    expect(resolveStatusKey({ env: { BUILD_STATUS_KEY: '' }, repo: 'a/b', fetchFromOnePassword: () => 'bsk_abcdefghijklmnop' }).key).toBe(
+      'bsk_abcdefghijklmnop'
+    )
+  })
+  it('says not minted when 1Password has no such item', () => {
+    expect(failWith({ stderr: STDERR, status: 1 })).toEqual({ key: null, reason: 'not minted' })
+    expect(failWith({ stderr: '[ERROR] no item found SECRET-STDERR' })).toEqual({ key: null, reason: 'not minted' })
+  })
+  it('says 1Password did not answer for a timeout or any other failure', () => {
+    expect(failWith({ code: 'ETIMEDOUT' })).toEqual({ key: null, reason: '1Password did not answer' })
+    expect(failWith({ code: 'ENOENT' })).toEqual({ key: null, reason: '1Password did not answer' })
+    expect(failWith({ stderr: 'not signed in SECRET-STDERR', status: 1 })).toEqual({ key: null, reason: '1Password did not answer' })
+  })
+  it('refuses a stored value that is not a build status key, without echoing it', () => {
+    const result = resolveStatusKey({ env: {}, repo: 'a/b', fetchFromOnePassword: () => 'hello' })
+    expect(result).toEqual({ key: null, reason: 'the stored key is not a build status key' })
+    expect(resolveStatusKey({ env: {}, repo: 'a/b', fetchFromOnePassword: () => 'bsk_short' }).key).toBeNull()
+    expect(resolveStatusKey({ env: {}, repo: 'a/b', fetchFromOnePassword: () => '' }).key).toBeNull()
+  })
+  it('never puts the stderr text into a reason', () => {
+    for (const props of [{ stderr: STDERR }, { stderr: 'whatever SECRET-STDERR' }, { code: 'ETIMEDOUT', stderr: 'SECRET-STDERR' }]) {
+      const { reason } = failWith(props)
+      expect(reason).not.toContain('SECRET-STDERR')
+      expect(reason).not.toContain('\n')
+    }
+  })
+})
+
+describe('postBuildStatus', () => {
+  const report = { live: [{ what: 'Lesson page', checked: 'opened it in prod' }], merged: ['Booking fix'] }
+  const answer = (status, body) => ({
+    status,
+    text: async () => (typeof body === 'string' ? body : JSON.stringify(body)),
+  })
+  const post = (fetch) =>
+    postBuildStatus({ fetch, base: 'https://ibuild4you.com', key: KEY, repo: 'NicoLovejoy/L6-Music', slug: 'f4fc', briefVersion: 7, report })
+
+  it('sends one POST with the bearer key and the report', async () => {
+    const fetch = vi.fn(async () => answer(201, { ok: true, posted_at: '2026-11-15T20:00:00.000Z' }))
+    await post(fetch)
+    expect(fetch).toHaveBeenCalledTimes(1)
+    const [url, init] = fetch.mock.calls[0]
+    expect(url).toBe('https://ibuild4you.com/api/build-status')
+    expect(init.method).toBe('POST')
+    expect(init.headers.Authorization).toBe(`Bearer ${KEY}`)
+    expect(init.headers['Content-Type']).toBe('application/json')
+    expect(JSON.parse(init.body)).toEqual({
+      repo: 'nicolovejoy/l6-music',
+      project: 'f4fc',
+      brief_version_checked: 7,
+      ...report,
+    })
+  })
+
+  const cases = [
+    ['201', () => answer(201, { ok: true, posted_at: 'x' }), true, 'Posted. The next prep for f4fc will include it.'],
+    ['200 duplicate', () => answer(200, { ok: true, posted_at: 'x', duplicate: true }), true, 'Already posted (identical report a few minutes ago); nothing added.'],
+    ['400', () => answer(400, { error: 'live[0] has no "checked" (say what you checked).' }), false, 'The report was refused: live[0] has no "checked" (say what you checked).'],
+    ['401', () => answer(401, { error: 'Unauthorized' }), false, 'The app refused the key for NicoLovejoy/L6-Music. Give your report to Nico instead.'],
+    ['403', () => answer(403, { error: 'This key cannot post to that project.' }), false, 'The app refused the key for NicoLovejoy/L6-Music. Give your report to Nico instead.'],
+    ['502 with HTML', () => answer(502, '<html>Bad gateway</html>'), false, 'Could not reach the app (502). Give your report to Nico instead.'],
+    ['201 with a non-JSON body', () => answer(201, 'not json'), false, 'Could not reach the app (201). Give your report to Nico instead.'],
+    ['500', () => answer(500, { error: 'boom' }), false, 'Could not reach the app (500). Give your report to Nico instead.'],
+  ]
+  it.each(cases)('%s', async (_name, respond, ok, text) => {
+    const result = await post(async () => respond())
+    expect(result).toEqual({ ok, text })
+    expect(result.text).not.toContain(KEY)
+  })
+
+  it('reports a network error by its code only, without throwing', async () => {
+    const boom = Object.assign(new Error(`connect failed ${KEY}`), { code: 'ECONNREFUSED' })
+    const result = await post(async () => { throw boom })
+    expect(result).toEqual({ ok: false, text: 'Could not reach the app (ECONNREFUSED). Give your report to Nico instead.' })
+  })
+
+  it('reads the code from the cause of a Node fetch failure', async () => {
+    const boom = Object.assign(new TypeError('fetch failed'), { cause: { code: 'ENOTFOUND' } })
+    const result = await post(async () => { throw boom })
+    expect(result.text).toBe('Could not reach the app (ENOTFOUND). Give your report to Nico instead.')
+  })
+
+  it('never returns the key, even if the server quotes it', async () => {
+    const result = await post(async () => answer(400, { error: `bad key ${KEY}` }))
+    expect(result.ok).toBe(false)
+    expect(result.text).not.toContain(KEY)
+  })
+})

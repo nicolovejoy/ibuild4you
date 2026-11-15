@@ -12,16 +12,24 @@
 //     }
 //   }
 //
-// At start it fetches the datastore.viewer-only key from 1Password
-// (dev-secrets / ibuild4you-firestore-ro), which costs one Touch ID per start.
-// The reader runs in this launcher's own process (no child), so the key is
-// never in any process's start-up environment, which other same-user processes
-// can read with ps. It is set as FIREBASE_SERVICE_ACCOUNT at run time, and the
-// reader removes it from the environment once its credential is built. The key
-// is held in memory only: never written to disk, never printed. If
-// FIREBASE_SERVICE_ACCOUNT_RO is already set, that is used and 1Password is not
-// called; that variable is then visible in the launcher's environment, and that
-// is the caller's choice.
+// At start it makes two 1Password fetches (expect a Touch ID prompt):
+//   1. the datastore.viewer-only key (document dev-secrets /
+//      ibuild4you-firestore-ro). Required: without it the reader does not start.
+//   2. this repo's build status key (item dev-secrets /
+//      ibuild4you-build-status-<owner>-<name>, field password), which lets the
+//      post_build_status tool add a report and nothing else. Optional: if it is
+//      not minted or 1Password does not answer, one stderr line says so and the
+//      reader starts without it (the tool then tells the agent to hand the
+//      report to Nico).
+// The reader runs in this launcher's own process (no child), so neither key is
+// ever in any process's start-up environment, which other same-user processes
+// can read with ps. They are set at run time, as FIREBASE_SERVICE_ACCOUNT and
+// BUILD_STATUS_KEY (or BUILD_STATUS_KEY_REASON when there is no status key),
+// and the reader removes them from the environment once it has read them. Keys
+// are held in memory only: never written to disk, never printed. If
+// FIREBASE_SERVICE_ACCOUNT_RO or BUILD_STATUS_KEY is already set, that is used
+// and that fetch is skipped; the variable is then visible in the launcher's
+// environment, and that is the caller's choice.
 //
 // stdout belongs to the reader's protocol; this launcher only writes to stderr.
 //
@@ -29,6 +37,7 @@
 
 import { execFileSync } from 'node:child_process'
 import { ReaderKeyError, resolveReaderKey, safeToken } from './lib/reader-key.mjs'
+import { noKeyMessage, resolveStatusKey, statusKeyItem } from './lib/build-status-post.mjs'
 
 const args = process.argv.slice(2)
 
@@ -61,9 +70,38 @@ try {
   process.exit(1)
 }
 
+// The status key is optional, so its fetch can only ever produce a reason,
+// never stop the start. resolveStatusKey does not throw; the try is a
+// backstop so nothing unexpected here can either.
+const fetchStatusKeyFromOnePassword = () =>
+  execFileSync('op', ['read', 'op://dev-secrets/' + statusKeyItem(repo) + '/password'], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+    timeout: 60_000,
+  })
+
+let statusKey = null
+let statusKeyReason = null
+try {
+  const resolved = resolveStatusKey({ env: process.env, repo, fetchFromOnePassword: fetchStatusKeyFromOnePassword })
+  statusKey = resolved.key
+  statusKeyReason = resolved.reason ?? null
+} catch {
+  statusKeyReason = '1Password did not answer'
+}
+
 // Run the reader in this process. A variable set now is not visible to ps.
 process.env.FIREBASE_SERVICE_ACCOUNT = key
 delete process.env.FIREBASE_SERVICE_ACCOUNT_RO
+if (statusKey) {
+  process.env.BUILD_STATUS_KEY = statusKey
+  delete process.env.BUILD_STATUS_KEY_REASON
+} else {
+  // Our reason is a fixed phrase, never 1Password's output.
+  delete process.env.BUILD_STATUS_KEY
+  process.env.BUILD_STATUS_KEY_REASON = statusKeyReason
+  console.error(`brief-reader: ${noKeyMessage(repo, statusKeyReason)}`)
+}
 
 try {
   // mcp-briefs.mjs reads process.argv.slice(2), the same here, and resolves its
