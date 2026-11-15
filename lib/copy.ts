@@ -534,6 +534,33 @@ export const copy = {
     noAccessApps: 'You do not administer any apps yet.',
   },
 
+  // --- Build status key (Setup tab > Advanced, system admin only). English
+  // only, like the other admin screens. ---
+  buildStatusKey: {
+    heading: (repo: string) => `Build status key for ${repo}`,
+    needsFullRepo: 'Set the GitHub repo to owner/name to mint a build status key.',
+    none: 'No key yet.',
+    minted: (day: string) => `Minted ${day}`,
+    lastUsed: (day: string) => `last used ${day}`,
+    mint: 'Mint',
+    mintNew: 'Mint a new key',
+    revoke: 'Revoke',
+    confirmMintNew: 'Mint a new key? The current key stops working at once.',
+    confirmRevoke: 'Revoke the key? Reports from the build repo stop being accepted at once.',
+    keyLabel: 'Build status key',
+    shownOnce: 'Shown once. Minting again stops the old key at once.',
+    opLabel: '1Password command',
+    // The key is never part of this line: 1Password asks for it when it runs.
+    opCommand: (repo: string) =>
+      `op item create --category password --vault dev-secrets --title ibuild4you-build-status-${repo.replace('/', '-')} password[password]`,
+    opNote: 'Run this, then paste the key when 1Password asks.',
+    copy: 'Copy',
+    copied: 'Copied',
+    loading: 'Loading…',
+    error: 'Could not change the build status key.',
+    loadError: 'Could not load the build status key.',
+  },
+
   // --- General ---
   loading: 'Loading...',
 }
