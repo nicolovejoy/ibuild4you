@@ -85,7 +85,7 @@ import { TurnBadge } from '@/components/ui/TurnBadge'
 import { BriefSwitcher } from '@/components/brief-switcher'
 import { toLocale, type Locale } from '@/lib/locale'
 import { resolveBuilderTab, DEFAULT_BUILDER_TAB, type BuilderTabId } from '@/lib/projects/project-view'
-import type { Project, Session, BriefContent, BriefNote, ProjectFile } from '@/lib/types'
+import type { Project, Session, BriefContent, BriefNote, BuildReport, ProjectFile } from '@/lib/types'
 
 // Builder nav is Brief · Conversations · People · Agent setup. #120 made
 // Conversations reader-first (the transcript is the page), which pushed agent
@@ -508,7 +508,8 @@ function BriefTab({
   const [loadingPayload, setLoadingPayload] = useState(false)
   // Copy prep failed (nothing on the clipboard): shown in the desk's notices.
   const [copyPrepError, setCopyPrepError] = useState<string | null>(null)
-  // Shown after a copy that had no unfolded notes to carry (cleared on the next copy).
+  // Shown after a copy that had no unfolded notes to carry and/or carried build
+  // reports (cleared on the next copy).
   const [copyPrepNotice, setCopyPrepNotice] = useState<string | null>(null)
   // Covers the whole import (brief save + optional config PATCH + paste
   // stamp), not just the brief mutation.
@@ -604,10 +605,37 @@ function BriefTab({
       const currentBrief: BriefContent | null =
         liveContent && hasBriefContent(liveContent) ? liveContent : null
 
+      // Build reports from Code, read fresh like the notes (not from the
+      // cache). A failed read stops the copy: a prep that silently lacks the
+      // reports would read as "no new build news". Done before the clipboard
+      // write so a failure leaves the clipboard untouched.
+      let reportsRes: Response
+      try {
+        reportsRes = await apiFetch(`/api/build-status?project_id=${projectId}`)
+      } catch {
+        reportsRes = new Response(null, { status: 500 })
+      }
+      if (!reportsRes.ok) {
+        setCopyPrepError(copy.brief.copyPrepReportsFailed)
+        return
+      }
+      const { reports, latest_posted_at } = (await reportsRes.json()) as {
+        reports: BuildReport[]
+        latest_posted_at: string | null
+      }
+
+      // The stamp lists EVERY unfolded report, including any the prompt leaves
+      // out for length: the paste folds exactly the ids the stamp carries.
       const prompt = buildNextConvoPrompt({
         currentBrief,
         notes,
-        stamp: { brief_version, note_ids: notes.map((n) => n.id) },
+        stamp: {
+          brief_version,
+          note_ids: notes.map((n) => n.id),
+          report_ids: reports.map((r) => r.id),
+        },
+        reports,
+        latestReportAt: latest_posted_at,
         projectTitle: project.title,
         sessionCount: briefTabSessions?.length ?? 0,
         language: project.language,
@@ -616,7 +644,11 @@ function BriefTab({
       await navigator.clipboard.writeText(prompt)
       setPayloadCopied(true)
       setTimeout(() => setPayloadCopied(false), 2000)
-      if (notes.length === 0) setCopyPrepNotice(copy.brief.copyPrepNoNewNotes)
+      // Both notices can apply; the no-new-notes one comes first.
+      const notices: string[] = []
+      if (notes.length === 0) notices.push(copy.brief.copyPrepNoNewNotes)
+      if (reports.length > 0) notices.push(copy.brief.copyPrepReports(reports.length))
+      if (notices.length > 0) setCopyPrepNotice(notices.join(' '))
       // "Prep copied" stamp. Fire-and-forget: a failed stamp write must not
       // undo or hide a copy that already landed on the clipboard.
       updateProject.mutate(

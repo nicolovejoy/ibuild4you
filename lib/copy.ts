@@ -213,6 +213,14 @@ export const copy = {
     // prep for a new one.
     copyPrepNoNewNotes:
       'Prep copied. There are no new notes since the brief was last curated, so it carries only the brief as it stands.',
+    // The prep carries unfolded build reports from Code (the build repo's
+    // Claude Code). The count is every unfolded report, including any a long
+    // prep leaves out for length, since the paste folds them all.
+    copyPrepReports: (n: number) =>
+      n === 1 ? 'Includes 1 build report from Code.' : `Includes ${n} build reports from Code.`,
+    // The reports could not be loaded, so nothing reached the clipboard: a
+    // prep that silently lacked them would read as "no new build news".
+    copyPrepReportsFailed: "Couldn't load the build reports, so the prep was not copied. Try again.",
     newSinceCuration: (n: number) => `New since last curation (${n})`,
     noteHeading: (day: string) => `Conversation of ${day}`,
     noteDecision: (topic: string, decision: string) => `Decision: ${topic}: ${decision}`,
