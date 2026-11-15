@@ -14,6 +14,13 @@
 // registered it. Every project whose github_repo maps to --repo is visible;
 // nothing else is. Registered per consumer repo via a checked-in .mcp.json.
 //
+// The launcher scripts/brief-reader.mjs is the way a build repo starts this
+// server (it supplies the credentials through 1Password and passes --repo).
+//
+// --check prints one line per brief in scope (slug, brief version, last update,
+// conversation count, notes not yet folded into the brief) and exits 0 without
+// starting the server. A quick way to confirm the scope and credentials work.
+//
 // No write tools exist. The write path (brief edits) rides Nico's Max sub via
 // the copy-paste JSON ferry, never the metered API (#84 cost-routing).
 
@@ -22,7 +29,7 @@ import { getFirestore } from 'firebase-admin/firestore'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod'
-import { repoMatches, renderBriefMd, renderSessionMd } from './lib/brief-markdown.mjs'
+import { repoMatches, renderBriefMd, renderSessionMd, unfoldedNotes } from './lib/brief-markdown.mjs'
 
 const argv = process.argv.slice(2)
 const flagValue = (name) => {
@@ -45,6 +52,7 @@ if (!sa) {
   process.exit(1)
 }
 initializeApp({ credential: cert(JSON.parse(sa)) })
+delete process.env.FIREBASE_SERVICE_ACCOUNT // the credential object holds the key from here; nothing else needs it in the environment
 const db = getFirestore()
 
 // --- data access (all single-field queries, sort in memory; no indexes) ---
@@ -96,7 +104,14 @@ async function loadBriefBundle(project) {
   const reviews = reviewSnap.docs.map((d) => ({ id: d.id, ...d.data() }))
   const files = fileSnap.docs.map((d) => ({ id: d.id, ...d.data() }))
   const fileNames = new Map(files.map((f) => [f.id, f.filename || f.id]))
-  return { brief, sessions, reviews, files, fileNames }
+  // Notes newer than the curated brief. A plain read of the subcollection (no
+  // where/orderBy, so no index); unfoldedNotes filters and sorts in memory.
+  let notes = []
+  if (brief) {
+    const noteSnap = await db.collection('briefs').doc(brief.id).collection('notes').get()
+    notes = unfoldedNotes(noteSnap.docs.map((d) => ({ id: d.id, ...d.data() })))
+  }
+  return { brief, sessions, reviews, files, fileNames, notes }
 }
 
 // --- MCP server ---
@@ -106,30 +121,34 @@ const server = new McpServer({ name: 'ibuild-briefs', version: '1.0.0' })
 const asText = (text) => ({ content: [{ type: 'text', text }] })
 const asError = (message) => ({ content: [{ type: 'text', text: message }], isError: true })
 
+// One row per brief in scope, sorted by title. Shared by list_briefs and --check.
+async function listRows() {
+  const projects = await loadScopedProjects()
+  const rows = []
+  for (const project of projects.values()) {
+    const { brief, sessions, notes } = await loadBriefBundle(project)
+    rows.push({
+      slug: project.slug || project.id,
+      title: project.title,
+      brief_version: brief ? brief.version : null,
+      updated_at: brief ? brief.updated_at : null,
+      conversations: sessions.length,
+      new_notes: notes.length,
+    })
+  }
+  rows.sort((a, b) => (a.title || '').localeCompare(b.title || ''))
+  return rows
+}
+
 server.registerTool(
   'list_briefs',
   {
     title: 'List briefs',
     description:
-      `List the ibuild4you briefs for ${REPO}: slug, title, brief version, last update, and conversation count. Use a slug with get_brief or get_conversation.`,
+      `List the ibuild4you briefs for ${REPO}: slug, title, brief version, last update, conversation count, and new_notes (notes written since the brief was last curated; get_brief includes them). Use a slug with get_brief or get_conversation.`,
     inputSchema: {},
   },
-  async () => {
-    const projects = await loadScopedProjects()
-    const rows = []
-    for (const project of projects.values()) {
-      const { brief, sessions } = await loadBriefBundle(project)
-      rows.push({
-        slug: project.slug || project.id,
-        title: project.title,
-        brief_version: brief ? brief.version : null,
-        updated_at: brief ? brief.updated_at : null,
-        conversations: sessions.length,
-      })
-    }
-    rows.sort((a, b) => (a.title || '').localeCompare(b.title || ''))
-    return asText(JSON.stringify(rows, null, 2))
-  }
+  async () => asText(JSON.stringify(await listRows(), null, 2))
 )
 
 server.registerTool(
@@ -137,7 +156,7 @@ server.registerTool(
   {
     title: 'Get brief',
     description:
-      'Get the full living brief for one slug as markdown: problem, target users, features, constraints, decisions (with provenance), open risks, and reviewer annotations.',
+      'Get the full living brief for one slug as markdown: problem, target users, features, constraints, decisions (with provenance and any contested lock), open risks, what is shipped and queued, the notes written since the brief was last curated, and reviewer annotations. The notes are newer than the brief: read both.',
     inputSchema: { slug: z.string().describe('Brief slug from list_briefs') },
   },
   async ({ slug }) => {
@@ -147,8 +166,8 @@ server.registerTool(
     } catch (e) {
       return asError(e.message)
     }
-    const { brief, sessions, reviews, files } = await loadBriefBundle(project)
-    return asText(renderBriefMd({ project, brief, sessions, reviews, files }))
+    const { brief, sessions, reviews, files, notes } = await loadBriefBundle(project)
+    return asText(renderBriefMd({ project, brief, sessions, reviews, files, notes }))
   }
 )
 
@@ -219,6 +238,24 @@ server.registerTool(
     return asText(JSON.stringify(artifacts, null, 2))
   }
 )
+
+// --check: list what is in scope and exit, without serving. Runs after the
+// --repo refusal above and before the transport, so stdout stays free for the
+// MCP protocol in normal serving mode.
+if (argv.includes('--check')) {
+  const rows = await listRows()
+  if (!rows.length) {
+    console.log(`No briefs in scope for ${REPO}.`)
+  }
+  for (const r of rows) {
+    const version = r.brief_version == null ? '—' : r.brief_version
+    const updated = r.updated_at || '—'
+    console.log(
+      `${r.slug}  v${version}  updated ${updated}  conversations ${r.conversations}  new notes ${r.new_notes}`
+    )
+  }
+  process.exit(0)
+}
 
 const transport = new StdioServerTransport()
 await server.connect(transport)
