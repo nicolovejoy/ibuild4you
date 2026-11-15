@@ -260,6 +260,8 @@ git commit -m "feat(reader): reader and exporter pass unfolded notes; --check li
 
 ### Task 3: The launcher gets the key from 1Password and starts the reader
 
+> **Corrected after the final review (2026-11-15):** step 5's items 4 and 5 below (spawn a child with the key in its environment, pass its exit through) were a defect in this plan: a child's start-up environment is readable with `ps`. The shipped launcher imports the reader in-process instead. See the spec, section 3.
+
 **Files:**
 - Create: `scripts/lib/reader-key.mjs`
 - Create: `scripts/lib/reader-key.test.mjs`

@@ -62,7 +62,7 @@ The read-only key reads all of production Firestore (every maker conversation an
 - It takes the same arguments as the reader (`--repo owner/name`, required).
 - If `FIREBASE_SERVICE_ACCOUNT_RO` is already in its environment it uses that. Otherwise it fetches the 1Password document `ibuild4you-firestore-ro` (vault `dev-secrets`) with the `op` CLI, which asks for Touch ID.
 - It checks that what came back is a service-account key (parses, has a client email and a private key) and never prints it. On any failure it exits with one plain line on stderr saying what to do.
-- It starts `scripts/mcp-briefs.mjs` with the key in `FIREBASE_SERVICE_ACCOUNT`, from its own repo, whatever directory it was called from.
+- It runs `scripts/mcp-briefs.mjs` in its own process (an `import`, not a child process), whatever directory it was called from. The first build passed the key to a child through the child's start-up environment; the whole-branch review caught that any process running as the same user can read a start-up environment with `ps` for as long as the reader runs. Set at run time in the launcher's own process, the key is not visible that way, and the reader removes it from the environment once Firebase has it. (When the key is supplied through `FIREBASE_SERVICE_ACCOUNT_RO` instead of 1Password, that variable is visible in the launcher's start-up environment; that is the caller's choice.)
 
 Known cost: a Touch ID prompt when a session starts in a build repo. A missed prompt means no brief tools until the reader is reconnected (`/mcp`).
 
