@@ -42,7 +42,9 @@ const clip = await page.evaluate(() => window.__clip)
 const text = clip?.[clip.length - 1] || ''
 ok('prep copied', !!text, `${text.length} chars`)
 
-const briefBlock = text.match(/<current_brief[\s\S]*?<\/current_brief>/)?.[0] || ''
+// Anchor on the tag with its version attribute: the rules above also mention
+// "<current_brief>" in prose.
+const briefBlock = text.match(/<current_brief version=[\s\S]*?<\/current_brief>/)?.[0] || ''
 ok('brief block present', !!briefBlock)
 ok('brief block carries no stamp field', !/decided_in_session|decided_at|revised_in_session|revised_at/.test(briefBlock))
 ok('size line says spacing does not count', /Current size: [\d,]+ characters \(budget 20,000\)\. The size is counted without spacing and line breaks/.test(briefBlock))
@@ -52,11 +54,35 @@ ok('guide: leave the stamps out', /Leave out decided_in_session/.test(text))
 ok('welcome rule present', /what is live now, what is proposed and not built/.test(text))
 
 const noNotes = /<notes>\s*No new notes/.test(text)
-const notice = page.getByText(/There are no new notes since the brief was last curated/i)
-ok(
-  noNotes ? 'no new notes: the Brief tab says so' : 'new notes present: no notice shown',
-  noNotes ? (await notice.count()) > 0 : (await notice.count()) === 0,
-)
+const noticeText = /There are no new notes since the brief was last curated/i
+if (!noNotes) ok('new notes present: no notice shown', (await page.getByText(noticeText).count()) === 0)
+
+// The notice itself needs a brief with nothing unfolded. Try the next few
+// dashboard briefs until one copies a prep with no notes.
+let sawNotice = noNotes && (await page.getByText(noticeText).count()) > 0
+for (let i = 1; i < 8 && !sawNotice; i++) {
+  await page.goto(`${BASE}/dashboard`, { waitUntil: 'domcontentloaded' })
+  const next = page.locator('div.cursor-pointer:has(h3)').nth(i)
+  try { await next.waitFor({ timeout: 8000 }) } catch { break }
+  await next.click()
+  await page.waitForURL(/\/projects\//, { timeout: 15000 })
+  const btn = page.getByRole('button', { name: /Copy next-convo prep/i })
+  try { await btn.waitFor({ timeout: 10000 }) } catch { continue }
+  await page.waitForTimeout(1500)
+  if (await btn.isDisabled()) continue
+  await btn.click()
+  await page.waitForTimeout(4000)
+  const clips = await page.evaluate(() => window.__clip)
+  const prep = clips?.[clips.length - 1] || ''
+  if (!/<notes>\s*No new notes/.test(prep)) continue
+  sawNotice = (await page.getByText(noticeText).count()) > 0
+  await page.screenshot({ path: `${shotDir}/smoke-261-no-new-notes.png` })
+  ok('no new notes: the Brief tab says so', sawNotice, page.url())
+  break
+}
+if (!sawNotice && !results.some((r) => r.name.startsWith('no new notes'))) {
+  ok('no new notes: the Brief tab says so', false, 'no brief without unfolded notes among the first 8')
+}
 
 await browser.close()
 const failed = results.filter((r) => !r.pass).length
