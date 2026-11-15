@@ -30,7 +30,7 @@ import { initializeApp, cert } from 'firebase-admin/app'
 import { getFirestore } from 'firebase-admin/firestore'
 import { mkdirSync, writeFileSync, rmSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
-import { repoMatches, renderBriefMd, renderSessionMd } from './lib/brief-markdown.mjs'
+import { repoMatches, renderBriefMd, renderSessionMd, unfoldedNotes } from './lib/brief-markdown.mjs'
 
 const argv = process.argv.slice(2)
 const flagValue = (name) => {
@@ -114,6 +114,13 @@ async function exportProject(id, data) {
   briefs.sort((a, b) => (b.version || 0) - (a.version || 0))
   const brief = briefs[0] || null
 
+  // Notes newer than the curated brief (plain read, no index; filtered in memory)
+  let notes = []
+  if (brief) {
+    const noteSnap = await db.collection('briefs').doc(brief.id).collection('notes').get()
+    notes = unfoldedNotes(noteSnap.docs.map((d) => ({ id: d.id, ...d.data() })))
+  }
+
   // Skip archived sessions — same as the app's own listing (lib/sessions/active.ts)
   const sessions = sessionSnap.docs
     .map((d) => ({ id: d.id, ...d.data() }))
@@ -129,7 +136,7 @@ async function exportProject(id, data) {
   mkdirSync(outDir, { recursive: true })
 
   // brief.md
-  writeFileSync(join(outDir, 'brief.md'), renderBriefMd({ project, brief, sessions, reviews, files }))
+  writeFileSync(join(outDir, 'brief.md'), renderBriefMd({ project, brief, sessions, reviews, files, notes }))
   console.log(`wrote ${join(outDir, 'brief.md')}`)
 
   // session-NN.md — one per conversation, oldest first
