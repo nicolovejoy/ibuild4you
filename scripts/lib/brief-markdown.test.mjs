@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { normalizeRepo, repoMatches, renderBriefMd, renderSessionMd } from './brief-markdown.mjs'
+import { normalizeRepo, repoMatches, renderBriefMd, renderSessionMd, unfoldedNotes } from './brief-markdown.mjs'
 
 // =============================================================================
 // SHARED BRIEF/TRANSCRIPT MARKDOWN RENDERERS (#133 — extracted from export-brief)
@@ -29,32 +29,32 @@ describe('repoMatches', () => {
   })
 })
 
-describe('renderBriefMd', () => {
-  const project = { id: 'p1', slug: 'sams-cafe', title: "Sam's Cafe", status: 'active', context: 'Runs a cafe.' }
-  const sessions = [
-    { id: 's1', created_at: '2026-01-01T00:00:00Z' },
-    { id: 's2', created_at: '2026-02-01T00:00:00Z' },
-  ]
-  const brief = {
-    version: 3,
-    updated_at: '2026-03-04T12:00:00Z',
-    content: {
-      problem: 'No online ordering',
-      target_users: 'Local customers',
-      features: ['Online ordering', 'Pickup'],
-      constraints: 'Mobile-first',
-      additional_context: 'Peak is mornings',
-      decisions: [
-        { topic: 'Payment', decision: 'Stripe only', locked: true, decided_at: '2026-02-10T12:00:00Z', decided_in_session: 's2' },
-        { topic: 'Hosting', decision: 'Vercel', decided_at: '2026-01-05T12:00:00Z' }, // no session → "added"
-        { topic: 'Auth', decision: 'Google + passcode', decided_at: '2026-01-05T12:00:00Z', decided_in_session: 's1', revised_at: '2026-02-10T12:00:00Z', revised_in_session: 's2' }, // #218
-        { topic: 'Name', decision: 'Undecided' }, // no provenance
-      ],
-      open_risks: ['Payment fees'],
-    },
-  }
-  const reviews = [{ annotations: [{ section: 'Features', comment: 'Add loyalty', created_at: '2026-03-01T00:00:00Z' }] }]
+const project = { id: 'p1', slug: 'sams-cafe', title: "Sam's Cafe", status: 'active', context: 'Runs a cafe.' }
+const sessions = [
+  { id: 's1', created_at: '2026-01-01T00:00:00Z' },
+  { id: 's2', created_at: '2026-02-01T00:00:00Z' },
+]
+const brief = {
+  version: 3,
+  updated_at: '2026-03-04T12:00:00Z',
+  content: {
+    problem: 'No online ordering',
+    target_users: 'Local customers',
+    features: ['Online ordering', 'Pickup'],
+    constraints: 'Mobile-first',
+    additional_context: 'Peak is mornings',
+    decisions: [
+      { topic: 'Payment', decision: 'Stripe only', locked: true, decided_at: '2026-02-10T12:00:00Z', decided_in_session: 's2' },
+      { topic: 'Hosting', decision: 'Vercel', decided_at: '2026-01-05T12:00:00Z' }, // no session → "added"
+      { topic: 'Auth', decision: 'Google + passcode', decided_at: '2026-01-05T12:00:00Z', decided_in_session: 's1', revised_at: '2026-02-10T12:00:00Z', revised_in_session: 's2' }, // #218
+      { topic: 'Name', decision: 'Undecided' }, // no provenance
+    ],
+    open_risks: ['Payment fees'],
+  },
+}
+const reviews = [{ annotations: [{ section: 'Features', comment: 'Add loyalty', created_at: '2026-03-01T00:00:00Z' }] }]
 
+describe('renderBriefMd', () => {
   it('renders a full brief with provenance suffixes matching the exporter', () => {
     const md = renderBriefMd({ project, brief, sessions, reviews })
     expect(md).toBe(
@@ -172,5 +172,126 @@ describe('renderBriefMd open risk owners (#220)', () => {
     expect(md).toContain('- Payment fees')
     expect(md).toContain('- (maker) Which stations?')
     expect(md).toContain('- (builder) Hosting')
+  })
+})
+
+describe('unfoldedNotes', () => {
+  it('keeps notes with no folded_at, oldest first', () => {
+    const docs = [
+      { id: 'b', created_at: '2026-03-02T00:00:00Z', folded_at: null },
+      { id: 'x', created_at: '2026-03-01T12:00:00Z', folded_at: '2026-03-03T00:00:00Z' },
+      { id: 'a', created_at: '2026-03-01T00:00:00Z' },
+    ]
+    expect(unfoldedNotes(docs).map((n) => n.id)).toEqual(['a', 'b'])
+  })
+})
+
+describe('renderBriefMd notes, shipped, queued, contested', () => {
+  const note = {
+    id: 'NOTEID123',
+    session_id: 's2',
+    created_at: '2026-03-05T20:00:00Z',
+    folded_at: null,
+    text: '  Sam wants pickup windows.  ',
+    decisions: [{ topic: 'Pickup', decision: '15-minute windows' }],
+    risks_added: ['Parking', { text: 'Opening hours', owner: 'maker' }],
+    risks_resolved: ['Payment fees', { text: 'Menu size', resolution: 'Twelve items, no more' }],
+    lock_reversals: [{ topic: 'Payment', proposed: 'Add cash', reason: 'confirmed Mar 5' }],
+    thumbs_down: [{ excerpt: 'SECRET EXCERPT', reason: 'SECRET REASON' }],
+  }
+
+  it('omits the notes section when notes is not passed', () => {
+    expect(renderBriefMd({ project, brief, sessions, reviews })).not.toContain('## New since')
+  })
+
+  it('says so when there are no new notes', () => {
+    const md = renderBriefMd({ project, brief, sessions, reviews, notes: [] })
+    expect(md).toContain('## New since the brief was last curated\n\nNo new notes since the brief was last curated.')
+  })
+
+  it('renders a note with every part, and never thumbs-down or the id', () => {
+    const md = renderBriefMd({ project, brief, sessions, reviews, notes: [note] })
+    expect(md).toContain('These notes are not in the brief above yet. Where a note and the brief disagree, the note is newer.')
+    expect(md).toContain('### 2026-03-05, conversation 2\n\nSam wants pickup windows.')
+    expect(md).toContain('Decisions:\n- Pickup: 15-minute windows')
+    expect(md).toContain('New open risks:\n- Parking\n- (maker) Opening hours')
+    expect(md).toContain('Risks settled:\n- Payment fees\n- Menu size → Twelve items, no more')
+    expect(md).toContain(
+      'Maker asked to reverse a locked decision (on the brief as contested):\n- Payment: wants "Add cash" (confirmed Mar 5)'
+    )
+    expect(md).not.toContain('SECRET')
+    expect(md).not.toContain('NOTEID123')
+  })
+
+  it('renders an old or partial note without crashing', () => {
+    const old = { id: 'o', session_id: null, created_at: '2026-03-05T20:00:00Z', text: 'Short.', decisions: [] }
+    const md = renderBriefMd({ project, brief, sessions, reviews, notes: [old] })
+    expect(md).toContain('### 2026-03-05\n\nShort.')
+    expect(md).not.toContain('conversation undefined')
+    expect(md).not.toContain('Risks settled:')
+  })
+
+  it('shows the day alone for a note from an archived conversation', () => {
+    const md = renderBriefMd({ project, brief, sessions, reviews, notes: [{ ...note, session_id: 'gone' }] })
+    expect(md).toContain('### 2026-03-05\n')
+  })
+
+  it('leaves out the notes section when there is no brief', () => {
+    const md = renderBriefMd({ project, brief: null, sessions: [], reviews: [], notes: [] })
+    expect(md).not.toContain('## New since')
+  })
+
+  it('renders shipped newest first, skips malformed batches, and renders queued', () => {
+    const b = {
+      ...brief,
+      content: {
+        ...brief.content,
+        shipped: [
+          { date: '2026-02-01', items: ['Menu page'] },
+          { date: '2026-03-01', items: ['Ordering', 'Receipts'] },
+          { date: '2026-03-02' },
+          'junk',
+        ],
+        queued: ['Loyalty card'],
+      },
+    }
+    const md = renderBriefMd({ project, brief: b, sessions, reviews })
+    expect(md).toContain('## Shipped\n\n### 2026-03-01\n- Ordering\n- Receipts\n\n### 2026-02-01\n- Menu page')
+    expect(md).not.toContain('### 2026-03-02')
+    expect(md).toContain('## Queued\n\n- Loyalty card')
+  })
+
+  it('omits shipped and queued when empty', () => {
+    const md = renderBriefMd({ project, brief, sessions, reviews })
+    expect(md).not.toContain('## Shipped')
+    expect(md).not.toContain('## Queued')
+  })
+
+  it('shows a contest on a locked decision only', () => {
+    const contested = { proposed: 'Add cash', reason: 'confirmed Mar 5' }
+    const b = {
+      ...brief,
+      content: {
+        ...brief.content,
+        decisions: [
+          { topic: 'Payment', decision: 'Stripe only', locked: true, contested },
+          { topic: 'Hosting', decision: 'Vercel', contested },
+        ],
+      },
+    }
+    const md = renderBriefMd({ project, brief: b, sessions, reviews })
+    expect(md).toContain('- **Payment**: Stripe only _(locked)_ _(contested: maker asked for "Add cash"; confirmed Mar 5)_')
+    expect(md).toContain('- **Hosting**: Vercel\n')
+  })
+
+  it('adds the coverage line from whichever stamps the project has', () => {
+    const both = { ...project, notes_through_at: '2026-03-06T01:30:00Z', last_maker_message_at: '2026-03-06T18:05:00Z' }
+    expect(renderBriefMd({ project: both, brief, sessions, reviews })).toContain(
+      'Notes cover conversations through 2026-03-05 17:30 PT. Maker last wrote 2026-03-06 10:05 PT.'
+    )
+    const one = { ...project, last_maker_message_at: '2026-03-06T18:05:00Z' }
+    const md = renderBriefMd({ project: one, brief, sessions, reviews })
+    expect(md).toContain('Maker last wrote 2026-03-06 10:05 PT.')
+    expect(md).not.toContain('Notes cover')
   })
 })

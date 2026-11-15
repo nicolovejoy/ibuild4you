@@ -28,11 +28,42 @@ const day = (iso) => (iso || '').slice(0, 10)
 // Decision provenance days are Pacific, not UTC (#228). 'en-CA' formats as YYYY-MM-DD.
 const pacificDay = (iso) => new Date(iso).toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' })
 
+// Pacific "YYYY-MM-DD HH:MM PT" (24-hour) for the coverage line.
+const pacificMinute = (iso) => {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Los_Angeles',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(new Date(iso))
+  const get = (type) => parts.find((p) => p.type === type).value
+  return `${get('year')}-${get('month')}-${get('day')} ${get('hour')}:${get('minute')} PT`
+}
+
+// Notes not yet folded into a curated brief (no folded_at), oldest first.
+// Pure: takes note docs as plain objects, returns a new array.
+export function unfoldedNotes(noteDocs) {
+  return noteDocs
+    .filter((n) => !n.folded_at)
+    .sort((x, y) => (x.created_at || '').localeCompare(y.created_at || ''))
+}
+
+// An open risk is a plain string or { text, owner } (#220); same form wherever
+// risks are listed.
+const riskLine = (r) => (typeof r === 'string' ? `- ${r}` : r.owner ? `- (${r.owner}) ${r.text}` : `- ${r.text}`)
+
 // Render brief.md — project meta + latest brief + reviewer annotations.
+// Sections, in order: Decisions, Open risks, Shipped, Queued, New since the
+// brief was last curated (notes), Files & artifacts, Reviewer annotations.
+// Notes render only when `notes` is an array; undefined keeps the old output.
+// Left out on purpose: thumbs-down on notes and note ids (not for readers).
 // `sessions` must already be archived-excluded and sorted oldest-first (so
 // index+1 is the conversation number for #121 decision provenance). Returns
 // markdown with a trailing newline (matches what the exporter writes to disk).
-export function renderBriefMd({ project, brief, sessions, reviews, files = [] }) {
+export function renderBriefMd({ project, brief, sessions, reviews, files = [], notes }) {
   const slug = project.slug || project.id
   const b = []
   b.push(`# Brief: ${project.title}`)
@@ -43,9 +74,18 @@ export function renderBriefMd({ project, brief, sessions, reviews, files = [] })
   b.push(
     `Conversations: ${sessions.length}. Brief version: ${brief ? brief.version : 'none yet'} (updated ${brief ? day(brief.updated_at) : '—'}).`
   )
+  // Coverage: how far the notes reach and when the maker last wrote, so a
+  // reader can judge how stale the brief is. No line when neither is known.
+  const coverage = []
+  if (project.notes_through_at) coverage.push(`Notes cover conversations through ${pacificMinute(project.notes_through_at)}.`)
+  if (project.last_maker_message_at) coverage.push(`Maker last wrote ${pacificMinute(project.last_maker_message_at)}.`)
+  if (coverage.length) b.push(coverage.join(' '))
   if (project.context) b.push(`\n## Builder-provided context\n\n${project.context}`)
   if (brief) {
     const c = brief.content || {}
+    // #121: sessions here are already archived-excluded and sorted oldest-first,
+    // so index+1 is the conversation number (decisions and notes both use it).
+    const convNumber = new Map(sessions.map((s, i) => [s.id, i + 1]))
     b.push(`\n## Problem\n\n${c.problem || '—'}`)
     b.push(`\n## Target users\n\n${c.target_users || '—'}`)
     b.push(`\n## Features\n`)
@@ -55,9 +95,6 @@ export function renderBriefMd({ project, brief, sessions, reviews, files = [] })
     if (c.additional_context) b.push(`\n## Additional context\n\n${c.additional_context}`)
     if ((c.decisions || []).length) {
       b.push(`\n## Decisions\n`)
-      // #121: provenance suffix — sessions here are already archived-excluded
-      // and sorted oldest-first, so index+1 is the conversation number.
-      const convNumber = new Map(sessions.map((s, i) => [s.id, i + 1]))
       for (const d of c.decisions) {
         // #218: a revision keeps the origin and appends "; revised …".
         const parts = []
@@ -71,16 +108,72 @@ export function renderBriefMd({ project, brief, sessions, reviews, files = [] })
           const n = d.revised_in_session ? convNumber.get(d.revised_in_session) : undefined
           parts.push(n ? `revised conv ${n}, ${date}` : `revised ${date}`)
         }
+        // #197: a contested lock shows what the maker asked for.
+        const contest =
+          d.locked && d.contested
+            ? ` _(contested: maker asked for "${d.contested.proposed}"; ${d.contested.reason})_`
+            : ''
         const prov = parts.length ? ` _(${parts.join('; ')})_` : ''
-        b.push(`- **${d.topic}**: ${d.decision}${d.locked ? ' _(locked)_' : ''}${prov}`)
+        b.push(`- **${d.topic}**: ${d.decision}${d.locked ? ' _(locked)_' : ''}${contest}${prov}`)
       }
     }
     if ((c.open_risks || []).length) {
       b.push(`\n## Open risks\n`)
-      for (const r of c.open_risks) {
-        // #220: an element is a plain string or { text, owner }.
-        if (typeof r === 'string') b.push(`- ${r}`)
-        else b.push(r.owner ? `- (${r.owner}) ${r.text}` : `- ${r.text}`)
+      for (const r of c.open_risks) b.push(riskLine(r))
+    }
+    // #219: dated batches of what went out, newest first. Skip malformed ones.
+    const shipped = (Array.isArray(c.shipped) ? c.shipped : [])
+      .filter(
+        (s) =>
+          s &&
+          typeof s.date === 'string' &&
+          s.date &&
+          Array.isArray(s.items) &&
+          s.items.some((i) => typeof i === 'string')
+      )
+      .sort((x, y) => y.date.localeCompare(x.date))
+    if (shipped.length) {
+      b.push(`\n## Shipped`)
+      for (const batch of shipped) {
+        b.push('', `### ${batch.date}`)
+        for (const item of batch.items) if (typeof item === 'string') b.push(`- ${item}`)
+      }
+    }
+    const queued = (Array.isArray(c.queued) ? c.queued : []).filter((q) => typeof q === 'string')
+    if (queued.length) {
+      b.push(`\n## Queued\n`)
+      for (const q of queued) b.push(`- ${q}`)
+    }
+    // Notes written since the brief was last curated. Old notes may lack any
+    // list, so every list defaults to empty.
+    if (Array.isArray(notes)) {
+      b.push(`\n## New since the brief was last curated`, '')
+      if (!notes.length) {
+        b.push('No new notes since the brief was last curated.')
+      } else {
+        b.push('These notes are not in the brief above yet. Where a note and the brief disagree, the note is newer.')
+        for (const note of notes) {
+          const n = note.session_id ? convNumber.get(note.session_id) : undefined
+          b.push('', `### ${pacificDay(note.created_at)}${n ? `, conversation ${n}` : ''}`)
+          const text = (note.text || '').trim()
+          if (text) b.push('', text)
+          // One labelled sub-list, blank line before it, only when non-empty.
+          const sub = (label, lines) => {
+            if (lines.length) b.push('', label, ...lines)
+          }
+          sub('Decisions:', (note.decisions || []).map((d) => `- ${d.topic}: ${d.decision}`))
+          sub('New open risks:', (note.risks_added || []).map(riskLine))
+          sub(
+            'Risks settled:',
+            (note.risks_resolved || []).map((r) =>
+              typeof r === 'string' ? `- ${r}` : r.resolution ? `- ${r.text} → ${r.resolution}` : `- ${r.text}`
+            )
+          )
+          sub(
+            'Maker asked to reverse a locked decision (on the brief as contested):',
+            (note.lock_reversals || []).map((l) => `- ${l.topic}: wants "${l.proposed}" (${l.reason})`)
+          )
+        }
       }
     }
   }
