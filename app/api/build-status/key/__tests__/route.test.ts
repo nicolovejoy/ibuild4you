@@ -163,11 +163,18 @@ describe('DELETE', () => {
       event: 'build_status_key_revoked',
       repo: 'nicolovejoy/l6-music',
       actor: 'u1',
+      revoked: true,
     })
     expect((await (await GET(req('GET'))).json()).exists).toBe(false)
   })
 
-  it('says revoked: false when there was no key', async () => {
+  it('says revoked: false when there was no key, in the body and the log', async () => {
     expect(await (await DELETE(req('DELETE'))).json()).toEqual({ ok: true, revoked: false })
+    expect(JSON.parse(logSpy.mock.calls[0][0] as string)).toEqual({
+      event: 'build_status_key_revoked',
+      repo: 'nicolovejoy/l6-music',
+      actor: 'u1',
+      revoked: false,
+    })
   })
 })

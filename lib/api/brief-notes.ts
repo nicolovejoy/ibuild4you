@@ -80,16 +80,20 @@ export function isEmptyNote(
   )
 }
 
-// Parse the `_prep_stamp` a prep payload carries back. Null unless well-formed.
-// `report_ids` is optional (preps made before build reports have none), but
-// when present it must be a list of valid ids, like `note_ids`.
+// Parse the `_prep_stamp` a prep payload carries back. Null unless
+// `brief_version` and `note_ids` are well-formed. `report_ids` is optional
+// (preps made before build reports have none); a present but malformed list is
+// dropped rather than voiding the stamp, so a mangled report list cannot cost
+// the paste its lock restore and note folding. Those reports just stay unfolded.
 export function parsePrepStamp(raw: unknown): PrepStamp | null {
   if (!raw || typeof raw !== 'object') return null
   const { brief_version, note_ids, report_ids } = raw as Record<string, unknown>
   if (typeof brief_version !== 'number' || !Number.isInteger(brief_version) || brief_version < 0)
     return null
   if (!Array.isArray(note_ids) || !note_ids.every(isValidNoteId)) return null
-  if (report_ids === undefined) return { brief_version, note_ids: note_ids as string[] }
-  if (!Array.isArray(report_ids) || !report_ids.every(isValidNoteId)) return null
-  return { brief_version, note_ids: note_ids as string[], report_ids: report_ids as string[] }
+  const stamp: PrepStamp = { brief_version, note_ids: note_ids as string[] }
+  if (Array.isArray(report_ids) && report_ids.every(isValidNoteId)) {
+    stamp.report_ids = report_ids as string[]
+  }
+  return stamp
 }

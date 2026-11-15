@@ -6,7 +6,7 @@ import {
   useMintBuildStatusKey,
   useRevokeBuildStatusKey,
 } from '@/lib/query/hooks'
-import { normalizeGithubRepo } from '@/lib/github/repo'
+import { fullRepo, normalizeGithubRepo } from '@/lib/github/repo'
 import { copy } from '@/lib/copy'
 
 const t = copy.buildStatusKey
@@ -87,11 +87,9 @@ export function BuildStatusKeyPanel({
   githubRepo: string | undefined
   isSystemAdmin: boolean
 }) {
-  // A key is bound to a full "owner/name". This mirrors fullRepo() in
-  // lib/build-status/keys.ts, which is server-only (node:crypto).
+  // A key is bound to a full "owner/name"; a bare name gets a hint instead.
   const repo = normalizeGithubRepo(githubRepo)
-  const parts = repo.split('/')
-  const hasFullRepo = parts.length === 2 && !!parts[0] && !!parts[1]
+  const hasFullRepo = fullRepo(githubRepo) !== null
   const visible = isSystemAdmin && repo !== ''
 
   // Only ask the server when it will not answer needs_full_repo.

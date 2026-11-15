@@ -15,6 +15,16 @@ export function normalizeGithubRepo(raw: string | null | undefined): string {
     .replace(/\.git$/, '')
 }
 
+// Normalized "owner/name", or null when the value is empty, a bare name, or has
+// more than one "/". A build status key is bound to a full repo, so a bare name
+// cannot mint one. No node imports, so the Setup tab can use it too.
+export function fullRepo(raw: string | null | undefined): string | null {
+  const repo = normalizeGithubRepo(raw)
+  const parts = repo.split('/')
+  if (parts.length !== 2 || !parts[0] || !parts[1]) return null
+  return repo
+}
+
 // Do two github_repo values refer to the same repo? Symmetric (unlike the mjs
 // repoMatches, which only matched when the *wanted* value was fully qualified):
 // exact normalized match, OR — when at least one side is a bare name — a match

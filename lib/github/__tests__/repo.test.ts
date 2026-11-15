@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { normalizeGithubRepo, reposMatch } from '../repo'
+import { fullRepo, normalizeGithubRepo, reposMatch } from '../repo'
 
 describe('normalizeGithubRepo', () => {
   it('lowercases and strips URL / .git / trailing slashes', () => {
@@ -38,5 +38,22 @@ describe('reposMatch', () => {
     expect(reposMatch('', 'byside')).toBe(false)
     expect(reposMatch('byside', null)).toBe(false)
     expect(reposMatch(null, undefined)).toBe(false)
+  })
+})
+
+describe('fullRepo', () => {
+  it('returns normalized owner/name', () => {
+    expect(fullRepo('NicoLovejoy/L6-Music')).toBe('nicolovejoy/l6-music')
+    expect(fullRepo('https://github.com/nicolovejoy/l6-music.git')).toBe('nicolovejoy/l6-music')
+  })
+
+  it('returns null for empty, bare name, extra slashes or a missing half', () => {
+    expect(fullRepo('byside')).toBeNull()
+    expect(fullRepo('')).toBeNull()
+    expect(fullRepo(null)).toBeNull()
+    expect(fullRepo(undefined)).toBeNull()
+    expect(fullRepo('a/b/c')).toBeNull()
+    expect(fullRepo('/name')).toBeNull()
+    expect(fullRepo('owner/')).toBeNull()
   })
 })

@@ -46,12 +46,19 @@ const mockWhere = vi.fn(() => ({
 const mockBatchDelete = vi.fn()
 const mockBatchCommit = vi.fn()
 
+// Subcollection reads under a doc (projects/{id}/build_reports for DELETE).
+const mockSubcollectionGet = vi.fn<
+  (parent: string, sub: string) => Promise<{ docs: Array<{ ref: unknown }> }>
+>(async () => ({ docs: [] }))
+
 const mockDoc = vi.fn((id: string) => {
   lastDocId = id
+  const parent = `${lastCollectionName}/${id}`
   return {
     get: mockDocGet,
     update: mockDocUpdate,
     ref: { collection: lastCollectionName, id },
+    collection: (sub: string) => ({ get: () => mockSubcollectionGet(parent, sub) }),
   }
 })
 
@@ -332,6 +339,8 @@ describe('DELETE /api/projects', () => {
     mockBatchCommit.mockClear()
     mockDeleteS3Object.mockClear()
     mockDeleteS3Object.mockResolvedValue(undefined)
+    mockSubcollectionGet.mockReset()
+    mockSubcollectionGet.mockResolvedValue({ docs: [] })
     // Default: owner role, project exists
     mockGetProjectRole.mockResolvedValue('owner')
     mockDocGet.mockResolvedValue({ exists: true, data: () => ({ title: 'Test' }) })
@@ -453,6 +462,22 @@ describe('DELETE /api/projects', () => {
     const res = await DELETE(makeDeleteRequest('proj-1'))
     expect(res.status).toBe(200)
     expect(mockBatchDelete.mock.calls.map((c) => c[0])).toContain(n1)
+  })
+
+  it("deletes the project's build reports (no subcollection cascade)", async () => {
+    const r1 = { id: 'r1' }
+    const r2 = { id: 'r2' }
+    mockSubcollectionGet.mockImplementation(async (parent: string, sub: string) => ({
+      docs: parent === 'projects/proj-1' && sub === 'build_reports' ? [{ ref: r1 }, { ref: r2 }] : [],
+    }))
+    mockWhereGet.mockResolvedValue({ docs: [] })
+
+    const res = await DELETE(makeDeleteRequest('proj-1'))
+    expect(res.status).toBe(200)
+    expect(mockSubcollectionGet).toHaveBeenCalledWith('projects/proj-1', 'build_reports')
+    const deleted = mockBatchDelete.mock.calls.map((c) => c[0])
+    expect(deleted).toContain(r1)
+    expect(deleted).toContain(r2)
   })
 
   it('deletes S3 objects for ready files but skips pending ones', async () => {

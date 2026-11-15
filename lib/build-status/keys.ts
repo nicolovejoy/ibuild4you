@@ -3,7 +3,11 @@ import type { Firestore } from 'firebase-admin/firestore'
 import type { ReadKeyStatus } from '@/lib/types'
 import { hashReadKey, readKeyMatches } from '@/lib/feedback/read-crypto'
 import { LAST_USED_THROTTLE_MS } from '@/lib/feedback/read-keys'
-import { normalizeGithubRepo } from '@/lib/github/repo'
+import { fullRepo } from '@/lib/github/repo'
+
+// fullRepo lives with the other repo helpers (the Setup tab uses it too);
+// re-exported here because every key caller needs it.
+export { fullRepo }
 
 // =============================================================================
 // Per-repo status keys for the build status return leg. One doc per repo in
@@ -22,15 +26,6 @@ interface StatusKeyDoc {
   created_at: string
   created_by: string
   last_used_at?: string
-}
-
-// Normalized "owner/name", or null when the value is empty, a bare name, or has
-// more than one "/". A key is bound to a full repo, so a bare name cannot mint.
-export function fullRepo(raw: string | null | undefined): string | null {
-  const repo = normalizeGithubRepo(raw)
-  const parts = repo.split('/')
-  if (parts.length !== 2 || !parts[0] || !parts[1]) return null
-  return repo
 }
 
 // Firestore doc ids cannot contain "/". Callers pass a fullRepo() result.

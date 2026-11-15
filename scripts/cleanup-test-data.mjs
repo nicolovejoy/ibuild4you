@@ -132,7 +132,11 @@ async function deleteProject(art) {
   }
   await deleteDocsBatched(art.briefDocs.map((d) => d.ref))
   await deleteDocsBatched(art.memberDocs.map((d) => d.ref))
-  await db.collection('projects').doc(art.projectId).delete()
+  // Same for the build status reports under the project doc.
+  const projectRef = db.collection('projects').doc(art.projectId)
+  const reports = await projectRef.collection('build_reports').get()
+  await deleteDocsBatched(reports.docs.map((d) => d.ref))
+  await projectRef.delete()
 }
 
 async function main() {

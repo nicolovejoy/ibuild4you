@@ -61,6 +61,8 @@ export async function DELETE(request: Request) {
   const pre = await prelude(request)
   if (pre instanceof NextResponse) return pre
   const revoked = await revokeStatusKey(getAdminDb(), pre.repo)
-  console.log(JSON.stringify({ event: 'build_status_key_revoked', repo: pre.repo, actor: pre.uid }))
+  console.log(
+    JSON.stringify({ event: 'build_status_key_revoked', repo: pre.repo, actor: pre.uid, revoked })
+  )
   return json({ ok: true, revoked })
 }

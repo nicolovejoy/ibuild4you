@@ -22,10 +22,12 @@ vi.mock('@/lib/build-status/keys', async (importOriginal) => {
 })
 
 const mockAddReport = vi.fn()
-const mockListReports = vi.fn()
+const mockListUnfoldedReports = vi.fn()
+const mockLatestReportAt = vi.fn()
 vi.mock('@/lib/build-status/reports', () => ({
   addReport: (...args: unknown[]) => mockAddReport(...args),
-  listReports: (...args: unknown[]) => mockListReports(...args),
+  listUnfoldedReports: (...args: unknown[]) => mockListUnfoldedReports(...args),
+  latestReportAt: (...args: unknown[]) => mockLatestReportAt(...args),
 }))
 
 // GET goes through the real getAuthenticatedUser, so a status key sent as a
@@ -133,9 +135,14 @@ beforeEach(() => {
   mockAfter.mockClear()
   mockTouch.mockClear()
   mockAddReport.mockReset()
-  mockListReports.mockReset()
+  mockListUnfoldedReports.mockReset()
+  mockLatestReportAt.mockReset()
   mockGetProjectRole.mockReset()
-  mockAddReport.mockResolvedValue({ posted_at: '2026-11-15T20:00:00.000Z', duplicate: false })
+  mockAddReport.mockResolvedValue({
+    posted_at: '2026-11-15T20:00:00.000Z',
+    duplicate: false,
+    full: false,
+  })
   keyStore = {
     [repoKeyId('nicolovejoy/l6-music')]: {
       repo: 'nicolovejoy/l6-music',
@@ -333,7 +340,11 @@ describe('POST /api/build-status: success', () => {
   })
 
   it('a duplicate answers 200 with duplicate: true', async () => {
-    mockAddReport.mockResolvedValue({ posted_at: '2026-11-15T19:55:00.000Z', duplicate: true })
+    mockAddReport.mockResolvedValue({
+      posted_at: '2026-11-15T19:55:00.000Z',
+      duplicate: true,
+      full: false,
+    })
     const res = await POST(req(goodBody, L6_AUTH))
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({
@@ -341,6 +352,14 @@ describe('POST /api/build-status: success', () => {
       posted_at: '2026-11-15T19:55:00.000Z',
       duplicate: true,
     })
+  })
+
+  it('a project already holding 50 unfolded reports → 429, no-store', async () => {
+    mockAddReport.mockResolvedValue({ posted_at: null, duplicate: false, full: true })
+    const res = await POST(req(goodBody, L6_AUTH))
+    expect(res.status).toBe(429)
+    expect(res.headers.get('cache-control')).toBe('no-store')
+    expect(await res.json()).toEqual({ error: 'Too many unread build reports for this project.' })
   })
 
   it('logs one build_status_posted line with no key material', async () => {
@@ -400,14 +419,15 @@ function getReq(qs = '?project_id=p-l6', auth: string | null = `Bearer ${FIREBAS
 describe('GET /api/build-status', () => {
   beforeEach(() => {
     mockGetProjectRole.mockResolvedValue('builder')
-    mockListReports.mockResolvedValue([])
+    mockListUnfoldedReports.mockResolvedValue([])
+    mockLatestReportAt.mockResolvedValue(null)
   })
 
   it('a maker → 403', async () => {
     mockGetProjectRole.mockResolvedValue('maker')
     const res = await GET(getReq())
     expect(res.status).toBe(403)
-    expect(mockListReports).not.toHaveBeenCalled()
+    expect(mockListUnfoldedReports).not.toHaveBeenCalled()
   })
 
   it('no project_id → 400', async () => {
@@ -424,20 +444,21 @@ describe('GET /api/build-status', () => {
   it('a status key as the Bearer token → 401: the key cannot read', async () => {
     const res = await GET(getReq('?project_id=p-l6', L6_AUTH))
     expect(res.status).toBe(401)
-    expect(mockListReports).not.toHaveBeenCalled()
+    expect(mockListUnfoldedReports).not.toHaveBeenCalled()
     const text = await res.text()
     expect(text).not.toContain(L6_KEY)
   })
 
-  it('a builder gets only unfolded reports, oldest first, without body_hash', async () => {
-    mockListReports.mockResolvedValue([
-      report('r1', '2026-11-10T10:00:00.000Z', '2026-11-11T00:00:00.000Z'),
+  it('a builder gets the unfolded reports, oldest first, without body_hash', async () => {
+    mockListUnfoldedReports.mockResolvedValue([
       report('r2', '2026-11-12T10:00:00.000Z'),
       report('r3', '2026-11-14T10:00:00.000Z'),
     ])
+    mockLatestReportAt.mockResolvedValue('2026-11-14T10:00:00.000Z')
     const res = await GET(getReq())
     expect(res.status).toBe(200)
-    expect(mockListReports.mock.calls[0][1]).toBe('p-l6')
+    expect(mockListUnfoldedReports.mock.calls[0][1]).toBe('p-l6')
+    expect(mockLatestReportAt.mock.calls[0][1]).toBe('p-l6')
     const body = await res.json()
     expect(body.reports.map((r: { id: string }) => r.id)).toEqual(['r2', 'r3'])
     expect(body.latest_posted_at).toBe('2026-11-14T10:00:00.000Z')
@@ -456,10 +477,8 @@ describe('GET /api/build-status', () => {
   })
 
   it('all folded → no reports, latest_posted_at still set', async () => {
-    mockListReports.mockResolvedValue([
-      report('r1', '2026-11-10T10:00:00.000Z', '2026-11-11T00:00:00.000Z'),
-      report('r2', '2026-11-12T10:00:00.000Z', '2026-11-13T00:00:00.000Z'),
-    ])
+    mockListUnfoldedReports.mockResolvedValue([])
+    mockLatestReportAt.mockResolvedValue('2026-11-12T10:00:00.000Z')
     const res = await GET(getReq())
     expect(await res.json()).toEqual({ reports: [], latest_posted_at: '2026-11-12T10:00:00.000Z' })
   })

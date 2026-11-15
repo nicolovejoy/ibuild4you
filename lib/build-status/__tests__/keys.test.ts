@@ -13,6 +13,7 @@ import {
   touchStatusKey,
 } from '../keys'
 import { LAST_USED_THROTTLE_MS } from '@/lib/feedback/read-keys'
+import { fullRepo as githubFullRepo } from '@/lib/github/repo'
 
 type Doc = Record<string, unknown>
 
@@ -64,19 +65,9 @@ const REPO = 'nicolovejoy/l6-music'
 const DOC = 'build_status_keys/nicolovejoy__l6-music'
 
 describe('fullRepo', () => {
-  it('returns normalized owner/name', () => {
-    expect(fullRepo('NicoLovejoy/L6-Music')).toBe('nicolovejoy/l6-music')
-    expect(fullRepo('https://github.com/nicolovejoy/l6-music.git')).toBe('nicolovejoy/l6-music')
-  })
-
-  it('returns null for empty, bare name, extra slashes or a missing half', () => {
-    expect(fullRepo('byside')).toBeNull()
-    expect(fullRepo('')).toBeNull()
-    expect(fullRepo(null)).toBeNull()
-    expect(fullRepo(undefined)).toBeNull()
-    expect(fullRepo('a/b/c')).toBeNull()
-    expect(fullRepo('/name')).toBeNull()
-    expect(fullRepo('owner/')).toBeNull()
+  // The function and its tests live in lib/github/repo.ts; keys.ts re-exports it.
+  it('is the lib/github/repo function, re-exported', () => {
+    expect(fullRepo).toBe(githubFullRepo)
   })
 })
 
