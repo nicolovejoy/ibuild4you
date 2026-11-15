@@ -1,4 +1,5 @@
 import type { Locale } from '@/lib/locale'
+import type { BuildReportBody } from '@/lib/build-status/report'
 // Base entity type — all Firestore documents extend this
 export interface BaseEntity {
   id: string
@@ -426,4 +427,18 @@ export interface BriefNoteThumbsDown {
 export interface PrepStamp {
   brief_version: number
   note_ids: string[]
+  // Build reports the prep folded in, so a paste can mark them folded.
+  report_ids?: string[]
+}
+
+// A build report a build repo posted back for a brief. The body shape and its
+// validation live in lib/build-status/report.ts (which does not import this
+// file, so there is no cycle).
+export interface BuildReport extends BuildReportBody {
+  id: string
+  repo: string
+  brief_version_checked: number
+  posted_at: string
+  folded_at?: string | null
+  body_hash: string
 }
