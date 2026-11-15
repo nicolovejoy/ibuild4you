@@ -1,4 +1,5 @@
 import { copy } from '@/lib/copy'
+import { briefWithoutProvenance } from '@/lib/api/brief-merge'
 
 // The comms agent curates the brief by hand (#229), so the brief is no longer
 // capped by one model output. This is the size a curated brief should stay
@@ -9,8 +10,17 @@ const WARN_SHARE = 0.8
 
 // Shown on the Brief tab whenever the live brief is close to the budget, and
 // after a paste: null while the brief comfortably fits. Warns, never refuses.
+// The size the budget is checked against: compact JSON (spacing and line breaks
+// in a pretty-printed copy do not count), without the decision provenance
+// stamps. The app carries those itself and no agent reads them, so they are
+// not something a curator can trim.
+export function briefSizeChars(content: unknown): number {
+  if (!content || typeof content !== 'object') return JSON.stringify({}).length
+  return JSON.stringify(briefWithoutProvenance(content as { decisions?: unknown })).length
+}
+
 export function briefSizeWarning(content: unknown): string | null {
-  const chars = JSON.stringify(content ?? {}).length
+  const chars = briefSizeChars(content)
   if (chars > BRIEF_CHAR_BUDGET) return copy.brief.briefOverSizeLimit(chars, BRIEF_CHAR_BUDGET)
   if (chars >= BRIEF_CHAR_BUDGET * WARN_SHARE) return copy.brief.briefNearSizeLimit(chars, BRIEF_CHAR_BUDGET)
   return null

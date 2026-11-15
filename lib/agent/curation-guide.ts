@@ -34,7 +34,7 @@ Decisions
 - When a note records that the maker asked to reverse a locked decision, the app has already put that on the brief as "contested". Carry "contested" and "contest_dismissed" exactly as they appear; do not change the decision, the lock or the contest yourself. The builder settles it.
 - When a note revises a decision, keep that decision's "topic" text exactly as it is on the brief and change only "decision". The app matches decisions by topic; a reworded topic reads as a new decision and loses its history.
 - Keep each decision within the question it answered, in the maker's own words.
-- Carry decided_in_session, decided_at, revised_in_session and revised_at through unchanged.
+- Leave out decided_in_session, decided_at, revised_in_session and revised_at. The app keeps each decision's history itself, matched by topic.
 
 Open risks
 - Every open risk is an object with "text" and "owner": "maker" when only the maker can settle it (their preference, a fact about their world, a choice that is theirs), "builder" when it is the builder's to resolve (technical, scheduling, something the builder said they would look into).

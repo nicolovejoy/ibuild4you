@@ -26,3 +26,33 @@ describe('buildNoteUserContent speaker labels (#245)', () => {
     expect(NOTE_SYSTEM_PROMPT).toMatch(/never record a decision, risk owner change or lock_reversal from a Builder line/i)
   })
 })
+
+describe('buildNoteUserContent brief', () => {
+  it('leaves decision provenance stamps out of the brief the note writer reads', () => {
+    const content = buildNoteUserContent({
+      currentBrief: {
+        problem: 'p',
+        target_users: '',
+        features: [],
+        constraints: '',
+        additional_context: '',
+        decisions: [
+          {
+            topic: 'Payments',
+            decision: 'Stripe only',
+            locked: true,
+            decided_in_session: 'sessOrigin',
+            decided_at: '2026-10-12T00:00:00.000Z',
+          },
+        ],
+        open_risks: [],
+      },
+      notesSinceCuration: [],
+      earlierContext: [],
+      newMessages: [{ role: 'user', content: 'hello' }],
+    })
+    expect(content).toContain('Stripe only')
+    expect(content).toContain('"locked": true')
+    expect(content).not.toMatch(/decided_in_session|decided_at/)
+  })
+})

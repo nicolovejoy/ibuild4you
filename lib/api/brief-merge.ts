@@ -290,6 +290,16 @@ export function stampDecisionProvenance(args: {
   })
 }
 
+// The brief as the agents that read it need it: every decision without its
+// stamps. The comms agent and the note writer have no use for them, and a paste
+// that omits them loses nothing, because stampDecisionProvenance carries each
+// decision's stamps from the stored brief by topic (rule 2) and keeps the
+// origin on a revised one (rule 3). The stored brief keeps its stamps.
+export function briefWithoutProvenance<T extends { decisions?: unknown }>(content: T): T {
+  if (!Array.isArray(content.decisions)) return content
+  return { ...content, decisions: stripDecisionProvenance(content.decisions as BriefDecision[]) }
+}
+
 // Order decisions with locked ones first so durable constraints read as
 // constraints, not just another bullet (#71 — "surface locked decisions
 // prominently"). Contested locks lead (#197) — they wait on a builder. Stable

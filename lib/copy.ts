@@ -208,6 +208,11 @@ export const copy = {
     // Copy prep (#229) failed: nothing reached the clipboard.
     copyPrepBriefChanged: "Couldn't copy the prep — the brief changed while loading. Try again.",
     copyPrepFailed: "Couldn't copy the prep — try again.",
+    // The prep was copied, but no conversation has added anything since the
+    // brief was last curated. Said so the builder doesn't take an unchanged
+    // prep for a new one.
+    copyPrepNoNewNotes:
+      'Prep copied. There are no new notes since the brief was last curated, so it carries only the brief as it stands.',
     newSinceCuration: (n: number) => `New since last curation (${n})`,
     noteHeading: (day: string) => `Conversation of ${day}`,
     noteDecision: (topic: string, decision: string) => `Decision: ${topic}: ${decision}`,
