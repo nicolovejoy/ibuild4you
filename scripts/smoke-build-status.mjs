@@ -3,12 +3,15 @@
 // Code posts its status report to with the repo's own status key.
 //
 // Usage:
-//   node scripts/smoke-build-status.mjs --base https://preview.ibuild4you.com --repo owner/name --project <slug> --key-file <path>
+//   node scripts/smoke-build-status.mjs --base https://preview.ibuild4you.com --repo owner/name --project <slug> --key-file <path> [--allow-prod]
 //
 // The key is read from --key-file, never from an argument, so it does not land
-// in shell history or a process list. When --base is not production, the
-// Vercel protection bypass token is read from .ibuild4you-bypass and sent as
-// the x-vercel-protection-bypass header (the same file preview-login.mjs uses).
+// in shell history or a process list. Production (ibuild4you.com or
+// www.ibuild4you.com) is refused without --allow-prod, since the good report is
+// a real write. The Vercel protection bypass token is read from
+// .ibuild4you-bypass and sent as the x-vercel-protection-bypass header only to
+// a host ending in .ibuild4you.com (not production) or .vercel.app (the same
+// file preview-login.mjs uses); any other host gets no bypass header.
 //
 // One PASS or FAIL line per check, exit 1 on any FAIL:
 //   1. no key                     -> 401
@@ -29,10 +32,16 @@ import { pathToFileURL } from 'node:url'
 const ROOT = new URL('..', import.meta.url).pathname
 const PROD_HOSTS = new Set(['ibuild4you.com', 'www.ibuild4you.com'])
 
-// The bypass token for a non-production base, or null for production.
-export function bypassFor(base) {
-  if (PROD_HOSTS.has(new URL(base).hostname)) return null
-  return readFileSync(`${ROOT}.ibuild4you-bypass`, 'utf8').trim()
+export const isProdBase = (base) => PROD_HOSTS.has(new URL(base).hostname)
+
+// The bypass token for a host behind Vercel's protection (a preview subdomain
+// of ibuild4you.com, or a *.vercel.app deployment), else null without reading
+// it. `readToken` is for tests, so they never touch the real token file.
+export function bypassFor(base, readToken = () => readFileSync(`${ROOT}.ibuild4you-bypass`, 'utf8')) {
+  const host = new URL(base).hostname
+  if (PROD_HOSTS.has(host)) return null
+  if (!host.endsWith('.ibuild4you.com') && !host.endsWith('.vercel.app')) return null
+  return readToken().trim()
 }
 
 // A good report. `tag` makes the text unique, so a rerun inside the ten-minute
@@ -111,11 +120,18 @@ export async function runSmoke({ base, repo, project, key, bypass, log = console
   return failures
 }
 
-function parseArgs(argv) {
+// Flags that take no value.
+const BOOLEAN_FLAGS = new Set(['--allow-prod'])
+
+export function parseArgs(argv) {
   const args = {}
   for (let i = 0; i < argv.length; i++) {
     const name = argv[i]
     if (!name.startsWith('--')) throw new Error(`unexpected argument: ${name}`)
+    if (BOOLEAN_FLAGS.has(name)) {
+      args[name.slice(2)] = true
+      continue
+    }
     const value = argv[i + 1]
     if (value === undefined || value.startsWith('--')) throw new Error(`${name} needs a value`)
     args[name.slice(2)] = value
@@ -135,7 +151,18 @@ async function main() {
   const { base, repo, project } = args
   const keyFile = args['key-file']
   if (!base || !repo || !project || !keyFile) {
-    console.error('Usage: node scripts/smoke-build-status.mjs --base <url> --repo owner/name --project <slug> --key-file <path>')
+    console.error('Usage: node scripts/smoke-build-status.mjs --base <url> --repo owner/name --project <slug> --key-file <path> [--allow-prod]')
+    process.exit(2)
+  }
+  const cleanBase = base.replace(/\/+$/, '')
+  try {
+    new URL(cleanBase)
+  } catch {
+    console.error('--base must be a full URL, such as https://preview.ibuild4you.com')
+    process.exit(2)
+  }
+  if (isProdBase(cleanBase) && args['allow-prod'] !== true) {
+    console.error('Refusing to run against production without --allow-prod: the good report is a real write.')
     process.exit(2)
   }
 
@@ -144,7 +171,6 @@ async function main() {
     console.error('The key file is empty.')
     process.exit(2)
   }
-  const cleanBase = base.replace(/\/+$/, '')
   const bypass = bypassFor(cleanBase)
 
   console.log(`smoke: ${cleanBase} repo ${repo} project ${project} (bypass header: ${bypass ? 'yes' : 'no'})`)

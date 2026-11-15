@@ -107,10 +107,12 @@ try {
   // 2. Mint on the Setup tab. A key left by an earlier run shows "Mint a new key".
   await openAdvanced()
   await page.getByRole('button', { name: /^Mint/ }).click()
+  // Set at once: the mint may land even if reading the field below fails, and
+  // the cleanup must still revoke it.
+  keyLive = true
   const keyField = page.locator(`#build-status-key-${projectId}`)
   await keyField.waitFor({ timeout: 15000 })
   const key = (await keyField.inputValue()).trim()
-  keyLive = true
   grade(/^bsk_/.test(key), 'minted key shown in the read-only field (value not printed)')
   writeFileSync(keyFile, key, { mode: 0o600 })
 
