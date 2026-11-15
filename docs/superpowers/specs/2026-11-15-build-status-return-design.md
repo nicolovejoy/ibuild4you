@@ -1,6 +1,6 @@
 # Build status back to the prep (the return leg)
 
-Date: 2026-11-15. Status: design, awaiting Nico's approval. Part of the relay-efficiency programme (`2026-11-15-relay-efficiency-design.md`). It replaces that spec's "GitHub-issue mirror" project.
+Date: 2026-11-15. Status: approved by Nico, 2026-11-15, with the seven review changes folded in (read route, key lookup by repo, reader-stamped brief version, report size and cap, match function, duplicate drop, key fetch order). Part of the relay-efficiency programme (`2026-11-15-relay-efficiency-design.md`). It replaces that spec's "GitHub-issue mirror" project.
 
 ## In one paragraph
 
@@ -74,7 +74,7 @@ erDiagram
         timestamp posted_at
         timestamp folded_at "set when a stamped paste folds it; the prep shows unfolded ones"
         string repo
-        int brief_version_checked "the brief version Code read"
+        int brief_version_checked "the brief version the reader served; stamped by the reader, not Code"
         array live "each item: what, checked"
         array merged "merged, not deployed"
         array proposed "proposed or not built"
@@ -124,16 +124,18 @@ Code's reports reach the comms agent only when Nico pastes them. They go stale o
 
 `POST /api/build-status`, with `Authorization: Bearer <build status key>`.
 
-- The key identifies one build repo. The server hashes it (sha256, constant-time compare) and looks it up in `build_status_keys`, the same pattern as `loop_read_keys` (`lib/feedback/read-keys.ts`). A missing or wrong key gets 401 and no detail.
-- The body names the project by slug. The server refuses (403) a project whose `github_repo` doesn't match the key's repo, using the same match rule as the reader (`repoMatches`).
+- The body names the repo (`owner/name`; the reader sends its own `--repo`). The server loads `build_status_keys/{encoded repo}` by id, hashes the presented key (sha256) and compares in constant time, the same code path as `loop_read_keys` (`lib/feedback/read-keys.ts`), where the request names the app. No query by hash. A missing key document, a missing key or a wrong key all get 401 with no detail.
+- The body names the project by slug. The server refuses (403) a project whose `github_repo` doesn't match the key's repo, using the server's `reposMatch` (`lib/github/repo.ts`). A project that stores a bare name (`byside`) therefore accepts a `nicolovejoy/byside` key; that is the intended family match, and it has a test.
 - The body is the report (below). A malformed report gets 400 with the field that failed, so Code can fix it and retry.
 - On success the server adds a document to `projects/{id}/build_reports`, stamps `posted_at` with server time and updates `last_used_at` on the key. It returns `{ ok: true, posted_at }`.
+- A retry must not make a second report: if the body is identical to that project's latest report and that one was posted in the last ten minutes, the server stores nothing and returns the existing `posted_at` with `duplicate: true`.
 - The key can do nothing else: no reads, no other writes.
 
 ### The report
 
 ```json
 {
+  "repo": "nicolovejoy/l6-music",
   "project": "f4fc",
   "brief_version_checked": 55,
   "live": [{ "what": "Bar ranges on the practice screen", "checked": "deployed commit a1b2c3d on l6music.app, page loads" }],
@@ -145,15 +147,15 @@ Code's reports reach the comms agent only when Nico pastes them. They go stale o
 
 - A report says what this session did and found, not the whole state of the repo. (Builder-check call: with folding below, every report reaches a prep once, so changes-only reports never repeat an item, and none is lost to a cap.) The tool description says so.
 - Every `live` item needs a non-empty `checked`. Without one the server returns 400 and says the item belongs in `merged`. This is project 2's first rule, now enforced by the data shape.
-- `brief_version_checked` is required: the version Code read through the reader. The prep flags a report made from an older brief than the live one.
+- `brief_version_checked` is required by the endpoint, and Code never types it. The reader remembers the version it last served through `get_brief` for each slug in this session and adds it to the post. If it has served none for that slug, the tool refuses before posting: "Read the brief with get_brief first." (Code stamps, never the model, as with decision provenance.) The prep flags a report made from an older brief than the live one.
 - Lists may be empty, but at least one must have something in it.
-- Limits: 30 items per list, 500 characters per string, 10,000 characters in total. Anything over gets 400.
+- Limits: 30 items per list, 500 characters per string, 4,000 characters in total. Anything over gets 400.
 
 ### The reader's tool
 
-`scripts/mcp-briefs.mjs` gains `post_build_status`, with the report above as its input.
+`scripts/mcp-briefs.mjs` gains `post_build_status`. Its input is the project slug and the four lists; the reader adds `repo` and `brief_version_checked` itself.
 
-- The launcher (`scripts/brief-reader.mjs`) also fetches the repo's status key from 1Password at start (item `ibuild4you-build-status-<owner>-<name>`, field `password`, vault `dev-secrets`), in the same start that fetches the read-only key, and keeps it in memory the same way.
+- The launcher (`scripts/brief-reader.mjs`) also fetches the repo's status key from 1Password at start (item `ibuild4you-build-status-<owner>-<name>`, field `password`, vault `dev-secrets`), in the same start that fetches the read-only key, and keeps it in memory the same way. It fetches the read-only key first and the status key second, so a refused or missing status key never blocks the read-only start. Two fetches in one launcher process should need one Touch ID; that is an expectation, and the plan has a step where Nico checks it with `--check`.
 - The tool is always registered. When the reader has no status key, the reader still starts (read-only, as today) and the tool answers with the reason and the fallback: "No build status key for owner/name (not minted / 1Password did not answer). Give your report to Nico instead." The launcher tells the two cases apart and logs the same reason as one stderr line. (Builder-check call: a tool that silently disappears leaves Code's rule with no fallback.)
 - The tool posts to `https://ibuild4you.com/api/build-status` (overridable for preview by a flag on the launcher) and returns the server's answer as text, including any 400 message, so Code can correct the report.
 - The tool's description carries project 2's four rules in short, so the shape and the rules arrive together in any repo, not only l6-music.
@@ -171,7 +173,8 @@ The next-convo prep (`lib/agent/next-convo-prompt.ts`) gains a `<build_status>` 
 - Every unfolded report, oldest first (so the comms agent reads them in the order the work happened). Each shows its date and time (Pacific), the brief version it was made from, and the four lists.
 - Folding works like notes (#229): the prep's `_prep_stamp` gains `report_ids` beside `note_ids`; a stamped paste through `PUT /api/briefs` sets `folded_at` on exactly those reports, in the same batch that folds the notes. A report posted after the prep was copied is not in the stamp, stays unfolded and shows in the next prep. An unstamped paste folds nothing. The stale-prep guard is unchanged: reports don't make a prep stale, because a missed report just waits for the next one. (Builder-check call: filtering by `payload_pasted_at` would lose a report posted mid-curation, and compared a client clock with a server one.)
 - `parsePrepStamp` accepts a stamp without `report_ids` (every stamp made before this ships).
-- If the unfolded reports exceed 15,000 characters, the prep includes the newest that fit and says how many older ones were left out (they stay unfolded). Builder's call on the exact figure.
+- If the unfolded reports exceed 15,000 characters, the prep includes the newest that fit (shown oldest first) and says how many older ones were left out. The stamp's `report_ids` lists every report that was unfolded at copy time, left out or not, so the paste folds the left-out ones too. (Nico's call, 2026-11-15: an old report must not come back in a later prep looking new; the newest is the one that matters.) Builder's call on the exact figure.
+- The Brief tab builds the prep in the browser, so it needs the reports: `GET /api/build-status?project_id=…` (builder and up, the same check as the notes read) returns the unfolded reports and the date of the latest one. A React Query hook beside the notes hook feeds `buildNextConvoPrompt`.
 - A report made from a brief version older than the live brief gets the line "made from v54; the brief is now v55, so check its questions against the brief".
 - No unfolded reports: one line, "No new build report since the brief was last curated", with the date of the latest report if there is one.
 
@@ -189,13 +192,14 @@ Builds on PR #261 (the prep's welcome rule) and PR #263 (the launcher). Start af
 
 ## Tests
 
-- Endpoint: wrong or missing key → 401; key for another repo → 403; a live item without `checked` → 400 naming it; over the limits → 400; a good report is stored with server time and `last_used_at` is updated.
-- Prep: unfolded reports only, oldest first; the size cap and its "left out" line; the stale-version line; the no-report line; the changed welcome rule text; `report_ids` in the stamp.
-- Paste: a stamped paste folds exactly the listed reports; a report posted after the copy stays unfolded; an old stamp without `report_ids` still parses and folds no reports.
-- Reader: with no key, the tool is still listed and answers with the reason and the fallback; the two reasons are told apart; the tool passes a 400's message through.
+- Endpoint: wrong or missing key, or no key document for the repo → 401; key for another repo → 403; a bare stored `github_repo` accepts the full-name key; a live item without `checked` → 400 naming it; over the limits → 400; a good report is stored with server time and `last_used_at` is updated; an identical report within ten minutes is not stored twice.
+- Read route: builder and up only; unfolded reports only.
+- Prep: unfolded reports only, oldest first; the size cap and its "left out" line, with the left-out ids still in the stamp; the stale-version line; the no-report line; the changed welcome rule text; `report_ids` in the stamp.
+- Paste: a stamped paste folds exactly the listed reports, including ones the cap left out; a report posted after the copy stays unfolded; an old stamp without `report_ids` still parses and folds no reports.
+- Reader: with no key, the tool is still listed and answers with the reason and the fallback; the two reasons are told apart; the tool refuses when `get_brief` was not called for that slug; it sends the served version and its own repo; it passes a 400's message through.
+- Mint: the key is shown once, a re-mint invalidates the old key, revoke deletes it.
 
 **Where each part is checked.** The endpoint, keys and minting run on preview: mint a key on preview's Setup tab, then post with a small script (`scripts/smoke-build-status.mjs --base … --key-file …`). The reader reads prod Firestore, so its end-to-end post is prod-only. The first real one is l6-music's first report, checked by copying the F4FC prep. Keys are minted on preview only for that smoke test. (Builder-check call.)
-- Mint: the key is shown once, a re-mint invalidates the old key, revoke deletes it.
 
 ## Left to the builder
 
