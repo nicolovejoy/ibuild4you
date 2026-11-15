@@ -2,8 +2,10 @@ import { NextResponse, after } from 'next/server'
 import { getAdminDb } from '@/lib/firebase/admin'
 import { validateReport } from '@/lib/build-status/report'
 import { fullRepo, verifyStatusKey, touchStatusKey } from '@/lib/build-status/keys'
-import { addReport } from '@/lib/build-status/reports'
+import { addReport, listReports } from '@/lib/build-status/reports'
+import { getAuthenticatedUser, getProjectRole, requireRole } from '@/lib/api/firebase-server-helpers'
 import { reposMatch } from '@/lib/github/repo'
+import type { BuildReport } from '@/lib/types'
 
 // =============================================================================
 // POST /api/build-status
@@ -104,4 +106,42 @@ export async function POST(request: Request) {
 
   if (duplicate) return json({ ok: true, posted_at, duplicate: true }, 200)
   return json({ ok: true, posted_at }, 201)
+}
+
+// =============================================================================
+// GET /api/build-status?project_id=xxx
+//
+// A builder (or owner) reads the reports not yet folded into the brief, for
+// the Brief tab's prep. Firebase auth only: a status key sent as the Bearer
+// token fails token verification (401), so the key can never read.
+//
+// `latest_posted_at` is the newest report of any kind, folded or not, so the
+// page can tell "nothing new" from "nothing ever posted". `body_hash` is an
+// internal duplicate check and is not returned.
+// =============================================================================
+export async function GET(request: Request) {
+  const auth = await getAuthenticatedUser(request)
+  if (auth.error) return auth.error
+
+  const projectId = new URL(request.url).searchParams.get('project_id')
+  if (!projectId) return json({ error: 'project_id is required' }, 400)
+
+  const db = getAdminDb()
+  const role = await getProjectRole(db, projectId, auth.uid, auth.email, auth.systemRoles, auth)
+  const roleCheck = requireRole(role, 'builder')
+  if (roleCheck) return roleCheck
+
+  // One read, oldest first: the unfolded ones are filtered here, and the
+  // newest of all is the last element.
+  const all = await listReports(db, projectId)
+  const reports = all
+    .filter((r) => !r.folded_at)
+    .map((r) => {
+      const copy: Partial<BuildReport> = { ...r }
+      delete copy.body_hash
+      return copy
+    })
+  const latest_posted_at = all.length > 0 ? all[all.length - 1].posted_at : null
+
+  return json({ reports, latest_posted_at })
 }

@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiFetch } from '@/lib/firebase/api-fetch'
 import { queryKeys } from './keys'
-import type { App, AppWithAccess, AppAdmin, ReadKeyStatus, Project, Session, Message, Brief, BriefNote, BriefVersion, PrepStamp, SystemRole, ProjectFile, FileFolder, ProjectMemberSummary } from '@/lib/types'
+import type { App, AppWithAccess, AppAdmin, ReadKeyStatus, Project, Session, Message, Brief, BriefNote, BriefVersion, BuildReport, PrepStamp, SystemRole, ProjectFile, FileFolder, ProjectMemberSummary } from '@/lib/types'
 import type { GarmSyncOutcome } from '@/lib/garm-grants'
 
 // --- Current user ---
@@ -572,6 +572,8 @@ export function useUpdateBrief() {
       queryClient.invalidateQueries({ queryKey: queryKeys.brief(variables.project_id) })
       queryClient.invalidateQueries({ queryKey: queryKeys.briefVersions(variables.project_id) })
       queryClient.invalidateQueries({ queryKey: queryKeys.briefNotes(variables.project_id) })
+      // A paste can fold build reports, so the unfolded list is stale too.
+      queryClient.invalidateQueries({ queryKey: queryKeys.buildReports(variables.project_id) })
       queryClient.invalidateQueries({ queryKey: queryKeys.projects() })
     },
   })
@@ -1147,6 +1149,20 @@ export function useRevokeAppReadKey(slug: string) {
       if (!res.ok) throw new HttpError(data?.error || 'Revoke failed', res.status)
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.appReadKey(slug) }),
+  })
+}
+
+// --- Build reports (what a build repo posted back; builder+) ---
+
+export function useBuildReports(projectId: string | undefined) {
+  return useQuery<{ reports: Omit<BuildReport, 'body_hash'>[]; latest_posted_at: string | null }>({
+    queryKey: queryKeys.buildReports(projectId),
+    enabled: !!projectId,
+    queryFn: async () => {
+      const res = await apiFetch(`/api/build-status?project_id=${projectId}`)
+      if (!res.ok) throw new Error('Failed to load build reports')
+      return res.json()
+    },
   })
 }
 

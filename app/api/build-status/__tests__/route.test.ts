@@ -22,11 +22,29 @@ vi.mock('@/lib/build-status/keys', async (importOriginal) => {
 })
 
 const mockAddReport = vi.fn()
+const mockListReports = vi.fn()
 vi.mock('@/lib/build-status/reports', () => ({
   addReport: (...args: unknown[]) => mockAddReport(...args),
+  listReports: (...args: unknown[]) => mockListReports(...args),
 }))
 
-import { POST } from '../route'
+// GET goes through the real getAuthenticatedUser, so a status key sent as a
+// Bearer token is really tried as a Firebase ID token. Only the project role
+// lookup and the alias lookup are stubbed.
+const mockGetProjectRole = vi.fn()
+vi.mock('@/lib/api/firebase-server-helpers', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/api/firebase-server-helpers')>()
+  return {
+    ...actual,
+    getProjectRole: (...args: unknown[]) => mockGetProjectRole(...args),
+  }
+})
+vi.mock('@/lib/garm', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/garm')>()
+  return { ...actual, resolveCanonicalEmail: async (email: string) => email }
+})
+
+import { GET, POST } from '../route'
 import { hashReadKey } from '@/lib/feedback/read-crypto'
 import { repoKeyId } from '@/lib/build-status/keys'
 
@@ -42,9 +60,20 @@ const BYSIDE_KEY = 'bsk_BBBBBBBBBBBBBBBBBBBBBB'
 let keyStore: Record<string, Record<string, unknown>> = {}
 let projectStore: Array<{ id: string; slug: string; github_repo?: string }> = []
 
+const FIREBASE_TOKEN = 'firebase-id-token'
 vi.mock('@/lib/firebase/admin', () => ({
+  // Only the one real ID token verifies; anything else (a status key) throws.
+  getAdminAuth: vi.fn(() => ({
+    verifyIdToken: async (token: string) => {
+      if (token !== 'firebase-id-token') throw new Error('bad token')
+      return { uid: 'builder-1', email: 'builder@example.com', email_verified: true }
+    },
+  })),
   getAdminDb: vi.fn(() => ({
     collection: vi.fn((name: string) => {
+      if (name === 'users') {
+        return { doc: () => ({ get: async () => ({ data: () => ({ system_roles: [] }) }) }) }
+      }
       if (name === 'build_status_keys') {
         return {
           doc: (id: string) => ({
@@ -104,6 +133,8 @@ beforeEach(() => {
   mockAfter.mockClear()
   mockTouch.mockClear()
   mockAddReport.mockReset()
+  mockListReports.mockReset()
+  mockGetProjectRole.mockReset()
   mockAddReport.mockResolvedValue({ posted_at: '2026-11-15T20:00:00.000Z', duplicate: false })
   keyStore = {
     [repoKeyId('nicolovejoy/l6-music')]: {
@@ -338,5 +369,108 @@ describe('POST /api/build-status: success', () => {
       expect(text).not.toContain(L6_KEY)
       expect(text).not.toContain('key_hash')
     }
+  })
+})
+
+// =============================================================================
+// GET /api/build-status: a builder reads a project's unfolded reports.
+// =============================================================================
+
+function report(id: string, posted_at: string, folded_at: string | null = null) {
+  return {
+    id,
+    repo: 'nicolovejoy/l6-music',
+    brief_version_checked: 55,
+    live: [],
+    merged: [`merged in ${id}`],
+    proposed: [],
+    questions: [],
+    body_hash: `hash-${id}`,
+    posted_at,
+    folded_at,
+  }
+}
+
+function getReq(qs = '?project_id=p-l6', auth: string | null = `Bearer ${FIREBASE_TOKEN}`): Request {
+  const headers: Record<string, string> = {}
+  if (auth !== null) headers.authorization = auth
+  return new Request(`https://ibuild4you.com/api/build-status${qs}`, { method: 'GET', headers })
+}
+
+describe('GET /api/build-status', () => {
+  beforeEach(() => {
+    mockGetProjectRole.mockResolvedValue('builder')
+    mockListReports.mockResolvedValue([])
+  })
+
+  it('a maker → 403', async () => {
+    mockGetProjectRole.mockResolvedValue('maker')
+    const res = await GET(getReq())
+    expect(res.status).toBe(403)
+    expect(mockListReports).not.toHaveBeenCalled()
+  })
+
+  it('no project_id → 400', async () => {
+    const res = await GET(getReq(''))
+    expect(res.status).toBe(400)
+    expect(await res.json()).toEqual({ error: 'project_id is required' })
+  })
+
+  it('no Authorization header → 401', async () => {
+    const res = await GET(getReq('?project_id=p-l6', null))
+    expect(res.status).toBe(401)
+  })
+
+  it('a status key as the Bearer token → 401: the key cannot read', async () => {
+    const res = await GET(getReq('?project_id=p-l6', L6_AUTH))
+    expect(res.status).toBe(401)
+    expect(mockListReports).not.toHaveBeenCalled()
+    const text = await res.text()
+    expect(text).not.toContain(L6_KEY)
+  })
+
+  it('a builder gets only unfolded reports, oldest first, without body_hash', async () => {
+    mockListReports.mockResolvedValue([
+      report('r1', '2026-11-10T10:00:00.000Z', '2026-11-11T00:00:00.000Z'),
+      report('r2', '2026-11-12T10:00:00.000Z'),
+      report('r3', '2026-11-14T10:00:00.000Z'),
+    ])
+    const res = await GET(getReq())
+    expect(res.status).toBe(200)
+    expect(mockListReports.mock.calls[0][1]).toBe('p-l6')
+    const body = await res.json()
+    expect(body.reports.map((r: { id: string }) => r.id)).toEqual(['r2', 'r3'])
+    expect(body.latest_posted_at).toBe('2026-11-14T10:00:00.000Z')
+    expect(JSON.stringify(body)).not.toContain('body_hash')
+    expect(body.reports[0]).toEqual({
+      id: 'r2',
+      repo: 'nicolovejoy/l6-music',
+      brief_version_checked: 55,
+      live: [],
+      merged: ['merged in r2'],
+      proposed: [],
+      questions: [],
+      posted_at: '2026-11-12T10:00:00.000Z',
+      folded_at: null,
+    })
+  })
+
+  it('all folded → no reports, latest_posted_at still set', async () => {
+    mockListReports.mockResolvedValue([
+      report('r1', '2026-11-10T10:00:00.000Z', '2026-11-11T00:00:00.000Z'),
+      report('r2', '2026-11-12T10:00:00.000Z', '2026-11-13T00:00:00.000Z'),
+    ])
+    const res = await GET(getReq())
+    expect(await res.json()).toEqual({ reports: [], latest_posted_at: '2026-11-12T10:00:00.000Z' })
+  })
+
+  it('no reports → latest_posted_at null', async () => {
+    const res = await GET(getReq())
+    expect(await res.json()).toEqual({ reports: [], latest_posted_at: null })
+  })
+
+  it('is not cacheable', async () => {
+    const res = await GET(getReq())
+    expect(res.headers.get('cache-control')).toBe('no-store')
   })
 })
