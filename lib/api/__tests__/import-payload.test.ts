@@ -165,6 +165,16 @@ describe('parseNextConvoPayload', () => {
       expect(r.value.brief).toEqual({ problem: 'raw problem' })
     })
 
+    it('keeps report_ids on the stamp it returns', () => {
+      const withReports = { brief_version: 4, note_ids: ['abc123'], report_ids: ['rep001', 'rep002'] }
+      const r = parseNextConvoPayload(
+        JSON.stringify({ _payload_type: 'next-convo', _prep_stamp: withReports, brief: { problem: 'p' }, welcome_message: 'hi' })
+      )
+      expect(r.ok).toBe(true)
+      if (!r.ok || r.value.mode !== 'multi') throw new Error('expected multi')
+      expect(r.value.stamp).toEqual(withReports)
+    })
+
     it('returns stamp null when absent or malformed', () => {
       const absent = parseNextConvoPayload('{"brief":{"problem":"p"}}')
       expect(absent.ok).toBe(true)

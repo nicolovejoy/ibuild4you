@@ -5,6 +5,7 @@ import { contestFor, dismissedFor, restoreLocksOnPaste, stampDecisionProvenance,
 import { carryRiskOwners, normalizeRisks } from '@/lib/brief/risks'
 import { normalizeShipped, normalizeQueued, isShippedArrayShape } from '@/lib/brief/shipped'
 import { foldNotes, listUnfoldedNotes, parsePrepStamp } from '@/lib/api/brief-notes'
+import { foldReports } from '@/lib/build-status/reports'
 import { briefSizeWarning } from '@/lib/agent/brief-size'
 import type { BriefContent, BriefNote, BriefSource, PrepStamp } from '@/lib/types'
 
@@ -205,18 +206,37 @@ export async function PUT(request: Request) {
   // Fold the listed notes now the brief that absorbed them is saved. A fold
   // failure must not turn a saved paste into an error: the notes stay
   // unfolded (Sam still sees them) and the next prep lists them again.
+  const now = new Date().toISOString()
   let folded: string[] = []
   if (stamp && listed.length > 0) {
     const ids = listed.map((n) => n.id)
     try {
-      await foldNotes(db, result.id, ids, new Date().toISOString())
+      await foldNotes(db, result.id, ids, now)
       folded = ids
     } catch (err) {
       console.error('[briefs] folding notes failed for brief', result.id, 'notes', ids, err)
     }
   }
 
-  return NextResponse.json({ ...result, folded, size_warning: briefSizeWarning(briefContent) })
+  // Fold the build reports the stamp lists, the same way. Only the stamp's own
+  // ids are passed, so a report posted after the prep was copied stays
+  // unfolded for the next prep; reports play no part in the stale_prep check.
+  // foldReports reads only this project's reports and skips ids it can't fold.
+  let foldedReports: string[] = []
+  if (stamp?.report_ids && stamp.report_ids.length > 0) {
+    try {
+      foldedReports = await foldReports(db, project_id, stamp.report_ids, now)
+    } catch (err) {
+      console.error('[briefs] folding reports failed for project', project_id, 'reports', stamp.report_ids, err)
+    }
+  }
+
+  return NextResponse.json({
+    ...result,
+    folded,
+    folded_reports: foldedReports,
+    size_warning: briefSizeWarning(briefContent),
+  })
 }
 
 function validateBriefContent(content: unknown): string | null {

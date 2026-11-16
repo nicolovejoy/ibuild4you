@@ -291,6 +291,14 @@ export async function DELETE(request: Request) {
     docsToDelete.push(briefDoc.ref)
   }
 
+  // Build status reports live under the project doc, which doesn't cascade either.
+  const reportsSnap = await db
+    .collection('projects')
+    .doc(projectId)
+    .collection('build_reports')
+    .get()
+  reportsSnap.docs.forEach((r) => docsToDelete.push(r.ref))
+
   // Project members
   const membersSnap = await db
     .collection('project_members')

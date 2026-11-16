@@ -1149,3 +1149,55 @@ export function useRevokeAppReadKey(slug: string) {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.appReadKey(slug) }),
   })
 }
+
+// --- Build status key (per repo, minted from a brief's Setup tab) ---
+
+export interface BuildStatusKeyStatus extends ReadKeyStatus {
+  repo: string
+}
+
+export function useBuildStatusKey(projectId: string | undefined) {
+  return useQuery<BuildStatusKeyStatus>({
+    queryKey: queryKeys.buildStatusKey(projectId),
+    queryFn: async () => {
+      const res = await apiFetch(`/api/build-status/key?project_id=${projectId}`)
+      if (!res.ok) throw new HttpError('Failed to load build status key', res.status)
+      return res.json()
+    },
+    enabled: !!projectId,
+    retry: false,
+  })
+}
+
+// Minting again replaces the live key. The key is in this response only; the
+// caller holds it in component state. gcTime 0 drops the mutation (and the key
+// in its result) from the cache as soon as it settles.
+export function useMintBuildStatusKey() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    gcTime: 0,
+    mutationFn: async (
+      projectId: string
+    ): Promise<{ repo: string; key: string; created_at: string; rotated: boolean }> => {
+      const res = await apiFetch(`/api/build-status/key?project_id=${projectId}`, { method: 'POST' })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new HttpError(data?.error || 'Mint failed', res.status)
+      return data
+    },
+    onSuccess: (_data, projectId) =>
+      queryClient.invalidateQueries({ queryKey: queryKeys.buildStatusKey(projectId) }),
+  })
+}
+
+export function useRevokeBuildStatusKey() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (projectId: string) => {
+      const res = await apiFetch(`/api/build-status/key?project_id=${projectId}`, { method: 'DELETE' })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new HttpError(data?.error || 'Revoke failed', res.status)
+    },
+    onSuccess: (_data, projectId) =>
+      queryClient.invalidateQueries({ queryKey: queryKeys.buildStatusKey(projectId) }),
+  })
+}

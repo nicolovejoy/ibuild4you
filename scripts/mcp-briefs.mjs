@@ -18,11 +18,18 @@
 // server (it supplies the credentials through 1Password and passes --repo).
 //
 // --check prints one line per brief in scope (slug, brief version, last update,
-// conversation count, notes not yet folded into the brief) and exits 0 without
+// conversation count, notes not yet folded into the brief), then one line saying
+// whether a build status key is present (never the key), and exits 0 without
 // starting the server. A quick way to confirm the scope and credentials work.
 //
-// No write tools exist. The write path (brief edits) rides Nico's Max sub via
-// the copy-paste JSON ferry, never the metered API (#84 cost-routing).
+// Firestore is read-only. The one write tool, post_build_status, never touches
+// Firestore: it posts a build status report to the app (POST /api/build-status,
+// base from --status-base, default https://ibuild4you.com) with the repo's own
+// status key, which can add a report and nothing else. The launcher passes that
+// key (or the reason there is none) as BUILD_STATUS_KEY / BUILD_STATUS_KEY_REASON
+// at run time; this server reads both and removes them from the environment.
+// Brief edits still ride Nico's Max sub via the copy-paste JSON ferry, never
+// the metered API (#84 cost-routing).
 
 import { initializeApp, cert } from 'firebase-admin/app'
 import { getFirestore } from 'firebase-admin/firestore'
@@ -30,6 +37,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod'
 import { repoMatches, renderBriefMd, renderSessionMd, unfoldedNotes } from './lib/brief-markdown.mjs'
+import { noKeyMessage, postBuildStatus, validStatusBase } from './lib/build-status-post.mjs'
 
 const argv = process.argv.slice(2)
 const flagValue = (name) => {
@@ -54,6 +62,19 @@ if (!sa) {
 initializeApp({ credential: cert(JSON.parse(sa)) })
 delete process.env.FIREBASE_SERVICE_ACCOUNT // the credential object holds the key from here; nothing else needs it in the environment
 const db = getFirestore()
+
+// The status key, held in memory only and never printed or returned. Without
+// the launcher neither variable is set, which reads as no key. The key rides a
+// Bearer header, so a --status-base that is not https (or local http) discards
+// it: the reader still starts, and post_build_status says why it cannot post.
+const STATUS_BASE = flagValue('--status-base') || 'https://ibuild4you.com'
+const STATUS_BASE_OK = validStatusBase(STATUS_BASE)
+const STATUS_KEY = STATUS_BASE_OK ? process.env.BUILD_STATUS_KEY || null : null
+const STATUS_KEY_REASON = STATUS_BASE_OK
+  ? process.env.BUILD_STATUS_KEY_REASON || 'not started through brief-reader.mjs'
+  : '--status-base must be https'
+delete process.env.BUILD_STATUS_KEY
+delete process.env.BUILD_STATUS_KEY_REASON
 
 // --- data access (all single-field queries, sort in memory; no indexes) ---
 
@@ -121,6 +142,10 @@ const server = new McpServer({ name: 'ibuild-briefs', version: '1.0.0' })
 const asText = (text) => ({ content: [{ type: 'text', text }] })
 const asError = (message) => ({ content: [{ type: 'text', text: message }], isError: true })
 
+// slug -> the brief version get_brief last served this session. A report says
+// which version it was checked against, so posting needs a get_brief first.
+const servedVersion = new Map()
+
 // One row per brief in scope, sorted by title. Shared by list_briefs and --check.
 async function listRows() {
   const projects = await loadScopedProjects()
@@ -167,6 +192,7 @@ server.registerTool(
       return asError(e.message)
     }
     const { brief, sessions, reviews, files, notes } = await loadBriefBundle(project)
+    servedVersion.set(slug, brief?.version ?? 0)
     return asText(renderBriefMd({ project, brief, sessions, reviews, files, notes }))
   }
 )
@@ -239,6 +265,46 @@ server.registerTool(
   }
 )
 
+// Registered even without a key, so the agent gets a clear "give it to Nico"
+// answer instead of a missing tool.
+server.registerTool(
+  'post_build_status',
+  {
+    title: 'Post build status',
+    description:
+      'Post this session\'s build status for one brief to the ibuild4you app, so the comms agent sees it in the next prep without Nico copying it. Report what this session did and found, not the whole state of the repo. Rules: (1) "live" is only for what you checked in production; every live item says what you checked. Merged but not deployed goes in "merged". (2) Proposed or unbuilt work goes in "proposed", never in "live". (3) Put questions only the maker can answer in "questions"; read the brief and notes first so you do not ask one they already answer. (4) Write for the comms agent: plain, short, no file paths the maker would not know. Call get_brief for the slug first.',
+    inputSchema: {
+      slug: z.string().describe('Brief slug from list_briefs'),
+      live: z
+        .array(z.object({ what: z.string(), checked: z.string() }))
+        .optional()
+        .describe('What is live in production, each with what you checked'),
+      merged: z.array(z.string()).optional().describe('Merged but not yet deployed'),
+      proposed: z.array(z.string()).optional().describe('Proposed or unbuilt work'),
+      questions: z.array(z.string()).optional().describe('Questions only the maker can answer'),
+    },
+  },
+  async ({ slug, live, merged, proposed, questions }) => {
+    try {
+      await resolveInScope(slug)
+    } catch (e) {
+      return asError(e.message)
+    }
+    if (!STATUS_KEY) return asError(noKeyMessage(REPO, STATUS_KEY_REASON))
+    if (!servedVersion.has(slug)) return asError('Read the brief with get_brief first, then post.')
+    const { ok, text } = await postBuildStatus({
+      fetch,
+      base: STATUS_BASE,
+      key: STATUS_KEY,
+      repo: REPO,
+      slug,
+      briefVersion: servedVersion.get(slug),
+      report: { live, merged, proposed, questions },
+    })
+    return ok ? asText(text) : asError(text)
+  }
+)
+
 // --check: list what is in scope and exit, without serving. Runs after the
 // --repo refusal above and before the transport, so stdout stays free for the
 // MCP protocol in normal serving mode.
@@ -254,6 +320,7 @@ if (argv.includes('--check')) {
       `${r.slug}  v${version}  updated ${updated}  conversations ${r.conversations}  new notes ${r.new_notes}`
     )
   }
+  console.log(STATUS_KEY ? 'build status key: present' : `build status key: none (${STATUS_KEY_REASON})`)
   process.exit(0)
 }
 

@@ -162,4 +162,30 @@ describe('parsePrepStamp', () => {
     expect(parsePrepStamp({ brief_version: 1, note_ids: ['..'] })).toBeNull()
     expect(parsePrepStamp({ brief_version: 1, note_ids: ['a'.repeat(200)] })).toBeNull()
   })
+  it('returns the stamp without report_ids when it is absent', () => {
+    expect(parsePrepStamp({ brief_version: 3, note_ids: [] })).toEqual({ brief_version: 3, note_ids: [] })
+  })
+  it('carries well-formed report_ids', () => {
+    expect(parsePrepStamp({ brief_version: 3, note_ids: [], report_ids: ['abc'] })).toEqual({
+      brief_version: 3,
+      note_ids: [],
+      report_ids: ['abc'],
+    })
+  })
+  // A mangled report list must not void the stamp: the locks and note folding
+  // it carries matter more. The stamp comes back without report_ids.
+  it('drops malformed report_ids and keeps the rest of the stamp', () => {
+    expect(parsePrepStamp({ brief_version: 3, note_ids: ['abc'], report_ids: ['../x'] })).toEqual({
+      brief_version: 3,
+      note_ids: ['abc'],
+    })
+    expect(parsePrepStamp({ brief_version: 3, note_ids: [], report_ids: 'abc' })).toEqual({
+      brief_version: 3,
+      note_ids: [],
+    })
+    expect(parsePrepStamp({ brief_version: 3, note_ids: [], report_ids: null })).toEqual({
+      brief_version: 3,
+      note_ids: [],
+    })
+  })
 })

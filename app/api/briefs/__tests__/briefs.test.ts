@@ -64,6 +64,12 @@ vi.mock('@/lib/api/brief-notes', async (importOriginal) => {
   }
 })
 
+// A stamped paste also folds the build reports its prep listed.
+const mockFoldReports = vi.fn()
+vi.mock('@/lib/build-status/reports', () => ({
+  foldReports: (...args: unknown[]) => mockFoldReports(...args),
+}))
+
 // --- Helpers ---
 
 const validContent = {
@@ -557,6 +563,7 @@ describe('PUT /api/briefs — paste guard (#229)', () => {
     mockUpsertBrief.mockResolvedValue({ id: 'brief-1', project_id: 'proj1', version: 4, content: validContent })
     mockListUnfoldedNotes.mockResolvedValue([])
     mockFoldNotes.mockResolvedValue(undefined)
+    mockFoldReports.mockResolvedValue([])
   })
 
   it('no stamp saves and folds nothing', async () => {
@@ -707,6 +714,104 @@ describe('PUT /api/briefs — paste guard (#229)', () => {
     expect(res.status).toBe(200)
     expect((await res.json()).folded).toEqual([])
     errSpy.mockRestore()
+  })
+
+  // --- Build reports ---
+
+  it('a stamped paste folds the listed reports with the same time as the notes', async () => {
+    liveBrief(3)
+    mockListUnfoldedNotes.mockResolvedValue([note('aaa')])
+    mockFoldReports.mockResolvedValue(['r1', 'r2'])
+    const res = await put({ prep_stamp: { brief_version: 3, note_ids: ['aaa'], report_ids: ['r1', 'r2'] } })
+    expect(res.status).toBe(200)
+    expect(mockFoldReports).toHaveBeenCalledWith(expect.anything(), 'proj1', ['r1', 'r2'], expect.any(String))
+    expect((await res.json()).folded_reports).toEqual(['r1', 'r2'])
+    // One timestamp for both folds.
+    expect(mockFoldReports.mock.calls[0][3]).toBe(mockFoldNotes.mock.calls[0][3])
+  })
+
+  it('a report posted after the copy is not passed to foldReports', async () => {
+    liveBrief(3)
+    // r3 exists and is unfolded, but the stamp (the prep's copy) never listed it.
+    mockFoldReports.mockResolvedValue(['r1'])
+    const res = await put({ prep_stamp: { brief_version: 3, note_ids: [], report_ids: ['r1'] } })
+    expect(res.status).toBe(200)
+    expect(mockFoldReports.mock.calls[0][2]).toEqual(['r1'])
+  })
+
+  it('a stamp without report_ids does not call foldReports', async () => {
+    liveBrief(3)
+    const res = await put({ prep_stamp: { brief_version: 3, note_ids: [] } })
+    expect(res.status).toBe(200)
+    expect(mockFoldReports).not.toHaveBeenCalled()
+    expect((await res.json()).folded_reports).toEqual([])
+  })
+
+  it('a mangled report_ids still saves and folds the listed notes, but no reports', async () => {
+    liveBrief(3)
+    mockListUnfoldedNotes.mockResolvedValue([note('aaa')])
+    const res = await put({ prep_stamp: { brief_version: 3, note_ids: ['aaa'], report_ids: 'oops' } })
+    expect(res.status).toBe(200)
+    expect(mockFoldNotes).toHaveBeenCalledWith(expect.anything(), 'brief-1', ['aaa'], expect.any(String))
+    expect(mockFoldReports).not.toHaveBeenCalled()
+    expect((await res.json()).folded_reports).toEqual([])
+  })
+
+  it('a stamp with an empty report_ids list does not call foldReports', async () => {
+    liveBrief(3)
+    const res = await put({ prep_stamp: { brief_version: 3, note_ids: [], report_ids: [] } })
+    expect(res.status).toBe(200)
+    expect(mockFoldReports).not.toHaveBeenCalled()
+    expect((await res.json()).folded_reports).toEqual([])
+  })
+
+  it('an unstamped paste and a Restore do not call foldReports', async () => {
+    liveBrief(3)
+    const plain = await put({})
+    expect(plain.status).toBe(200)
+    expect((await plain.json()).folded_reports).toEqual([])
+
+    const restore = await put({ source: 'restore', prep_stamp: { brief_version: 1, note_ids: [], report_ids: ['r1'] } })
+    expect(restore.status).toBe(200)
+    expect((await restore.json()).folded_reports).toEqual([])
+    expect(mockFoldReports).not.toHaveBeenCalled()
+  })
+
+  it("report_ids naming another project's report save fine and fold nothing", async () => {
+    liveBrief(3)
+    // foldReports reads only this project's reports, so a foreign id comes back unfolded.
+    mockFoldReports.mockResolvedValue([])
+    const res = await put({ prep_stamp: { brief_version: 3, note_ids: [], report_ids: ['otherProjectReport'] } })
+    expect(res.status).toBe(200)
+    expect(mockUpsertBrief).toHaveBeenCalledTimes(1)
+    expect((await res.json()).folded_reports).toEqual([])
+  })
+
+  it('an unfolded report outside the stamp does not cause a 409', async () => {
+    liveBrief(3)
+    // No note is unlisted, and reports take no part in the staleness check.
+    const res = await put({ prep_stamp: { brief_version: 3, note_ids: [], report_ids: [] } })
+    expect(res.status).toBe(200)
+  })
+
+  it('a foldReports failure still answers 200 with the saved brief and folded_reports: []', async () => {
+    liveBrief(3)
+    mockFoldReports.mockRejectedValue(new Error('firestore down'))
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const res = await put({ prep_stamp: { brief_version: 3, note_ids: [], report_ids: ['r1'] } })
+    expect(res.status).toBe(200)
+    const data = await res.json()
+    expect(data.id).toBe('brief-1')
+    expect(data.folded_reports).toEqual([])
+    errSpy.mockRestore()
+  })
+
+  it('a 409 stale_prep does not call foldReports', async () => {
+    liveBrief(3)
+    mockListUnfoldedNotes.mockResolvedValue([note('aaa'), note('bbbb')])
+    const res = await put({ prep_stamp: { brief_version: 3, note_ids: ['aaa'], report_ids: ['r1'] } })
+    expect(res.status).toBe(409)
+    expect(mockFoldReports).not.toHaveBeenCalled()
   })
 
   // --- Locks on a stamped paste (#71/#197 kept guarantee, #229) ---

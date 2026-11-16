@@ -213,6 +213,17 @@ export const copy = {
     // prep for a new one.
     copyPrepNoNewNotes:
       'Prep copied. There are no new notes since the brief was last curated, so it carries only the brief as it stands.',
+    // Same, when the prep still carries build reports: then it is not "only the
+    // brief", and the reports notice follows.
+    copyPrepNoNewNotesWithReports: 'Prep copied. There are no new notes since the brief was last curated.',
+    // The prep carries unfolded build reports from Code (the build repo's
+    // Claude Code). The count is every unfolded report, including any a long
+    // prep leaves out for length, since the paste folds them all.
+    copyPrepReports: (n: number) =>
+      n === 1 ? 'Includes 1 build report from Code.' : `Includes ${n} build reports from Code.`,
+    // The reports could not be loaded, so nothing reached the clipboard: a
+    // prep that silently lacked them would read as "no new build news".
+    copyPrepReportsFailed: "Couldn't load the build reports, so the prep was not copied. Try again.",
     newSinceCuration: (n: number) => `New since last curation (${n})`,
     noteHeading: (day: string) => `Conversation of ${day}`,
     noteDecision: (topic: string, decision: string) => `Decision: ${topic}: ${decision}`,
@@ -532,6 +543,36 @@ export const copy = {
     errorNotOwner: 'Garm says you are not an owner of this app.',
     errorGarmDown: 'Garm is unavailable right now. Nothing was changed.',
     noAccessApps: 'You do not administer any apps yet.',
+  },
+
+  // --- Build status key (Setup tab > Advanced, system admin only). English
+  // only, like the other admin screens. ---
+  buildStatusKey: {
+    heading: (repo: string) => `Build status key for ${repo}`,
+    needsFullRepo: 'Set the GitHub repo to owner/name to mint a build status key.',
+    none: 'No key yet.',
+    minted: (day: string) => `Minted ${day}`,
+    lastUsed: (day: string) => `last used ${day}`,
+    mint: 'Mint',
+    mintNew: 'Mint a new key',
+    revoke: 'Revoke',
+    confirmMintNew: 'Mint a new key? The current key stops working at once.',
+    confirmRevoke: 'Revoke the key? Reports from the build repo stop being accepted at once.',
+    keyLabel: 'Build status key',
+    shownOnce: 'Shown once. Minting again stops the old key at once.',
+    opLabel: '1Password command',
+    // The key is never part of this line: `read -rs` asks for it without echo,
+    // jq builds the item JSON, and op reads it from stdin. Nothing in it is an
+    // unquoted zsh glob. `$K` and `$p` are shell and jq variables, not
+    // template placeholders (no braces), so they reach the line as written.
+    opCommand: (repo: string) =>
+      `read -rs "K?Paste key: " && echo && jq -n --arg p "$K" '{title:"ibuild4you-build-status-${repo.replace('/', '-')}",category:"PASSWORD",fields:[{id:"password",type:"CONCEALED",purpose:"PASSWORD",value:$p}]}' | op item create --vault dev-secrets --format json | jq -r '.title + " saved in " + .vault.name'; unset K`,
+    opNote: 'Run this, then paste the key at the "Paste key:" prompt.',
+    copy: 'Copy',
+    copied: 'Copied',
+    loading: 'Loading…',
+    error: 'Could not change the build status key.',
+    loadError: 'Could not load the build status key.',
   },
 
   // --- General ---
