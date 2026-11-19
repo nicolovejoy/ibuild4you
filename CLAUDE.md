@@ -109,13 +109,9 @@ Clarity over cleverness: clear and straightforward code, no clever abstractions,
 > Shipped history lives in `docs/changelog.md` (newest first). **Prepend an entry there at session end**; `/handoff` does not touch docs. This section is live work only. Backlog: `gh issue list --state open`.
 
 **Watch.**
-- Return leg, first real check: l6-music's next session posts a report with `post_build_status` (reader registered and rules changed, its #231), then "Copy next-convo prep" on F4FC shows it. They will say how it went on the handoff channel.
+- Return leg, first real check: the key is minted (2026-11-15) and Nico's `--check` passed on 2026-11-18 (`build status key: present`, brief v60). Still to come: l6-music's next session posts a report with `post_build_status` (reader registered and rules changed, its #231), then "Copy next-convo prep" on F4FC shows it. They will say how it went on the handoff channel.
 - Project 1, first real check: the next prep and the next few notes on F4FC.
 - musicforge: their from-server read-key smoke once the Fly route ships (#244; key at `op://dev-secrets/loop-read-key-musicforge/password`). Embed spike (Loop Phase 2) only if their panel proves not enough.
-
-**Nico's steps for the return leg** (PR #266 merged 2026-11-16; not confirmed done as of 2026-11-18). The agent cannot run these: the secrets hook keeps `op` out of its hands.
-1. On https://ibuild4you.com/projects/l6-shapes-positions-game?tab=setup open Advanced, click Mint, copy the key, run the 1Password command the panel shows and paste the key at its `Paste key:` prompt.
-2. From any directory: `node /Users/nico/src/ibuild4you/scripts/brief-reader.mjs --repo nicolovejoy/l6-music --check`. Pass is one line per brief, a last line `build status key: present`, and one Touch ID prompt (two prompts is a finding to report, not a failure).
 
 **Queue.** Relay efficiency, six projects (spec `docs/superpowers/specs/2026-11-15-relay-efficiency-design.md`). Done: project 1 (PRs #261, #262), project 2 (l6-music #224), project 3 (PR #263), and the return leg (PR #266). Remaining, in order:
 - byside and prntd move their reader registration to the launcher (`scripts/brief-reader.mjs`).
