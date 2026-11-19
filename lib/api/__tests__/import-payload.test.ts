@@ -247,8 +247,35 @@ describe('parseNextConvoPayload: brief_patch', () => {
     )
     if (!r.ok || r.value.mode !== 'patch') throw new Error('expected patch')
     expect(r.value.patch).toEqual({})
+    expect(r.value.implicit).toBe(true)
     expect(r.value.projectUpdate).toEqual({ welcome_message: 'hi', session_mode: 'converge' })
     expect(r.value.stamp).toEqual({ brief_version: 4, note_ids: ['n1'], report_ids: [] })
+  })
+
+  it('the no-brief fallback needs a config field: {} and stray JSON stay brief-only', () => {
+    for (const raw of ['{}', '{"title":"X"}', '{"_payload_type":"next-convo"}', '{"_prep_stamp":{"brief_version":4,"note_ids":[]}}']) {
+      const r = parseNextConvoPayload(raw)
+      expect(r.ok && r.value.mode).toBe('brief-only')
+    }
+  })
+
+  it('any known config field, or session_opener, makes the no-brief fallback an implicit empty patch', () => {
+    const r = parseNextConvoPayload('{"welcome_message":"hi"}')
+    if (!r.ok || r.value.mode !== 'patch') throw new Error('expected patch')
+    expect(r.value.patch).toEqual({})
+    expect(r.value.implicit).toBe(true)
+    for (const field of NEXT_CONVO_IMPORT_FIELDS) {
+      const f = parseNextConvoPayload(`{"${field}":"x"}`)
+      expect(f.ok && f.value.mode).toBe('patch')
+    }
+    const opener = parseNextConvoPayload('{"session_opener":"hi"}')
+    expect(opener.ok && opener.value.mode).toBe('patch')
+  })
+
+  it('an explicit brief_patch {} is patch mode and not implicit', () => {
+    const r = parseNextConvoPayload('{"brief_patch":{},"welcome_message":"hi"}')
+    if (!r.ok || r.value.mode !== 'patch') throw new Error('expected patch')
+    expect('implicit' in r.value).toBe(false)
   })
 
   it('a bare brief at the top level, with any of the nine brief keys, stays brief-only', () => {

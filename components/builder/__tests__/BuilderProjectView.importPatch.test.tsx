@@ -119,7 +119,7 @@ describe('Brief tab: import a brief_patch payload', () => {
     fireEvent.click(importButton())
     const shown = await screen.findByText(/Not imported: no decision in the brief has the topic "Hosting"\./)
     expect(shown.textContent).toBe(
-      'Not imported: no decision in the brief has the topic "Hosting". Not imported: no risk in the brief reads "Slow wifi". If this payload was already imported, the brief is saved: remove "brief_patch" from the JSON to import the rest.'
+      'Not imported: no decision in the brief has the topic "Hosting". Not imported: no risk in the brief reads "Slow wifi". If this payload was already imported, the brief is saved: remove "brief_patch" from the JSON to import the rest, and choose Save anyway if asked.'
     )
   })
 
@@ -179,6 +179,27 @@ describe('Brief tab: import a brief_patch payload', () => {
     expect(callsTo('/api/briefs', 'PUT')).toHaveLength(1)
     expect(callsTo('/api/projects', 'PATCH')[1]).toMatchObject({ welcome_message: 'Hello again', payload_pasted_version: 4 })
     await waitFor(() => expect(screen.queryByText(copy.brief.configSaveFailedBriefSaved)).toBeNull())
+  })
+
+  it('shows the first save\'s lock and size warnings after the retry succeeds', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    putBrief = () => json({ version: 4, content: {}, size_warning: 'The server says this brief is too big.', locks_kept: ['T'] })
+    let patches = 0
+    patchProject = () => {
+      patches += 1
+      return patches === 1 ? json({ error: 'boom' }, 500) : json({ id: 'p1' })
+    }
+    await paste(patchPayload({ welcome_message: 'Hello again' }))
+    fireEvent.click(importButton())
+    await screen.findByText(copy.brief.configSaveFailedBriefSaved)
+    // The failed attempt stays on the error; the warnings wait for the retry.
+    expect(screen.queryByText('Locked, left as it is: "T".')).toBeNull()
+
+    fireEvent.click(importButton())
+    expect(await screen.findByText('Locked, left as it is: "T".')).toBeTruthy()
+    expect(screen.getByText('The server says this brief is too big.')).toBeTruthy()
+    // Still one brief save: the warnings came from memory, not a second PUT.
+    expect(callsTo('/api/briefs', 'PUT')).toHaveLength(1)
   })
 
   it('forgets the saved brief when the paste text changes', async () => {

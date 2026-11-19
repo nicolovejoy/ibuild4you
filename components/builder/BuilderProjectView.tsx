@@ -95,6 +95,14 @@ import type { Project, Session, BriefContent, BriefNote, BuildReport, ProjectFil
 // Opening a brief lands on Brief; see resolveBuilderTab for the URL rules.
 type TabId = BuilderTabId
 
+// What a saved brief remembers for the retry of a paste whose config PATCH failed.
+type SavedBrief = {
+  text: string
+  version: number | undefined
+  locks_kept?: string[]
+  size_warning?: string | null
+}
+
 export function BuilderProjectView({ projectId }: { projectId: string }) {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -509,7 +517,9 @@ function BriefTab({
   // A paste whose brief saved but whose config PATCH failed: the text and the
   // version it saved. The next Import of the same text skips the brief save, so
   // a retry cannot save the brief twice. Cleared on success or when the text changes.
-  const savedBriefRef = useRef<{ text: string; version: number | undefined } | null>(null)
+  // The first save's answers ride along, so a retry after a failed config PATCH
+  // still shows its lock and size warnings.
+  const savedBriefRef = useRef<SavedBrief | null>(null)
   const { data: briefNotes } = useBriefNotes(projectId)
   const [loadingPayload, setLoadingPayload] = useState(false)
   // Copy prep failed (nothing on the clipboard): shown in the desk's notices.
@@ -691,11 +701,11 @@ function BriefTab({
   const savePayload = async (payload: NextConvoPayload, force: boolean) => {
     setImporting(true)
     // Set once the brief is saved, so a later failure can be told apart.
-    let briefSaved: { text: string; version: number | undefined } | null = null
+    let briefSaved: SavedBrief | null = null
     try {
       let configUpdated = false
       let warnings: string[] = []
-      // What the brief save answered (or, on a retry, the version it made earlier).
+      // What the brief save answered (or, on a retry, what the first save answered).
       let saved: { version?: number; locks_kept?: string[]; size_warning?: string | null } | undefined
       // "Payload pasted" stamp: written only once the brief save (and any
       // config PATCH) succeeded — never on a failed path. When the payload
@@ -724,7 +734,7 @@ function BriefTab({
         // Retry of a paste whose brief already saved: reuse that version, save nothing twice.
         const resume = savedBriefRef.current?.text === pasteJson ? savedBriefRef.current : null
         if (resume) {
-          saved = { version: resume.version }
+          saved = { version: resume.version, locks_kept: resume.locks_kept, size_warning: resume.size_warning }
         } else {
           saved = await updateBrief.mutateAsync(
             payload.mode === 'patch'
@@ -734,7 +744,12 @@ function BriefTab({
         }
         // From here the brief is saved. A failure below must not read as a failed
         // import, and the next Import must not save the brief again.
-        briefSaved = { text: pasteJson, version: saved?.version }
+        briefSaved = {
+          text: pasteJson,
+          version: saved?.version,
+          locks_kept: saved?.locks_kept,
+          size_warning: saved?.size_warning,
+        }
         if (Object.keys(payload.projectUpdate).length > 0) {
           await updateProject.mutateAsync({
             project_id: projectId,

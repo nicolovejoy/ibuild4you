@@ -24,7 +24,14 @@ export interface NewProjectPayload {
 // (#229), or null when absent or malformed (old prep, hand-written JSON).
 export type NextConvoPayload =
   | { mode: 'multi'; brief: BriefContent; projectUpdate: Record<string, unknown>; stamp: PrepStamp | null }
-  | { mode: 'patch'; patch: Record<string, unknown>; projectUpdate: Record<string, unknown>; stamp: PrepStamp | null }
+  | {
+      mode: 'patch'
+      patch: Record<string, unknown>
+      // true only when the payload had no "brief" or "brief_patch" and the patch is the empty one read in its place
+      implicit?: true
+      projectUpdate: Record<string, unknown>
+      stamp: PrepStamp | null
+    }
   | { mode: 'brief-only'; brief: unknown; stamp: PrepStamp | null }
 
 // Fields the next-convo import handler accepts and forwards to PATCH /api/projects.
@@ -98,10 +105,13 @@ export function parseNextConvoPayload(raw: string): ParseResult<NextConvoPayload
     return { ok: false, error: copy.brief.pastePatchNotObject }
   }
 
-  // A payload with no brief at all, and none of the brief's own keys at its top
-  // level, is a round that changed nothing in the brief (a comms agent that left
-  // `brief_patch` out). Read it as an empty patch so the notes still fold and the
-  // welcome still imports. Any brief key at the top level keeps the legacy shape.
+  // A payload with no brief at all, none of the brief's own keys at its top
+  // level, and at least one config field (welcome_message and the rest, or the
+  // legacy session_opener) is a round that changed nothing in the brief (a comms
+  // agent that left `brief_patch` out). Read it as an empty patch so the notes
+  // still fold and the welcome still imports. Without a config field it is not
+  // recognisably a next-convo round ({}, a new-project payload, stray JSON), so it
+  // stays the legacy shape and the server refuses it as an empty brief.
   const BRIEF_KEYS = [
     'problem',
     'target_users',
@@ -113,7 +123,10 @@ export function parseNextConvoPayload(raw: string): ParseResult<NextConvoPayload
     'shipped',
     'queued',
   ]
-  const noBriefAtAll = obj.brief === undefined && !hasPatch && !BRIEF_KEYS.some((k) => obj[k] !== undefined)
+  const hasConfigField =
+    obj.session_opener !== undefined || NEXT_CONVO_IMPORT_FIELDS.some((f) => obj[f] !== undefined)
+  const noBriefAtAll =
+    obj.brief === undefined && !hasPatch && hasConfigField && !BRIEF_KEYS.some((k) => obj[k] !== undefined)
 
   if (obj.brief || hasPatch || noBriefAtAll) {
     const projectUpdate: Record<string, unknown> = {}
@@ -122,11 +135,14 @@ export function parseNextConvoPayload(raw: string): ParseResult<NextConvoPayload
     for (const field of NEXT_CONVO_IMPORT_FIELDS) {
       if (obj[field] !== undefined) projectUpdate[field] = obj[field]
     }
-    if (hasPatch || noBriefAtAll) {
+    if (hasPatch) {
       return {
         ok: true,
-        value: { mode: 'patch', patch: hasPatch ? (obj.brief_patch as Record<string, unknown>) : {}, projectUpdate, stamp },
+        value: { mode: 'patch', patch: obj.brief_patch as Record<string, unknown>, projectUpdate, stamp },
       }
+    }
+    if (noBriefAtAll) {
+      return { ok: true, value: { mode: 'patch', patch: {}, implicit: true, projectUpdate, stamp } }
     }
     return {
       ok: true,

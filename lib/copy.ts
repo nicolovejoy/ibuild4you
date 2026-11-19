@@ -216,14 +216,16 @@ export const copy = {
       ]
       if (!preview) {
         sentences.push(
-          'If this payload was already imported, the brief is saved: remove "brief_patch" from the JSON to import the rest.'
+          'If this payload was already imported, the brief is saved: remove "brief_patch" from the JSON to import the rest, and choose Save anyway if asked.'
         )
       }
       return sentences.join(' ')
     },
     // The line under the paste box for a brief_patch payload. In each group the
     // first non-zero count carries the noun and the rest follow without it.
-    patchPreview: (s: BriefPatchSummary) => {
+    // `stamped`: the payload carries a prep stamp, so its notes fold even when
+    // nothing in the brief changes. Without a stamp nothing folds.
+    patchPreview: (s: BriefPatchSummary, stamped: boolean) => {
       const plural = (n: number, one: string, many: string) => (n === 1 ? one : many)
       // [count, label] pairs: the first non-zero one gets "<n> <noun> <label>".
       const group = (noun: [string, string], parts: Array<[number, string]>) => {
@@ -255,8 +257,13 @@ export const copy = {
         group(['shipped item', 'shipped items'], [[s.shipped_added, 'added']]),
         s.fields_replaced.length > 0 ? `${s.fields_replaced.join(', ')} replaced` : null,
       ].filter((g): g is string => g !== null)
-      return groups.length === 0 ? 'Changes: none. The notes still fold.' : `Changes: ${groups.join(' · ')}`
+      if (groups.length === 0) return stamped ? 'Changes: none. The notes still fold.' : 'Changes: none.'
+      return `Changes: ${groups.join(' · ')}`
     },
+    // A payload with neither "brief" nor "brief_patch" but a config field is read
+    // as an empty patch; when its stamp lists notes, say they will fold.
+    patchImplicitFolds: (noteCount: number) =>
+      `No "brief" or "brief_patch" in this payload: the brief stays as it is, and ${noteCount} note${noteCount === 1 ? '' : 's'} will be folded.`,
     // A whole "brief" drops a decision by leaving it out, so the preview names them.
     wholeRewriteRemoves: (topics: string[]) =>
       `Whole rewrite: removes ${topics.length} decision${topics.length === 1 ? '' : 's'}: ${topics.map((t) => `"${t}"`).join(', ')}`,

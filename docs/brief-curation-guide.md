@@ -30,7 +30,7 @@ Merge
 - A feature and its refinements into one feature.
 
 Drop
-(In a whole rewrite, leave these out. In a patch, a whole entry goes in "drop"; detail inside an entry or a text field goes by restating that entry or field without it.)
+(In a whole rewrite, leave these out. In a patch, a whole entry goes in "drop"; detail inside a decision or a text field goes by restating it without the detail; inside a feature or a risk, drop the old text and add the shorter one.)
 - History: who said what and when, how a decision was reached, earlier wording. The app keeps every past version.
 - Detail a later decision superseded.
 - An open risk a note marks as settled, once its answer is recorded in the brief (as a decision when the maker committed to a choice, otherwise in the field that fits).

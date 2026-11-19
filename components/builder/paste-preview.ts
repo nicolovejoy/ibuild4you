@@ -9,7 +9,7 @@ import { hasBriefContent } from '@/lib/brief/has-content'
 import type { BriefContent } from '@/lib/types'
 
 export type PastePreviewLine = {
-  id: 'changes' | 'unmatched' | 'locks' | 'rewrite' | 'no-brief'
+  id: 'changes' | 'implicit' | 'unmatched' | 'locks' | 'rewrite' | 'no-brief'
   text: string
   warn: boolean // warning style, like a stale version line
 }
@@ -52,7 +52,13 @@ function buildLines(pasteValue: string, briefContent: BriefContent | null): Past
     const patch = normalizeBriefPatch(payload.patch)
     if (!patch) return []
     const { summary, unmatched, locksTouched } = applyBriefPatch(live, patch)
-    const lines: PastePreviewLine[] = [{ id: 'changes', text: copy.brief.patchPreview(summary), warn: false }]
+    // A payload that left "brief_patch" out (read as an empty patch) and would
+    // still fold notes gets a warning in place of the plain "Changes: none".
+    const noteCount = payload.stamp?.note_ids.length ?? 0
+    const lines: PastePreviewLine[] =
+      payload.implicit && noteCount > 0
+        ? [{ id: 'implicit', text: copy.brief.patchImplicitFolds(noteCount), warn: true }]
+        : [{ id: 'changes', text: copy.brief.patchPreview(summary, payload.stamp !== null), warn: false }]
     const anyUnmatched = Object.values(unmatched).some((list) => list.length > 0)
     if (anyUnmatched) {
       lines.push({ id: 'unmatched', text: copy.brief.patchDropUnmatched(unmatched, true), warn: true })

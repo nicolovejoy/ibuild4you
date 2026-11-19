@@ -1,6 +1,6 @@
 # Payload as changes: `brief_patch`
 
-Date: 2026-11-18. Status: design, waiting for Nico's approval. Project 4 of the relay-efficiency programme (`2026-11-15-relay-efficiency-design.md`).
+Date: 2026-11-18. Status: approved by Nico 2026-11-18; built on feat/brief-patch. Project 4 of the relay-efficiency programme (`2026-11-15-relay-efficiency-design.md`).
 
 ## Why
 
@@ -69,12 +69,12 @@ Every key is optional. `{}` is a valid patch: the round changed nothing in the b
 
 Applied to the live brief, drops first, then additions.
 
-- **Matching.** Every match in a patch (a decision's topic, the text of a feature, risk, queued or shipped item) ignores case, punctuation and extra whitespace: the existing `normalizeDecisionText`. The prep tells the comms agent to write straight ASCII quotes only, while stored text can hold curly ones, so an exact match would bounce drops the agent cannot write correctly. A drop that matches more than one entry removes all of them. A drop entry repeated in the same list (after matching) counts once. The prep still tells the comms agent to copy drop texts and topics from the brief as shown, because a drop that matches nothing refuses the whole payload. [My call, after the builder check.]
+- **Matching.** Every match in a patch (a decision's topic, the text of a feature, risk, queued or shipped item) goes by one key: lowercase, then every punctuation mark and every space removed (`matchKey` in `lib/brief/patch.ts`), so "sign-up" meets "sign up". An entry whose key is empty (only punctuation or spaces) matches nothing: a drop of it is unmatched, and an added one is appended as sent. The prep tells the comms agent to write straight ASCII quotes only, while stored text can hold curly ones, so an exact match would bounce drops the agent cannot write correctly. A drop that matches more than one entry removes all of them. A drop entry repeated in the same list (after matching) counts once. The prep still tells the comms agent to copy drop texts and topics from the brief as shown, because a drop that matches nothing refuses the whole payload. [My call, after the builder check.]
 - **Text fields** (`problem`, `target_users`, `constraints`, `additional_context`): a non-empty string replaces the field. An empty or blank string is ignored. A patch cannot clear a text field; a whole rewrite can.
 - **Decisions**: matched by topic. A known topic is replaced in place, keeping its position and the stored spelling of its topic, so the provenance stamping that follows (which matches on `topicKey`) still finds it. A new topic is appended. The incoming decision is otherwise taken as sent (`decision`, `locked`), so a patch may add a new locked decision, as a paste can today.
 - **Features, queued**: each incoming string is appended unless a matching one is already there.
 - **Open risks**: a new one is appended. One that matches an existing risk keeps the brief's stored text; only its owner can change (an owner sent replaces the stored one, none sent keeps it). That is how an owner is set or changed, and a straight-quoted restatement of a curly-quoted risk rewrites nothing. To reword a risk, drop the old text and add the new one.
-- **Shipped**: items are appended to the batch with the same `date`, or a new batch is added. An item already in that batch is skipped. A patch cannot remove or merge shipped batches; that is a compaction, so a whole rewrite.
+- **Shipped**: an item already in any batch is skipped. A new item is appended to the batch with the same `date`, or a new batch is added; an item that was already shipped never makes an empty batch. A patch cannot remove or merge shipped batches; that is a compaction, so a whole rewrite.
 - **Drop**: decisions by topic; features, open risks and queued by text. To reword a feature or a risk, drop the old text and add the new one.
 
 ### What is refused, and what is ignored
@@ -84,6 +84,7 @@ Applied to the live brief, drops first, then additions.
 - **A patch when the project has no brief yet**: refused (400). The first brief is a whole one. "No brief" means no brief doc, or a doc whose content is empty (the note writer creates an empty one to hang notes on); the test is the existing `hasBriefContent`. The prep says the same thing in that case (see The prep). [My call, after the builder check.]
 - **A locked decision**: a patch never changes it. A replacement or a drop aimed at a locked topic is ignored, the lock comes back verbatim with its contest state, and the response lists the topics in `locks_kept` so the Brief tab can say so. This holds with or without a prep stamp. Unlocking stays what it is today: the structured editor, Accept and unlock, or Restore.
 - **Unknown keys** in `brief_patch` or `drop` are ignored, as unknown brief keys are today.
+- **Neither `brief` nor `brief_patch`**: a payload with neither is treated as an empty patch only when it carries a config field such as `welcome_message`. The preview warns when that would fold notes. Without a config field (`{}`, stray JSON) it is the old brief-only shape, and the server refuses it as an empty brief.
 
 ### The stamp and the paste guard
 
@@ -103,7 +104,7 @@ When the merged brief equals the live one (an empty patch, or one whose every en
 
 An import is two requests: `PUT /api/briefs`, then `PATCH /api/projects` for the welcome and the other config. If the first saves and the second fails, the builder clicks Import again. A whole brief survives that (409, Save anyway). A patch with drops would not: its drops are already gone, so the retry would be refused and the welcome could not be imported without editing the JSON.
 
-Fix, in the Brief tab: when the brief save succeeded and the config save failed, the tab remembers the pasted text and the saved version. Import again with the same text skips the brief save and sends only the config. The error shown after the failed config save says the brief is saved and Import will retry the rest.
+Fix, in the Brief tab: when the brief save succeeded and the config save failed, the tab remembers the pasted text and the saved version. Import again with the same text skips the brief save and sends only the config. The tab also keeps the first save's lock and size warnings and shows them after the retry succeeds. The error shown after the failed config save says the brief is saved and Import will retry the rest.
 
 After a page reload that memory is gone and the retry is refused with `patch_drop_unmatched`. The refusal's wording covers it: if this payload was already imported, the brief is saved; remove `brief_patch` from the JSON to import the rest. [My call, after the builder check: no server record of applied stamps for a case this rare.]
 
@@ -139,6 +140,8 @@ Whole rewrite: removes 3 decisions: "Old pricing", "Beta list", "Logo colour"
 ```
 
 [My call, small: it is the same diff, and it covers the compaction rounds, where the deletion risk remains. Drop it if unwanted.]
+
+For a stamped whole rewrite the line leaves out locked decisions, since the server keeps them.
 
 All wording goes in `lib/copy.ts`.
 

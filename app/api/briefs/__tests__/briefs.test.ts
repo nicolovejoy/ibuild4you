@@ -1084,6 +1084,18 @@ describe('PUT /api/briefs — patch', () => {
     expect(byTopic['Languages'].revised_at).toBeUndefined()
   })
 
+  it('a patch revising a stamped decision keeps decided_at and decided_in_session and adds revised_at', async () => {
+    liveBrief(3)
+    const res = await putPatch({ patch: { decisions: [{ topic: 'Hosting', decision: 'Fly.io' }] } })
+    expect(res.status).toBe(200)
+    const saved = mockUpsertBrief.mock.calls[0][2].decisions.find((d: { topic: string }) => d.topic === 'Hosting')
+    expect(saved.decision).toBe('Fly.io')
+    expect(saved.decided_at).toBe(hostingDecision.decided_at)
+    expect(saved.decided_in_session).toBe(hostingDecision.decided_in_session)
+    expect(saved.revised_at).toEqual(expect.any(String))
+    expect(saved.revised_at).not.toBe(hostingDecision.decided_at)
+  })
+
   it('a stamped {} patch writes no version, answers with the live version and folds the listed notes', async () => {
     mockListUnfoldedNotes.mockResolvedValue([note('aaa')])
     const res = await putPatch({ patch: {}, prep_stamp: { brief_version: 3, note_ids: ['aaa'] } })

@@ -307,9 +307,70 @@ describe('FerryDesk paste preview', () => {
     )
   })
 
-  it('says none when a patch changes nothing', () => {
+  it('says none when an unstamped patch changes nothing, without claiming notes fold', () => {
     renderDesk({ briefContent: liveBrief(), pasteValue: patchPaste({}) })
+    expect(screen.getByTestId('paste-changes').textContent).toBe('Changes: none.')
+  })
+
+  it('says the notes still fold when a stamped patch changes nothing', () => {
+    renderDesk({
+      briefContent: liveBrief(),
+      pasteValue: JSON.stringify({
+        _prep_stamp: { brief_version: 4, note_ids: ['n1'], report_ids: [] },
+        brief_patch: {},
+      }),
+    })
     expect(screen.getByTestId('paste-changes').textContent).toBe('Changes: none. The notes still fold.')
+  })
+
+  it('warns when a payload with no brief or brief_patch would fold notes', () => {
+    renderDesk({
+      briefContent: liveBrief(),
+      pasteValue: JSON.stringify({
+        _prep_stamp: { brief_version: 4, note_ids: ['n1', 'n2'], report_ids: [] },
+        welcome_message: 'hi',
+      }),
+    })
+    const line = screen.getByTestId('paste-implicit')
+    expect(line.textContent).toBe(
+      'No "brief" or "brief_patch" in this payload: the brief stays as it is, and 2 notes will be folded.'
+    )
+    expect(line.className).toContain('text-amber-700')
+    expect(screen.queryByTestId('paste-changes')).toBeNull()
+    cleanup()
+    renderDesk({
+      briefContent: liveBrief(),
+      pasteValue: JSON.stringify({
+        _prep_stamp: { brief_version: 4, note_ids: ['n1'], report_ids: [] },
+        welcome_message: 'hi',
+      }),
+    })
+    expect(screen.getByTestId('paste-implicit').textContent).toContain('and 1 note will be folded.')
+  })
+
+  it('shows the plain none line for an implicit patch that folds no notes', () => {
+    renderDesk({
+      briefContent: liveBrief(),
+      pasteValue: JSON.stringify({
+        _prep_stamp: { brief_version: 4, note_ids: [], report_ids: ['r1'] },
+        welcome_message: 'hi',
+      }),
+    })
+    expect(screen.queryByTestId('paste-implicit')).toBeNull()
+    expect(screen.getByTestId('paste-changes').textContent).toBe('Changes: none. The notes still fold.')
+  })
+
+  it('does not warn for an explicit empty brief_patch', () => {
+    renderDesk({
+      briefContent: liveBrief(),
+      pasteValue: JSON.stringify({
+        _prep_stamp: { brief_version: 4, note_ids: ['n1'], report_ids: [] },
+        brief_patch: {},
+        welcome_message: 'hi',
+      }),
+    })
+    expect(screen.queryByTestId('paste-implicit')).toBeNull()
+    expect(screen.getByTestId('paste-changes')).toBeTruthy()
   })
 
   it('names a drop that matches nothing, in warning style, without the already-imported hint', () => {
@@ -417,38 +478,47 @@ describe('copy: preview wording', () => {
     shipped_added: 0,
   }
   it('puts the noun on the first non-zero count of each group', () => {
-    expect(copy.brief.patchPreview({ ...zero, decisions_revised: 2, decisions_added: 1, decisions_dropped: 1 })).toBe(
+    expect(copy.brief.patchPreview({ ...zero, decisions_revised: 2, decisions_added: 1, decisions_dropped: 1 }, true)).toBe(
       'Changes: 2 decisions revised, 1 added, 1 dropped'
     )
-    expect(copy.brief.patchPreview({ ...zero, decisions_added: 1 })).toBe('Changes: 1 decision added')
-    expect(copy.brief.patchPreview({ ...zero, decisions_dropped: 2 })).toBe('Changes: 2 decisions dropped')
-    expect(copy.brief.patchPreview({ ...zero, risks_added: 1, risks_changed: 1, risks_dropped: 1 })).toBe(
+    expect(copy.brief.patchPreview({ ...zero, decisions_added: 1 }, true)).toBe('Changes: 1 decision added')
+    expect(copy.brief.patchPreview({ ...zero, decisions_dropped: 2 }, true)).toBe('Changes: 2 decisions dropped')
+    expect(copy.brief.patchPreview({ ...zero, risks_added: 1, risks_changed: 1, risks_dropped: 1 }, true)).toBe(
       'Changes: 1 risk added, 1 changed, 1 dropped'
     )
-    expect(copy.brief.patchPreview({ ...zero, features_added: 1, features_dropped: 1 })).toBe(
+    expect(copy.brief.patchPreview({ ...zero, features_added: 1, features_dropped: 1 }, true)).toBe(
       'Changes: 1 feature added, 1 dropped'
     )
-    expect(copy.brief.patchPreview({ ...zero, queued_added: 2 })).toBe('Changes: 2 queued items added')
-    expect(copy.brief.patchPreview({ ...zero, queued_added: 1, queued_dropped: 1 })).toBe(
+    expect(copy.brief.patchPreview({ ...zero, queued_added: 2 }, true)).toBe('Changes: 2 queued items added')
+    expect(copy.brief.patchPreview({ ...zero, queued_added: 1, queued_dropped: 1 }, true)).toBe(
       'Changes: 1 queued item added, 1 dropped'
     )
-    expect(copy.brief.patchPreview({ ...zero, shipped_added: 1 })).toBe('Changes: 1 shipped item added')
-    expect(copy.brief.patchPreview({ ...zero, shipped_added: 2 })).toBe('Changes: 2 shipped items added')
-    expect(copy.brief.patchPreview({ ...zero, fields_replaced: ['constraints', 'problem'] })).toBe(
+    expect(copy.brief.patchPreview({ ...zero, shipped_added: 1 }, true)).toBe('Changes: 1 shipped item added')
+    expect(copy.brief.patchPreview({ ...zero, shipped_added: 2 }, true)).toBe('Changes: 2 shipped items added')
+    expect(copy.brief.patchPreview({ ...zero, fields_replaced: ['constraints', 'problem'] }, true)).toBe(
       'Changes: constraints, problem replaced'
     )
   })
   it('joins groups with a middle dot and says none when all are zero', () => {
-    expect(copy.brief.patchPreview({ ...zero, decisions_revised: 2, decisions_added: 1, risks_dropped: 1, features_added: 1 })).toBe(
+    expect(copy.brief.patchPreview({ ...zero, decisions_revised: 2, decisions_added: 1, risks_dropped: 1, features_added: 1 }, true)).toBe(
       'Changes: 2 decisions revised, 1 added · 1 risk dropped · 1 feature added'
     )
-    expect(copy.brief.patchPreview(zero)).toBe('Changes: none. The notes still fold.')
+    expect(copy.brief.patchPreview(zero, true)).toBe('Changes: none. The notes still fold.')
+    expect(copy.brief.patchPreview(zero, false)).toBe('Changes: none.')
   })
   it('patchDropUnmatched keeps the import wording with preview false and drops the hint with true', () => {
     const u = { decisions: [], features: [], open_risks: ['R'], queued: [] }
     expect(copy.brief.patchDropUnmatched(u, false)).toContain('Not imported: no risk in the brief reads "R".')
-    expect(copy.brief.patchDropUnmatched(u, false)).toContain('If this payload was already imported')
+    expect(copy.brief.patchDropUnmatched(u, false)).toContain(
+      'If this payload was already imported, the brief is saved: remove "brief_patch" from the JSON to import the rest, and choose Save anyway if asked.'
+    )
     expect(copy.brief.patchDropUnmatched(u, true)).toBe('Will not import: no risk in the brief reads "R".')
+  })
+  it('patchImplicitFolds counts the notes', () => {
+    expect(copy.brief.patchImplicitFolds(1)).toBe(
+      'No "brief" or "brief_patch" in this payload: the brief stays as it is, and 1 note will be folded.'
+    )
+    expect(copy.brief.patchImplicitFolds(3)).toContain('and 3 notes will be folded.')
   })
   it('wholeRewriteRemoves lists the topics', () => {
     expect(copy.brief.wholeRewriteRemoves(['A', 'B', 'C'])).toBe('Whole rewrite: removes 3 decisions: "A", "B", "C"')

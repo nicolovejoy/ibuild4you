@@ -464,3 +464,72 @@ describe('hasBriefContent', () => {
     expect(hasBriefContent({ ...empty, ...over } as BriefContent)).toBe(true)
   })
 })
+
+// The matching key: lowercase, then no punctuation and no whitespace at all.
+describe('applyBriefPatch: matching key', () => {
+  it('replaces a decision sent under "Sign up" for the stored "Sign-up", keeping the stored spelling', () => {
+    const live = base({ decisions: [{ topic: 'Sign-up', decision: 'Email only' }] })
+    const r = applyBriefPatch(live, { decisions: [{ topic: 'Sign up', decision: 'Email or Google' }] })
+    expect(r.content.decisions).toEqual([{ topic: 'Sign-up', decision: 'Email or Google' }])
+    expect(r.summary.decisions_revised).toBe(1)
+    expect(r.summary.decisions_added).toBe(0)
+  })
+  it('drops the stored feature "Sign-up flow" by "sign up flow"', () => {
+    const r = applyBriefPatch(base({ features: ['Sign-up flow', 'Chat'] }), { drop: { features: ['sign up flow'] } })
+    expect(r.content.features).toEqual(['Chat'])
+    expect(r.unmatched.features).toEqual([])
+  })
+  it('does not add a risk, queued item or feature that differs only by spacing', () => {
+    const live = base({ features: ['Sign-up flow'], queued: ['Dark mode'], open_risks: [{ text: 'Sign-up fails', owner: 'builder' }] })
+    const r = applyBriefPatch(live, {
+      features: ['sign up flow'],
+      queued: ['Darkmode'],
+      open_risks: [{ text: 'sign up fails', owner: 'builder' }],
+    })
+    expect(r.changed).toBe(false)
+  })
+  it('lists a drop with an empty key as unmatched and does not remove a stored "???"', () => {
+    const live = base({ features: ['???'] })
+    const r = applyBriefPatch(live, { drop: { features: ['!!!'] } })
+    expect(r.unmatched.features).toEqual(['!!!'])
+    expect(r.content.features).toEqual(['???'])
+    expect(r.summary.features_dropped).toBe(0)
+  })
+  it('lists an empty-key drop for decisions, risks and queued as unmatched too', () => {
+    const live = base({ decisions: [{ topic: '???', decision: 'x' }], open_risks: ['???'], queued: ['???'] })
+    const r = applyBriefPatch(live, { drop: { decisions: ['!!!'], open_risks: ['!!!'], queued: ['!!!'] } })
+    expect(r.unmatched).toEqual({ decisions: ['!!!'], features: [], open_risks: ['!!!'], queued: ['!!!'] })
+    expect(r.content.decisions).toEqual([{ topic: '???', decision: 'x' }])
+    expect(r.content.open_risks).toEqual(['???'])
+    expect(r.content.queued).toEqual(['???'])
+  })
+  it('appends an added entry with an empty key as sent, never as "already there"', () => {
+    const live = base({ features: ['???'], decisions: [{ topic: '???', decision: 'x' }] })
+    const r = applyBriefPatch(live, { features: ['!!!'], decisions: [{ topic: '!!!', decision: 'y' }] })
+    expect(r.content.features).toEqual(['???', '!!!'])
+    expect(r.content.decisions).toEqual([
+      { topic: '???', decision: 'x' },
+      { topic: '!!!', decision: 'y' },
+    ])
+    expect(r.summary.decisions_added).toBe(1)
+  })
+})
+
+describe('applyBriefPatch: shipped items across batches', () => {
+  const live = base({ shipped: [{ date: '2026-11-10', items: ['Login'] }] })
+  it('adds nothing for an item re-sent under a new date: no empty batch, not changed', () => {
+    const r = applyBriefPatch(live, { shipped: [{ date: '2026-11-18', items: ['login'] }] })
+    expect(r.content.shipped).toEqual([{ date: '2026-11-10', items: ['Login'] }])
+    expect(r.summary.shipped_added).toBe(0)
+    expect(r.changed).toBe(false)
+  })
+  it('still makes a new batch for a new item under a new date, skipping the old one in it', () => {
+    const r = applyBriefPatch(live, { shipped: [{ date: '2026-11-18', items: ['Login', 'Chat'] }] })
+    expect(r.content.shipped).toEqual([
+      { date: '2026-11-10', items: ['Login'] },
+      { date: '2026-11-18', items: ['Chat'] },
+    ])
+    expect(r.summary.shipped_added).toBe(1)
+    expect(r.changed).toBe(true)
+  })
+})

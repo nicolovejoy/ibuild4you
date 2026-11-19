@@ -22,7 +22,13 @@ describe('BRIEF_CURATION_GUIDE', () => {
   })
 
   it('asks a patch only for drops it can express', () => {
-    expect(BRIEF_CURATION_GUIDE).toContain('In a patch, a whole entry goes in "drop"; detail inside an entry or a text field goes by restating that entry or field without it.')
+    expect(BRIEF_CURATION_GUIDE).toContain('In a patch, a whole entry goes in "drop"; detail inside a decision or a text field goes by restating it without the detail; inside a feature or a risk, drop the old text and add the shorter one.')
+  })
+
+  it('does not tell a patch to trim a feature or a risk by restating it', () => {
+    // A restated feature or risk no longer matches its stored text and would be appended as a second entry.
+    expect(BRIEF_CURATION_GUIDE).not.toMatch(/detail inside an entry or a text field/)
+    expect(BRIEF_CURATION_GUIDE).toMatch(/inside a feature or a risk, drop the old text and add the shorter one/)
   })
 
   it('says a patch can merge two features by dropping both and adding one', () => {

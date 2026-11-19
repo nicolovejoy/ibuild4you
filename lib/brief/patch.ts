@@ -5,9 +5,9 @@
 // reports what it did. The route (PUT /api/briefs) and the Brief tab preview
 // both call these, so they cannot disagree about what a patch does.
 //
-// Every match inside a patch ignores case, punctuation and extra whitespace
-// (normalizeDecisionText): stored text can hold curly quotes that the comms
-// agent is told not to write. Drops run first, then additions.
+// Every match inside a patch goes by matchKey: case, punctuation and spacing are
+// ignored. Stored text can hold curly quotes that the comms agent is told not to
+// write, and "sign-up" must meet "sign up". Drops run first, then additions.
 import { normalizeDecisionText, topicKey } from '@/lib/api/brief-merge'
 import { normalizeRisks, riskOwner, riskText } from '@/lib/brief/risks'
 import { normalizeQueued, normalizeShipped } from '@/lib/brief/shipped'
@@ -24,7 +24,14 @@ import type {
 type Risk = string | BriefRisk
 
 const TEXT_FIELDS = ['problem', 'target_users', 'constraints', 'additional_context'] as const
-const norm = normalizeDecisionText
+
+// The matching key: lowercase, then every Unicode punctuation mark and every
+// whitespace character removed. An entry whose key is '' (it was only
+// punctuation or spaces) matches nothing: a drop of it is unmatched, and an
+// added one is appended as sent.
+function matchKey(text: string): string {
+  return text.toLowerCase().replace(/[\p{P}\s]/gu, '')
+}
 
 // --- Parsing ---
 
@@ -95,13 +102,14 @@ export interface ApplyBriefPatchResult {
   changed: boolean // false when content equals live
 }
 
-// Drop entries that normalize to the same key count once (the first as sent),
-// so a repeated entry neither double-counts nor lands in `unmatched` twice.
+// Drop entries that share a key count once (the first as sent), so a repeated
+// entry neither double-counts nor lands in `unmatched` twice. An empty key has
+// no match to share, so those entries are only collapsed when the text is identical.
 function uniqueByKey(list: string[] | undefined): string[] {
   const seen = new Set<string>()
   const out: string[] = []
   for (const text of list ?? []) {
-    const key = norm(text)
+    const key = matchKey(text) || `\0${text}`
     if (seen.has(key)) continue
     seen.add(key)
     out.push(text)
@@ -137,18 +145,20 @@ function withoutEmptyLists(c: BriefContent): BriefContent {
 // Remove every item whose text matches `target`. Returns the kept items and
 // how many went.
 function removeMatching<T>(items: T[], text: (item: T) => string, target: string): { kept: T[]; removed: number } {
-  const key = norm(target)
-  const kept = items.filter((item) => norm(text(item)) !== key)
+  const key = matchKey(target)
+  if (key === '') return { kept: items, removed: 0 }
+  const kept = items.filter((item) => matchKey(text(item)) !== key)
   return { kept, removed: items.length - kept.length }
 }
 
 // Append each incoming text unless a matching one is already there (this also
-// collapses repeats inside the patch). Returns how many were added.
+// collapses repeats inside the patch). An empty key is never "already there".
+// Returns how many were added.
 function appendNew(list: string[], incoming: string[] | undefined): number {
   let added = 0
   for (const text of incoming ?? []) {
-    const key = norm(text)
-    if (list.some((existing) => norm(existing) === key)) continue
+    const key = matchKey(text)
+    if (key !== '' && list.some((existing) => matchKey(existing) === key)) continue
     list.push(text)
     added++
   }
@@ -184,21 +194,21 @@ export function applyBriefPatch(live: BriefContent, patch: BriefPatch): ApplyBri
   let queued: string[] = [...(live.queued ?? [])]
   const shipped: BriefShipped[] = (live.shipped ?? []).map((b) => ({ date: b.date, items: [...b.items] }))
 
-  // Locked-ness is judged against the live brief, by normalized topic.
-  const liveLocked = new Map<string, string>() // normalized topic -> stored topic
-  for (const d of live.decisions ?? []) if (d.locked) liveLocked.set(norm(d.topic), d.topic)
+  // Locked-ness is judged against the live brief, by topic key.
+  const liveLocked = new Map<string, string>() // topic key -> stored topic
+  for (const d of live.decisions ?? []) if (d.locked && matchKey(d.topic) !== '') liveLocked.set(matchKey(d.topic), d.topic)
 
   // --- Drops ---
   for (const topic of uniqueByKey(drop.decisions)) {
-    const key = norm(topic)
-    const matches = decisions.filter((d) => norm(d.topic) === key)
+    const key = matchKey(topic)
+    const matches = key === '' ? [] : decisions.filter((d) => matchKey(d.topic) === key)
     if (matches.length === 0) {
       unmatched.decisions.push(topic)
       continue
     }
     // A patch never removes a lock; any unlocked decision on the same topic goes.
     for (const d of matches) if (d.locked) noteLock(d.topic)
-    const kept = decisions.filter((d) => norm(d.topic) !== key || d.locked)
+    const kept = decisions.filter((d) => matchKey(d.topic) !== key || d.locked)
     summary.decisions_dropped += decisions.length - kept.length
     decisions = kept
   }
@@ -235,15 +245,21 @@ export function applyBriefPatch(live: BriefContent, patch: BriefPatch): ApplyBri
   }
 
   // Decisions: one entry per topic, the last text wins, first position kept.
-  const incoming = new Map<string, BriefDecision>()
-  for (const d of patch.decisions ?? []) incoming.set(norm(d.topic), d)
-  for (const [key, d] of incoming) {
+  // A topic with an empty key matches nothing, so each such decision stands alone.
+  const incoming: Array<{ key: string; d: BriefDecision }> = []
+  for (const d of patch.decisions ?? []) {
+    const key = matchKey(d.topic)
+    const seen = key === '' ? -1 : incoming.findIndex((x) => x.key === key)
+    if (seen === -1) incoming.push({ key, d })
+    else incoming[seen] = { key, d }
+  }
+  for (const { key, d } of incoming) {
     if (liveLocked.has(key)) {
       // The live brief locks this topic: the lock stays as it is.
       noteLock(liveLocked.get(key) as string)
       continue
     }
-    const at = decisions.findIndex((existing) => norm(existing.topic) === key)
+    const at = key === '' ? -1 : decisions.findIndex((existing) => matchKey(existing.topic) === key)
     const lockFlag = d.locked === true
     if (at === -1) {
       decisions.push({ topic: d.topic, decision: d.decision, ...(lockFlag ? { locked: true } : {}) })
@@ -251,7 +267,9 @@ export function applyBriefPatch(live: BriefContent, patch: BriefPatch): ApplyBri
       continue
     }
     const stored = decisions[at]
-    if (norm(stored.decision) === norm(d.decision) && (stored.locked === true) === lockFlag) continue
+    // Is this a real revision? The text of the decision itself is compared as the
+    // server's provenance stamping does (case and punctuation ignored, spaces kept).
+    if (normalizeDecisionText(stored.decision) === normalizeDecisionText(d.decision) && (stored.locked === true) === lockFlag) continue
     // Same position and stored topic spelling, so provenance stamping still
     // finds it. Stamps are not carried: code re-stamps a real revision.
     decisions[at] = { topic: stored.topic, decision: d.decision, ...(lockFlag ? { locked: true } : {}) }
@@ -266,8 +284,8 @@ export function applyBriefPatch(live: BriefContent, patch: BriefPatch): ApplyBri
   // restatement of a curly-quoted risk rewrites nothing. Rewording is drop plus
   // add. No match appends.
   for (const r of patch.open_risks ?? []) {
-    const key = norm(riskText(r))
-    const at = risks.findIndex((existing) => norm(riskText(existing)) === key)
+    const key = matchKey(riskText(r))
+    const at = key === '' ? -1 : risks.findIndex((existing) => matchKey(riskText(existing)) === key)
     if (at === -1) {
       risks.push(r)
       summary.risks_added++
@@ -280,14 +298,19 @@ export function applyBriefPatch(live: BriefContent, patch: BriefPatch): ApplyBri
     summary.risks_changed++
   }
 
-  // Shipped: items join the batch with the same date, or a new batch is added.
+  // Shipped: an item already in any batch is skipped. A new one joins the batch
+  // with the same date, or a new batch is added (never an empty one).
   for (const batch of patch.shipped ?? []) {
     let target = shipped.find((b) => b.date === batch.date)
     const fresh = !target
     if (!target) target = { date: batch.date, items: [] }
-    const added = appendNew(target.items, batch.items)
-    if (fresh && added > 0) shipped.push(target)
-    summary.shipped_added += added
+    for (const text of batch.items) {
+      const key = matchKey(text)
+      if (key !== '' && shipped.some((b) => b.items.some((existing) => matchKey(existing) === key))) continue
+      target.items.push(text)
+      summary.shipped_added++
+      if (fresh && target.items.length === 1) shipped.push(target)
+    }
   }
 
   // Optional keys appear only when they hold something, or the live brief had

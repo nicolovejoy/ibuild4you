@@ -87,10 +87,10 @@ A next-convo payload (pasted on the Brief tab, `PUT /api/briefs`) carries either
 ```
 
 Every key is optional; `{}` is a valid patch (the brief does not change, the notes still fold). Merge rules, drops first, then additions:
-- Matching (a decision's topic, the text of a feature, risk, queued or shipped item) ignores case, punctuation and extra spaces. A repeated drop entry counts once.
+- Matching (a decision's topic, the text of a feature, risk, queued or shipped item) ignores case, punctuation and spacing. A repeated drop entry counts once.
 - Text fields (`problem`, `target_users`, `constraints`, `additional_context`): a non-empty string replaces the field; an empty or blank one is ignored, so a patch cannot clear a field.
-- Decisions: matched by topic. A known topic is replaced in place (stored topic spelling and position kept); a new topic is appended.
-- Features and queued: appended unless already there. Shipped: items join the batch with the same `date`, or a new batch is added. A patch cannot remove or merge shipped batches (a compaction, so a whole `brief`).
+- Decisions: matched by topic, ignoring case, punctuation and spacing; copy topics as shown. A known topic is replaced in place (stored topic spelling and position kept); a new topic is appended.
+- Features and queued: appended unless already there. Shipped: an item already in any batch is skipped; a new one joins the batch with the same `date`, or a new batch is added. A patch cannot remove or merge shipped batches (a compaction, so a whole `brief`).
 - Open risks: a new one is appended. One that matches an existing risk keeps the brief's text; only its owner can change. To reword a feature or a risk, drop the old text and add the new one.
 - `drop`: decisions by topic; features, open risks and queued by text.
 
