@@ -72,6 +72,35 @@ describe('NOTE_SYSTEM_PROMPT keeps what the maker said', () => {
     expect(NOTE_SYSTEM_PROMPT).toMatch(/give it its own topic/)
   })
 
+  // A bundled risk ("does the piano play? which phrases sound musical, in C
+  // major and A minor?") was half answered. The note listed the whole risk as
+  // settled and, word for word, as new (2026-11-17).
+  it('has a partly settled risk closed with its answer and reopened as only what is left', () => {
+    expect(NOTE_SYSTEM_PROMPT).toMatch(/settle only part of an open risk/)
+    expect(NOTE_SYSTEM_PROMPT).toMatch(/worded as only what is still open/)
+    expect(NOTE_SYSTEM_PROMPT).toMatch(/The same text never appears in both risks_added and risks_resolved/)
+    expect(NOTE_SYSTEM_PROMPT).toMatch(/Never add a risk that is already in the brief's open risks or in a note's risks_added/)
+  })
+
+  // "Builder placeholders to react to: big star never says Start…" was an open
+  // risk; the maker's one-line answer was noted as a decision with the risk's
+  // whole text as its topic (2026-11-16).
+  it('keeps a new topic a short label, never the text of an open risk', () => {
+    expect(NOTE_SYSTEM_PROMPT).toMatch(/A new topic is a short label of a few words/)
+    expect(NOTE_SYSTEM_PROMPT).toMatch(/never a question and never the text of an open risk/)
+  })
+
+  it('records an answer to an open risk as a settled risk, and as a decision only for a lasting choice', () => {
+    // The first wording ("record it here; add a decision as well only when…")
+    // was read as either/or on preview: the answer became a decision and the
+    // risk was left open. The settled-risk entry is unconditional.
+    expect(NOTE_SYSTEM_PROMPT).toMatch(/An answer that settles an open risk is always listed here, even when it is also recorded as a decision/)
+    expect(NOTE_SYSTEM_PROMPT).toMatch(/only when they committed to a lasting choice, under a short topic of its own/)
+    // Still either/or in one preview run of two, so the decisions rule says it
+    // too, where the writer is when it makes the choice.
+    expect(NOTE_SYSTEM_PROMPT).toMatch(/A decision that answers one of the open risks does not replace that risk's risks_resolved entry: list it in both/)
+  })
+
   // "Details to follow" and "will report back" were noted with nothing to follow up on.
   it('turns a promise to follow up into an open risk with an owner', () => {
     expect(NOTE_SYSTEM_PROMPT).toMatch(/will send, check or decide something later/)
