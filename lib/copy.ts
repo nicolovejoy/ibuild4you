@@ -187,6 +187,31 @@ export const copy = {
     // #229 paste guard and notes
     pasteNotFromPrep:
       'This paste was not made from a prep, so no notes were folded. They stay visible to Sam and in the next prep.',
+    // brief_patch paste (relay project 4): a payload that carries only what changed.
+    pasteBothBriefAndPatch: 'A payload carries either "brief" or "brief_patch", not both.',
+    pastePatchNotObject: '"brief_patch" must be an object.',
+    patchLocksKept: (topics: string[]) =>
+      `Locked, left as it is: ${topics.map((t) => `"${t}"`).join(', ')}.`,
+    // One sentence per drop that matched nothing, then the hint for a payload that
+    // was already imported (a second import finds its drops already gone).
+    patchDropUnmatched: (unmatched: {
+      decisions: string[]
+      features: string[]
+      open_risks: string[]
+      queued: string[]
+    }) => {
+      const sentences = [
+        ...unmatched.decisions.map((t) => `Not imported: no decision in the brief has the topic "${t}".`),
+        ...unmatched.features.map((t) => `Not imported: no feature in the brief reads "${t}".`),
+        ...unmatched.open_risks.map((t) => `Not imported: no risk in the brief reads "${t}".`),
+        ...unmatched.queued.map((t) => `Not imported: no queued item in the brief reads "${t}".`),
+        'If this payload was already imported, the brief is saved: remove "brief_patch" from the JSON to import the rest.',
+      ]
+      return sentences.join(' ')
+    },
+    patchNoBrief: 'This project has no brief yet. The first one must be a whole "brief".',
+    configSaveFailedBriefSaved:
+      'The brief is saved, but the rest of the payload was not. Click Import again to retry the rest.',
     stalePrepTitle: 'This prep is out of date',
     stalePrepNote: (count: number, liveVersion: number, prepVersion: number) => {
       const parts: string[] = []

@@ -5,6 +5,7 @@ import {
   NEXT_CONVO_IMPORT_FIELDS,
   nextConvoImportWarnings,
 } from '../import-payload'
+import { copy } from '@/lib/copy'
 
 // =============================================================================
 // IMPORT PAYLOAD PARSER TESTS
@@ -190,11 +191,62 @@ describe('parseNextConvoPayload', () => {
       // A malformed stamp on a legacy paste is still stripped from the brief.
       const legacy = parseNextConvoPayload(JSON.stringify({ _prep_stamp: 'nope', problem: 'p' }))
       expect(legacy.ok).toBe(true)
-      if (legacy.ok) {
+      if (legacy.ok && legacy.value.mode === 'brief-only') {
         expect(legacy.value.stamp).toBeNull()
         expect(legacy.value.brief).toEqual({ problem: 'p' })
       }
     })
+  })
+})
+
+// A brief_patch payload (relay project 4): only what changed, sent in place of "brief".
+describe('parseNextConvoPayload: brief_patch', () => {
+  it('parses patch mode with the stamp and the same config fields as multi', () => {
+    const r = parseNextConvoPayload(
+      JSON.stringify({
+        _payload_type: 'next-convo',
+        _prep_stamp: { brief_version: 4, note_ids: ['n1'] },
+        brief_patch: { problem: 'new problem', drop: { features: ['old'] } },
+        session_opener: 'legacy hello',
+        session_mode: 'converge',
+        builder_directives: ['d'],
+      })
+    )
+    if (!r.ok || r.value.mode !== 'patch') throw new Error('expected patch mode')
+    expect(r.value.patch).toEqual({ problem: 'new problem', drop: { features: ['old'] } })
+    expect(r.value.projectUpdate).toEqual({
+      welcome_message: 'legacy hello',
+      session_mode: 'converge',
+      builder_directives: ['d'],
+    })
+    expect(r.value.stamp).toMatchObject({ brief_version: 4, note_ids: ['n1'] })
+  })
+
+  it('refuses a payload with both brief and brief_patch', () => {
+    const r = parseNextConvoPayload('{"brief":{"problem":"p"},"brief_patch":{"problem":"q"}}')
+    expect(r).toEqual({ ok: false, error: copy.brief.pasteBothBriefAndPatch })
+    expect(copy.brief.pasteBothBriefAndPatch).toBe('A payload carries either "brief" or "brief_patch", not both.')
+  })
+
+  it('refuses a brief_patch that is a string, an array or null', () => {
+    for (const bad of ['"x"', '[]', 'null', '3']) {
+      const r = parseNextConvoPayload(`{"brief_patch":${bad}}`)
+      expect(r).toEqual({ ok: false, error: copy.brief.pastePatchNotObject })
+    }
+    expect(copy.brief.pastePatchNotObject).toBe('"brief_patch" must be an object.')
+  })
+
+  it('accepts an empty brief_patch object as patch mode', () => {
+    const r = parseNextConvoPayload('{"brief_patch":{}}')
+    expect(r.ok && r.value.mode).toBe('patch')
+  })
+
+  it('still parses a whole brief and a legacy brief-only paste as before', () => {
+    const whole = parseNextConvoPayload('{"brief":{"problem":"p"},"welcome_message":"hi"}')
+    if (!whole.ok || whole.value.mode !== 'multi') throw new Error('expected multi')
+    expect(whole.value.projectUpdate).toEqual({ welcome_message: 'hi' })
+    const legacy = parseNextConvoPayload('{"problem":"p"}')
+    expect(legacy.ok && legacy.value.mode).toBe('brief-only')
   })
 })
 

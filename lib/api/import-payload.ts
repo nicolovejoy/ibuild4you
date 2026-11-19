@@ -24,6 +24,7 @@ export interface NewProjectPayload {
 // (#229), or null when absent or malformed (old prep, hand-written JSON).
 export type NextConvoPayload =
   | { mode: 'multi'; brief: BriefContent; projectUpdate: Record<string, unknown>; stamp: PrepStamp | null }
+  | { mode: 'patch'; patch: Record<string, unknown>; projectUpdate: Record<string, unknown>; stamp: PrepStamp | null }
   | { mode: 'brief-only'; brief: unknown; stamp: PrepStamp | null }
 
 // Fields the next-convo import handler accepts and forwards to PATCH /api/projects.
@@ -87,12 +88,28 @@ export function parseNextConvoPayload(raw: string): ParseResult<NextConvoPayload
   const stamp = parsePrepStamp(obj._prep_stamp)
   delete obj._prep_stamp
 
-  if (obj.brief) {
+  // A payload carries a whole "brief" or a "brief_patch" (only what changed), never both.
+  // Checked by key presence, so `"brief_patch": null` is refused rather than ignored.
+  const hasPatch = obj.brief_patch !== undefined
+  if (hasPatch && obj.brief !== undefined) {
+    return { ok: false, error: copy.brief.pasteBothBriefAndPatch }
+  }
+  if (hasPatch && (!obj.brief_patch || typeof obj.brief_patch !== 'object' || Array.isArray(obj.brief_patch))) {
+    return { ok: false, error: copy.brief.pastePatchNotObject }
+  }
+
+  if (obj.brief || hasPatch) {
     const projectUpdate: Record<string, unknown> = {}
     // session_opener is a legacy alias for welcome_message; explicit welcome_message wins
     if (obj.session_opener !== undefined) projectUpdate.welcome_message = obj.session_opener
     for (const field of NEXT_CONVO_IMPORT_FIELDS) {
       if (obj[field] !== undefined) projectUpdate[field] = obj[field]
+    }
+    if (hasPatch) {
+      return {
+        ok: true,
+        value: { mode: 'patch', patch: obj.brief_patch as Record<string, unknown>, projectUpdate, stamp },
+      }
     }
     return {
       ok: true,

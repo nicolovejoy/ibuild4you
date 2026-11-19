@@ -48,6 +48,7 @@ import {
   useCurrentUser,
   useBriefNotes,
   StalePrepError,
+  PatchDropUnmatchedError,
   type StalePrepInfo,
 } from '@/lib/query/hooks'
 import { buildNextConvoPrompt } from '@/lib/agent/next-convo-prompt'
@@ -505,6 +506,10 @@ function BriefTab({
   // #229: a paste the server refused as a stale prep (409). Keeps the payload
   // as parsed, so Save anyway resends exactly that with force: true.
   const [stalePrep, setStalePrep] = useState<{ info: StalePrepInfo; payload: NextConvoPayload } | null>(null)
+  // A paste whose brief saved but whose config PATCH failed: the text and the
+  // version it saved. The next Import of the same text skips the brief save, so
+  // a retry cannot save the brief twice. Cleared on success or when the text changes.
+  const savedBriefRef = useRef<{ text: string; version: number | undefined } | null>(null)
   const { data: briefNotes } = useBriefNotes(projectId)
   const [loadingPayload, setLoadingPayload] = useState(false)
   // Copy prep failed (nothing on the clipboard): shown in the desk's notices.
@@ -685,9 +690,13 @@ function BriefTab({
   // same payload and stamp, resent so the server saves despite missed notes.
   const savePayload = async (payload: NextConvoPayload, force: boolean) => {
     setImporting(true)
+    // Set once the brief is saved, so a later failure can be told apart.
+    let briefSaved: { text: string; version: number | undefined } | null = null
     try {
       let configUpdated = false
       let warnings: string[] = []
+      // What the brief save answered (or, on a retry, the version it made earlier).
+      let saved: { version?: number; locks_kept?: string[]; size_warning?: string | null } | undefined
       // "Payload pasted" stamp: written only once the brief save (and any
       // config PATCH) succeeded — never on a failed path. When the payload
       // carries config, it rides in that same PATCH; otherwise it is its own
@@ -711,8 +720,21 @@ function BriefTab({
       // #229: the prep stamp rides along so the server can fold the notes the
       // comms agent saw, or refuse a stale prep (409 → StalePrepError).
       const guard = { prep_stamp: payload.stamp, force }
-      if (payload.mode === 'multi') {
-        const saved = await updateBrief.mutateAsync({ project_id: projectId, content: payload.brief, ...guard })
+      if (payload.mode === 'multi' || payload.mode === 'patch') {
+        // Retry of a paste whose brief already saved: reuse that version, save nothing twice.
+        const resume = savedBriefRef.current?.text === pasteJson ? savedBriefRef.current : null
+        if (resume) {
+          saved = { version: resume.version }
+        } else {
+          saved = await updateBrief.mutateAsync(
+            payload.mode === 'patch'
+              ? { project_id: projectId, patch: payload.patch, ...guard }
+              : { project_id: projectId, content: payload.brief, ...guard }
+          )
+        }
+        // From here the brief is saved. A failure below must not read as a failed
+        // import, and the next Import must not save the brief again.
+        briefSaved = { text: pasteJson, version: saved?.version }
         if (Object.keys(payload.projectUpdate).length > 0) {
           await updateProject.mutateAsync({
             project_id: projectId,
@@ -730,8 +752,10 @@ function BriefTab({
           project || payload.projectUpdate.session_mode !== undefined
             ? nextConvoImportWarnings(payload.projectUpdate, project?.session_mode)
             : []
+        // Locks the patch tried to change: the server kept them as they were.
+        if (saved?.locks_kept?.length) warnings = [...warnings, copy.brief.patchLocksKept(saved.locks_kept)]
       } else {
-        const saved = await updateBrief.mutateAsync({ project_id: projectId, content: payload.brief as BriefContent, ...guard })
+        saved = await updateBrief.mutateAsync({ project_id: projectId, content: payload.brief as BriefContent, ...guard })
         await stampPasted(saved?.version)
       }
       // A payload without a prep stamp (old prep, hand-written JSON) folds no
@@ -739,8 +763,9 @@ function BriefTab({
       if (payload.stamp === null) warnings = [...warnings, copy.brief.pasteNotFromPrep]
       // A brief over the curation budget saves fine; it just costs every chat
       // turn and every prep more. Warn, never reject: the paste is the builder's call.
-      const sizeWarning = briefSizeWarning(payload.brief)
-      if (sizeWarning) warnings = [...warnings, sizeWarning]
+      // The server computed it on the brief as saved (a patch has no whole brief here).
+      if (saved?.size_warning) warnings = [...warnings, saved.size_warning]
+      savedBriefRef.current = null
       setPasteJson('')
       setStalePrep(null)
       // Ignored fields: stay on the Brief tab so the builder reads the warning.
@@ -754,6 +779,17 @@ function BriefTab({
     } catch (err) {
       if (err instanceof StalePrepError) {
         setStalePrep({ info: err.info, payload })
+        return
+      }
+      if (err instanceof PatchDropUnmatchedError) {
+        setPasteError(copy.brief.patchDropUnmatched(err.unmatched))
+        return
+      }
+      if (briefSaved) {
+        // The brief is in; only the config PATCH failed. Remember it for the retry.
+        savedBriefRef.current = briefSaved
+        console.error('Failed to save the rest of the payload:', err)
+        setPasteError(copy.brief.configSaveFailedBriefSaved)
         return
       }
       setPasteError(err instanceof Error ? err.message : 'Failed to save')
@@ -829,7 +865,7 @@ function BriefTab({
           briefVersion={brief?.version ?? null}
           sessionCount={briefTabSessions?.length}
           pasteValue={pasteJson}
-          onPasteChange={(v) => { setPasteJson(v); setPasteError(null); setImportWarnings(null); setStalePrep(null) }}
+          onPasteChange={(v) => { setPasteJson(v); savedBriefRef.current = null; setPasteError(null); setImportWarnings(null); setStalePrep(null) }}
           pasteError={pasteError}
           importing={importing}
           onImport={handleImportJson}
