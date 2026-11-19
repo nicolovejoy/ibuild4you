@@ -1,7 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiFetch } from '@/lib/firebase/api-fetch'
 import { queryKeys } from './keys'
-import type { App, AppWithAccess, AppAdmin, ReadKeyStatus, Project, Session, Message, Brief, BriefNote, BriefVersion, PrepStamp, SystemRole, ProjectFile, FileFolder, ProjectMemberSummary } from '@/lib/types'
+import { copy } from '@/lib/copy'
+import type { App, AppWithAccess, AppAdmin, ReadKeyStatus, Project, Session, Message, Brief, BriefNote, BriefVersion, PrepStamp, BriefPatchDrop, BriefPatchSummary, SystemRole, ProjectFile, FileFolder, ProjectMemberSummary } from '@/lib/types'
 import type { GarmSyncOutcome } from '@/lib/garm-grants'
 
 // --- Current user ---
@@ -534,19 +535,36 @@ export class StalePrepError extends Error {
   }
 }
 
+// A brief_patch whose drop entries matched nothing in the live brief. Nothing
+// was saved; the Brief tab shows copy.brief.patchDropUnmatched(unmatched, false).
+export class PatchDropUnmatchedError extends Error {
+  unmatched: Required<BriefPatchDrop>
+  constructor(unmatched: Required<BriefPatchDrop>) {
+    super('patch_drop_unmatched')
+    this.name = 'PatchDropUnmatchedError'
+    this.unmatched = unmatched
+  }
+}
+
 export function useUpdateBrief() {
   const queryClient = useQueryClient()
 
   return useMutation({
+    // No retry (the app default is one). Every refusal the server gives is final, and a save is
+    // not safe to repeat: if the first request saved and only the answer was lost, a retry meets a 409 or unmatched drops.
+    retry: false,
     mutationFn: async ({
       project_id,
       content,
+      patch,
       source,
       prep_stamp,
       force,
     }: {
       project_id: string
-      content: unknown
+      // Exactly one of content (a whole brief) or patch (a brief_patch).
+      content?: unknown
+      patch?: unknown
       source?: 'restore'
       prep_stamp?: PrepStamp | null
       force?: boolean
@@ -555,7 +573,8 @@ export function useUpdateBrief() {
         method: 'PUT',
         body: JSON.stringify({
           project_id,
-          content,
+          ...(content !== undefined && { content }),
+          ...(patch !== undefined && { patch }),
           ...(source && { source }),
           ...(prep_stamp && { prep_stamp }),
           ...(force && { force: true }),
@@ -564,9 +583,21 @@ export function useUpdateBrief() {
       if (!res.ok) {
         const data = await res.json()
         if (res.status === 409 && data?.error === 'stale_prep') throw new StalePrepError(data as StalePrepInfo)
+        if (res.status === 400 && data?.error === 'patch_no_brief') throw new Error(copy.brief.patchNoBrief)
+        if (res.status === 400 && data?.error === 'patch_drop_unmatched') {
+          throw new PatchDropUnmatchedError(data.unmatched as Required<BriefPatchDrop>)
+        }
         throw new Error(data.error || 'Failed to update brief')
       }
-      return res.json() as Promise<Brief & { folded?: string[]; size_warning?: string | null }>
+      return res.json() as Promise<
+        Brief & {
+          folded?: string[]
+          size_warning?: string | null
+          // Only for a patch
+          patch_summary?: BriefPatchSummary
+          locks_kept?: string[]
+        }
+      >
     },
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.brief(variables.project_id) })

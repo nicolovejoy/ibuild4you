@@ -1,6 +1,8 @@
 // Centralized user-facing copy. Edit this file to change text across the app.
 // Organized by context. Functions accept dynamic values; strings are static.
 
+import type { BriefPatchSummary } from '@/lib/types'
+
 export const copy = {
   // --- Invite & nudge messages ---
   invite: {
@@ -179,7 +181,7 @@ export const copy = {
     briefNearSizeLimit: (chars: number, budget: number) =>
       `This brief is ${chars.toLocaleString('en-US')} characters, close to the ${budget.toLocaleString('en-US')} curation budget. Trim or merge decisions when you next curate it.`,
     briefOverSizeLimit: (chars: number, budget: number) =>
-      `This brief is ${chars.toLocaleString('en-US')} characters, over the ${budget.toLocaleString('en-US')} curation budget. It still saves. Trim or merge decisions when you can.`,
+      `This brief is ${chars.toLocaleString('en-US')} characters, over the ${budget.toLocaleString('en-US')} curation budget. It still saves. Trim or merge decisions when you can. The next prep will ask for a whole rewrite.`,
     regenFailedTooLarge: (when: string) =>
       `The note from the last conversation failed on ${when}: the model ran out of room writing it. Try "Write note now" under Details.`,
     regenFailed: (when: string) =>
@@ -187,6 +189,87 @@ export const copy = {
     // #229 paste guard and notes
     pasteNotFromPrep:
       'This paste was not made from a prep, so no notes were folded. They stay visible to Sam and in the next prep.',
+    // brief_patch paste (relay project 4): a payload that carries only what changed.
+    pasteBothBriefAndPatch: 'A payload carries either "brief" or "brief_patch", not both.',
+    pastePatchNotObject: '"brief_patch" must be an object.',
+    patchLocksKept: (topics: string[]) =>
+      `Locked, left as it is: ${topics.map((t) => `"${t}"`).join(', ')}.`,
+    // One sentence per drop that matched nothing, then the hint for a payload that
+    // was already imported (a second import finds its drops already gone). The
+    // preview under the paste box (preview true) is worded as a forecast and
+    // leaves the hint out: nothing has been imported yet.
+    patchDropUnmatched: (
+      unmatched: {
+        decisions: string[]
+        features: string[]
+        open_risks: string[]
+        queued: string[]
+      },
+      preview: boolean
+    ) => {
+      const lead = preview ? 'Will not import' : 'Not imported'
+      const sentences = [
+        ...unmatched.decisions.map((t) => `${lead}: no decision in the brief has the topic "${t}".`),
+        ...unmatched.features.map((t) => `${lead}: no feature in the brief reads "${t}".`),
+        ...unmatched.open_risks.map((t) => `${lead}: no risk in the brief reads "${t}".`),
+        ...unmatched.queued.map((t) => `${lead}: no queued item in the brief reads "${t}".`),
+      ]
+      if (!preview) {
+        sentences.push(
+          'If this payload was already imported, the brief is saved: remove "brief_patch" from the JSON to import the rest, and choose Save anyway if asked.'
+        )
+      }
+      return sentences.join(' ')
+    },
+    // The line under the paste box for a brief_patch payload. In each group the
+    // first non-zero count carries the noun and the rest follow without it.
+    // `stamped`: the payload carries a prep stamp, so its notes fold even when
+    // nothing in the brief changes. Without a stamp nothing folds.
+    patchPreview: (s: BriefPatchSummary, stamped: boolean) => {
+      const plural = (n: number, one: string, many: string) => (n === 1 ? one : many)
+      // [count, label] pairs: the first non-zero one gets "<n> <noun> <label>".
+      const group = (noun: [string, string], parts: Array<[number, string]>) => {
+        const used = parts.filter(([n]) => n > 0)
+        if (used.length === 0) return null
+        return used
+          .map(([n, label], i) => (i === 0 ? `${n} ${plural(n, noun[0], noun[1])} ${label}` : `${n} ${label}`))
+          .join(', ')
+      }
+      const groups = [
+        group(['decision', 'decisions'], [
+          [s.decisions_revised, 'revised'],
+          [s.decisions_added, 'added'],
+          [s.decisions_dropped, 'dropped'],
+        ]),
+        group(['risk', 'risks'], [
+          [s.risks_added, 'added'],
+          [s.risks_changed, 'changed'],
+          [s.risks_dropped, 'dropped'],
+        ]),
+        group(['feature', 'features'], [
+          [s.features_added, 'added'],
+          [s.features_dropped, 'dropped'],
+        ]),
+        group(['queued item', 'queued items'], [
+          [s.queued_added, 'added'],
+          [s.queued_dropped, 'dropped'],
+        ]),
+        group(['shipped item', 'shipped items'], [[s.shipped_added, 'added']]),
+        s.fields_replaced.length > 0 ? `${s.fields_replaced.join(', ')} replaced` : null,
+      ].filter((g): g is string => g !== null)
+      if (groups.length === 0) return stamped ? 'Changes: none. The notes still fold.' : 'Changes: none.'
+      return `Changes: ${groups.join(' · ')}`
+    },
+    // A payload with neither "brief" nor "brief_patch" but a config field is read
+    // as an empty patch; when its stamp lists notes, say they will fold.
+    patchImplicitFolds: (noteCount: number) =>
+      `No "brief" or "brief_patch" in this payload: the brief stays as it is, and ${noteCount} note${noteCount === 1 ? '' : 's'} will be folded.`,
+    // A whole "brief" drops a decision by leaving it out, so the preview names them.
+    wholeRewriteRemoves: (topics: string[]) =>
+      `Whole rewrite: removes ${topics.length} decision${topics.length === 1 ? '' : 's'}: ${topics.map((t) => `"${t}"`).join(', ')}`,
+    patchNoBrief: 'This project has no brief yet. The first one must be a whole "brief".',
+    configSaveFailedBriefSaved:
+      'The brief is saved, but the rest of the payload was not. Click Import again to retry the rest.',
     stalePrepTitle: 'This prep is out of date',
     stalePrepNote: (count: number, liveVersion: number, prepVersion: number) => {
       const parts: string[] = []

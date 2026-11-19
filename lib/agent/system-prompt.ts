@@ -1,4 +1,5 @@
 import { latestShipped } from '@/lib/brief/shipped'
+import { hasBriefContent } from '@/lib/brief/has-content'
 import { AGENT_BEHAVIOR_RULES, CONVERGE_BEHAVIOR_RULES, DEFAULT_IDENTITY, FACILITATOR_IDENTITY, FACILITATOR_RULES } from './constants'
 import { briefRoleLabel } from '@/lib/roles/display'
 import { renderPrototypeFeedbackBlock, type PrototypeFeedbackItem } from './prototype-feedback'
@@ -364,20 +365,6 @@ When you close this session, mention that this is an early beta (a work in progr
 export function buildSystemPrompt(input: SystemPromptInput): string {
   const { stable, volatile } = buildSystemPromptParts(input)
   return volatile ? `${stable}\n\n${volatile}` : stable
-}
-
-function hasBriefContent(brief: BriefContent): boolean {
-  return !!(
-    brief.problem ||
-    brief.target_users ||
-    brief.features.length > 0 ||
-    brief.constraints ||
-    brief.additional_context ||
-    (brief.decisions && brief.decisions.length > 0) ||
-    (brief.open_risks && brief.open_risks.length > 0) ||
-    (brief.shipped && brief.shipped.length > 0) ||
-    (brief.queued && brief.queued.length > 0)
-  )
 }
 
 function formatBrief(brief: BriefContent): string {

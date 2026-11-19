@@ -7,6 +7,7 @@ import { briefWithoutProvenance } from '@/lib/api/brief-merge'
 export const BRIEF_CHAR_BUDGET = 20000
 // Warn the builder once a brief is past this share of the budget.
 const WARN_SHARE = 0.8
+export const BRIEF_WARN_CHARS = BRIEF_CHAR_BUDGET * WARN_SHARE
 
 // Shown on the Brief tab whenever the live brief is close to the budget, and
 // after a paste: null while the brief comfortably fits. Warns, never refuses.
@@ -22,7 +23,7 @@ export function briefSizeChars(content: unknown): number {
 export function briefSizeWarning(content: unknown): string | null {
   const chars = briefSizeChars(content)
   if (chars > BRIEF_CHAR_BUDGET) return copy.brief.briefOverSizeLimit(chars, BRIEF_CHAR_BUDGET)
-  if (chars >= BRIEF_CHAR_BUDGET * WARN_SHARE) return copy.brief.briefNearSizeLimit(chars, BRIEF_CHAR_BUDGET)
+  if (chars >= BRIEF_WARN_CHARS) return copy.brief.briefNearSizeLimit(chars, BRIEF_CHAR_BUDGET)
   return null
 }
 

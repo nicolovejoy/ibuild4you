@@ -347,6 +347,43 @@ export interface BriefContent {
   queued?: string[] // #219: not built yet, omitted when empty
 }
 
+// A brief_patch: only what changed in a brief (relay project 4). Applied to the
+// live brief by lib/brief/patch.ts. Decisions carry topic, decision and locked
+// only; provenance is stamped by code after the merge.
+export interface BriefPatchDrop {
+  decisions?: string[] // topics
+  features?: string[] // texts
+  open_risks?: string[] // texts
+  queued?: string[] // texts
+}
+export interface BriefPatch {
+  problem?: string
+  target_users?: string
+  constraints?: string
+  additional_context?: string
+  decisions?: BriefDecision[]
+  features?: string[]
+  open_risks?: Array<string | BriefRisk>
+  shipped?: BriefShipped[]
+  queued?: string[]
+  drop?: BriefPatchDrop
+}
+// What a patch did, for the Brief tab. Counts are of entries, not of patch lines.
+export interface BriefPatchSummary {
+  fields_replaced: string[] // names of the text fields replaced
+  decisions_revised: number
+  decisions_added: number
+  decisions_dropped: number
+  features_added: number
+  features_dropped: number
+  risks_added: number
+  risks_changed: number
+  risks_dropped: number
+  queued_added: number
+  queued_dropped: number
+  shipped_added: number // items, not batches
+}
+
 export interface BriefDecisionContest {
   proposed: string // what the maker wants instead
   reason: string // why, and when they confirmed it

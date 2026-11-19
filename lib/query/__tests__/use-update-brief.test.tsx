@@ -3,7 +3,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook, waitFor, act } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import React from 'react'
-import { useUpdateBrief, StalePrepError } from '../hooks'
+import { useUpdateBrief, StalePrepError, PatchDropUnmatchedError } from '../hooks'
+import { queryClient as appQueryClient } from '../query-client'
 
 // #229: the paste guard's client side. The hook forwards the prep stamp and
 // force flag, and turns a stale-prep 409 into a typed error carrying its body.
@@ -64,5 +65,27 @@ describe('useUpdateBrief (#229)', () => {
     fetchMock.mockResolvedValue(json({ error: 'Brief content is empty' }, 400))
     const { result } = renderHook(() => useUpdateBrief(), { wrapper })
     await expect(result.current.mutateAsync({ project_id: 'p1', content: {} })).rejects.not.toBeInstanceOf(StalePrepError)
+  })
+
+  // A refusal is final and a brief save is not safe to repeat, so the app's
+  // global mutation retry (retry: 1) must not apply to this hook.
+  it('is not retried under the app default retry', async () => {
+    const unmatched = { decisions: [], features: [], open_risks: ['x'], queued: [] }
+    fetchMock.mockResolvedValue(json({ error: 'patch_drop_unmatched', unmatched }, 400))
+    // The app's real mutation defaults, with a 1 ms retry delay so a retry would show up fast.
+    const client = new QueryClient({
+      defaultOptions: { mutations: { ...appQueryClient.getDefaultOptions().mutations, retryDelay: 1 } },
+    })
+    expect(client.getDefaultOptions().mutations?.retry).toBe(1)
+    const retryWrapper = ({ children }: { children: React.ReactNode }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    )
+    const { result } = renderHook(() => useUpdateBrief(), { wrapper: retryWrapper })
+    await expect(result.current.mutateAsync({ project_id: 'p1', patch: { problem: 'x' } })).rejects.toBeInstanceOf(
+      PatchDropUnmatchedError
+    )
+    // Give a retry time to arrive if one is coming.
+    await new Promise((r) => setTimeout(r, 50))
+    expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 })

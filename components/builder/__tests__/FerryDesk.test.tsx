@@ -4,6 +4,8 @@ import { render, screen, fireEvent, cleanup } from '@testing-library/react'
 import React from 'react'
 import { FerryDesk } from '../FerryDesk'
 import type { FerryStamps } from '@/lib/builder/ferry-stamps'
+import type { BriefContent } from '@/lib/types'
+import { copy } from '@/lib/copy'
 
 afterEach(cleanup)
 
@@ -37,6 +39,7 @@ function renderDesk(props: Partial<React.ComponentProps<typeof FerryDesk>> = {})
     <FerryDesk
       stamps={stamps()}
       briefVersion={4}
+      briefContent={null}
       sessionCount={3}
       pasteValue=""
       pasteError={null}
@@ -117,6 +120,7 @@ describe('FerryDesk', () => {
       <FerryDesk
         stamps={stamps()}
         briefVersion={4}
+        briefContent={null}
         sessionCount={3}
         pasteValue=""
         onPasteChange={vi.fn()}
@@ -249,5 +253,275 @@ describe('FerryDesk', () => {
   it('renders the openQuestions slot', () => {
     renderDesk({ openQuestions: <div data-testid="oq-slot">questions</div> })
     expect(screen.getByTestId('oq-slot')).toBeTruthy()
+  })
+})
+
+// --- The preview under the paste box ---
+
+const liveBrief = (over: Partial<BriefContent> = {}): BriefContent => ({
+  problem: 'p',
+  target_users: 't',
+  features: ['f1'],
+  constraints: 'c',
+  additional_context: '',
+  decisions: [
+    { topic: 'Hosting', decision: 'Vercel' },
+    { topic: 'Auth', decision: 'Google', locked: true },
+    { topic: 'Billing', decision: 'Stripe' },
+  ],
+  open_risks: ['Slow imports'],
+  ...over,
+})
+
+const patchPaste = (patch: Record<string, unknown>) => JSON.stringify({ brief_patch: patch })
+
+describe('FerryDesk paste preview', () => {
+  it('shows nothing for an empty box', () => {
+    renderDesk({ briefContent: liveBrief(), pasteValue: '' })
+    expect(screen.queryByTestId('paste-changes')).toBeNull()
+    expect(screen.queryByTestId('paste-unmatched')).toBeNull()
+    expect(screen.queryByTestId('paste-locks')).toBeNull()
+    expect(screen.queryByTestId('paste-rewrite')).toBeNull()
+    expect(screen.queryByTestId('paste-no-brief')).toBeNull()
+  })
+
+  it('shows nothing while the JSON does not parse', () => {
+    renderDesk({ briefContent: liveBrief(), pasteValue: '{ "brief_patch": ' })
+    expect(screen.queryByTestId('paste-changes')).toBeNull()
+  })
+
+  it('shows the Changes line with counts for a patch', () => {
+    renderDesk({
+      briefContent: liveBrief(),
+      pasteValue: patchPaste({
+        decisions: [
+          { topic: 'Hosting', decision: 'Fly' },
+          { topic: 'Email', decision: 'Resend' },
+        ],
+        open_risks: ['New risk'],
+        drop: { features: ['f1'] },
+      }),
+    })
+    expect(screen.getByTestId('paste-changes').textContent).toBe(
+      'Changes: 1 decision revised, 1 added · 1 risk added · 1 feature dropped'
+    )
+  })
+
+  it('says none when an unstamped patch changes nothing, without claiming notes fold', () => {
+    renderDesk({ briefContent: liveBrief(), pasteValue: patchPaste({}) })
+    expect(screen.getByTestId('paste-changes').textContent).toBe('Changes: none.')
+  })
+
+  it('says the notes still fold when a stamped patch changes nothing', () => {
+    renderDesk({
+      briefContent: liveBrief(),
+      pasteValue: JSON.stringify({
+        _prep_stamp: { brief_version: 4, note_ids: ['n1'], report_ids: [] },
+        brief_patch: {},
+      }),
+    })
+    expect(screen.getByTestId('paste-changes').textContent).toBe('Changes: none. The notes still fold.')
+  })
+
+  it('warns when a payload with no brief or brief_patch would fold notes', () => {
+    renderDesk({
+      briefContent: liveBrief(),
+      pasteValue: JSON.stringify({
+        _prep_stamp: { brief_version: 4, note_ids: ['n1', 'n2'], report_ids: [] },
+        welcome_message: 'hi',
+      }),
+    })
+    const line = screen.getByTestId('paste-implicit')
+    expect(line.textContent).toBe(
+      'No "brief" or "brief_patch" in this payload: the brief stays as it is, and 2 notes will be folded.'
+    )
+    expect(line.className).toContain('text-amber-700')
+    expect(screen.queryByTestId('paste-changes')).toBeNull()
+    cleanup()
+    renderDesk({
+      briefContent: liveBrief(),
+      pasteValue: JSON.stringify({
+        _prep_stamp: { brief_version: 4, note_ids: ['n1'], report_ids: [] },
+        welcome_message: 'hi',
+      }),
+    })
+    expect(screen.getByTestId('paste-implicit').textContent).toContain('and 1 note will be folded.')
+  })
+
+  it('shows the plain none line for an implicit patch that folds no notes', () => {
+    renderDesk({
+      briefContent: liveBrief(),
+      pasteValue: JSON.stringify({
+        _prep_stamp: { brief_version: 4, note_ids: [], report_ids: ['r1'] },
+        welcome_message: 'hi',
+      }),
+    })
+    expect(screen.queryByTestId('paste-implicit')).toBeNull()
+    expect(screen.getByTestId('paste-changes').textContent).toBe('Changes: none. The notes still fold.')
+  })
+
+  it('does not warn for an explicit empty brief_patch', () => {
+    renderDesk({
+      briefContent: liveBrief(),
+      pasteValue: JSON.stringify({
+        _prep_stamp: { brief_version: 4, note_ids: ['n1'], report_ids: [] },
+        brief_patch: {},
+        welcome_message: 'hi',
+      }),
+    })
+    expect(screen.queryByTestId('paste-implicit')).toBeNull()
+    expect(screen.getByTestId('paste-changes')).toBeTruthy()
+  })
+
+  it('names a drop that matches nothing, in warning style, without the already-imported hint', () => {
+    renderDesk({ briefContent: liveBrief(), pasteValue: patchPaste({ drop: { open_risks: ['Ghost risk'] } }) })
+    const line = screen.getByTestId('paste-unmatched')
+    expect(line.textContent).toBe('Will not import: no risk in the brief reads "Ghost risk".')
+    expect(line.className).toContain('text-amber-700')
+    expect(line.textContent).not.toContain('already imported')
+  })
+
+  it('shows the locked line for a patch aimed at a locked topic', () => {
+    renderDesk({
+      briefContent: liveBrief(),
+      pasteValue: patchPaste({ decisions: [{ topic: 'Auth', decision: 'Email only' }] }),
+    })
+    const line = screen.getByTestId('paste-locks')
+    expect(line.textContent).toBe(copy.brief.patchLocksKept(['Auth']))
+    expect(line.className).toContain('text-amber-700')
+  })
+
+  it('shows the no-brief line for a patch when the project has no brief', () => {
+    renderDesk({ briefContent: null, pasteValue: patchPaste({ features: ['x'] }) })
+    expect(screen.getByTestId('paste-no-brief').textContent).toBe(copy.brief.patchNoBrief)
+    expect(screen.queryByTestId('paste-changes')).toBeNull()
+    cleanup()
+    // An empty brief counts as no brief.
+    renderDesk({
+      briefContent: { problem: '', target_users: '', features: [], constraints: '', additional_context: '' },
+      pasteValue: patchPaste({ features: ['x'] }),
+    })
+    expect(screen.getByTestId('paste-no-brief')).toBeTruthy()
+  })
+
+  // liveBrief has Hosting, Auth (locked) and Billing. A stamped paste has its
+  // locks restored by the server; an unstamped one does not.
+  const stamp = { brief_version: 4, note_ids: [] as string[] }
+
+  it('names the unlocked decisions a stamped whole-brief payload leaves out, not the locked ones', () => {
+    const next = liveBrief({ decisions: [{ topic: 'Hosting', decision: 'Vercel' }] })
+    renderDesk({ briefContent: liveBrief(), pasteValue: JSON.stringify({ _prep_stamp: stamp, brief: next }) })
+    expect(screen.getByTestId('paste-rewrite').textContent).toBe('Whole rewrite: removes 1 decision: "Billing"')
+  })
+
+  it('shows no rewrite line when a stamped payload only leaves out a locked decision', () => {
+    const next = liveBrief({
+      decisions: [
+        { topic: 'Hosting', decision: 'Vercel' },
+        { topic: 'Billing', decision: 'Stripe' },
+      ],
+    })
+    renderDesk({ briefContent: liveBrief(), pasteValue: JSON.stringify({ _prep_stamp: stamp, brief: next }) })
+    expect(screen.queryByTestId('paste-rewrite')).toBeNull()
+  })
+
+  it('names locked decisions too when the payload has no stamp', () => {
+    const next = liveBrief({ decisions: [{ topic: 'Hosting', decision: 'Vercel' }] })
+    renderDesk({ briefContent: liveBrief(), pasteValue: JSON.stringify({ brief: next }) })
+    expect(screen.getByTestId('paste-rewrite').textContent).toBe(
+      'Whole rewrite: removes 2 decisions: "Auth", "Billing"'
+    )
+  })
+
+  it('does not throw on a malformed live brief with a patch payload', () => {
+    const broken = { ...liveBrief(), decisions: 'x', open_risks: 5 } as unknown as BriefContent
+    expect(() =>
+      renderDesk({ briefContent: broken, pasteValue: patchPaste({ decisions: [{ topic: 'A', decision: 'b' }] }) })
+    ).not.toThrow()
+  })
+
+  it('shows the rewrite line for a bare legacy brief too', () => {
+    const next = liveBrief({ decisions: [] })
+    renderDesk({ briefContent: liveBrief(), pasteValue: JSON.stringify(next) })
+    expect(screen.getByTestId('paste-rewrite').textContent).toContain('removes 3 decisions')
+  })
+
+  it('shows no rewrite line when the whole brief keeps every decision', () => {
+    renderDesk({ briefContent: liveBrief(), pasteValue: JSON.stringify({ brief: liveBrief() }) })
+    expect(screen.queryByTestId('paste-rewrite')).toBeNull()
+  })
+
+  it('shows no rewrite line when there is no live brief', () => {
+    renderDesk({ briefContent: null, pasteValue: JSON.stringify({ brief: liveBrief() }) })
+    expect(screen.queryByTestId('paste-rewrite')).toBeNull()
+  })
+
+  it('does not throw on a whole brief with malformed decisions', () => {
+    renderDesk({ briefContent: liveBrief(), pasteValue: JSON.stringify({ brief: { decisions: 'nope' } }) })
+    expect(screen.queryByTestId('paste-rewrite')).toBeNull()
+  })
+})
+
+describe('copy: preview wording', () => {
+  const zero = {
+    fields_replaced: [],
+    decisions_revised: 0,
+    decisions_added: 0,
+    decisions_dropped: 0,
+    features_added: 0,
+    features_dropped: 0,
+    risks_added: 0,
+    risks_changed: 0,
+    risks_dropped: 0,
+    queued_added: 0,
+    queued_dropped: 0,
+    shipped_added: 0,
+  }
+  it('puts the noun on the first non-zero count of each group', () => {
+    expect(copy.brief.patchPreview({ ...zero, decisions_revised: 2, decisions_added: 1, decisions_dropped: 1 }, true)).toBe(
+      'Changes: 2 decisions revised, 1 added, 1 dropped'
+    )
+    expect(copy.brief.patchPreview({ ...zero, decisions_added: 1 }, true)).toBe('Changes: 1 decision added')
+    expect(copy.brief.patchPreview({ ...zero, decisions_dropped: 2 }, true)).toBe('Changes: 2 decisions dropped')
+    expect(copy.brief.patchPreview({ ...zero, risks_added: 1, risks_changed: 1, risks_dropped: 1 }, true)).toBe(
+      'Changes: 1 risk added, 1 changed, 1 dropped'
+    )
+    expect(copy.brief.patchPreview({ ...zero, features_added: 1, features_dropped: 1 }, true)).toBe(
+      'Changes: 1 feature added, 1 dropped'
+    )
+    expect(copy.brief.patchPreview({ ...zero, queued_added: 2 }, true)).toBe('Changes: 2 queued items added')
+    expect(copy.brief.patchPreview({ ...zero, queued_added: 1, queued_dropped: 1 }, true)).toBe(
+      'Changes: 1 queued item added, 1 dropped'
+    )
+    expect(copy.brief.patchPreview({ ...zero, shipped_added: 1 }, true)).toBe('Changes: 1 shipped item added')
+    expect(copy.brief.patchPreview({ ...zero, shipped_added: 2 }, true)).toBe('Changes: 2 shipped items added')
+    expect(copy.brief.patchPreview({ ...zero, fields_replaced: ['constraints', 'problem'] }, true)).toBe(
+      'Changes: constraints, problem replaced'
+    )
+  })
+  it('joins groups with a middle dot and says none when all are zero', () => {
+    expect(copy.brief.patchPreview({ ...zero, decisions_revised: 2, decisions_added: 1, risks_dropped: 1, features_added: 1 }, true)).toBe(
+      'Changes: 2 decisions revised, 1 added · 1 risk dropped · 1 feature added'
+    )
+    expect(copy.brief.patchPreview(zero, true)).toBe('Changes: none. The notes still fold.')
+    expect(copy.brief.patchPreview(zero, false)).toBe('Changes: none.')
+  })
+  it('patchDropUnmatched keeps the import wording with preview false and drops the hint with true', () => {
+    const u = { decisions: [], features: [], open_risks: ['R'], queued: [] }
+    expect(copy.brief.patchDropUnmatched(u, false)).toContain('Not imported: no risk in the brief reads "R".')
+    expect(copy.brief.patchDropUnmatched(u, false)).toContain(
+      'If this payload was already imported, the brief is saved: remove "brief_patch" from the JSON to import the rest, and choose Save anyway if asked.'
+    )
+    expect(copy.brief.patchDropUnmatched(u, true)).toBe('Will not import: no risk in the brief reads "R".')
+  })
+  it('patchImplicitFolds counts the notes', () => {
+    expect(copy.brief.patchImplicitFolds(1)).toBe(
+      'No "brief" or "brief_patch" in this payload: the brief stays as it is, and 1 note will be folded.'
+    )
+    expect(copy.brief.patchImplicitFolds(3)).toContain('and 3 notes will be folded.')
+  })
+  it('wholeRewriteRemoves lists the topics', () => {
+    expect(copy.brief.wholeRewriteRemoves(['A', 'B', 'C'])).toBe('Whole rewrite: removes 3 decisions: "A", "B", "C"')
+    expect(copy.brief.wholeRewriteRemoves(['A'])).toBe('Whole rewrite: removes 1 decision: "A"')
   })
 })
