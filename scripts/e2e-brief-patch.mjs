@@ -141,8 +141,12 @@ try {
   grade(!!unmatched && unmatched.startsWith('Will not import:') && unmatched.includes('No such risk in this brief'), `preview refusal: ${unmatched}`)
   r = await importAndWait()
   grade(r?.status() === 400, `Import with an unmatched drop -> ${r?.status()}`)
-  const refusal = page.getByText(/Not imported: no risk in the brief reads/)
-  const shown = await refusal.first().waitFor({ timeout: 5000 }).then(() => true).catch(() => false)
+  // Read from the page text: a getByText locator did not resolve on this
+  // message although it is on screen.
+  const shown = await page
+    .waitForFunction(() => document.body.innerText.includes('Not imported: no risk in the brief reads'), null, { timeout: 5000 })
+    .then(() => true)
+    .catch(() => false)
   grade(shown, 'the refusal is shown after Import')
   // A refused save must not be sent again (the app's default retries a failed
   // mutation once; the brief save opts out).
