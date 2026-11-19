@@ -536,7 +536,7 @@ export class StalePrepError extends Error {
 }
 
 // A brief_patch whose drop entries matched nothing in the live brief. Nothing
-// was saved; the Brief tab shows copy.brief.patchDropUnmatched(unmatched).
+// was saved; the Brief tab shows copy.brief.patchDropUnmatched(unmatched, false).
 export class PatchDropUnmatchedError extends Error {
   unmatched: Required<BriefPatchDrop>
   constructor(unmatched: Required<BriefPatchDrop>) {

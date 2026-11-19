@@ -29,7 +29,17 @@ function wholeBriefForCompare(brief: unknown): BriefContent | null {
   return { ...(brief as unknown as BriefContent), decisions }
 }
 
+// The preview runs on every keystroke and the pasted JSON and the stored brief
+// are both untrusted shapes, so any failure means no preview, never a crash.
 export function pastePreviewLines(pasteValue: string, briefContent: BriefContent | null): PastePreviewLine[] {
+  try {
+    return buildLines(pasteValue, briefContent)
+  } catch {
+    return []
+  }
+}
+
+function buildLines(pasteValue: string, briefContent: BriefContent | null): PastePreviewLine[] {
   if (pasteValue.trim() === '') return []
   const parsed = parseNextConvoPayload(pasteValue)
   if (!parsed.ok) return []
@@ -58,7 +68,10 @@ export function pastePreviewLines(pasteValue: string, briefContent: BriefContent
   if (!live) return []
   const next = wholeBriefForCompare(payload.brief)
   if (!next) return []
-  const removed = removedDecisionTopics(live, next)
+  // A stamped paste has its locks restored by the server (restoreLocksOnPaste),
+  // so a locked decision left out is not lost. An unstamped raw paste loses them.
+  const lockedTopics = new Set((live.decisions ?? []).filter((d) => d.locked).map((d) => d.topic))
+  const removed = removedDecisionTopics(live, next).filter((t) => !(payload.stamp && lockedTopics.has(t)))
   if (removed.length === 0) return []
   return [{ id: 'rewrite', text: copy.brief.wholeRewriteRemoves(removed), warn: true }]
 }

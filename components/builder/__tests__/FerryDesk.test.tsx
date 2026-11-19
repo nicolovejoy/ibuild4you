@@ -343,12 +343,40 @@ describe('FerryDesk paste preview', () => {
     expect(screen.getByTestId('paste-no-brief')).toBeTruthy()
   })
 
-  it('names the decisions a whole-brief payload leaves out', () => {
+  // liveBrief has Hosting, Auth (locked) and Billing. A stamped paste has its
+  // locks restored by the server; an unstamped one does not.
+  const stamp = { brief_version: 4, note_ids: [] as string[] }
+
+  it('names the unlocked decisions a stamped whole-brief payload leaves out, not the locked ones', () => {
+    const next = liveBrief({ decisions: [{ topic: 'Hosting', decision: 'Vercel' }] })
+    renderDesk({ briefContent: liveBrief(), pasteValue: JSON.stringify({ _prep_stamp: stamp, brief: next }) })
+    expect(screen.getByTestId('paste-rewrite').textContent).toBe('Whole rewrite: removes 1 decision: "Billing"')
+  })
+
+  it('shows no rewrite line when a stamped payload only leaves out a locked decision', () => {
+    const next = liveBrief({
+      decisions: [
+        { topic: 'Hosting', decision: 'Vercel' },
+        { topic: 'Billing', decision: 'Stripe' },
+      ],
+    })
+    renderDesk({ briefContent: liveBrief(), pasteValue: JSON.stringify({ _prep_stamp: stamp, brief: next }) })
+    expect(screen.queryByTestId('paste-rewrite')).toBeNull()
+  })
+
+  it('names locked decisions too when the payload has no stamp', () => {
     const next = liveBrief({ decisions: [{ topic: 'Hosting', decision: 'Vercel' }] })
     renderDesk({ briefContent: liveBrief(), pasteValue: JSON.stringify({ brief: next }) })
     expect(screen.getByTestId('paste-rewrite').textContent).toBe(
       'Whole rewrite: removes 2 decisions: "Auth", "Billing"'
     )
+  })
+
+  it('does not throw on a malformed live brief with a patch payload', () => {
+    const broken = { ...liveBrief(), decisions: 'x', open_risks: 5 } as unknown as BriefContent
+    expect(() =>
+      renderDesk({ briefContent: broken, pasteValue: patchPaste({ decisions: [{ topic: 'A', decision: 'b' }] }) })
+    ).not.toThrow()
   })
 
   it('shows the rewrite line for a bare legacy brief too', () => {
