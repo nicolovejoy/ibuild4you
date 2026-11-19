@@ -112,11 +112,12 @@ Clarity over cleverness: clear and straightforward code, no clever abstractions,
 - Return leg, first real check: the key is minted (2026-11-15) and Nico's `--check` passed on 2026-11-18 (`build status key: present`, brief v60). Still to come: l6-music's next session posts a report with `post_build_status` (reader registered and rules changed, its #231), then "Copy next-convo prep" on F4FC shows it. They will say how it went on the handoff channel.
 - l6-music's reader: its last four build reports said the brief reader was unavailable. Asked why on the handoff channel 2026-11-18 (local or cloud session, what `/mcp` shows, Touch ID); no reply yet. Until it works there, no report is posted and the return leg is untested.
 - Notes after PR #267 (merged 2026-11-18): on the next few F4FC notes, a half-answered risk should be settled with its answer plus one new risk for what is left, and no topic should be a risk's text. The comms agent was to give the "Builder placeholders to react to…" decision a short topic at its next paste.
-- The F4FC brief is over the 20,000 budget (22.6k at v60), so every paste trims. Project 4 is the fix.
+- The F4FC brief is over the 20,000 budget (22.6k at v60). With project 4 the next prep asks for one whole rewrite trimmed to fit; rounds after that are patches.
+- Project 4 in real use (PR #268): the first F4FC round after its compaction is the first real `brief_patch`. Check that the comms agent sends a patch, that the line under the paste box matches what it meant, and that nothing is refused for a drop text that does not match.
 - musicforge: their from-server read-key smoke once the Fly route ships (#244; key at `op://dev-secrets/loop-read-key-musicforge/password`). Embed spike (Loop Phase 2) only if their panel proves not enough.
 
-**Queue.** Relay efficiency, six projects (spec `docs/superpowers/specs/2026-11-15-relay-efficiency-design.md`). Done: project 1 (PRs #261, #262), project 2 (l6-music #224), project 3 (PR #263), and the return leg (PR #266). Remaining, in order:
-- **Next: project 4, payload as changes** (the comms agent sends what changed, not the whole brief). Starts with a design pass. Consider with it: a place in a build report's `live` items for maker-facing test steps, which the comms agent asked for.
+**Queue.** Relay efficiency, six projects (spec `docs/superpowers/specs/2026-11-15-relay-efficiency-design.md`). Done: project 1 (PRs #261, #262), project 2 (l6-music #224), project 3 (PR #263), the return leg (PR #266), and project 4, payload as changes (PR #268, `brief_patch`). Remaining, in order:
+- A place in a build report's `live` items for maker-facing test steps, which the comms agent asked for. Small; left out of project 4 because it changes the report shape, not the payload.
 - byside and prntd move their reader registration to the launcher (`scripts/brief-reader.mjs`).
 - Project 5: payload status on the Brief tab, plus two traced bugs (two welcomes in one conversation; a welcome stranded in a closed conversation).
 - Project 6: Nico's call on reopening #217.
