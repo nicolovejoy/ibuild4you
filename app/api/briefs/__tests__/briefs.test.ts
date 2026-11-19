@@ -907,3 +907,239 @@ describe('PUT /api/briefs — paste guard (#229)', () => {
     expect((await res.json()).size_warning).toMatch(/over the 20,000/)
   })
 })
+
+// =============================================================================
+// PUT /api/briefs with `patch` (relay project 4)
+//
+// A patch is merged into the live brief by applyBriefPatch (lib/brief/patch.ts,
+// tested on its own). These tests cover what the route adds: the refusals, the
+// locks, the provenance, the paste guard and the no-op.
+// =============================================================================
+
+describe('PUT /api/briefs — patch', () => {
+  const lockedDecision = {
+    topic: 'Payment',
+    decision: 'Stripe only',
+    locked: true,
+    decided_in_session: 's1',
+    decided_at: '2026-10-01T18:00:00.000Z',
+  }
+  const hostingDecision = {
+    topic: 'Hosting',
+    decision: 'Vercel',
+    decided_in_session: 's1',
+    decided_at: '2026-10-02T18:00:00.000Z',
+  }
+  const liveContent = {
+    problem: 'p',
+    target_users: '',
+    features: ['Menu'],
+    constraints: '',
+    additional_context: '',
+    decisions: [lockedDecision, hostingDecision],
+    open_risks: [],
+  }
+
+  const note = (id: string) => ({
+    id,
+    session_id: `sess-${id}`,
+    created_at: '2026-10-25T18:00:00.000Z',
+    folded_at: null,
+    text: '',
+    decisions: [],
+    risks_added: [],
+    risks_resolved: [],
+    lock_reversals: [],
+  })
+
+  function liveBrief(version: number, content: Record<string, unknown> = liveContent) {
+    mockGet.mockResolvedValue({
+      empty: false,
+      docs: [
+        {
+          id: 'brief-1',
+          data: () => ({
+            project_id: 'proj1',
+            version,
+            content,
+            updated_at: '2026-10-20T18:00:00.000Z',
+            source: 'paste',
+          }),
+        },
+      ],
+    })
+  }
+
+  function putPatch(body: Record<string, unknown>) {
+    return PUT(
+      new Request('http://localhost/api/briefs', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ project_id: 'proj1', ...body }),
+      })
+    )
+  }
+
+  const stamp = { brief_version: 3, note_ids: [] as string[] }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockGetProjectRole.mockResolvedValue('builder')
+    mockUpsertBrief.mockResolvedValue({ id: 'brief-1', project_id: 'proj1', version: 4, content: liveContent })
+    mockListUnfoldedNotes.mockResolvedValue([])
+    mockFoldNotes.mockResolvedValue(undefined)
+    mockFoldReports.mockResolvedValue([])
+    liveBrief(3)
+  })
+
+  it('400s when both content and patch are sent, and writes nothing', async () => {
+    const res = await putPatch({ content: validContent, patch: { features: ['x'] } })
+    expect(res.status).toBe(400)
+    expect(await res.json()).toEqual({ error: 'Send either content or patch, not both' })
+    expect(mockUpsertBrief).not.toHaveBeenCalled()
+  })
+
+  it('400s when patch is not a plain object', async () => {
+    for (const bad of ['text', 5, null, ['a']]) {
+      const res = await putPatch({ patch: bad })
+      expect(res.status).toBe(400)
+      expect(await res.json()).toEqual({ error: 'patch must be an object' })
+    }
+    expect(mockUpsertBrief).not.toHaveBeenCalled()
+  })
+
+  it('400 patch_no_brief when the project has no brief doc, or a doc with empty content', async () => {
+    mockGet.mockResolvedValue({ empty: true, docs: [] })
+    const none = await putPatch({ patch: { features: ['x'] }, prep_stamp: { brief_version: 0, note_ids: ['aaa'] } })
+    expect(none.status).toBe(400)
+    expect(await none.json()).toEqual({ error: 'patch_no_brief' })
+
+    liveBrief(1, { problem: '', target_users: '', features: [], constraints: '', additional_context: '', decisions: [] })
+    const empty = await putPatch({ patch: { features: ['x'] }, prep_stamp: { brief_version: 1, note_ids: ['aaa'] } })
+    expect(empty.status).toBe(400)
+    expect(await empty.json()).toEqual({ error: 'patch_no_brief' })
+
+    expect(mockUpsertBrief).not.toHaveBeenCalled()
+    expect(mockFoldNotes).not.toHaveBeenCalled()
+  })
+
+  it('400 patch_drop_unmatched names the entry under its list, and writes and folds nothing', async () => {
+    mockListUnfoldedNotes.mockResolvedValue([note('aaa')])
+    const res = await putPatch({
+      patch: { drop: { features: ['Menu', 'Loyalty card'] } },
+      prep_stamp: { brief_version: 3, note_ids: ['aaa'] },
+    })
+    expect(res.status).toBe(400)
+    expect(await res.json()).toEqual({
+      error: 'patch_drop_unmatched',
+      unmatched: { decisions: [], features: ['Loyalty card'], open_risks: [], queued: [] },
+    })
+    expect(mockUpsertBrief).not.toHaveBeenCalled()
+    expect(mockFoldNotes).not.toHaveBeenCalled()
+  })
+
+  it('a patch replacing a locked decision, unstamped: the lock is saved verbatim and locks_kept names it', async () => {
+    // A second entry keeps the patch from being a no-op, so a version is saved.
+    const res = await putPatch({
+      patch: { decisions: [{ topic: 'payment', decision: 'Square' }], features: ['Loyalty card'] },
+    })
+    expect(res.status).toBe(200)
+    const saved = mockUpsertBrief.mock.calls[0][2]
+    expect(saved.decisions).toContainEqual(lockedDecision)
+    expect(saved.decisions).toHaveLength(2)
+    expect((await res.json()).locks_kept).toEqual(['Payment'])
+  })
+
+  it('the same patch, stamped: the lock is verbatim and its contest state comes from the live brief', async () => {
+    const contested = { proposed: 'Square', reason: 'Maker confirmed in conv 4' }
+    liveBrief(3, { ...liveContent, decisions: [{ ...lockedDecision, contested }, hostingDecision] })
+    const res = await putPatch({
+      patch: { decisions: [{ topic: 'Payment', decision: 'Square' }], features: ['Loyalty card'] },
+      prep_stamp: stamp,
+    })
+    expect(res.status).toBe(200)
+    const saved = mockUpsertBrief.mock.calls[0][2]
+    expect(saved.decisions).toContainEqual({ ...lockedDecision, contested })
+    expect((await res.json()).locks_kept).toEqual(['Payment'])
+  })
+
+  it('provenance: an untouched decision keeps decided_at, a replaced one gets revised_at, a new topic gets decided_at', async () => {
+    liveBrief(3, { ...liveContent, decisions: [hostingDecision, { topic: 'Menu style', decision: 'Photos' }] })
+    const res = await putPatch({
+      patch: {
+        decisions: [
+          { topic: 'Menu style', decision: 'Text only' },
+          { topic: 'Languages', decision: 'English and French' },
+        ],
+      },
+    })
+    expect(res.status).toBe(200)
+    const byTopic = Object.fromEntries(
+      mockUpsertBrief.mock.calls[0][2].decisions.map((d: { topic: string }) => [d.topic, d])
+    )
+    expect(byTopic['Hosting']).toEqual(hostingDecision)
+    expect(byTopic['Menu style'].revised_at).toEqual(expect.any(String))
+    expect(byTopic['Menu style'].decision).toBe('Text only')
+    expect(byTopic['Languages'].decided_at).toEqual(expect.any(String))
+    expect(byTopic['Languages'].revised_at).toBeUndefined()
+  })
+
+  it('a stamped {} patch writes no version, answers with the live version and folds the listed notes', async () => {
+    mockListUnfoldedNotes.mockResolvedValue([note('aaa')])
+    const res = await putPatch({ patch: {}, prep_stamp: { brief_version: 3, note_ids: ['aaa'] } })
+    expect(res.status).toBe(200)
+    expect(mockUpsertBrief).not.toHaveBeenCalled()
+    expect(mockFoldNotes).toHaveBeenCalledWith(expect.anything(), 'brief-1', ['aaa'], expect.any(String))
+    const data = await res.json()
+    expect(data).toMatchObject({
+      id: 'brief-1',
+      project_id: 'proj1',
+      version: 3,
+      source: 'paste',
+      folded: ['aaa'],
+      folded_reports: [],
+      size_warning: null,
+      locks_kept: [],
+    })
+    expect(data.content).toEqual(liveContent)
+    expect(data.patch_summary).toBeDefined()
+  })
+
+  it('a patch whose only entry is a shipped batch with no items is that same no-op', async () => {
+    const res = await putPatch({ patch: { shipped: [{ date: '2026-11-18', items: [] }] }, prep_stamp: stamp })
+    expect(res.status).toBe(200)
+    expect(mockUpsertBrief).not.toHaveBeenCalled()
+    expect((await res.json()).version).toBe(3)
+  })
+
+  it('a stale stamp is 409 without force and saved with force: true', async () => {
+    mockListUnfoldedNotes.mockResolvedValue([note('aaa'), note('late')])
+    const body = { patch: { features: ['Loyalty card'] }, prep_stamp: { brief_version: 3, note_ids: ['aaa'] } }
+
+    const stale = await putPatch(body)
+    expect(stale.status).toBe(409)
+    expect((await stale.json()).error).toBe('stale_prep')
+    expect(mockUpsertBrief).not.toHaveBeenCalled()
+
+    const forced = await putPatch({ ...body, force: true })
+    expect(forced.status).toBe(200)
+    expect(mockUpsertBrief).toHaveBeenCalledTimes(1)
+    expect(mockUpsertBrief.mock.calls[0][2].features).toEqual(['Menu', 'Loyalty card'])
+    expect(mockFoldNotes).toHaveBeenCalledWith(expect.anything(), 'brief-1', ['aaa'], expect.any(String))
+  })
+
+  it('a whole content paste has no patch_summary or locks_kept in its response', async () => {
+    const res = await putPatch({ content: validContent })
+    expect(res.status).toBe(200)
+    const data = await res.json()
+    expect('patch_summary' in data).toBe(false)
+    expect('locks_kept' in data).toBe(false)
+  })
+
+  it('a changing patch answers with the summary', async () => {
+    const res = await putPatch({ patch: { features: ['Loyalty card'] } })
+    const data = await res.json()
+    expect(data.patch_summary.features_added).toBe(1)
+    expect(data.locks_kept).toEqual([])
+  })
+})

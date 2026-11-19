@@ -3,11 +3,13 @@ import { getAuthenticatedUser, getAdminDb, getProjectRole, requireRole } from '@
 import { upsertBrief } from '@/lib/api/briefs'
 import { contestFor, dismissedFor, restoreLocksOnPaste, stampDecisionProvenance, topicKey } from '@/lib/api/brief-merge'
 import { carryRiskOwners, normalizeRisks } from '@/lib/brief/risks'
+import { applyBriefPatch, normalizeBriefPatch } from '@/lib/brief/patch'
+import { hasBriefContent } from '@/lib/brief/has-content'
 import { normalizeShipped, normalizeQueued, isShippedArrayShape } from '@/lib/brief/shipped'
 import { foldNotes, listUnfoldedNotes, parsePrepStamp } from '@/lib/api/brief-notes'
 import { foldReports } from '@/lib/build-status/reports'
 import { briefSizeWarning } from '@/lib/agent/brief-size'
-import type { BriefContent, BriefNote, BriefSource, PrepStamp } from '@/lib/types'
+import type { BriefContent, BriefNote, BriefPatchSummary, BriefSource, PrepStamp } from '@/lib/types'
 
 // GET /api/briefs?project_id=xxx — get the latest brief for a project
 export async function GET(request: Request) {
@@ -49,7 +51,7 @@ export async function PUT(request: Request) {
   if (auth.error) return auth.error
 
   const body = await request.json()
-  const { project_id, content, source: rawSource, prep_stamp: rawStamp, force } = body
+  const { project_id, content, patch: rawPatch, source: rawSource, prep_stamp: rawStamp, force } = body
 
   if (!project_id) {
     return NextResponse.json({ error: 'project_id is required' }, { status: 400 })
@@ -61,17 +63,227 @@ export async function PUT(request: Request) {
   const roleCheck = requireRole(role, 'builder')
   if (roleCheck) return roleCheck
 
-  // Validate BriefContent shape
-  const validationError = validateBriefContent(content)
-  if (validationError) {
-    return NextResponse.json({ error: validationError }, { status: 400 })
+  // A patch (only what changed) takes the place of `content` (the whole brief).
+  // Exactly one of the two.
+  const isPatch = rawPatch !== undefined
+  if (isPatch && content !== undefined && content !== null) {
+    return NextResponse.json({ error: 'Send either content or patch, not both' }, { status: 400 })
+  }
+  const patch = isPatch ? normalizeBriefPatch(rawPatch) : null
+  if (isPatch && !patch) {
+    return NextResponse.json({ error: 'patch must be an object' }, { status: 400 })
   }
 
-  // Normalize the content
+  // A whole brief is validated and normalized now. A patch is applied to the
+  // live brief below, once that is loaded.
+  let briefContent: BriefContent = { problem: '', target_users: '', features: [], constraints: '', additional_context: '' }
+  if (!isPatch) {
+    const validationError = validateBriefContent(content)
+    if (validationError) {
+      return NextResponse.json({ error: validationError }, { status: 400 })
+    }
+    briefContent = normalizeWholeBrief(content)
+  }
+
+  // #194: the Brief tab's Restore re-submits an archived version through this
+  // same path so locks and provenance behave as a paste; only 'restore' is
+  // accepted from the client — regen/create are server-side sources.
+  // A patch is always a paste: a Restore re-submits a whole archived version.
+  const source: BriefSource = rawSource === 'restore' && !isPatch ? 'restore' : 'paste'
+
+  // #229: the prep stamp only matters on a paste (a Restore ignores it). A
+  // stamp that is present but malformed is refused rather than treated as
+  // "no stamp", which would silently skip the guard.
+  let stamp: PrepStamp | null = null
+  if (source === 'paste' && rawStamp !== undefined && rawStamp !== null) {
+    stamp = parsePrepStamp(rawStamp)
+    if (!stamp) {
+      return NextResponse.json({ error: 'prep_stamp is malformed' }, { status: 400 })
+    }
+  }
+
+  // The latest stored brief: provenance and risk owners carry forward from
+  // it, and the paste guard compares its version with the stamp.
+  const prevSnap = await db
+    .collection('briefs')
+    .where('project_id', '==', project_id)
+    .orderBy('version', 'desc')
+    .limit(1)
+    .get()
+  const prevDoc = prevSnap.empty ? null : prevSnap.docs[0]
+  const prevContent = prevDoc ? (prevDoc.data().content as BriefContent | undefined) : null
+  const liveVersion = prevDoc ? ((prevDoc.data().version as number) || 0) : 0
+
+  // A patch is merged into the live brief. Nothing is written or folded if it
+  // is refused here. The first brief is a whole one, and "no brief" includes a
+  // doc with empty content (the note writer creates one to hang notes on).
+  let patchSummary: BriefPatchSummary | null = null
+  let locksKept: string[] = []
+  let patchChanged = true
+  if (patch) {
+    if (!prevContent || !hasBriefContent(prevContent)) {
+      return NextResponse.json({ error: 'patch_no_brief' }, { status: 400 })
+    }
+    const applied = applyBriefPatch(prevContent, patch)
+    const { unmatched } = applied
+    if (unmatched.decisions.length + unmatched.features.length + unmatched.open_risks.length + unmatched.queued.length > 0) {
+      return NextResponse.json({ error: 'patch_drop_unmatched', unmatched }, { status: 400 })
+    }
+    briefContent = applied.content
+    patchSummary = applied.summary
+    locksKept = applied.locksTouched
+    patchChanged = applied.changed
+  }
+
+  // #229 paste guard. Notes the stamp lists are the ones the comms agent saw;
+  // any other unfolded note was written after the prep was copied. Stale →
+  // 409 and nothing written, unless the builder chose Save anyway (force).
+  // Unlisted notes are never folded, forced or not, so Sam and the next prep
+  // still see them.
+  let listed: BriefNote[] = []
+  if (stamp) {
+    const unfolded = prevDoc ? await listUnfoldedNotes(db, prevDoc.id) : []
+    const stamped = new Set(stamp.note_ids)
+    listed = unfolded.filter((n) => stamped.has(n.id))
+    const unlisted = unfolded.filter((n) => !stamped.has(n.id))
+    const stale = unlisted.length > 0 || liveVersion > stamp.brief_version
+    if (stale && force !== true) {
+      return NextResponse.json(
+        {
+          error: 'stale_prep',
+          unlisted_notes: unlisted.map((n) => ({ id: n.id, created_at: n.created_at })),
+          live_version: liveVersion,
+          prep_version: stamp.brief_version,
+        },
+        { status: 409 }
+      )
+    }
+  }
+
+  // #229 (kept guarantee #71/#197): a stamped paste is the comms agent's
+  // rewrite, so it can't drop or reword a lock or change its contest state —
+  // the live brief's locks come back verbatim with their contest fields.
+  // Unstamped saves (structured editor, Accept/Dismiss, Restore, a raw paste)
+  // skip this: their unlock or dismiss is deliberate, and the Brief tab asks
+  // before one drops a lock. A patch always runs it, stamped or not: a patch
+  // never changes a lock, and this also brings back each lock's contest state.
+  if (stamp || patch) {
+    briefContent.decisions = restoreLocksOnPaste(prevContent?.decisions, briefContent.decisions)
+  }
+
+  // #121: stamp decision provenance against the latest stored brief. Paste path
+  // stamps sessionId null ("decided out-of-band"); carry-forward also restores
+  // stamps an outside agent dropped when round-tripping the brief JSON.
+  // #229: a new topic a folded note introduced takes that note's session and
+  // time instead, and a topic a folded note revised takes it as the revision
+  // (notes are oldest first, so the later note wins).
+  const originByTopic = new Map<string, { session_id: string | null; at: string }>()
+  for (const n of listed) {
+    for (const d of n.decisions ?? []) {
+      originByTopic.set(topicKey(d), { session_id: n.session_id, at: n.created_at })
+    }
+  }
+  briefContent.decisions = stampDecisionProvenance({
+    prev: prevContent?.decisions,
+    next: briefContent.decisions ?? [],
+    sessionId: null,
+    now: new Date().toISOString(),
+    originByTopic,
+  })
+
+  // #229 Q3: an ownerless risk takes its owner by text match from the stored
+  // brief or from a folded note's risks_added (a note wins over the brief).
+  briefContent.open_risks = carryRiskOwners(
+    [...normalizeRisks(prevContent?.open_risks), ...listed.flatMap((n) => normalizeRisks(n.risks_added))],
+    briefContent.open_risks ?? []
+  )
+
+  // A patch that changes nothing writes no version: the response carries the
+  // live one, and the notes and reports below still fold against it.
+  const result =
+    patch && !patchChanged && prevDoc
+      ? {
+          id: prevDoc.id,
+          project_id: prevDoc.data().project_id ?? project_id,
+          version: liveVersion,
+          content: prevContent as BriefContent,
+          updated_at: prevDoc.data().updated_at,
+          source: prevDoc.data().source ?? null,
+        }
+      : await upsertBrief(db, project_id, briefContent, source)
+
+  // Fold the listed notes now the brief that absorbed them is saved. A fold
+  // failure must not turn a saved paste into an error: the notes stay
+  // unfolded (Sam still sees them) and the next prep lists them again.
+  const now = new Date().toISOString()
+  let folded: string[] = []
+  if (stamp && listed.length > 0) {
+    const ids = listed.map((n) => n.id)
+    try {
+      await foldNotes(db, result.id, ids, now)
+      folded = ids
+    } catch (err) {
+      console.error('[briefs] folding notes failed for brief', result.id, 'notes', ids, err)
+    }
+  }
+
+  // Fold the build reports the stamp lists, the same way. Only the stamp's own
+  // ids are passed, so a report posted after the prep was copied stays
+  // unfolded for the next prep; reports play no part in the stale_prep check.
+  // foldReports reads only this project's reports and skips ids it can't fold.
+  let foldedReports: string[] = []
+  if (stamp?.report_ids && stamp.report_ids.length > 0) {
+    try {
+      foldedReports = await foldReports(db, project_id, stamp.report_ids, now)
+    } catch (err) {
+      console.error('[briefs] folding reports failed for project', project_id, 'reports', stamp.report_ids, err)
+    }
+  }
+
+  return NextResponse.json({
+    ...result,
+    folded,
+    folded_reports: foldedReports,
+    size_warning: briefSizeWarning(briefContent),
+    ...(patchSummary && { patch_summary: patchSummary, locks_kept: locksKept }),
+  })
+}
+
+function validateBriefContent(content: unknown): string | null {
+  if (!content || typeof content !== 'object') {
+    return 'content must be an object with BriefContent shape'
+  }
+
+  const c = content as Record<string, unknown>
+
+  // #219: a present shipped/queued must be a list (bad entries inside are dropped).
+  if (!isShippedArrayShape(c.shipped)) return '"shipped" must be a list'
+  if (c.queued !== undefined && !Array.isArray(c.queued)) return '"queued" must be a list'
+
+  // At least one field should have data
+  const hasData =
+    (typeof c.problem === 'string' && c.problem.length > 0) ||
+    (typeof c.target_users === 'string' && c.target_users.length > 0) ||
+    (Array.isArray(c.features) && c.features.length > 0) ||
+    (typeof c.constraints === 'string' && c.constraints.length > 0) ||
+    (typeof c.additional_context === 'string' && c.additional_context.length > 0) ||
+    (Array.isArray(c.decisions) && c.decisions.length > 0) ||
+    normalizeShipped(c.shipped).length > 0 ||
+    normalizeQueued(c.queued).length > 0
+
+  if (!hasData) {
+    return 'Brief content is empty — at least one field must have data'
+  }
+
+  return null
+}
+
+// The whole-brief paste: coerce the sent content into a BriefContent.
+function normalizeWholeBrief(content: Record<string, unknown>): BriefContent {
   // #219: normalized once, kept only when non-empty.
   const shipped = normalizeShipped(content.shipped)
   const queued = normalizeQueued(content.queued)
-  const briefContent: BriefContent = {
+  return {
     problem: typeof content.problem === 'string' ? content.problem : '',
     target_users: typeof content.target_users === 'string' ? content.target_users : '',
     features: Array.isArray(content.features) ? content.features.filter((f: unknown) => typeof f === 'string') : [],
@@ -110,161 +322,4 @@ export async function PUT(request: Request) {
     ...(shipped.length > 0 && { shipped }),
     ...(queued.length > 0 && { queued }),
   }
-
-  // #194: the Brief tab's Restore re-submits an archived version through this
-  // same path so locks and provenance behave as a paste; only 'restore' is
-  // accepted from the client — regen/create are server-side sources.
-  const source: BriefSource = rawSource === 'restore' ? 'restore' : 'paste'
-
-  // #229: the prep stamp only matters on a paste (a Restore ignores it). A
-  // stamp that is present but malformed is refused rather than treated as
-  // "no stamp", which would silently skip the guard.
-  let stamp: PrepStamp | null = null
-  if (source === 'paste' && rawStamp !== undefined && rawStamp !== null) {
-    stamp = parsePrepStamp(rawStamp)
-    if (!stamp) {
-      return NextResponse.json({ error: 'prep_stamp is malformed' }, { status: 400 })
-    }
-  }
-
-  // The latest stored brief: provenance and risk owners carry forward from
-  // it, and the paste guard compares its version with the stamp.
-  const prevSnap = await db
-    .collection('briefs')
-    .where('project_id', '==', project_id)
-    .orderBy('version', 'desc')
-    .limit(1)
-    .get()
-  const prevDoc = prevSnap.empty ? null : prevSnap.docs[0]
-  const prevContent = prevDoc ? (prevDoc.data().content as BriefContent | undefined) : null
-  const liveVersion = prevDoc ? ((prevDoc.data().version as number) || 0) : 0
-
-  // #229 paste guard. Notes the stamp lists are the ones the comms agent saw;
-  // any other unfolded note was written after the prep was copied. Stale →
-  // 409 and nothing written, unless the builder chose Save anyway (force).
-  // Unlisted notes are never folded, forced or not, so Sam and the next prep
-  // still see them.
-  let listed: BriefNote[] = []
-  if (stamp) {
-    const unfolded = prevDoc ? await listUnfoldedNotes(db, prevDoc.id) : []
-    const stamped = new Set(stamp.note_ids)
-    listed = unfolded.filter((n) => stamped.has(n.id))
-    const unlisted = unfolded.filter((n) => !stamped.has(n.id))
-    const stale = unlisted.length > 0 || liveVersion > stamp.brief_version
-    if (stale && force !== true) {
-      return NextResponse.json(
-        {
-          error: 'stale_prep',
-          unlisted_notes: unlisted.map((n) => ({ id: n.id, created_at: n.created_at })),
-          live_version: liveVersion,
-          prep_version: stamp.brief_version,
-        },
-        { status: 409 }
-      )
-    }
-  }
-
-  // #229 (kept guarantee #71/#197): a stamped paste is the comms agent's
-  // rewrite, so it can't drop or reword a lock or change its contest state —
-  // the live brief's locks come back verbatim with their contest fields.
-  // Unstamped saves (structured editor, Accept/Dismiss, Restore, a raw paste)
-  // skip this: their unlock or dismiss is deliberate, and the Brief tab asks
-  // before one drops a lock.
-  if (stamp) {
-    briefContent.decisions = restoreLocksOnPaste(prevContent?.decisions, briefContent.decisions)
-  }
-
-  // #121: stamp decision provenance against the latest stored brief. Paste path
-  // stamps sessionId null ("decided out-of-band"); carry-forward also restores
-  // stamps an outside agent dropped when round-tripping the brief JSON.
-  // #229: a new topic a folded note introduced takes that note's session and
-  // time instead, and a topic a folded note revised takes it as the revision
-  // (notes are oldest first, so the later note wins).
-  const originByTopic = new Map<string, { session_id: string | null; at: string }>()
-  for (const n of listed) {
-    for (const d of n.decisions ?? []) {
-      originByTopic.set(topicKey(d), { session_id: n.session_id, at: n.created_at })
-    }
-  }
-  briefContent.decisions = stampDecisionProvenance({
-    prev: prevContent?.decisions,
-    next: briefContent.decisions ?? [],
-    sessionId: null,
-    now: new Date().toISOString(),
-    originByTopic,
-  })
-
-  // #229 Q3: an ownerless risk takes its owner by text match from the stored
-  // brief or from a folded note's risks_added (a note wins over the brief).
-  briefContent.open_risks = carryRiskOwners(
-    [...normalizeRisks(prevContent?.open_risks), ...listed.flatMap((n) => normalizeRisks(n.risks_added))],
-    briefContent.open_risks ?? []
-  )
-
-  const result = await upsertBrief(db, project_id, briefContent, source)
-
-  // Fold the listed notes now the brief that absorbed them is saved. A fold
-  // failure must not turn a saved paste into an error: the notes stay
-  // unfolded (Sam still sees them) and the next prep lists them again.
-  const now = new Date().toISOString()
-  let folded: string[] = []
-  if (stamp && listed.length > 0) {
-    const ids = listed.map((n) => n.id)
-    try {
-      await foldNotes(db, result.id, ids, now)
-      folded = ids
-    } catch (err) {
-      console.error('[briefs] folding notes failed for brief', result.id, 'notes', ids, err)
-    }
-  }
-
-  // Fold the build reports the stamp lists, the same way. Only the stamp's own
-  // ids are passed, so a report posted after the prep was copied stays
-  // unfolded for the next prep; reports play no part in the stale_prep check.
-  // foldReports reads only this project's reports and skips ids it can't fold.
-  let foldedReports: string[] = []
-  if (stamp?.report_ids && stamp.report_ids.length > 0) {
-    try {
-      foldedReports = await foldReports(db, project_id, stamp.report_ids, now)
-    } catch (err) {
-      console.error('[briefs] folding reports failed for project', project_id, 'reports', stamp.report_ids, err)
-    }
-  }
-
-  return NextResponse.json({
-    ...result,
-    folded,
-    folded_reports: foldedReports,
-    size_warning: briefSizeWarning(briefContent),
-  })
 }
-
-function validateBriefContent(content: unknown): string | null {
-  if (!content || typeof content !== 'object') {
-    return 'content must be an object with BriefContent shape'
-  }
-
-  const c = content as Record<string, unknown>
-
-  // #219: a present shipped/queued must be a list (bad entries inside are dropped).
-  if (!isShippedArrayShape(c.shipped)) return '"shipped" must be a list'
-  if (c.queued !== undefined && !Array.isArray(c.queued)) return '"queued" must be a list'
-
-  // At least one field should have data
-  const hasData =
-    (typeof c.problem === 'string' && c.problem.length > 0) ||
-    (typeof c.target_users === 'string' && c.target_users.length > 0) ||
-    (Array.isArray(c.features) && c.features.length > 0) ||
-    (typeof c.constraints === 'string' && c.constraints.length > 0) ||
-    (typeof c.additional_context === 'string' && c.additional_context.length > 0) ||
-    (Array.isArray(c.decisions) && c.decisions.length > 0) ||
-    normalizeShipped(c.shipped).length > 0 ||
-    normalizeQueued(c.queued).length > 0
-
-  if (!hasData) {
-    return 'Brief content is empty — at least one field must have data'
-  }
-
-  return null
-}
-
