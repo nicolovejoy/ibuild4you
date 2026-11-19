@@ -1,22 +1,20 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for Claude Code in this repository. Reference detail lives in `docs/`; read the named file before working in that area.
 
 ## What This Is
 
-iBuild4you.com — an AI-powered project intake system. A conversational agent guides non-technical users through discovery and produces a structured "living brief" that evolves over multiple sessions. Builders review briefs and annotate them; those annotations inform the agent's next session with the requester.
+iBuild4you.com — an AI-powered project intake system. A conversational agent (Sam) guides a non-technical maker through discovery and keeps a structured "living brief" across sessions. Builders review briefs and annotate them; those annotations inform the agent's next session.
 
-## Three Roles
+Roles: **requester / maker** (has the idea, chats with the agent), **agent** (converses, extracts structure, keeps the brief), **builder** (reviews briefs on a dashboard, annotates).
 
-- **Requester** — non-technical person with an app/website idea, chats with the agent
-- **Agent** — conducts conversations, extracts structure, produces/updates the living brief
-- **Builder** — reviews briefs on a dashboard, adds annotations that feed back into agent context
+MVP: conversational intake → living brief → builder review → next session picks up where it left off. Not in MVP: process flow diagrams, data architecture drafts, microservice sketches, comparable app analysis, whiteboard UI mockups.
 
 ## Stack
 
 - Next.js App Router on Vercel
 - Firestore (`ibuild4you-a0c4d` Firebase project) — all DB access through API routes using Firebase Admin SDK, never from client components
-- Firebase Auth with Google OAuth + email/password login (passcodes retired 2026-07-17, Garm PR D; the old `/api/auth/passcode` route is gone)
+- Firebase Auth with Google OAuth + email/password login (passcodes are retired; `/api/auth/passcode` answers 410)
 - Shared `apiFetch()` client helper with Bearer tokens
 - React Query for state management
 - Tailwind CSS v4 with @theme inline tokens
@@ -42,196 +40,118 @@ npm run test:watch   # Run tests in watch mode
 - `app/` — Next.js App Router pages and API routes
 - `app/api/` — All data access goes through API routes using Firebase Admin SDK
 - `lib/firebase/` — Client SDK (`client.ts`), Admin SDK (`admin.ts`), `apiFetch()` helper
-- `lib/s3/` — S3 client for file storage (uploads go to `ibuild4you-files` bucket)
+- `lib/s3/` — S3 client for file storage (`ibuild4you-files` bucket)
 - `lib/api/` — Server-side auth helpers (`getAuthenticatedUser`, `requireAdmin`)
-- `lib/hooks/` — React hooks (`useAuth`)
-- `lib/query/` — React Query client config and hooks
-- `lib/types/` — TypeScript types for all entities
-- `lib/copy.ts` — All user-facing text centralized in one file for easy editing
+- `lib/hooks/`, `lib/query/`, `lib/types/` — React hooks, React Query config and hooks, entity types
+- `lib/copy.ts` — All user-facing text centralized in one file
 - `lib/agent/` — Agent system prompt, prep prompt, welcome message generator, constants
-- `components/ui/` — Reusable UI primitives (Button, Modal, Card, StatusMessage, etc.)
-- `components/builder/` — Builder project view (sessions, brief, setup tabs)
-- `components/maker/` — Maker project view (chat, brief card)
-- `components/` — App-level components (ErrorBoundary, UserMenu)
-- `lib/integration/` + `app/api/integrations/` — stars-demo round-two integration (see Data Model).
-- **Loop** — the feedback mechanism: a widget embedded on host apps → `/api/feedback` → admin inbox at `/admin/feedback` (per-app at `/admin/apps/<slug>`; apps are created and configured at `/admin/apps`) → optional GitHub issue. Overview + how to embed: `docs/loop.md`. Wire contract: `lib/feedback/README.md`.
+- `components/ui/` — Reusable UI primitives; `components/builder/` — builder project view (sessions, brief, setup tabs); `components/maker/` — maker project view (chat, brief card)
+- `lib/integration/` + `app/api/integrations/` — stars-demo round-two integration
+- **Loop** — the feedback mechanism: a widget embedded on host apps → `/api/feedback` → admin inbox at `/admin/feedback` (per-app at `/admin/apps/<slug>`) → optional GitHub issue. Overview and how to embed: `docs/loop.md`. Wire contract: `lib/feedback/README.md`.
 
 Key pattern: clients call `apiFetch()` which attaches the Firebase Bearer token. API routes call `getAuthenticatedUser(request)` to verify the token server-side before accessing Firestore via `getAdminDb()`.
 
 ## Data Model
 
-- **users** — identity (email, first_name, last_name), auto-populated from Google sign-in
-- **approved_emails** — per-email approval record, keyed by normalized email. **Not the sign-in gate** (Garm is, since PR G) except on a preview deployment with no Garm wiring. Still live as an *input* to the Garm grant (dual-write + hourly reconcile): an approved email with no brief gets a viewer grant, and `revoked_at` (off-boarding, #163) drives the revoke. Writers validate address shape (`isValidEmail`, PR H).
-- **project_members** — role-based membership (owner, builder, apprentice, maker); makers sign in with Google or a password-setup link (passcodes retired, PR D). Nobody can invite, re-role, remove, restore or re-key onto their own row (`selfEditError`/`isSelfRow` in `lib/members/`, #245); your own People row is read-only.
-- **projects** — one per maker engagement, includes agent config (session_mode, directives, opener), requester name/email, tracking fields (shared_at, last_nudged_at), `maker_waiting_since` (server-written by kickoff when it posts the nothing-queued greeting; cleared by the next maker turn or by an import; drives the builder's "Maker waiting" dashboard state), `thumbs_down_count` (Sam's replies with a 👎, kept by `PATCH`/`DELETE /api/messages` with increments so the dashboard list needs no extra reads; prod had no 👎 when it shipped on 2026-11-03, so no backfill ran; `scripts/backfill-thumbs-down-count.mjs` recounts if ever needed).
-- **sessions** — each conversation between maker and agent, snapshots agent config at creation
-- **messages** — individual messages within a session, role (user/agent) and timestamp, optional file_ids. Optional `kind`: only `unqueued_greeting` today (the canned nothing-queued note, set by kickoff, removed by import). Agent messages may carry the maker's `rating` (`up`|`down`, #130) and, on a 👎, an optional `rating_reason` ("what was off?", ≤500 chars) via `PATCH /api/messages`; any other rating clears the reason.
-- **files** — uploaded files (metadata in Firestore, bytes in S3 at `ibuild4you-files` bucket), scoped to project
-- **apps** — Loop host apps, doc id = slug (`name`, `github_repo`, `feedback_requires_identity`, `brief_id`, `legacy_slugs` = ids widgets still send, `created_by` provenance only, timestamps). Settings only. Since Phase B an app's admins live only in Garm (owner/collaborator grants on the app slug), read live through Loop's key (`GARM_LOOP_KEY`, `lib/garm-loop.ts`) on every request; nothing about them is stored or cached locally. Ingest resolves a canonical or legacy slug and stores the canonical one on `feedback.project_id`; signing secrets are `loop_signing_secrets/{slug}`.
-- **briefs** — living brief for a project, structured and versioned; the comms agent curates it at each paste and the app writes a note after each conversation. Since #194 every overwrite archives the outgoing version to `briefs/{id}/versions/{version}` (`{version, content, updated_at, source, archived_at}`, no cap) and the live doc carries `source` (`create`|`paste`|`regen`|`restore`); `GET /api/briefs/versions` lists them (builder+). Since #229 the app no longer rewrites the brief after a conversation: a `briefs/{briefId}/notes` subcollection holds one short note per conversation stretch (written by the notify cron or the Brief tab's "Write note now", `lib/api/note-writer.ts` / `lib/api/brief-notes.ts`; `folded_at` is set when a curated paste folds it in), `projects.notes_through_at` marks how far notes cover, and a confirmed maker reversal of a locked decision sets `contested` at note time as a version with `source: 'note'` (sources are now `create`|`paste`|`restore`|`note`), and the Brief tab's History → Restore re-submits one through `PUT /api/briefs` with `source: 'restore'`. `open_risks` elements are `string | { text, owner }`. A note's `risks_resolved` elements are `string | { text, resolution }`: since 2026-11-15 the note writer records what the maker said that settled the risk, and the prep tells the comms agent to write that answer into the brief before dropping the risk (`resolvedLine` in `lib/brief/risks.ts`). Content may also carry optional `shipped` `[{date, items}]` (dated batches of what went out) and `queued` `[string]` (what is next, not built) (#219).
-- **reviews** — builder annotations on a brief, feed back into agent context for next session
-- **garm_denials** — counts-only record of sign-in denials keyed by sha256(email); kind unknown-principal | known-member (lib/garm-denials.ts). No addresses stored. The hourly garm_reconcile_log row carries 24h counts of each.
-- **loop_read_keys** — one per Loop app, doc id = canonical slug: `{ key_hash (sha256 hex), created_at, created_by, last_used_at? }`. The key itself is shown once at mint on `/admin/apps/<slug>` (system admin) and never stored. Used by `GET /api/feedback/read` (contract `lib/feedback/READ.md`).
-- **build_status_keys** — one per build repo, doc id `owner__name`: `{ repo, key_hash (sha256 hex), created_at, created_by, last_used_at? }`. The key (`bsk_…`) is shown once when a system admin mints it on the Setup tab (Advanced, beside the GitHub repo) and never stored. It belongs to the repo, so two briefs on one repo share it. It can add a build report through `POST /api/build-status` and nothing else. Mint, check and revoke: `/api/build-status/key`.
-- **projects/{id}/build_reports** — status reports Claude Code in the build repo posts with that key: `{ repo, brief_version_checked, live [{what, checked}], merged, proposed, questions, posted_at, body_hash, folded_at }`; `folded_at` is stored as `null` until a paste folds the report. `live` is only what was checked in production. Limits: 30 items per list, 500 characters per string, 4,000 in total; a report identical to the project's latest report (same lists and brief version) within ten minutes is a duplicate (200, nothing stored); a project already holding 50 unfolded reports takes no more (429) until a paste folds some. Deleting the project deletes them. `GET /api/build-status` (builder+) lists the unfolded ones; "Copy next-convo prep" puts them in a `<build_status>` block (cap 15,000 characters, oldest left out first) and lists every id in the stamp's `report_ids`; a stamped paste sets `folded_at` on exactly those. Reports never make a prep stale.
-- **integration_groups / integration_participants / integration_messages / integration_ops** — stars-demo round-two group conversations, server-to-server only (contract `/Users/nico/src/stars-demo/docs/specs/08a-ibuild4you-contract.md`; plan `docs/superpowers/plans/2026-09-22-stars-demo-round-two-integration.md`). Separate top-level collections on purpose: the client-readable `messages` rule, admin implicit-owner, brief regen, dashboard enrichment and the notify cron never see them. Messages carry an opaque `author_id` + `author_label`, never email or name. Routes under `app/api/integrations/stars-demo/*`, auth in `lib/api/integration-auth.ts`, store in `lib/integration/`.
+One line per collection. Fields, limits and history are in `docs/data-model.md`; read it before changing a collection.
+
+- **users** — identity, auto-populated from Google sign-in
+- **approved_emails** — per-email approval. Not the sign-in gate (Garm is), but an input to the Garm grant
+- **project_members** — roles owner, builder, apprentice, maker. Nobody can edit their own row
+- **projects** — one per maker engagement: agent config, requester, tracking fields, `maker_waiting_since`, `thumbs_down_count`
+- **sessions** — one conversation between maker and agent; snapshots agent config at creation
+- **messages** — role (user/agent), timestamp, optional `file_ids`, `kind`, and the maker's `rating`
+- **files** — metadata in Firestore, bytes in S3
+- **briefs** — the living brief, versioned (`briefs/{id}/versions`), with `briefs/{id}/notes`: one short note per conversation stretch, folded in at the next curated paste. The app does not rewrite the brief after a conversation; the comms agent curates it at each paste
+- **reviews** — builder annotations on a brief
+- **apps**, **loop_read_keys**, `loop_signing_secrets` — Loop host apps and their keys. App admins live only in Garm
+- **build_status_keys**, **projects/{id}/build_reports** — the per-repo key and the status reports Claude Code posts from a build repo
+- **garm_denials** — counts-only sign-in denials, no addresses
+- **integration_groups / _participants / _messages / _ops** — stars-demo round two, server-to-server only, kept apart from `messages` on purpose
 
 ## Project Setup JSON
 
-Projects can be created and updated via JSON payloads. The dashboard's "Import JSON" tab accepts the create payload directly.
+Projects are created by JSON (`POST /api/projects`, only `title` required; the dashboard's "Import JSON" tab takes the same payload) and updated by `PATCH /api/projects` (a fixed field list). The full schema, participants, `language`, `model`, locked and contested decisions, decision provenance and open-risk owners are in `docs/project-setup-json.md`. Read it before touching payloads, locks or `PUT /api/briefs`.
 
-### Create (POST /api/projects)
-
-Only `title` is required. All other fields are optional.
-
-```json
-{
-  "title": "Sam's Cafe App",
-  "requester_email": "sam@example.com",
-  "requester_first_name": "Sam",
-  "requester_last_name": "Lee",
-  "participants": [
-    { "email": "sam@example.com", "first_name": "Sam", "last_name": "Lee", "role": "maker" },
-    { "email": "dana@example.com", "first_name": "Dana", "role": "apprentice", "brief_role": "contributor" }
-  ],
-  "context": "Background info the agent uses to skip basic discovery questions. Do not suggest technologies.",
-  "welcome_message": "Hey Sam — tell me about your cafe idea!",
-  "nudge_message": "Optional. When set, used verbatim as the outbound nudge text for the next session and skips AI generation. Leave blank to let the AI draft.",
-  "voice_sample": "Optional. One paragraph showing how you'd text this person by hand. Used as a style anchor for AI-generated outbound copy (nudge/invite/reminder). Ignored when nudge_message is set.",
-  "session_mode": "converge",
-  "language": "fr",
-  "model": "claude-sonnet-5-5",
-  "hide_title_in_previews": false,
-  "seed_questions": [
-    "What problem are you trying to solve?",
-    "Who are your customers?"
-  ],
-  "builder_directives": [
-    "Focus on the ordering workflow"
-  ],
-  "brief": {
-    "problem": "Customers can't order online",
-    "target_users": "Local cafe customers",
-    "features": ["Online ordering", "Pickup scheduling"],
-    "constraints": "Must work on mobile",
-    "additional_context": "",
-    "decisions": [{ "topic": "Payment", "decision": "Stripe only", "locked": true }]
-  },
-  "session_opener": "Alias for welcome_message (either works)"
-}
-```
-
-Side effects on create: generates slug, creates owner membership, creates a membership + approves email **for each participant** (see below; sign-in is via Google or the invite flow's password-setup link), creates first session (snapshots config), adds welcome message as first agent message, creates initial brief (if `brief` provided).
-
-An open risk may be a plain string or `{ "text": "…", "owner": "maker" | "builder" }`: maker means only they can settle it, builder means it is the builder's to resolve. The note writer records owners on new risks, and every paste carries an existing owner forward by text match, also from folded notes (#220); the Brief tab lists maker-owned ones with Copy as markdown, and the dashboard row counts them.
-
-**Participants.** `participants[]` seeds any number of people on a brief in one payload — each `{ email (required), first_name?, last_name?, role?, brief_role? }`. `role` is a `MemberRole` (`maker` | `apprentice` | `builder` | `owner`; default `maker`); `brief_role` defaults from role (maker→originator, apprentice→contributor, builder→reviewer). The legacy `requester_email`/`requester_first_name`/`requester_last_name` (+ `brief_role`) still work and are folded in as the first participant. Rules: dedup by lowercased email; the creator's own email is skipped (already the owner); the project doc's displayed requester is the first `maker` participant (else the first overall); **soft cap 20** (more → 400). No hard limit elsewhere — the chat roster name-tags arbitrarily many distinct senders. The response includes a `members: [{ email, role, brief_role }]` array (passcodes no longer minted or returned, PR D).
-
-`language` (optional, `en` | `fr`, default English): the language the maker is addressed in — the agent converses in it from the first message, welcome/nudge copy is written in it, every outbound maker email (invite, nudge, reminder, the cron's reminder digest; `lib/email/outbound-copy.ts`) is sent in it, and link previews use it. The password-reset email follows the sign-in page's locale instead, since it has no brief. The brief itself always stays in English. `hide_title_in_previews` (optional boolean): a shared `/projects/<slug>` link previews with the brief title unless this is true (then the anonymous colour/glyph/code card). Previews are unauthenticated and cached by messaging apps — never names or brief contents.
-
-`model` (optional, `claude-sonnet-4-6` | `claude-sonnet-5-5` | `claude-opus-5-5`; omitted, blank or null = Default) picks the model Sam talks with on this brief (#189). Precedence: the brief's `model` > `CHAT_MODEL` > `AGENT_MODEL`. Chat and kickoff only; welcome, prep and note writing keep their own models. It applies from the next conversation: a session snapshots it as `agent_model`, and sessions created under Default stay Default. Any other value is a 400. It is a Setup-tab setting, not part of the comms-agent payload schemas.
-
-`seed_questions` reach the agent only in `discover` mode and `builder_directives` only in `converge` mode (#192); both are stored regardless, so flipping `session_mode` never loses them. Guardrails that must hold in every session (e.g. "do not suggest technologies") go in `context`, which is always sent. The dashboard Setup tab already shows one or the other per mode; a JSON payload that sets both in `discover` mode simply has its directives held until the mode flips.
-
-`layout_mockups` (retired with the wireframes in #195 phase 2) is no longer accepted since this release (#210): create and PATCH treat it like any other unknown field and ignore it.
-
-A decision may carry `"locked": true` — a durable constraint (locked convention / do-not-use rule). Locked decisions are carried verbatim by the curation prep's rules, and a stamped ferry-desk paste (one carrying a valid `prep_stamp`) cannot drop, reword or unlock one, nor clear or replace its `contested`/`contest_dismissed`: the server restores every lock from the live brief (`restoreLocksOnPaste`, #229). The agent must reconcile new intake against them: a maker statement contradicting a locked decision triggers an explicit confirm instead of a silent overwrite (#71). Set via the create payload or the Brief-tab JSON paste (`PUT /api/briefs`). Since #197 a lock may be **contested** instead: at note time the note writer sets `contested: { proposed, reason }` on the locked decision when the maker explicitly confirmed a reversal in conversation (`lock_reversals`); the text and lock stay verbatim, the chat prompt shows the contest so Sam neither reopens nor adopts it, and the Brief tab shows a `Contested` badge with **Accept, keep locked** / **Accept and unlock** / **Dismiss** (all save through `PUT /api/briefs`, source `paste`). `contested` is only ever kept on a locked decision. Dismiss records `contest_dismissed { proposed, at }` so a later note does not re-raise the same proposal; a different proposal still can.
-
-Decision provenance (#121): code stamps `decided_in_session`/`decided_at` on a new topic and never trusts the model's. Since 2026-11-15 the stamps are stripped from the next-convo prep and the note writer's input and do not count toward the 20,000 curation budget (`briefWithoutProvenance`, `briefSizeChars`); the comms agent is told not to write them, and the server carries them from the stored brief by topic as before. Since #218 a changed decision on a known topic (matched by trimmed, case-insensitive `topic`) is a **revision**: the origin stamps stay verbatim and `revised_in_session`/`revised_at` record the latest revision (only the latest is kept; the version history has the trail). A changed decision with no origin stamp gets only `revised_*`. The Brief tab reads `conv 2 · Jul 11, revised conv 4 · Oct 17`; the markdown exports `(decided conv 2, 2026-07-11; revised conv 4, 2026-10-17)`. A History → Restore whose text differs from the live decision reads as a revision today, by design.
-
-The Brief tab's editor (structured or raw) and History → Restore ask first when a save would drop a lock ("This save removes the lock on: …"); those saves are unstamped, so a confirmed unlock goes through. A stamped ferry-desk paste needs no prompt because the server restores its locks and contests. An unstamped paste (old prep, hand-written JSON) and direct PUT callers behave as before: no prompt, and the payload's decisions are saved as sent.
-
-### Update (PATCH /api/projects)
-
-Requires `project_id`. Only these fields are accepted: `title`, `context`, `welcome_message`, `nudge_message`, `voice_sample`, `session_mode`, `seed_questions`, `builder_directives`, `requester_first_name`, `requester_last_name`, `last_nudged_at`, `prep_copied_at`, `payload_pasted_at`, `payload_pasted_version`, `last_builder_activity_at`, `identity`, `github_repo`, `auto_reminders_enabled`, `language` (`en`|`fr`, else 400), `model` (one of the three ids; `''`/null = Default; else 400), `hide_title_in_previews` (boolean, else 400). Changing `title` regenerates the slug.
+Rules to keep in view:
+- A stamped ferry-desk paste cannot drop, reword or unlock a locked decision; the server restores locks (`restoreLocksOnPaste`).
+- Code stamps decision provenance and never trusts the model's.
+- `seed_questions` reach the agent only in `discover` mode and `builder_directives` only in `converge`. Guardrails for every session go in `context`.
+- The brief stays in English whatever the maker's `language`.
 
 ## Agent Behavior Rules
 
-- Neutral, non-opinionated tone; slightly mirrors requester's writing style
+- Neutral, non-opinionated tone; slightly mirrors the maker's writing style
 - Plain language only — never UX jargon like "user journeys" or "microservices"
-- Early sessions: broad discovery. Later sessions: more specific as brief fills in
+- Early sessions: broad discovery. Later sessions: more specific as the brief fills in
 - At natural checkpoints, summarize back for validation ("So you want X and Y but not Z, right?")
-- Sam asks the maker about maker-owned open risks when it fits, and does not push them on builder-owned ones (#220).
-- System prompt includes: current living brief, builder review annotations, prior session history, and (#229) a `## New since the brief was last curated` block of unfolded notes (in the stable, cached system block), so Sam reads what changed since the last curated paste without the brief being rewritten each time
-- **Owners and builders can write in the conversation** from the Conversations tab (#245). The composer has a "Sam replies" checkbox (on by default); off posts a note with no model call (`reply: false` on `POST /api/chat`). Their messages are labelled Builder in Sam's roster and in the note writer's input, as guidance rather than the maker's own words.
-- **Who speaks first.** A conversation opens with the builder's `welcome_message` **word for word**: always on a brief's first session (default copy if none is set), and on session 2+ only when that welcome is new for this round — one an earlier conversation already used is stale and is not replayed (`lib/sessions/welcome.ts`, applied at session creation and on share). The kickoff never greets into a session that already opens with a welcome. Otherwise, on session 2+ the agent greets via kickoff (`lib/agent/kickoff.ts` decides client-side, `/api/chat/kickoff` is the authority): always on an **empty** return session with prior maker history (PR #177), otherwise only ≥1hr after the maker's last message. Kickoff is maker-only — builder-side roles (incl. admins, who resolve to `owner`) never trigger it. When the ferry desk has not stamped a paste newer than the maker's last message (`isPayloadQueued`), kickoff posts a canned "nothing queued yet" note on an empty return session, or once the builder has copied the next-convo prep after the maker's last message (`isUnqueuedReturn`), instead of a model greeting, sets `maker_waiting_since` and emails the builder; the next import replaces it with the new welcome (#214; `scripts/e2e-214-stale-greeting.mjs`).
+- Sam asks the maker about maker-owned open risks when it fits, and does not push them on builder-owned ones
+- The system prompt carries the living brief, builder annotations, prior session history and the notes not yet folded into the brief
+- Owners and builders can write in the conversation; their messages are labelled Builder, as guidance rather than the maker's own words
+- A conversation opens with the builder's `welcome_message` word for word when it is new for this round. Otherwise, on session 2+, the agent greets through kickoff (maker-only), or posts a canned "nothing queued yet" note when no paste is queued
 
-## MVP Scope
-
-Conversational intake → structured living brief → builder review → next session picks up where left off.
-
-NOT in MVP: process flow diagrams, data architecture drafts, microservice sketches, comparable app analysis, whiteboard UI mockups.
+The full rules, including who speaks first: `docs/agent-behavior.md`. Read it before changing chat, kickoff or welcome code.
 
 ## Testing & Deployment
 
-- **Preview environment**: Stable URL at `preview.ibuild4you.com`, aliased to the `preview` git branch. To eyeball any feature branch on preview: `git push origin <branch>:preview --force`. Vercel rebuilds within ~1–2 min. Wired 2026-05-15 (DNS via Cloudflare → Vercel; Firebase Auth + GCP OAuth domains authorized; Vercel Deployment Protection off for previews).
-- **Production-first testing has been retired** for risky changes — ship via PR + preview-test instead. Trivial / doc-only changes can still go direct-to-main.
-- **CI/CD**: GitHub Actions runs `type-check`, `lint`, `build`, `test` on PRs and pushes to main. Vercel handles deploys (preview per branch, prod on main).
-- **TDD when possible**: Write tests before implementation. Skip only when it genuinely doesn't fit (pure UI layout, exploratory prototyping).
-- **Agent-driven e2e (headless Playwright).** The agent can log into preview/prod as the test admin and drive the UI. Shared helper: `scripts/lib/preview-login.mjs` — `launchLoggedIn()` returns an authenticated `{ browser, page }` (bypass-cookie + **email/password** login, handles the #104 dual-email-field selector gotcha). New e2e scripts are a few lines (see `scripts/e2e-preview-login.mjs`). Requires gitignored `.ibuild4you-bypass` (Vercel Protection Bypass token) + `.test-admin-password` (seed the user via `scripts/seed-test-admin.mjs`, then set its password via `scripts/seed-test-admin-password.mjs`), and `npm i --no-save playwright`. **Rebuilding these on a new machine (done on the laptop 2026-09-17):** bypass token is `op://dev-secrets/ibuild4you-vercel-bypass/password` (`op read … > .ibuild4you-bypass`); test-admin password is `op://dev-secrets/ibuild4you-test-admin-password-preview/password` (`op read -n … > .test-admin-password`); the seed scripts run as `op run --env-file=.env.preview.tpl -- node scripts/with-preview-env.mjs node scripts/<seed>.mjs` (committed template, preview service account; needs an empty-is-fine `.env.preview.local`). The test admin resolves to `owner`, so maker-only behaviour (kickoff greeting) needs a test-cast identity instead. Env overrides: `E2E_BASE` (prod URL), `E2E_PASSWORD_FILE` (`.test-admin-password-prod` for prod), `E2E_EMAIL`. **Garm PR C (2026-07-16):** the harness moved off passcode login onto password login ahead of PR D retiring the passcode route entirely — `loginWithPassword()` is the underlying primitive if you need to sign in as a non-admin seeded identity (e.g. a test-cast member; passwords for those live in `.test-cast-passwords.json`, seeded alongside `.test-cast-passcodes.json` by `scripts/fixtures/scenarios/multi-human-cast.mjs`). **Note:** Google sign-in works on preview since #107 but Playwright can't drive Google; password is the headless path. **PR D (2026-07-17, `b4ae8d4`) retired passcodes entirely** — the route answers 410, nothing mints the field, and all e2e scripts (harness + product-flow) sign in via password.
+- **Preview**: `preview.ibuild4you.com` follows the `preview` git branch. To put a feature branch there: `git push origin <branch>:preview --force` (Vercel rebuilds in 1–2 min).
+- Risky changes ship by PR and a preview test. Trivial or doc-only changes can go direct to main.
+- **CI/CD**: GitHub Actions runs `type-check`, `lint`, `build`, `test` on PRs and pushes to main. Vercel deploys (preview per branch, prod on main).
+- **TDD when possible**: write tests before implementation. Skip only when it does not fit (pure UI layout, exploratory prototyping).
+- **Agent-driven e2e**: headless Playwright through `scripts/lib/preview-login.mjs` (`launchLoggedIn()`, password login; Playwright cannot drive Google). It needs the gitignored `.ibuild4you-bypass` and `.test-admin-password`. The test admin resolves to `owner`, so maker-only behaviour (the kickoff greeting) needs a test-cast identity. Setup, overrides and rebuilding on a new machine: `docs/runbooks.md`.
 
 ## Code Style
 
-Keep the code approachable — clarity over cleverness. Code should be:
-- Clear and straightforward — no clever abstractions
-- Well-commented where non-obvious
-- Following patterns established in NoteMaxxing
+Clarity over cleverness: clear and straightforward code, no clever abstractions, comments where it is not obvious, NoteMaxxing patterns.
 
 ## Next Steps
 
-> Shipped history lives in `docs/changelog.md` (newest first). **Prepend an entry there at session end — routine `/handoff` no longer touches docs (it only saves the session row), so do it explicitly before closing.** This section is **live work only**. Canonical backlog: `gh issue list --state open`. Durable gotchas and runbooks are in the next section.
+> Shipped history lives in `docs/changelog.md` (newest first). **Prepend an entry there at session end**; `/handoff` does not touch docs. This section is live work only. Backlog: `gh issue list --state open`.
 
 **Watch.**
-- musicforge's read-key smoke PASSED 2026-11-02 (limit=5: 5 items, sender tags, no email in the body). Still to come: their from-server smoke once the musicforge Fly route ships (#244; key at `op://dev-secrets/loop-read-key-musicforge/password`). Embed spike (Loop Phase 2) only if their panel proves not enough.
+- Return leg, first real check: l6-music's next session posts a report with `post_build_status` (reader registered and rules changed, its #231), then "Copy next-convo prep" on F4FC shows it. They will say how it went on the handoff channel.
+- Project 1, first real check: the next prep and the next few notes on F4FC.
+- musicforge: their from-server read-key smoke once the Fly route ships (#244; key at `op://dev-secrets/loop-read-key-musicforge/password`). Embed spike (Loop Phase 2) only if their panel proves not enough.
 
-**Queue.** Relay efficiency (2026-11-15): a six-project programme from a problem statement on Danny's project, spec at `docs/superpowers/specs/2026-11-15-relay-efficiency-design.md`. Project 1 (quick batch) is done: PR #261 (the prep) and PR #262 (what a note records), both merged 2026-11-15. Project 2 is done: l6-music added the four build-status rules (its #224). Project 3 was re-scoped at its design pass (2026-11-15): the existing brief reader gets notes and a 1Password start (design `docs/superpowers/specs/2026-11-15-brief-reader-notes-design.md`), merged as PR #263 on 2026-11-15. Still to do from it: Nico runs the reader's `--check` once from another directory (see "Brief reader for build repos" below), then the handoff to l6-music goes out (register the reader, change its "ask Nico for the brief" rule), and byside and prntd move their registrations to the launcher. Still to do, in order: the return leg, designed 2026-11-15 as `docs/superpowers/specs/2026-11-15-build-status-return-design.md` (the reader gains `post_build_status`, reports go to the app through a per-repo key, never GitHub, and the prep folds them like notes; the GitHub-issue mirror is dropped). **Built on branch `feat/build-status-return`** (plan `docs/superpowers/plans/2026-11-15-build-status-return.md`), awaiting PR review and merge. After merge, in order: (1) Nico, on https://ibuild4you.com, opens the F4FC project's Setup tab (Advanced), clicks Mint, copies the key, runs the 1Password line the panel shows (it starts `read -rs` and ends `op item create … ; unset K`) and pastes the key at its `Paste key:` prompt; (2) Nico runs `node /Users/nico/src/ibuild4you/scripts/brief-reader.mjs --repo nicolovejoy/l6-music --check` from any directory: pass is one line per brief, a last line `build status key: present`, and one Touch ID prompt (two prompts is a finding to report back, not a failure); (3) the agent appends the handoff to l6-music (`handoff.sh append`), changing its second build-status rule to "post it with `post_build_status`"; (4) first real check: l6-music's next report, then "Copy next-convo prep" on F4FC shows it. Then project 4, payload as changes; project 5, payload status on the Brief tab plus the two traced bugs (two welcomes in one conversation; a welcome stranded in a closed conversation); project 6, Nico's call on reopening #217. First real check of project 1: the next prep and the next few notes on F4FC. Also queued (Nico, 2026-11-10): write a phased plan for the rest of the home-page work, all parked under "Later" in `docs/superpowers/plans/2026-11-09-home-page-mocks.md`: the shipped-work grid below the hero (client OK per tile, public counts-only endpoint), Danny's L6 quote (final approved text is the one in `~/src/selected-projects/content/projects/l6-music.mdx`, "— Danny, piano teacher, November 2026"; the shorter cut is in `ibuild4you.mdx` there), the Tideline real-conversation variant (gated on the maker's OK), and whether the signed-in dashboard and maker chat get a redesign beyond the palette. Palette 3 is site-wide since PR #259 (tokens in `app/globals.css`, kept in step with `lib/public/home-palette.ts` by `lib/__tests__/site-palette.test.ts`). Garm's two asks closed 2026-11-08: 401 logging is PR #257, and the four `@example.com` test grants are revoked (Garm confirmed); `test@ibuild4you.com` keeps owner on purpose, because the prod sign-in e2e sets a one-run random password. The read-key overwrite risk is closed by PR #260 (plain read-only key + Copy, autofill suppressed; replaces #246's save-to-password-manager form).
+**Nico's steps for the return leg** (PR #266 merged 2026-11-16; not confirmed done as of 2026-11-18). The agent cannot run these: the secrets hook keeps `op` out of its hands.
+1. On https://ibuild4you.com/projects/l6-shapes-positions-game?tab=setup open Advanced, click Mint, copy the key, run the 1Password command the panel shows and paste the key at its `Paste key:` prompt.
+2. From any directory: `node /Users/nico/src/ibuild4you/scripts/brief-reader.mjs --repo nicolovejoy/l6-music --check`. Pass is one line per brief, a last line `build status key: present`, and one Touch ID prompt (two prompts is a finding to report, not a failure).
 
-**Loose ends (no issue).** None.
+**Queue.** Relay efficiency, six projects (spec `docs/superpowers/specs/2026-11-15-relay-efficiency-design.md`). Done: project 1 (PRs #261, #262), project 2 (l6-music #224), project 3 (PR #263), and the return leg (PR #266). Remaining, in order:
+- byside and prntd move their reader registration to the launcher (`scripts/brief-reader.mjs`).
+- Project 4: payload as changes.
+- Project 5: payload status on the Brief tab, plus two traced bugs (two welcomes in one conversation; a welcome stranded in a closed conversation).
+- Project 6: Nico's call on reopening #217.
+
+Also queued (Nico, 2026-11-10): a phased plan for the rest of the home-page work, parked under "Later" in `docs/superpowers/plans/2026-11-09-home-page-mocks.md`: the shipped-work grid below the hero (client OK per tile, public counts-only endpoint), Danny's L6 quote (approved text in `~/src/selected-projects/content/projects/l6-music.mdx`, "— Danny, piano teacher, November 2026"; the shorter cut is in `ibuild4you.mdx` there), the Tideline real-conversation variant (gated on the maker's OK), and whether the signed-in dashboard and maker chat get a redesign beyond the palette.
 
 ## Gotchas and runbooks
 
 **🔴 `npm run type-check` is NOT equivalent to `npm run build` in a worktree.** `type-check` is `tsc --noEmit`, and tsconfig includes `.next/types/**/*.ts` — absent in a fresh worktree, so Next's route-signature validation silently checks **nothing** (a branch with `export const` in a `route.ts` passed three reviews this way). **In a worktree, run BOTH `npm run build` AND `npm run type-check` before claiming clean**: `build` skips test files (a badly typed test mock passes `build` and fails CI's `tsc`, PR #176); `type-check` skips route-export validation without `.next/types`. Either alone is a false green.
 
-**🔥 Note-writer cost runaway** (the PR #78 breaker, now guarding the note writer): if Anthropic costs spike, query `api_usage` grouped by route+project for one stuck at the cron interval (`scripts/api-usage-by-project.mjs --route brief.note`; older rows from the retired regen are `brief.generate`). Gate: `lib/api/brief-regen-gate.ts` (holds after 3 fails; fields `brief_regen_*`). Read-only dump: `scripts/inspect-brief-health.mjs`. Emergency stop: `scripts/stop-regen-loop.mjs <projectId> --apply`.
+The rest is in `docs/runbooks.md`. Read the matching section before working in that area:
+- Note-writer cost runaway (how to find it, the emergency stop script)
+- Garm (false denials, aliasing, the listing contract, the Loop admin check)
+- Brief reader for build repos (launcher, `--check`, `post_build_status`, the 1Password items)
+- Prod diagnostics, email links, stars-demo, monitoring
+- Preview gotchas and the agent-driven e2e harness
 
-**Garm.** Fail-closed sign-in gate since 2026-07-29; since PR H there is **no env-var escape hatch** — if Garm falsely denies a real member, fix the grant in Garm (or Vercel instant-rollback to a pre-PR-H deploy, which still honours `GARM_GATING=off`). Never "fix" an aliasing case by adding a second `project_members` row — it splits one human into two roster participants; revoke the stray grant (`scripts/garm-revoke-grant.mjs`) and alias via `POST /api/aliases` with `GARM_ADMIN_KEY`. Listing contract (confirmed by Garm 2026-11-10 against `lib/handlers/grants.ts`): `GET /api/grants?project=X` always returns `{grants:[...]}`, active grants only (`include_revoked=1` adds revoked), unpaginated (no pagination planned; Garm will announce it first as a contract change). `project` is an exact match after lowercase+trim, so `*` wildcard and `X.<label>` grants are not listed; harmless today because nothing here uses `*` grants (admins resolve locally). Loop admin read-only check: `GARM_LOOP_KEY=op://dev-secrets/garm-consumer-loop/password op run -- node scripts/garm-loop-smoke.mjs`; list apps with `scripts/list-apps.mjs`, verify with `scripts/e2e-loop-apps.mjs`.
-
-**Brief reader for build repos.** Claude Code in a build repo reads a brief through the read-only MCP server `scripts/mcp-briefs.mjs` (#133): the live brief, the notes not yet folded into it, shipped and queued, contested locks, and full transcripts, limited to projects whose `github_repo` matches `--repo`. A build repo registers the launcher, `scripts/brief-reader.mjs` (the `.mcp.json` snippet is in its header). The launcher fetches the read-only key from 1Password (document `ibuild4you-firestore-ro`) at start and keeps it in memory, because that key reads all of production; expect a Touch ID prompt when a session starts in a build repo, and a missed prompt means no brief tools until `/mcp` reconnects. Local sessions only. To check it without printing brief content, run from any directory: `node /Users/nico/src/ibuild4you/scripts/brief-reader.mjs --repo nicolovejoy/l6-music --check` (one line per brief: slug, version, conversations, new notes). The agent cannot run that itself: the secrets hook keeps `op` out of its hands. The reader's one write is `post_build_status`: Code posts a build report for a brief (it must `get_brief` first; the reader adds the repo and the brief version it served). It uses a second 1Password item per repo, `ibuild4you-build-status-<owner>-<name>` (field `password`, vault dev-secrets), which the Setup tab's Mint panel prints a zsh-safe 1Password line for (`read -rs` asks for the key, `jq` builds the item, `op item create` reads it from stdin). That fetch is optional: without the item the reader still starts and the tool tells Code to give its report to Nico. `--check` ends with `build status key: present` (or `none (<reason>)`). Smoke check for the endpoint: `node scripts/smoke-build-status.mjs --base <url> --repo owner/name --project <slug> --key-file <path>` (production needs `--allow-prod`); headless check on preview: `scripts/e2e-build-status.mjs`. byside and prntd still register the older `with-prod-env-ro.mjs` start, which looks for the key file in the build repo's own directory and so fails there.
-
-**Prod diagnostics.** "Can't open the conversation" reports: `scripts/inspect-project.mjs`, run via `op run --env-file=.env.ops.tpl -- node scripts/with-prod-env-ro.mjs …` (the laptop's local service account has no `private_key`, so `with-prod-env.mjs` alone fails). Prompt-cache misses on back-to-back chat turns: reinstate the fingerprint log (hash + length of system and each message, next to `applyPromptCaching` in the chat route) and diff turns via `vercel logs --expand`; a non-zero `cache_creation` on the turn after a ≥1h gap is by design.
-
-**Email links.** The Firebase console refuses to save a custom action URL for a non-Hosting project — don't retry it; `rewriteActionLink` is the permanent fix.
-
-**stars-demo.** Namespace and round are hard-wired to `stars-demo`/`r2`; a second tenant or round three generalises those two constants first. The secret is on Production only, so `scripts/smoke-stars-integration.mjs` runs against prod with `--allow-prod`. New Firestore composite indexes build asynchronously (lists 503 for a few minutes after deploy).
-
-**Monitoring.** UptimeRobot polls `https://ibuild4you.com/api/health` every 5 min; the GitHub Actions monitor was retired 2026-08-24 for burning Actions minutes. Don't reintroduce a cron workflow for it.
-
-**⚠️ Preview gotchas.**
-(a) Vercel SSO gate is on — headless Playwright needs `.ibuild4you-bypass` + `.test-admin-password` (preview) / `.test-admin-password-prod` (prod).
-(b) Email/password auth is enabled on both Firebase projects (`ibuild4you-preview` + `ibuild4you-a0c4d`).
-(c) Google sign-in works on preview (authDomain + GCP redirect URI wired) but Playwright can't drive it — password login is the headless path.
-(d) `NEXT_PUBLIC_APP_URL` is set on Preview (`https://preview.ibuild4you.com`). Without it, every `continueUrl`-bearing link mint (invite, password reset) fails `auth/unauthorized-continue-uri` **silently** — both helpers fail soft to null so the route still answers 200. **Lesson: a route that fails soft to avoid leaking info can't be verified by its status code** — grep `vercel logs <deployment> --expand` for the `*_failed` event instead.
+Rules to keep in view:
+- Garm is the fail-closed sign-in gate, with no env-var escape hatch. Never fix an aliasing case by adding a second `project_members` row.
+- A route that fails soft cannot be verified by its status code. Grep `vercel logs <deployment> --expand` for the `*_failed` event.
+- UptimeRobot watches `/api/health`. Do not add a cron workflow for it.
 
 ## Env vars
 
-Production (Vercel):
-- `CRON_SECRET` — required. Vercel auto-sends this as `Authorization: Bearer <CRON_SECRET>` to cron routes. `/api/cron/notify` rejects without it.
-- `STARS_INTEGRATION_SECRET` — shared secret for stars-demo's server-to-server calls to `/api/integrations/stars-demo/*` (header `X-Integration-Secret` + `X-Integration-Namespace: stars-demo`). Fail-closed: unset denies every request. Constant-time compare over SHA-256 digests. One value at a time, rotation is a coordinated cutover (08a §8). Value in 1Password `op://dev-secrets/starsdemo-ibuild4you-integration-secret/credential` (API Credential item; field is `credential`, verified 2026-09-22) (same value in stars-demo's `IBUILD4YOU_INTEGRATION_SECRET`). Never logged.
-- `RESEND_API_KEY` — for transactional email (interest form, notify cron).
-- `ANTHROPIC_API_KEY` — for the agent.
-- `CHAT_MODEL` — optional model override for the chat + kickoff routes only (#184); a brief's own `model` (#189) overrides it. Unset → `AGENT_MODEL` (`claude-sonnet-4-6`). The Sonnet 5.5 trial sets it to `claude-sonnet-5-5` on **Preview** first; promote to prod only after comparing the admin usage page before/after. On a 5.x id the routes drop `temperature` and send `output_config.effort: low` instead (5.x 400s on a non-default temperature) — `lib/agent/model-config.ts`. Brief regen, welcome and prep never read it: they use forced `tool_choice` / a tuned temperature, which 5.x rejects. Any id set here must have a row in `lib/observability/anthropic-pricing.ts` or every call logs `$0`.
-- `GARM_URL` — Garm authz service base URL. Canonical: `https://garm.prompt-labs.org` (custom domain, cert live; `/api/health?db=1` → `{"ok":true,"db":true}`). The `https://garm-seven.vercel.app` alias still resolves but don't wire it into anything new. Read by `lib/garm.ts` (`garmCheck`). Unset → the client denies by default (fail-closed). **Since PR G (2026-07-29) `isApprovedEmail()` gates sign-in on Garm** — the only exception is `usesPreviewAllowlist()` (a preview deployment with no Garm wiring).
-- `GARM_GATING` / `GARM_SHADOW` — **retired in PR H (2026-10-15)**; nothing reads them, and both are gone from Vercel (checked 2026-11-03).
-- `GARM_KEY` — Garm consumer key (`garm_…`) for this app; Bearer on the `/gnipahellir` check. Value in 1Password `op://dev-secrets/garm-consumer-ibuild4you/password`. Never logged. Unset → fail-closed.
-- `GARM_LOOP_KEY` — Loop's delegating Garm key (Phase B), distinct from `GARM_KEY` and `GARM_ADMIN_KEY`. Read by `lib/garm-loop.ts`: checks who owns/collaborates on a Loop app, lists and writes app grants. Value in 1Password `op://dev-secrets/garm-consumer-loop/password`. Never logged. Set on Production 2026-10-30. Unset on prod → non-admins see no apps and `POST /api/admin/apps` returns 503; unset on a preview deployment → Garm is skipped. Fail-closed on every check. Never set it on Preview: Garm has no preview instance, so preview would create and change real production apps and grants.
-- `LOOP_SENDER_TAG_SECRET` — HMAC secret for the sender tags `GET /api/feedback/read` returns in place of emails. Value in 1Password `op://dev-secrets/ibuild4you-loop-sender-tag-secret/password`. Never logged. Unset → the endpoint answers 503 `not_configured`. Set on Production and Preview (a different value is fine: tags only need to be stable within one deployment environment). Changing it changes every tag.
-- `GARM_ADMIN_KEY` — Garm admin key, distinct from `GARM_KEY` (the read-only consumer key). Bearer on the grants-write endpoints (`POST`/`DELETE /api/grants`) used by `lib/garm-grants.ts` dual-write and `scripts/garm-seed-grants.mjs --live`. Value in 1Password `op://dev-secrets/garm/password`. Never logged. Unset → dual-write is a silent no-op (one debug log), never an error.
-- `GARM_DUAL_WRITE` — kill switch for **both** the dual-write and the reconcile cron (Garm Phase 4). Must be **exactly `'on'`** to enable; unset or any other value → off, and neither `lib/garm-grants.ts` nor `/api/cron/garm-reconcile` calls Garm at all. Off means Firestore and Garm are allowed to diverge by operator intent, so the reconcile stands down rather than healing that divergence back — but it still writes a `garm_reconcile_log` row each run with `skipped_dual_write_off: true`, so a forgotten flag shows up hourly instead of silently disabling the lockout safety net. When on, every membership/approved-email write (create, share/invite, role change, remove, restore, rekey) recomputes that email's app-level role and upserts or revokes its Garm grant via Next's `after()` — fire-and-forget, local Firestore stays the source of truth, a Garm failure is logged (booleans/role only, never the email) and never blocks or unwinds the local write.
-- `FEEDBACK_NOTIFY_SUPPRESS` — kill switch for the `/api/feedback` admin-notification email. Must be **exactly `'on'`** to suppress; unset or any other value → notify sends normally. **Set on preview (deliberately, since 2026-07-29)** so e2e feedback POSTs never email `NOTIFICATION_EMAILS`; never set on prod. Ships with PR #165 (`b9946d3`). Also suppresses the builder's nothing-queued email (#214).
-- `GITHUB_TOKEN` — for `/api/admin/feedback/[id]/to-github`. Fine-grained PAT `ibuild4you-feedback-to-issues`, `Issues: Read & write`, scoped to `nicolovejoy/ibuild4you`, `nicolovejoy/bakerylouise-v1`, `nicolovejoy/prntd`, `nicolovejoy/byside`, `nicolovejoy/photomirande` (added 2026-10-24), `nicolovejoy/l6-music`, `nicolovejoy/musicforge`, `nicolovejoy/tideline` (added 2026-10-31). Regenerated 2026-07-04 (value in 1Password); expires ~Jul 2027 — rotation runbook is issue #116. Without it the route returns 500. Per-project repo is configured on `projects.github_repo` (set for byside + prntd 2026-07-04, photomirande 2026-10-24).
-- `RESEND_INBOUND_SECRET` — Svix signing secret from Resend's inbound webhook config. Required by `/api/webhooks/resend/inbound`; without it the route returns 500 (refuses to accept unsigned inbound). Pull it from the Resend dashboard when wiring up inbound.
-- `FEEDBACK_INBOX_HOST` (optional) — domain used for the plus-addressed reply address. Defaults to `inbox.ibuild4you.com`. MX for this subdomain must point at Resend's inbound servers; the apex domain keeps its existing iCloud MX.
-- `RESEND_INBOUND_FETCH_URL` (optional) — URL template for fetching the body of an inbound email by id, e.g. `https://api.resend.com/emails/{id}`. Defaults to `https://api.resend.com/emails/{id}`. The webhook ships metadata only; the body must be retrieved separately. Override only if the default 404s against your Resend account.
+What each one does, where its value lives in 1Password and what happens when it is unset: `docs/env-vars.md`. Read it before adding, changing or debugging one.
+
+Names: `CRON_SECRET`, `ANTHROPIC_API_KEY`, `CHAT_MODEL` (optional), `RESEND_API_KEY`, `RESEND_INBOUND_SECRET`, `RESEND_INBOUND_FETCH_URL` (optional), `FEEDBACK_INBOX_HOST` (optional), `FEEDBACK_NOTIFY_SUPPRESS`, `GITHUB_TOKEN`, `GARM_URL`, `GARM_KEY`, `GARM_ADMIN_KEY`, `GARM_LOOP_KEY`, `GARM_DUAL_WRITE`, `LOOP_SENDER_TAG_SECRET`, `STARS_INTEGRATION_SECRET`.
+
+Rules to keep in view:
+- Never set `GARM_LOOP_KEY` on Preview. Garm has no preview instance, so preview would change real production apps and grants.
+- `FEEDBACK_NOTIFY_SUPPRESS=on` is set on Preview on purpose, and never on prod.
+- `GARM_URL` or `GARM_KEY` unset means sign-in denies. `GARM_DUAL_WRITE` must be exactly `on`.
+- A model id in `CHAT_MODEL` needs a row in `lib/observability/anthropic-pricing.ts`, or every call logs `$0`.
 
 <!-- SHARED-CONVENTIONS:BEGIN v=c254cba18982 — auto-managed, do not edit here; source: prompt-lab/workflow/claude-md-shared.md (edit + re-sync) -->
 ## Shared conventions
