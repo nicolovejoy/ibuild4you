@@ -17,8 +17,21 @@ describe('BRIEF_CURATION_GUIDE', () => {
   it('says when to send a patch and when a whole rewrite', () => {
     expect(BRIEF_CURATION_GUIDE).toContain('Patch or whole rewrite')
     expect(BRIEF_CURATION_GUIDE).toMatch(/"brief_patch"/)
-    expect(BRIEF_CURATION_GUIDE).toMatch(/Only a whole rewrite merges entries/)
+    expect(BRIEF_CURATION_GUIDE).toMatch(/Only a whole rewrite clears a text field/)
     expect(BRIEF_CURATION_GUIDE).toMatch(/shipped batches/)
+  })
+
+  it('asks a patch only for drops it can express', () => {
+    expect(BRIEF_CURATION_GUIDE).toContain('In a patch, a whole entry goes in "drop"; detail inside an entry or a text field goes by restating that entry or field without it.')
+  })
+
+  it('says a patch can merge two features by dropping both and adding one', () => {
+    expect(BRIEF_CURATION_GUIDE).toMatch(/dropping both and adding one/)
+  })
+
+  it('has one rule for a queued item that shipped, by a note or a report', () => {
+    expect(BRIEF_CURATION_GUIDE).toMatch(/by a note or a build report/)
+    expect(BRIEF_CURATION_GUIDE).toMatch(/else the latest batch's date, else today/)
   })
 
   it('scopes carrying shipped and queued forward to a whole rewrite', () => {

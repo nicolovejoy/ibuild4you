@@ -241,6 +241,23 @@ describe('parseNextConvoPayload: brief_patch', () => {
     expect(r.ok && r.value.mode).toBe('patch')
   })
 
+  it('reads a payload with no brief at all (config and stamp only) as an empty patch', () => {
+    const r = parseNextConvoPayload(
+      '{"_payload_type":"next-convo","_prep_stamp":{"brief_version":4,"note_ids":["n1"],"report_ids":[]},"welcome_message":"hi","session_mode":"converge"}',
+    )
+    if (!r.ok || r.value.mode !== 'patch') throw new Error('expected patch')
+    expect(r.value.patch).toEqual({})
+    expect(r.value.projectUpdate).toEqual({ welcome_message: 'hi', session_mode: 'converge' })
+    expect(r.value.stamp).toEqual({ brief_version: 4, note_ids: ['n1'], report_ids: [] })
+  })
+
+  it('a bare brief at the top level, with any of the nine brief keys, stays brief-only', () => {
+    for (const key of ['problem', 'target_users', 'features', 'constraints', 'additional_context', 'decisions', 'open_risks', 'shipped', 'queued']) {
+      const r = parseNextConvoPayload(`{"_prep_stamp":{"brief_version":4,"note_ids":[]},"welcome_message":"hi","${key}":[]}`)
+      expect(r.ok && r.value.mode).toBe('brief-only')
+    }
+  })
+
   it('still parses a whole brief and a legacy brief-only paste as before', () => {
     const whole = parseNextConvoPayload('{"brief":{"problem":"p"},"welcome_message":"hi"}')
     if (!whole.ok || whole.value.mode !== 'multi') throw new Error('expected multi')

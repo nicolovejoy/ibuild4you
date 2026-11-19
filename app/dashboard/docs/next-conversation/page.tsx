@@ -14,7 +14,7 @@ const NEXT_CONVO_PAYLOAD = `{
     "constraints": "Optional. The whole new text of this field, only if it changed",
     "additional_context": "Optional. The whole new text of this field, only if it changed",
     "decisions": [{ "topic": "exact topic of a decision in the brief, or a new short label", "decision": "the decision as it now stands, whole" }],
-    "open_risks": [{ "text": "a new open risk", "owner": "maker" }],
+    "open_risks": ["a new open risk as a plain string", { "text": "a new risk only one side can settle", "owner": "maker" }],
     "shipped": [{ "date": "YYYY-MM-DD", "items": ["what went out in this batch"] }],
     "queued": ["what is newly planned and not built yet"],
     "drop": {

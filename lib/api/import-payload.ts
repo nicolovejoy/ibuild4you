@@ -98,17 +98,34 @@ export function parseNextConvoPayload(raw: string): ParseResult<NextConvoPayload
     return { ok: false, error: copy.brief.pastePatchNotObject }
   }
 
-  if (obj.brief || hasPatch) {
+  // A payload with no brief at all, and none of the brief's own keys at its top
+  // level, is a round that changed nothing in the brief (a comms agent that left
+  // `brief_patch` out). Read it as an empty patch so the notes still fold and the
+  // welcome still imports. Any brief key at the top level keeps the legacy shape.
+  const BRIEF_KEYS = [
+    'problem',
+    'target_users',
+    'features',
+    'constraints',
+    'additional_context',
+    'decisions',
+    'open_risks',
+    'shipped',
+    'queued',
+  ]
+  const noBriefAtAll = obj.brief === undefined && !hasPatch && !BRIEF_KEYS.some((k) => obj[k] !== undefined)
+
+  if (obj.brief || hasPatch || noBriefAtAll) {
     const projectUpdate: Record<string, unknown> = {}
     // session_opener is a legacy alias for welcome_message; explicit welcome_message wins
     if (obj.session_opener !== undefined) projectUpdate.welcome_message = obj.session_opener
     for (const field of NEXT_CONVO_IMPORT_FIELDS) {
       if (obj[field] !== undefined) projectUpdate[field] = obj[field]
     }
-    if (hasPatch) {
+    if (hasPatch || noBriefAtAll) {
       return {
         ok: true,
-        value: { mode: 'patch', patch: obj.brief_patch as Record<string, unknown>, projectUpdate, stamp },
+        value: { mode: 'patch', patch: hasPatch ? (obj.brief_patch as Record<string, unknown>) : {}, projectUpdate, stamp },
       }
     }
     return {

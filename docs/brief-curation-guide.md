@@ -10,13 +10,14 @@ No person reads it as a document. Write for those agents: terse, factual, no nar
 
 Size
 - Keep the brief JSON (the "brief" object, serialized) under 20,000 characters. Smaller is better: the whole brief goes into every chat turn.
-- Near the budget, merge and drop before you add. (A patch cannot merge: there, drop before you add.)
+- Near the budget, merge and drop before you add. In a patch, merge two features by dropping both and adding one, and drop before you add.
 
 Patch or whole rewrite
 - Normally send "brief_patch": only what this round changes. The app merges it into the brief, and everything you leave out stays as it is. Nothing leaves the brief unless the patch names it in "drop".
 - Send the whole "brief" instead, rewritten and trimmed to fit, when the prep says the brief is over budget or has no content yet, or when the builder asks for a compaction in the chat. Never send both.
-- Only a whole rewrite merges entries, clears a text field, or merges or removes shipped batches. A patch adds, replaces and drops by name.
-- In a patch, a decision you revise is restated whole under its exact topic. A feature or a risk you reword is dropped by its old text and added with the new. A settled risk is dropped by its exact text, in the same patch that records its answer. A queued item that shipped is dropped from "queued" and added to "shipped".
+- Only a whole rewrite clears a text field or merges or removes shipped batches. A patch adds, replaces and drops by name; it merges two features or two risks by dropping both and adding one.
+- To change a text field in a patch, start from the field's current text as shown in the brief, edit it, and send the whole new text, not only the new sentence.
+- In a patch, a decision you revise is restated whole under its exact topic. A feature or a risk you reword is dropped by its old text and added with the new. A settled risk is dropped by its exact text, in the same patch that records its answer. A queued item that shipped, by a note or a build report, is dropped from "queued" by its text and added to "shipped" under the day it went live (the report's day, else the latest batch's date, else today).
 - Copy each topic and text you drop from the brief as shown. A drop that matches nothing refuses the whole payload.
 - A locked decision is not part of a patch: do not restate it, reword it or drop it. The app leaves it as it is.
 
@@ -29,7 +30,7 @@ Merge
 - A feature and its refinements into one feature.
 
 Drop
-(In a patch, name each of these in "drop". In a whole rewrite, leave it out.)
+(In a whole rewrite, leave these out. In a patch, a whole entry goes in "drop"; detail inside an entry or a text field goes by restating that entry or field without it.)
 - History: who said what and when, how a decision was reached, earlier wording. The app keeps every past version.
 - Detail a later decision superseded.
 - An open risk a note marks as settled, once its answer is recorded in the brief (as a decision when the maker committed to a choice, otherwise in the field that fits).
@@ -48,7 +49,7 @@ Open risks
 Shipped and queued
 - "shipped" is dated batches of things already built: { "date": "YYYY-MM-DD", "items": [...] }. Keep every batch; only when the size budget presses, merge or drop the oldest first (a whole rewrite does this; a patch cannot).
 - A dated "we shipped X" passage in additional_context belongs in "shipped". Move it there.
-- "queued" is a list of things planned but not built. When a note says a queued item shipped, remove it from "queued" and add it to the latest "shipped" batch. In a patch, drop it from "queued" by its text and add it to "shipped" under the date of the latest batch.
+- "queued" is a list of things planned but not built. When a queued item shipped, by a note or a build report, remove it from "queued" and add it to "shipped" (in a whole rewrite: the report's day for a report, else the latest batch; in a patch: see Patch or whole rewrite).
 - In a whole rewrite, always carry "shipped" and "queued" forward: a brief written without them loses them. A patch leaves them as they are unless it adds or drops entries.
 
 Language
