@@ -6,6 +6,8 @@ import { LoadingButton } from '@/components/ui/LoadingButton'
 import { StatusMessage } from '@/components/ui/StatusMessage'
 import { copy } from '@/lib/copy'
 import { parseNextConvoPayload } from '@/lib/api/import-payload'
+import { pastePreviewLines } from './paste-preview'
+import type { BriefContent } from '@/lib/types'
 import type { FerryStamp, FerryStamps, StampRecency } from '@/lib/builder/ferry-stamps'
 
 // The Brief tab's "ferry desk": copy the prep out, paste the payload back,
@@ -15,6 +17,7 @@ import type { FerryStamp, FerryStamps, StampRecency } from '@/lib/builder/ferry-
 type FerryDeskProps = {
   stamps: FerryStamps
   briefVersion: number | null
+  briefContent: BriefContent | null // the live brief, for the paste preview; null before it loads or when none
   sessionCount: number | undefined // undefined while sessions load: the line omits it
   pasteValue: string
   onPasteChange: (v: string) => void
@@ -83,6 +86,7 @@ function StampCard({
 export function FerryDesk({
   stamps,
   briefVersion,
+  briefContent,
   sessionCount,
   pasteValue,
   onPasteChange,
@@ -128,6 +132,9 @@ export function FerryDesk({
       ? { text: copy.brief.pasteVersionStale(prepV, briefVersion), stale: true }
       : { text: copy.brief.pasteVersionMatches(prepV), stale: false }
   }, [pasteValue, briefVersion])
+
+  // What the pasted payload will change, shown before Import.
+  const previewLines = useMemo(() => pastePreviewLines(pasteValue, briefContent), [pasteValue, briefContent])
 
   // The page-level useEscapeBack ignores keydowns inside a textarea, so the
   // paste box handles Escape itself: empty box → leave, filled box → blur
@@ -191,6 +198,16 @@ export function FerryDesk({
           {pasteVersionLine.text}
         </p>
       )}
+
+      {previewLines.map((line) => (
+        <p
+          key={line.id}
+          data-testid={`paste-${line.id}`}
+          className={`text-sm ${line.warn ? 'font-medium text-amber-700' : 'text-gray-500'}`}
+        >
+          {line.text}
+        </p>
+      ))}
 
       {pasteError && <StatusMessage type="error" message={pasteError} />}
 

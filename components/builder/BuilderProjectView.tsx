@@ -782,7 +782,7 @@ function BriefTab({
         return
       }
       if (err instanceof PatchDropUnmatchedError) {
-        setPasteError(copy.brief.patchDropUnmatched(err.unmatched))
+        setPasteError(copy.brief.patchDropUnmatched(err.unmatched, false))
         return
       }
       if (briefSaved) {
@@ -863,6 +863,7 @@ function BriefTab({
         <FerryDesk
           stamps={ferryStamps(project ?? {})}
           briefVersion={brief?.version ?? null}
+          briefContent={briefContent ?? null}
           sessionCount={briefTabSessions?.length}
           pasteValue={pasteJson}
           onPasteChange={(v) => { setPasteJson(v); savedBriefRef.current = null; setPasteError(null); setImportWarnings(null); setStalePrep(null) }}
