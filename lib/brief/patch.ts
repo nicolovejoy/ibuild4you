@@ -95,6 +95,45 @@ export interface ApplyBriefPatchResult {
   changed: boolean // false when content equals live
 }
 
+// Drop entries that normalize to the same key count once (the first as sent),
+// so a repeated entry neither double-counts nor lands in `unmatched` twice.
+function uniqueByKey(list: string[] | undefined): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const text of list ?? []) {
+    const key = norm(text)
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(text)
+  }
+  return out
+}
+
+// Structural equality that ignores key order inside objects. Firestore hands
+// maps back in alphabetical order, so JSON.stringify would call equal briefs
+// different.
+function sameValue(a: unknown, b: unknown): boolean {
+  if (a === b) return true
+  if (Array.isArray(a) || Array.isArray(b)) {
+    return Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((v, i) => sameValue(v, b[i]))
+  }
+  if (a && b && typeof a === 'object' && typeof b === 'object') {
+    const ao = a as Record<string, unknown>
+    const bo = b as Record<string, unknown>
+    const keys = Object.keys(ao)
+    return keys.length === Object.keys(bo).length && keys.every((k) => k in bo && sameValue(ao[k], bo[k]))
+  }
+  return false
+}
+
+// An empty shipped or queued list and an absent one are the same brief.
+function withoutEmptyLists(c: BriefContent): BriefContent {
+  const out = { ...c }
+  if (!out.shipped?.length) delete out.shipped
+  if (!out.queued?.length) delete out.queued
+  return out
+}
+
 // Remove every item whose text matches `target`. Returns the kept items and
 // how many went.
 function removeMatching<T>(items: T[], text: (item: T) => string, target: string): { kept: T[]; removed: number } {
@@ -150,7 +189,7 @@ export function applyBriefPatch(live: BriefContent, patch: BriefPatch): ApplyBri
   for (const d of live.decisions ?? []) if (d.locked) liveLocked.set(norm(d.topic), d.topic)
 
   // --- Drops ---
-  for (const topic of drop.decisions ?? []) {
+  for (const topic of uniqueByKey(drop.decisions)) {
     const key = norm(topic)
     const matches = decisions.filter((d) => norm(d.topic) === key)
     if (matches.length === 0) {
@@ -163,19 +202,19 @@ export function applyBriefPatch(live: BriefContent, patch: BriefPatch): ApplyBri
     summary.decisions_dropped += decisions.length - kept.length
     decisions = kept
   }
-  for (const text of drop.features ?? []) {
+  for (const text of uniqueByKey(drop.features)) {
     const { kept, removed } = removeMatching(features, (f) => f, text)
     if (removed === 0) unmatched.features.push(text)
     features = kept
     summary.features_dropped += removed
   }
-  for (const text of drop.open_risks ?? []) {
+  for (const text of uniqueByKey(drop.open_risks)) {
     const { kept, removed } = removeMatching(risks, riskText, text)
     if (removed === 0) unmatched.open_risks.push(text)
     risks = kept
     summary.risks_dropped += removed
   }
-  for (const text of drop.queued ?? []) {
+  for (const text of uniqueByKey(drop.queued)) {
     const { kept, removed } = removeMatching(queued, (q) => q, text)
     if (removed === 0) unmatched.queued.push(text)
     queued = kept
@@ -222,9 +261,10 @@ export function applyBriefPatch(live: BriefContent, patch: BriefPatch): ApplyBri
   summary.features_added = appendNew(features, patch.features)
   summary.queued_added = appendNew(queued, patch.queued)
 
-  // Risks: a match replaces the stored risk (that is how an owner is set or
-  // changed); no match appends. A risk restated with no owner keeps the one it
-  // has, as carryRiskOwners does for a whole rewrite.
+  // Risks: a match keeps the stored text and only the owner can change (a sent
+  // owner replaces the stored one; none sent keeps it), so a straight-quote
+  // restatement of a curly-quoted risk rewrites nothing. Rewording is drop plus
+  // add. No match appends.
   for (const r of patch.open_risks ?? []) {
     const key = norm(riskText(r))
     const at = risks.findIndex((existing) => norm(riskText(existing)) === key)
@@ -234,10 +274,9 @@ export function applyBriefPatch(live: BriefContent, patch: BriefPatch): ApplyBri
       continue
     }
     const stored = risks[at]
-    const owner = riskOwner(r) ?? riskOwner(stored)
-    const next: Risk = owner ? { text: riskText(r), owner } : riskText(r)
-    if (riskText(stored) === riskText(next) && riskOwner(stored) === riskOwner(next)) continue
-    risks[at] = next
+    const owner = riskOwner(r)
+    if (!owner || owner === riskOwner(stored)) continue
+    risks[at] = { text: riskText(stored), owner }
     summary.risks_changed++
   }
 
@@ -264,7 +303,7 @@ export function applyBriefPatch(live: BriefContent, patch: BriefPatch): ApplyBri
     unmatched,
     locksTouched,
     summary,
-    changed: JSON.stringify(content) !== JSON.stringify(live),
+    changed: !sameValue(withoutEmptyLists(content), withoutEmptyLists(live)),
   }
 }
 

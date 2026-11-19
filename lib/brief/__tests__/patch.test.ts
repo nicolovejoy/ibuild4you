@@ -114,25 +114,33 @@ describe('applyBriefPatch: features', () => {
 })
 
 describe('applyBriefPatch: open risks', () => {
-  it('replaces a matching unowned risk with the owned one', () => {
+  it('sets the owner on a matching unowned risk and keeps the stored text', () => {
     const r = applyBriefPatch(base({ open_risks: ['Who pays?', 'Other'] }), {
-      open_risks: [{ text: 'who pays?', owner: 'maker' }],
+      open_risks: [{ text: 'who pays', owner: 'maker' }],
     })
-    expect(r.content.open_risks).toEqual([{ text: 'who pays?', owner: 'maker' }, 'Other'])
+    expect(r.content.open_risks).toEqual([{ text: 'Who pays?', owner: 'maker' }, 'Other'])
     expect(r.summary.risks_changed).toBe(1)
     expect(r.summary.risks_added).toBe(0)
   })
-  it('does not count a matching risk with the same text and owner as changed', () => {
+  it('changes the owner of a matching owned risk', () => {
     const live = base({ open_risks: [{ text: 'Who pays?', owner: 'maker' }] })
-    const r = applyBriefPatch(live, { open_risks: [{ text: 'Who pays?', owner: 'maker' }] })
+    const r = applyBriefPatch(live, { open_risks: [{ text: 'Who pays?', owner: 'builder' }] })
+    expect(r.content.open_risks).toEqual([{ text: 'Who pays?', owner: 'builder' }])
+    expect(r.summary.risks_changed).toBe(1)
+  })
+  it('leaves the brief alone when a matching risk comes with the same owner and different punctuation', () => {
+    const live = base({ open_risks: [{ text: 'Who pays?', owner: 'maker' }] })
+    const r = applyBriefPatch(live, { open_risks: [{ text: 'who pays', owner: 'maker' }] })
+    expect(r.content).toEqual(live)
     expect(r.summary.risks_changed).toBe(0)
     expect(r.changed).toBe(false)
   })
-  it('keeps the owner when the same risk is restated without one', () => {
-    const live = base({ open_risks: [{ text: 'Who pays?', owner: 'maker' }] })
-    const r = applyBriefPatch(live, { open_risks: ['Who pays?'] })
-    expect(r.content.open_risks).toEqual([{ text: 'Who pays?', owner: 'maker' }])
+  it('keeps the stored text and owner when the same risk is restated without an owner', () => {
+    const live = base({ open_risks: [{ text: 'Won’t scale?', owner: 'maker' }] })
+    const r = applyBriefPatch(live, { open_risks: ["won't scale"] })
+    expect(r.content.open_risks).toEqual([{ text: 'Won’t scale?', owner: 'maker' }])
     expect(r.summary.risks_changed).toBe(0)
+    expect(r.changed).toBe(false)
   })
   it('appends a new risk', () => {
     const r = applyBriefPatch(base({ open_risks: ['A'] }), { open_risks: ['B'] })
@@ -203,6 +211,109 @@ describe('applyBriefPatch: drops that match nothing', () => {
   it('has empty unmatched lists when everything matched', () => {
     const r = applyBriefPatch(base({ features: ['F'] }), { drop: { features: ['f'] } })
     expect(r.unmatched).toEqual({ decisions: [], features: [], open_risks: [], queued: [] })
+  })
+})
+
+describe('applyBriefPatch: repeated drop entries', () => {
+  it('treats drop entries that normalize to the same key as one', () => {
+    const live = base({
+      features: ['Export CSV', 'Keep'],
+      open_risks: ['Who pays?'],
+      queued: ['Q'],
+      decisions: [{ topic: 'Other', decision: 'x' }],
+    })
+    const r = applyBriefPatch(live, {
+      drop: {
+        features: ['Export CSV', 'export csv!'],
+        open_risks: ['Who pays?', 'who pays'],
+        queued: ['Q', 'q'],
+        decisions: ['Other', 'other'],
+      },
+    })
+    expect(r.content.features).toEqual(['Keep'])
+    expect(r.summary.features_dropped).toBe(1)
+    expect(r.summary.risks_dropped).toBe(1)
+    expect(r.summary.queued_dropped).toBe(1)
+    expect(r.summary.decisions_dropped).toBe(1)
+    expect(r.unmatched).toEqual({ decisions: [], features: [], open_risks: [], queued: [] })
+  })
+  it('lists a repeated entry that matches nothing once, as first sent', () => {
+    const live = base({ features: ['F'], open_risks: ['R'], queued: ['Q'], decisions: [{ topic: 'D', decision: 'x' }] })
+    const r = applyBriefPatch(live, {
+      drop: {
+        features: ['Nope', 'nope!'],
+        open_risks: ['Nope', 'NOPE'],
+        queued: ['Nope', 'nope'],
+        decisions: ['Nope', 'nope'],
+      },
+    })
+    expect(r.unmatched).toEqual({
+      decisions: ['Nope'],
+      features: ['Nope'],
+      open_risks: ['Nope'],
+      queued: ['Nope'],
+    })
+  })
+  it('leaves a decision present once, with the new text, when one patch drops and adds its topic', () => {
+    const live = base({ decisions: [{ topic: 'Other', decision: 'old' }, { topic: 'Keep', decision: 'k' }] })
+    const r = applyBriefPatch(live, {
+      decisions: [{ topic: 'other', decision: 'new' }],
+      drop: { decisions: ['Other'] },
+    })
+    const other = r.content.decisions?.filter((d) => d.topic.toLowerCase() === 'other')
+    expect(other).toEqual([{ topic: 'other', decision: 'new' }])
+    expect(r.content.decisions).toHaveLength(2)
+    expect(r.summary.decisions_dropped).toBe(1)
+    expect(r.summary.decisions_added).toBe(1)
+  })
+})
+
+describe('applyBriefPatch: no-op check', () => {
+  it('reports no change for {} when live has queued and shipped before other keys (Firestore key order)', () => {
+    const live = {
+      additional_context: 'A',
+      constraints: 'C',
+      decisions: [{ topic: 'D', decision: 'x' }],
+      features: ['F'],
+      open_risks: ['R'],
+      problem: 'P',
+      queued: ['Q'],
+      shipped: [{ date: '2026-11-10', items: ['S'] }],
+      target_users: 'T',
+    } as BriefContent
+    const r = applyBriefPatch(live, {})
+    expect(r.changed).toBe(false)
+    expect(r.content).toEqual(live)
+  })
+  it('reports no change when every entry of a patch was already there, with queued before shipped', () => {
+    const live = {
+      problem: 'P',
+      queued: ['Q'],
+      shipped: [{ date: '2026-11-10', items: ['S'] }],
+      target_users: 'T',
+      features: ['F'],
+      constraints: 'C',
+      additional_context: 'A',
+    } as BriefContent
+    const r = applyBriefPatch(live, { queued: ['q'], features: ['f'], shipped: [{ date: '2026-11-10', items: ['s'] }] })
+    expect(r.changed).toBe(false)
+  })
+  it('reports no change when live holds shipped or queued as empty arrays', () => {
+    const r = applyBriefPatch(base({ shipped: [], queued: [] }), {})
+    expect(r.changed).toBe(false)
+  })
+  it('ignores key order inside decision and risk objects', () => {
+    const live = base({
+      decisions: [{ decision: 'x', locked: true, topic: 'D' }],
+      open_risks: [{ owner: 'maker', text: 'R' }],
+    })
+    const r = applyBriefPatch(live, { open_risks: [{ text: 'R', owner: 'maker' }] })
+    expect(r.changed).toBe(false)
+  })
+  it('still reports a change when a value differs', () => {
+    const live = base({ queued: ['Q'], shipped: [{ date: '2026-11-10', items: ['S'] }] })
+    expect(applyBriefPatch(live, { queued: ['New'] }).changed).toBe(true)
+    expect(applyBriefPatch(live, { problem: 'Other' }).changed).toBe(true)
   })
 })
 
