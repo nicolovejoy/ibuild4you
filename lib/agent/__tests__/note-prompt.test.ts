@@ -96,6 +96,9 @@ describe('NOTE_SYSTEM_PROMPT keeps what the maker said', () => {
     // risk was left open. The settled-risk entry is unconditional.
     expect(NOTE_SYSTEM_PROMPT).toMatch(/An answer that settles an open risk is always listed here, even when it is also recorded as a decision/)
     expect(NOTE_SYSTEM_PROMPT).toMatch(/only when they committed to a lasting choice, under a short topic of its own/)
+    // Still either/or in one preview run of two, so the decisions rule says it
+    // too, where the writer is when it makes the choice.
+    expect(NOTE_SYSTEM_PROMPT).toMatch(/A decision that answers one of the open risks does not replace that risk's risks_resolved entry: list it in both/)
   })
 
   // "Details to follow" and "will report back" were noted with nothing to follow up on.
