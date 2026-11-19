@@ -1,6 +1,6 @@
 # Payload as changes: `brief_patch`
 
-Date: 2026-11-18. Status: approved by Nico 2026-11-18; built on feat/brief-patch. Project 4 of the relay-efficiency programme (`2026-11-15-relay-efficiency-design.md`).
+Date: 2026-11-18. Status: approved by Nico 2026-11-18; built and merged as PR #268. Project 4 of the relay-efficiency programme (`2026-11-15-relay-efficiency-design.md`).
 
 ## Why
 
