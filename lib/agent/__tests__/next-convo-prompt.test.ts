@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest'
-import { buildNextConvoPrompt, buildNextConvoUserContent, NEXT_CONVO_SYSTEM_PROMPT } from '../next-convo-prompt'
+import {
+  buildNextConvoPrompt,
+  buildNextConvoUserContent,
+  prepModeLine,
+  NEXT_CONVO_SYSTEM_PROMPT,
+} from '../next-convo-prompt'
+import { briefSizeChars } from '../brief-size'
 import { NEXT_CONVO_IMPORT_FIELDS } from '@/lib/api/import-payload'
 import { BRIEF_CURATION_GUIDE } from '../curation-guide'
 import type { BriefContent, BriefNote } from '@/lib/types'
@@ -213,8 +219,8 @@ describe('curation prep (#229)', () => {
     expect(NEXT_CONVO_SYSTEM_PROMPT).toContain(BRIEF_CURATION_GUIDE)
   })
 
-  it('asks for the whole brief, rewritten, folding in every note', () => {
-    expect(NEXT_CONVO_SYSTEM_PROMPT).toMatch(/rewrite the brief whole/i)
+  it('asks for a whole brief, rewritten, when told to, folding in every note', () => {
+    expect(NEXT_CONVO_SYSTEM_PROMPT).toMatch(/Send the whole `brief` instead, rewritten/)
     expect(NEXT_CONVO_SYSTEM_PROMPT).toMatch(/every note/i)
   })
 
@@ -349,7 +355,7 @@ describe('build reports in the prep', () => {
 
   it('names the build reports as a source of the rewrite, next to the notes', () => {
     expect(NEXT_CONVO_SYSTEM_PROMPT).toContain(
-      'rewrite the brief whole, from the current brief plus every note and build report below.'
+      'from the current brief plus every note and build report below.'
     )
     expect(NEXT_CONVO_SYSTEM_PROMPT).toContain(
       '- Build the brief ONLY from the current brief, the notes and the build reports. Do not invent or assume.'
@@ -376,5 +382,121 @@ describe('build reports in the prep', () => {
     expect(NEXT_CONVO_SYSTEM_PROMPT).toContain(
       'The app uses it to fold exactly the notes and build reports you were given and to warn if the brief moved on after this prep was made.'
     )
+  })
+})
+
+// =============================================================================
+// brief_patch (relay project 4): the prep asks for what changed, and says so
+// from the measured size. The wording must match what lib/brief/patch.ts does.
+// =============================================================================
+
+// A brief whose measured size (briefSizeChars) is exactly `chars`, built by
+// padding `problem`.
+function briefOfSize(chars: number): BriefContent {
+  const base: BriefContent = { problem: '', target_users: '', features: [], constraints: '', additional_context: '', decisions: [] }
+  const pad = chars - briefSizeChars(base)
+  return { ...base, problem: 'x'.repeat(pad) }
+}
+
+describe('prepModeLine', () => {
+  const NO_BRIEF = 'No brief yet: send the whole "brief".'
+  const OVER = 'Over budget: this round, send the whole "brief", rewritten and trimmed to fit.'
+  const CLOSE = 'Under budget, but close: send "brief_patch", and drop before you add.'
+  const UNDER = 'Under budget: send "brief_patch".'
+
+  it('has no brief to patch when there is none, or it is empty', () => {
+    expect(prepModeLine(null)).toBe(NO_BRIEF)
+    expect(prepModeLine({ problem: '', target_users: '', features: [], constraints: '', additional_context: '', decisions: [] })).toBe(NO_BRIEF)
+  })
+
+  it.each([
+    [15_999, UNDER],
+    [16_000, CLOSE],
+    [20_000, CLOSE],
+    [20_001, OVER],
+  ])('at %i characters', (chars, line) => {
+    const b = briefOfSize(chars)
+    expect(briefSizeChars(b)).toBe(chars)
+    expect(prepModeLine(b)).toBe(line)
+  })
+
+  it('measures without the decision provenance stamps, as the size line does', () => {
+    const b = briefOfSize(15_900)
+    b.decisions = [
+      { topic: 'T', decision: 'D', decided_in_session: 's'.repeat(500), decided_at: '2026-10-12T00:00:00.000Z' },
+    ]
+    // The stamps would push it past 16,000 if they counted; the stripped brief is under.
+    expect(JSON.stringify(b).length).toBeGreaterThan(16_000)
+    expect(prepModeLine(b)).toBe(UNDER)
+  })
+})
+
+describe('the mode line in the <current_brief> block', () => {
+  const lineIn = (content: string) => content.split('<current_brief')[1].split('</current_brief>')[0]
+
+  it('sits directly under the size sentence', () => {
+    const content = buildNextConvoUserContent({ ...emptyInput, currentBrief: briefOfSize(20_001), stamp: { brief_version: 3, note_ids: [] } })
+    expect(lineIn(content)).toMatch(/does not add to it\.\nOver budget: this round, send the whole "brief", rewritten and trimmed to fit\.\n\{/)
+  })
+
+  it('says no brief yet for no brief and for an empty one, with the same line', () => {
+    const empty: BriefContent = { problem: '', target_users: '', features: [], constraints: '', additional_context: '', decisions: [] }
+    for (const currentBrief of [null, empty]) {
+      const block = lineIn(buildNextConvoUserContent({ ...emptyInput, currentBrief }))
+      expect(block).toContain('No brief yet: send the whole "brief".\nNo brief yet\n')
+      expect(block).toContain('Current size: 0 characters')
+    }
+  })
+
+  it('says under budget for a small brief', () => {
+    expect(lineIn(buildNextConvoUserContent({ ...emptyInput, currentBrief: brief }))).toContain('\nUnder budget: send "brief_patch".\n')
+  })
+})
+
+describe('the brief_patch rules in the prompt', () => {
+  const P = NEXT_CONVO_SYSTEM_PROMPT
+
+  it('shows brief_patch with drop in the schema, and brief as the whole alternative', () => {
+    expect(P).toMatch(/"brief_patch"\s*:\s*\{/)
+    expect(P).toMatch(/"drop"\s*:\s*\{/)
+    expect(P).toMatch(/\{\s*"_payload_type"[\s\S]*"brief_patch"/)
+    expect(P).toMatch(/`brief` takes the same nine fields/)
+  })
+
+  it('no longer says to always send the whole brief', () => {
+    expect(P).not.toContain('Always include the whole `brief`')
+    expect(P).not.toContain('rewrite the brief whole')
+  })
+
+  it('says when to send which, and never both', () => {
+    expect(P).toMatch(/Send what this round changes as `brief_patch`/)
+    expect(P).toMatch(/everything you leave out of it stays/i)
+    expect(P).toMatch(/Send the whole `brief` instead/)
+    expect(P).toMatch(/compaction/)
+    expect(P).toMatch(/never both/i)
+  })
+
+  it('scopes "what you leave out is gone" to a whole brief', () => {
+    expect(P).toMatch(/Anything you leave out of a whole `brief` is gone/)
+    expect(P).not.toMatch(/Anything you leave out of it is gone from the brief/)
+  })
+
+  it('states each merge rule', () => {
+    expect(P).toMatch(/empty string does nothing/)
+    expect(P).toMatch(/cannot clear a text field/)
+    expect(P).toMatch(/exact `topic`/)
+    expect(P).toMatch(/`features`, `open_risks`, `queued` and `shipped` add/)
+    expect(P).toMatch(/`drop`/)
+    expect(P).toMatch(/drop the old text and add the new one/)
+    expect(P).toMatch(/keeps the brief's text; only its `owner` can change/)
+    expect(P).toMatch(/a drop that matches nothing refuses the whole payload/i)
+    expect(P).toMatch(/Copy each topic and text from the brief as shown/)
+    expect(P).toMatch(/drop it from `queued`.*add it to `shipped`/)
+    expect(P).toMatch(/cannot (remove or )?merge `shipped` batches/)
+  })
+
+  it('keeps locked decisions out of a patch and verbatim in a whole brief', () => {
+    expect(P).toMatch(/do not include a locked decision in `brief_patch` at all/i)
+    expect(P).toMatch(/NEVER drop, reword, or unset a locked decision/)
   })
 })

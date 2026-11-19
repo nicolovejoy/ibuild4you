@@ -7,16 +7,22 @@ import { PayloadDoc } from '@/components/payload-doc'
 const NEXT_CONVO_PAYLOAD = `{
   "_payload_type": "next-convo",
   "_prep_stamp": { "brief_version": 7, "note_ids": ["noteId1", "noteId2"], "report_ids": ["reportId1"] },
-  "brief": {
-    "problem": "What problem the user is trying to solve",
-    "target_users": "Who the intended users are",
-    "features": ["Feature 1", "Feature 2"],
-    "constraints": "Any constraints, limitations, or things the user explicitly doesn't want",
-    "additional_context": "Anything else that doesn't fit the categories above",
-    "decisions": [{ "topic": "short label", "decision": "what was decided" }],
-    "open_risks": ["plain-language description of something unresolved, unclear, or risky", { "text": "a risk only one side can settle", "owner": "maker" }],
+  "brief_patch": {
+    "problem": "Optional. The whole new text of this field, only if it changed",
+    "target_users": "Optional. The whole new text of this field, only if it changed",
+    "features": ["A feature to add"],
+    "constraints": "Optional. The whole new text of this field, only if it changed",
+    "additional_context": "Optional. The whole new text of this field, only if it changed",
+    "decisions": [{ "topic": "exact topic of a decision in the brief, or a new short label", "decision": "the decision as it now stands, whole" }],
+    "open_risks": [{ "text": "a new open risk", "owner": "maker" }],
     "shipped": [{ "date": "YYYY-MM-DD", "items": ["what went out in this batch"] }],
-    "queued": ["what is next and not built yet"]
+    "queued": ["what is newly planned and not built yet"],
+    "drop": {
+      "decisions": ["topic of a decision no longer in force"],
+      "features": ["text of a feature to remove"],
+      "open_risks": ["text of a settled risk"],
+      "queued": ["text of a queued item that shipped"]
+    }
   },
   "welcome_message": "Posted word for word as the agent's first message when the maker opens the next session. Omit it to let the agent greet them itself.",
   "nudge_message": "Optional. Verbatim outbound nudge text used to invite the maker back. Omit to let the system auto-draft.",
@@ -32,11 +38,17 @@ const NOTES = [
   'Paste this into the Brief tab inside an existing project (not the Dashboard’s Import JSON modal).',
   '"_payload_type" must be the first key. Do NOT include title, requester_email, or maker names — those are create-only fields.',
   '"_prep_stamp" is copied back unchanged from the next-convo prep, so the paste folds exactly the notes and build reports that prep carried (hand-written JSON leaves it out).',
-  'Include the "brief" object to save a new brief revision; the other fields update the project and steer the next session.',
+  'Include "brief_patch" (only what changed) or "brief" (the whole brief, same nine fields, no drop) to save a new brief revision, never both; the other fields update the project and steer the next session.',
+  'brief_patch is merged into the live brief; everything it leaves out stays. Every key is optional, and {} means the round changed nothing in the brief (the notes still fold).',
+  'Merge rules: a text field (problem, target_users, constraints, additional_context) takes the whole new text, and an empty string does nothing. A decision is replaced by exact topic, or added if the topic is new. features, open_risks, queued and shipped add; an entry already there is not added twice, and shipped items join the batch with the same date. An open risk that matches one in the brief keeps the brief’s text and can only change its owner.',
+  'drop removes decisions by topic and features, open_risks and queued by text. To reword a feature or a risk, drop the old text and add the new one. Matching ignores case, punctuation and extra spaces. A patch cannot remove or merge shipped batches or clear a text field; send a whole "brief" for that.',
+  'Refused, and nothing is imported: a drop that matches nothing (the Brief tab names it), "brief" and "brief_patch" together, and a "brief_patch" for a project with no brief yet (the first brief is a whole one).',
+  'A locked decision is never changed by a patch: do not include one. A restatement or drop aimed at a locked topic is ignored, the lock stays as it is, and the Brief tab says so.',
   'Only include fields the conversation actually addressed — omit the rest rather than inventing them.',
   'session_opener is accepted as a legacy alias for welcome_message — prefer welcome_message.',
   'shipped is dated batches of what has gone out; queued is what is next and not yet built. additional_context stays for background that is neither.',
-  'Preserve prior brief content and decisions unless the conversation explicitly contradicts or reverses them.',
+  'Preserve prior brief content and decisions unless the conversation explicitly contradicts or reverses them. In a whole "brief", anything left out is gone.',
+  'The prep asks for a whole "brief" when the brief is over 20,000 characters or has no content yet, or when the builder asks for a compaction; otherwise a "brief_patch".',
 ]
 
 export default function NextConversationPayloadPage() {

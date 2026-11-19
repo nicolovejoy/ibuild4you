@@ -65,6 +65,41 @@ Decision provenance (#121): code stamps `decided_in_session`/`decided_at` on a n
 
 The Brief tab's editor (structured or raw) and History → Restore ask first when a save would drop a lock ("This save removes the lock on: …"); those saves are unstamped, so a confirmed unlock goes through. A stamped ferry-desk paste needs no prompt because the server restores its locks and contests. An unstamped paste (old prep, hand-written JSON) and direct PUT callers behave as before: no prompt, and the payload's decisions are saved as sent.
 
+### Next-convo brief: `brief_patch` or `brief`
+
+A next-convo payload (pasted on the Brief tab, `PUT /api/briefs`) carries either a whole `brief` or a `brief_patch`, never both (400). A `brief_patch` holds only what the round changed; the server merges it into the live brief (`lib/brief/patch.ts`), then runs the usual lock restore, provenance stamping and risk-owner carry on the result. The prep asks for a `brief_patch` when the brief is under the 20,000-character budget and a whole `brief` when it is over, has no content yet, or the builder asks for a compaction in the chat.
+
+```json
+"brief_patch": {
+  "constraints": "The whole new text of this field",
+  "decisions": [{ "topic": "Bar ranges", "decision": "The decision as it now stands, whole" }],
+  "features": ["A new feature"],
+  "open_risks": [{ "text": "A new open risk", "owner": "maker" }],
+  "shipped": [{ "date": "2026-11-18", "items": ["Something that went live"] }],
+  "queued": ["Something newly planned"],
+  "drop": {
+    "decisions": ["Topic of a decision no longer in force"],
+    "features": ["Text of a feature to remove"],
+    "open_risks": ["Text of a settled risk"],
+    "queued": ["Text of a queued item that shipped"]
+  }
+}
+```
+
+Every key is optional; `{}` is a valid patch (the brief does not change, the notes still fold). Merge rules, drops first, then additions:
+- Matching (a decision's topic, the text of a feature, risk, queued or shipped item) ignores case, punctuation and extra spaces. A repeated drop entry counts once.
+- Text fields (`problem`, `target_users`, `constraints`, `additional_context`): a non-empty string replaces the field; an empty or blank one is ignored, so a patch cannot clear a field.
+- Decisions: matched by topic. A known topic is replaced in place (stored topic spelling and position kept); a new topic is appended.
+- Features and queued: appended unless already there. Shipped: items join the batch with the same `date`, or a new batch is added. A patch cannot remove or merge shipped batches (a compaction, so a whole `brief`).
+- Open risks: a new one is appended. One that matches an existing risk keeps the brief's text; only its owner can change. To reword a feature or a risk, drop the old text and add the new one.
+- `drop`: decisions by topic; features, open risks and queued by text.
+
+Refused (400, nothing written, no note folded): `patch_drop_unmatched` when a drop matches nothing (the response lists the unmatched entries by list), `patch_no_brief` when the project has no brief doc or its content is empty (`hasBriefContent`), and `brief` with `brief_patch` together. Unknown keys are ignored.
+
+Locks: a patch never changes a locked decision, stamped or not. A restatement or drop aimed at a locked topic is ignored, the lock returns verbatim with its contest state, and the response lists the topics in `locks_kept`. The prep tells the comms agent not to include a locked decision in a patch at all. A patch may add a new locked decision, as a paste can.
+
+When the merged brief equals the live one, no version is written; notes and reports still fold and the response carries the live version. The response adds `patch_summary` and `locks_kept`.
+
 ### Update (PATCH /api/projects)
 
 Requires `project_id`. Only these fields are accepted: `title`, `context`, `welcome_message`, `nudge_message`, `voice_sample`, `session_mode`, `seed_questions`, `builder_directives`, `requester_first_name`, `requester_last_name`, `last_nudged_at`, `prep_copied_at`, `payload_pasted_at`, `payload_pasted_version`, `last_builder_activity_at`, `identity`, `github_repo`, `auto_reminders_enabled`, `language` (`en`|`fr`, else 400), `model` (one of the three ids; `''`/null = Default; else 400), `hide_title_in_previews` (boolean, else 400). Changing `title` regenerates the slug.

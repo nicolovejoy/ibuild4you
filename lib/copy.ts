@@ -181,7 +181,7 @@ export const copy = {
     briefNearSizeLimit: (chars: number, budget: number) =>
       `This brief is ${chars.toLocaleString('en-US')} characters, close to the ${budget.toLocaleString('en-US')} curation budget. Trim or merge decisions when you next curate it.`,
     briefOverSizeLimit: (chars: number, budget: number) =>
-      `This brief is ${chars.toLocaleString('en-US')} characters, over the ${budget.toLocaleString('en-US')} curation budget. It still saves. Trim or merge decisions when you can.`,
+      `This brief is ${chars.toLocaleString('en-US')} characters, over the ${budget.toLocaleString('en-US')} curation budget. It still saves. Trim or merge decisions when you can. The next prep will ask for a whole rewrite.`,
     regenFailedTooLarge: (when: string) =>
       `The note from the last conversation failed on ${when}: the model ran out of room writing it. Try "Write note now" under Details.`,
     regenFailed: (when: string) =>

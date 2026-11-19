@@ -14,6 +14,18 @@ describe('BRIEF_CURATION_GUIDE', () => {
     expect(doc).toMatch(/lib\/agent\/curation-guide\.ts/)
   })
 
+  it('says when to send a patch and when a whole rewrite', () => {
+    expect(BRIEF_CURATION_GUIDE).toContain('Patch or whole rewrite')
+    expect(BRIEF_CURATION_GUIDE).toMatch(/"brief_patch"/)
+    expect(BRIEF_CURATION_GUIDE).toMatch(/Only a whole rewrite merges entries/)
+    expect(BRIEF_CURATION_GUIDE).toMatch(/shipped batches/)
+  })
+
+  it('scopes carrying shipped and queued forward to a whole rewrite', () => {
+    expect(BRIEF_CURATION_GUIDE).not.toMatch(/^- Always carry "shipped" and "queued" forward:/m)
+    expect(BRIEF_CURATION_GUIDE).toMatch(/In a whole rewrite, always carry "shipped" and "queued" forward/)
+  })
+
   it('names the readers, the budget and the hard rules', () => {
     expect(BRIEF_CURATION_GUIDE).toMatch(/Sam/)
     expect(BRIEF_CURATION_GUIDE).toMatch(/comms agent/)
