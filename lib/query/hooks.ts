@@ -550,6 +550,9 @@ export function useUpdateBrief() {
   const queryClient = useQueryClient()
 
   return useMutation({
+    // No retry (the app default is one). Every refusal the server gives is final, and a save is
+    // not safe to repeat: if the first request saved and only the answer was lost, a retry meets a 409 or unmatched drops.
+    retry: false,
     mutationFn: async ({
       project_id,
       content,
