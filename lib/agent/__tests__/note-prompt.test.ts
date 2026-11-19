@@ -91,7 +91,10 @@ describe('NOTE_SYSTEM_PROMPT keeps what the maker said', () => {
   })
 
   it('records an answer to an open risk as a settled risk, and as a decision only for a lasting choice', () => {
-    expect(NOTE_SYSTEM_PROMPT).toMatch(/When the maker's answer settles an open risk, record it here/)
+    // The first wording ("record it here; add a decision as well only when…")
+    // was read as either/or on preview: the answer became a decision and the
+    // risk was left open. The settled-risk entry is unconditional.
+    expect(NOTE_SYSTEM_PROMPT).toMatch(/An answer that settles an open risk is always listed here, even when it is also recorded as a decision/)
     expect(NOTE_SYSTEM_PROMPT).toMatch(/only when they committed to a lasting choice, under a short topic of its own/)
   })
 
