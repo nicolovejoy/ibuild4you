@@ -862,6 +862,37 @@ describe('writeNoteForProject', () => {
       expect(earlier).toContain('an email noted last time')
     })
 
+    const earlierBlock = () =>
+      userText(lastCall()).split('<earlier_context>')[1].split('</earlier_context>')[0]
+
+    it('cuts an earlier-context email to 2,000 characters without marking the note truncated', async () => {
+      seedProject({ notes_through_at: '2026-11-19T11:00:00.000Z' })
+      const text = bigText('alpha', 10_000)
+      seedEmail('e1_p1', '2026-11-19T11:00:00.000Z', text)
+      seedEmail('e2_p1', '2026-11-19T12:00:00.000Z', 'a brand new email here')
+      mockMessagesCreate.mockResolvedValue(noteResponse(someNote))
+
+      const res = await writeNoteForProject(db, 'p1')
+
+      expect(block(earlierBlock(), 'typed')).toBe(`${text.slice(0, 2_000)}\n[cut here]`)
+      expect(res).toMatchObject({ covered: 1, through: '2026-11-19T12:00:00.000Z' })
+      expect(notes()[0]).toMatchObject({ email_ids: ['e2_p1'] })
+      expect(notes()[0]).not.toHaveProperty('email_truncated')
+    })
+
+    it('shows an earlier-context email under the cap unchanged', async () => {
+      seedProject({ notes_through_at: '2026-11-19T11:00:00.000Z' })
+      const text = bigText('alpha', 1_500)
+      seedEmail('e1_p1', '2026-11-19T11:00:00.000Z', text)
+      seedEmail('e2_p1', '2026-11-19T12:00:00.000Z', 'a brand new email here')
+      mockMessagesCreate.mockResolvedValue(noteResponse(someNote))
+
+      await writeNoteForProject(db, 'p1')
+
+      expect(block(earlierBlock(), 'typed')).toBe(text)
+      expect(earlierBlock()).not.toContain('[cut here]')
+    })
+
     it("recovers a maker email the app never received from a builder's quote, and leaves it out when it arrives later", async () => {
       seedProject()
       seedSession('s1', '2026-11-19T00:00:00.000Z')

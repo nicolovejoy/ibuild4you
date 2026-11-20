@@ -21,6 +21,10 @@ export const NOTE_MAX_TOKENS = 1500
 // not seen before) go into one note. A longer stream is split over runs; one
 // email longer than this alone is cut and marked `[cut here]`.
 export const EMAIL_WINDOW_CHAR_LIMIT = 40_000
+// An email shown as earlier context (already covered by an earlier note) is
+// cut to this many characters: it is there to orient the model, and six of
+// them uncut could add 300,000 characters to one call.
+export const EMAIL_CONTEXT_CHAR_LIMIT = 2_000
 
 export const DEFAULT_IDENTITY = "You are Sam, the assistant sitting in the middle of an iBuild4you brief — a living document that one or more people are building together. Your job is to help them describe what they're building clearly enough that a developer could start working on it. You surface gaps and ask follow-up questions, but you don't decide things — that's still their call. You're the intake step, not the developer who builds it: you turn the conversation into a brief their developer works from — you don't design, build, change, or deploy the app yourself."
 

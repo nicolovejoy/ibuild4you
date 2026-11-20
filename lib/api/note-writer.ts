@@ -23,7 +23,13 @@ import type {
   BriefNoteThumbsDown,
   ProjectEmail,
 } from '@/lib/types'
-import { BRIEF_MODEL, BRIEF_TEMPERATURE, EMAIL_WINDOW_CHAR_LIMIT, NOTE_MAX_TOKENS } from '@/lib/agent/constants'
+import {
+  BRIEF_MODEL,
+  BRIEF_TEMPERATURE,
+  EMAIL_CONTEXT_CHAR_LIMIT,
+  EMAIL_WINDOW_CHAR_LIMIT,
+  NOTE_MAX_TOKENS,
+} from '@/lib/agent/constants'
 import { NOTE_SYSTEM_PROMPT, buildNoteUserContent, type Message as NoteTurn } from '@/lib/agent/note-prompt'
 import { logAnthropicCall } from '@/lib/observability/anthropic'
 import { addNote, isEmptyNote, listUnfoldedNotes } from '@/lib/api/brief-notes'
@@ -175,11 +181,14 @@ function cutTo(s: string, n: number): string {
   return last >= 0xd800 && last <= 0xdbff ? cut.slice(0, -1) : cut
 }
 
-// One email longer than the limit on its own: typed text is kept first, the
-// quoted part gets whatever room is left, and CUT_MARK ends the part cut.
-function cutEmail(item: EmailItem): EmailItem {
-  const typed = cutTo(item.typed, EMAIL_WINDOW_CHAR_LIMIT)
-  const quotedUnseen = cutTo(item.quotedUnseen, EMAIL_WINDOW_CHAR_LIMIT - typed.length)
+// An email cut to `limit` characters: typed text is kept first, the quoted
+// part gets whatever room is left, and CUT_MARK ends the part cut. Used for a
+// window email longer than the window limit alone, and for every email shown
+// as earlier context. An email within the limit is returned as it is.
+function cutEmail(item: EmailItem, limit: number): EmailItem {
+  if (item.typed.length + item.quotedUnseen.length <= limit) return item
+  const typed = cutTo(item.typed, limit)
+  const quotedUnseen = cutTo(item.quotedUnseen, limit - typed.length)
   return quotedUnseen
     ? { ...item, typed, quotedUnseen: `${quotedUnseen}\n${CUT_MARK}` }
     : { ...item, typed: `${typed}\n${CUT_MARK}`, quotedUnseen: '' }
@@ -199,7 +208,7 @@ function takeWindow(items: StreamItem[]): { window: StreamItem[]; truncated: boo
       const size = item.typed.length + item.quotedUnseen.length
       if (used + size > EMAIL_WINDOW_CHAR_LIMIT) {
         if (used > 0) break
-        window.push(cutEmail(item))
+        window.push(cutEmail(item, EMAIL_WINDOW_CHAR_LIMIT))
         truncated = true
         used = EMAIL_WINDOW_CHAR_LIMIT
         continue
@@ -415,7 +424,11 @@ export async function writeNoteForProject(
             text: buildNoteUserContent({
               currentBrief,
               notesSinceCuration,
-              earlierContext: earlierContext.filter(hasText).map(toTurn),
+              // Context only, already covered by an earlier note: each email is
+              // capped, and the cut does not mark this note truncated.
+              earlierContext: earlierContext
+                .filter(hasText)
+                .map((item) => toTurn(item.kind === 'email' ? cutEmail(item, EMAIL_CONTEXT_CHAR_LIMIT) : item)),
               newMessages: window.filter(hasText).map(toTurn),
             }),
           },
