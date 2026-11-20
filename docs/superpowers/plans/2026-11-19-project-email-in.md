@@ -35,7 +35,9 @@ Setup state: MX for `inbox.ibuild4you.com` is live (`receive.forge.rmta.net`), r
 
 ## Progress and rulings (2026-11-20)
 
-Branch `worktree-email-in`. Tasks 1 and 3 are done and reviewed clean. Tasks 2, 4, 5, 6 and 7 are not started. The whole-branch review has not run; it runs when every task is in.
+Branch `worktree-email-in`. As of the third session (2026-11-20) Tasks 1 to 6 and the docs of Task 7 are built and reviewed, and the whole-branch review and its fix wave have run; see "Added 2026-11-20, third session" below, which is the current state. What follows in this section is the record of the first session.
+
+Tasks 1 and 3 are done and reviewed clean. Tasks 2, 4, 5, 6 and 7 are not started. The whole-branch review has not run; it runs when every task is in.
 
 Not blocked on the fixtures, so they can be built now: Task 5 (it needs only `projects.last_email_at`, typed in Task 1, and the unchanged `writeNoteForProject` signature), and from Task 2 the sender check, `store.ts` and the delete cascade (steps 1, 2, 5, 6, 9). Task 2's `fetchReceivedEmail` and route branch (steps 3, 4, 7, 8) wait for the two recorded fixtures. Tasks 4 and 6 need Task 2's `store.ts` first.
 
@@ -96,6 +98,33 @@ Known gaps, for the whole-branch review to weigh:
 - The delete-cascade test's `mockWhere` assertion is weak (other collections run the same query); the `deleted` assertions are what pin it.
 - `docs/data-model.md` and `docs/runbooks.md` do not mention any of this yet (Task 7).
 - `lib/email-in/__tests__/address.test.ts` from Task 1 is not Prettier-clean.
+
+### Added 2026-11-20, third session: the rest of the build, the whole-branch review and its fix wave
+
+Built and reviewed: the `>`-marked attribution fix in `new-text.ts`; Task 2 steps 3, 4, 7 and 8 (`lib/email/resend-received.ts` and the route branch); Task 4; Task 6; the docs of Task 7. The whole-branch review found no Critical issue and four Important ones (F1 to F4); one fix wave built those and eight minors. Still to do from Task 7: the preview check, the production smoke, MusicForge, the changelog entry.
+
+Rulings. Where one differs from the task text below, or from an earlier ruling above, this one stands.
+
+- **`received_at` is the app's clock at the moment of storing** (F1; this reverses an earlier ruling of this session that took Resend's `created_at`). A retried email would otherwise land behind `notes_through_at` and never be noted. `sent_at` still comes from the `date` header.
+- **Typed lines are never dropped line by line** (F2; this changes the spec's filter). Only quoted lines are checked against the seen set. An email's text is left out whole only when it repeats one earlier email from the same sender (`isRepeatOf`: it has at least one line of 12 characters or more, every typed line of any length is typed there, and every quoted line of any length is quoted there; a short line can prevent a repeat and never make one). Before this, a maker who typed "Yes, go ahead with that." in two emails lost the second. Cost: a repeated signature or a re-typed line is read again.
+- **Minting an address pins the note writer's start** (F3). With no `notes_through_at`, the mint writes it once: the brief's `updated_at` when a brief exists, else the epoch value (nothing covered yet). A later brief save can then no longer move the start past an email already stored.
+- **A quote belongs to its author, not to the email's sender** (F4). The builder's words, typed or quoted by anyone, create no decision. A quote with no clear author goes in the note's text only. The prompt also says the quoted block may hold the sender's own answers typed under the quote, because the filter marks everything after an attribution as quoted.
+- **The From header is required.** The route runs `checkSender` on the raw `headers.from` only; a missing header, or two From headers, is `not_member`. The parsed address must also equal Resend's top-level `from`.
+- **Both matches are found before the one fetch.** A failed fetch with a project matched answers 500 and writes nothing, the Loop reply included; project emails are stored before the Loop reply, because the store is idempotent and the Loop write is not. A missing or malformed `email_id` answers 200 and writes nothing for projects.
+- **A null body is stored as empty text.** At most 10 project addresses are looked up per email.
+- **The note writer.** Chat sorts before an email at the same timestamp; only emails count toward the 40,000; the window is a prefix of the merged stream and never ends between two items with the same timestamp; an oversized single email cuts `typed` first. An email shown as earlier context carries at most 2,000 characters (`EMAIL_CONTEXT_CHAR_LIMIT`). Email text has the prompt's own tag names and turn labels neutralized before it is shown to the model.
+- **The panel** is mounted only for an owner, a builder or a system admin (`canSeeProjectEmail`). Its received list is a projected read of four fields. `GET /api/projects` removes `email_in_address`, `last_email_at` and `email_in_dropped` for any other viewer.
+- **A member who never signed in** and is the project's requester is named by the requester's name, not by the address's local part.
+
+Known gaps left on purpose:
+
+- `last_email_at` is still a plain overwrite (F8); after F1 it can go backwards only by a race of milliseconds.
+- The repeat check compares an email with every earlier email from its sender, and the note writer loads every stored email's text on each run. Fine at tens of emails per project; worth a bound at hundreds.
+- In a window that holds a maker chat turn and a maker email, a lock reversal drawn from the email is stopped by the prompt, not by code. The effect is a Contested mark the builder can dismiss.
+- A note's email window can pass 40,000 characters when it has to take a whole run of emails stored in the same millisecond.
+- The dropped-mail counts are running totals; the panel shows when the last one happened, and nothing resets them.
+- Unchecked until the production smoke: that Resend's `authentication.dmarc` is about the header From address, and that the production `RESEND_API_KEY` can read received mail.
+- `GET /api/projects?slug=` returns a project to any signed-in user with no role check. Older than this branch; worth its own issue.
 
 ## Global Constraints
 
