@@ -35,6 +35,45 @@ Known gaps, for the whole-branch review to weigh:
 - `mintEmailInAddress` does not lowercase the host; it matters only if `FEEDBACK_INBOX_HOST` is set with capitals. The address tests assume the default host.
 - No test for the unparsable-JSON 400 in the mint route. The short-line neighbour search is O(n²). `removeQuoteMarkers` strips indentation after `>`.
 
+### Added 2026-11-20, second session: Task 2 in part, and Task 5
+
+Done and reviewed: from Task 2, steps 1, 2, 5, 6 and 9 (`checkSender`, `store.ts`, `ProjectEmail`, the delete cascade), and Task 5 in full. Still not started: Task 2 steps 3, 4, 7 and 8 (`fetchReceivedEmail` and the route branch, waiting for the fixtures), and Tasks 4, 6 and 7. Commits: `0c20ab3`, `632433b`, then the fix commits `7757054` and `7108338` and a test-only commit after them.
+
+Rulings. Where one differs from the task text below, the ruling stands.
+
+- **Task 2, the From header is parsed strictly and fails closed.** `checkSender` accepts two shapes only: a bare address, or an optional name followed by one `<address>` as the last thing. The name is one double-quoted string, or unquoted text with none of `< > ( ) , " @ : ; [ ] \`. A header over 998 characters, or holding a control character other than tab, is refused. The address must be printable ASCII with one `@`. Anything else is `not_member`. The first version took the first `<…>` group anywhere, so `"<bduris@aol.com>" <attacker@evil.com>` passed as Bill on the attacker's own DMARC pass.
+- **Task 2, legal headers this refuses.** An unquoted name with a comma or parentheses (`Duris, Bill <b@aol.com>`, `Bill (Home) <b@aol.com>`), the comment form `b@aol.com (Bill)`, and a folded header. Such mail counts under `email_in_dropped.not_member`, so the panel shows a count and no address. If Bill's first real email is dropped this way, loosen the parser on purpose; the shapes are pinned as tests.
+- **Task 2, roles.** An unknown or missing role on any active row for the address is `not_member`. Two active rows for one address that disagree give `builder`. A removed row beside an active one is ignored.
+- **Task 2, DMARC is compared exactly** with `'pass'`. `not_member` is decided before DMARC, so a stranger's address is never kept.
+- **Task 2, `storeProjectEmail`.** It reads the document first and returns `'duplicate'` before the flood guard, so a retried webhook at the limit is never `over_limit` and never counts as a drop. The create and the `last_email_at` update are one batch: both are written or neither is, and a missing project stores nothing.
+- **Task 2, flood window.** The 24 hours end at the incoming email's `received_at`, so the function takes no clock. The 50th email is stored and the 51st refused.
+- **Task 2, no composite index.** The count and the list query on `project_id` alone and filter and sort in memory, as build reports and brief notes do. The count selects `received_at` only.
+- **Task 2, `recordDrop`** uses `update()`, so it never creates a project document, and it ignores an address passed with `not_member` or `over_limit`.
+- **Task 5.** The two queries run together and are merged by document id. A project whose later activity is under 10 minutes old is skipped and still counts in `idle_checked`. `normalizeRegenStreak`'s third parameter is now `lastActivity`. One existing test moved its maker turn from now to 30 minutes ago; the real query never returned such a project.
+
+For the tasks still to build:
+
+- **Step 8 (route) must pass a resolved name.** `project_members` rows may not carry `display_name`. Fill it with `getUserDisplayName(db, uid, email)` from `lib/api/firebase-server-helpers.ts` before calling `checkSender`, or every email shows the address's local part.
+- **Step 8, when the fixtures exist:** check whether Resend's `from` is the raw header or an address it parsed, what it gives for two From mailboxes or two From headers, and that `authentication.dmarc` covers that same address.
+- **Task 4 must advance `notes_through_at` to the exact `received_at` of the last email it covered**, on the no-model-call path too. The cron's covered check is `notes_through_at >= last_email_at`. If it does not advance, every tick calls the writer again.
+- **Do not ship the route branch ahead of Task 4.** Until the note writer reads emails, a project with a new `last_email_at` and no new chat throws `write_note_no_messages` (before any model call) three times and sits with the breaker tripped. No cost, but a false `brief_regen_last_error`.
+
+Known gaps, for the whole-branch review to weigh:
+
+- The From parser took three review rounds. The last compared it with Python's `email` parser on about 460,000 generated headers and found no input that returns a member's address while Python reads another From.
+- A quoted display name may hold `@` (`"x@evil.com" <bduris@aol.com>`), C1 controls and bidi characters. The address is not affected and the header's name is never stored (`from_name` comes from the member row). If the header's name is ever shown or stored, refuse `\x80-\x9f` too.
+- The flood guard is not atomic: two different emails arriving together can both take a project's 50th slot.
+- `last_email_at` is a plain overwrite, so two stores at once can leave the older `received_at` in place.
+- The count reads every `received_at` the project has ever stored; the cost grows with the project's history.
+- An `emailId` with `/` in it would make Firestore throw. Resend ids are UUIDs; nothing checks.
+- A project email deleted before a note covers it leaves `last_email_at` pointing at nothing; the breaker trips after three free failures.
+- DMARC proves the domain, not the mailbox. On a shared domain (aol.com, gmail.com) the gate relies on the provider refusing to let one user send as another. Worth a sentence in the spec's "Trust" section.
+- The real Firestore error codes for a failed batch (6 for a create on an existing document, 5 for an update on a missing one) are from the reviewer's knowledge of the Admin SDK, not from a run against Firestore.
+- The cron comment "Firestore cannot OR two range filters on different fields in one query" may be out of date; two simple queries keep it on single-field indexes either way.
+- The delete-cascade test's `mockWhere` assertion is weak (other collections run the same query); the `deleted` assertions are what pin it.
+- `docs/data-model.md` and `docs/runbooks.md` do not mention any of this yet (Task 7).
+- `lib/email-in/__tests__/address.test.ts` from Task 1 is not Prettier-clean.
+
 ## Global Constraints
 
 - The address never sends anything. No task adds an outbound email.
