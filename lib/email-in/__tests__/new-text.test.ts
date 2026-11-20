@@ -74,6 +74,43 @@ describe('splitNewText', () => {
     ).toEqual({ typed: 'FYI', quotedUnseen: '' })
   })
 
+  describe('an Apple Mail forward with quoted header fields', () => {
+    const quotedOriginal = original
+      .split('\n')
+      .map((line) => `> ${line}`)
+      .join('\n')
+    const forward =
+      'FYI\n\nBegin forwarded message:\n\n> From: Bill Duris <b@aol.com>\n> Subject: Planner\n> Date: Wed, Nov 18, 2026\n> To: Nico\n> \n' +
+      quotedOriginal
+
+    it('leaks nothing when the body is held', () => {
+      expect(splitNewText(forward, seen)).toEqual({ typed: 'FYI', quotedUnseen: '' })
+    })
+
+    it('keeps the divider, the fields and the body when the body is unseen', () => {
+      expect(splitNewText(forward, new Set())).toEqual({
+        typed: 'FYI',
+        quotedUnseen:
+          'Begin forwarded message:\n\nFrom: Bill Duris <b@aol.com>\nSubject: Planner\nDate: Wed, Nov 18, 2026\nTo: Nico\n\n' +
+          original,
+      })
+    })
+  })
+
+  it('a short line never takes its fate from a line under another header', () => {
+    expect(
+      splitNewText(
+        'Ok.\n\nFrom: Bill Duris\nSent: Wednesday, November 18, 2026\nTo: Nico\n\nCan it export to PDF as well?\n\nFrom: Nico\nSent: Tue\nTo: Bill\n\n' +
+          original,
+        seen
+      )
+    ).toEqual({
+      typed: 'Ok.',
+      quotedUnseen:
+        'From: Bill Duris\nSent: Wednesday, November 18, 2026\nTo: Nico\n\nCan it export to PDF as well?',
+    })
+  })
+
   it('a header, a blank line, then a fully seen quote yields no quote', () => {
     expect(
       splitNewText(

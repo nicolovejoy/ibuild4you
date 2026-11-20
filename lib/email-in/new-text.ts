@@ -63,11 +63,18 @@ const DIVIDERS = [
 
 const HEADER_FIELD = /^(From|Sent|Date|To|Cc|Subject):/i
 
+// A line without its leading `>` markers and the whitespace after them.
+function removeQuoteMarkers(line: string): string {
+  return line.replace(/^\s*>[>\s]*/, '')
+}
+
 // How many header-field lines (From:, Sent:, Date:, To:, Cc:, Subject:) run
-// directly from `index`. The run ends at the first other line, a blank one included.
+// directly from `index`. Fields count with their `>` markers stripped, since
+// Apple Mail quotes a forward's field block. The run ends at the first other
+// line, a blank one included.
 function fieldRunLength(lines: string[], index: number): number {
   let end = index
-  while (end < lines.length && HEADER_FIELD.test(lines[end].trim())) end++
+  while (end < lines.length && HEADER_FIELD.test(removeQuoteMarkers(lines[end]).trim())) end++
   return end - index
 }
 
@@ -87,10 +94,11 @@ function quoteHeaderLength(lines: string[], index: number): number {
     return 2 + fieldRunLength(lines, index + 2)
   }
 
-  // A divider, any blank lines directly under it, then its header fields.
+  // A divider, any blank lines directly under it (a bare `>` counts as blank),
+  // then its header fields.
   if (DIVIDERS.some((divider) => divider.test(line))) {
     let end = index + 1
-    while (end < lines.length && lines[end].trim() === '') end++
+    while (end < lines.length && removeQuoteMarkers(lines[end]).trim() === '') end++
     return end - index + fieldRunLength(lines, end)
   }
 
@@ -143,8 +151,10 @@ function isLong(line: Line): boolean {
 // Step 3: a long line is dropped when the app has seen it. A short line takes
 // the fate of the nearest long line with the same quoted status, looking before
 // it first and then after it, so a short typed "Yes agreed" never follows a seen
-// quoted line out. Header lines are never that neighbour (step 4 decides them).
-// With no such neighbour, a short line is kept.
+// quoted line out. Header lines are never that neighbour (step 4 decides them),
+// and the search stays between the header spans around the line, so a greeting
+// under one header never follows a line quoted under another. With no such
+// neighbour, a short line is kept.
 function decideFates(lines: Line[], seen: Set<string>): void {
   const isEvidence = (line: Line) => line.headerId === null && isLong(line)
 
@@ -155,9 +165,17 @@ function decideFates(lines: Line[], seen: Set<string>): void {
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]
     if (line.headerId !== null || isLong(line)) continue
+
+    // The stretch from the header span before this line (or the start) to the
+    // header span after it (or the end).
+    let start = i
+    while (start > 0 && lines[start - 1].headerId === null) start--
+    let end = i
+    while (end + 1 < lines.length && lines[end + 1].headerId === null) end++
+
     const sameStatus = (other: Line) => isEvidence(other) && other.quoted === line.quoted
-    const before = lines.slice(0, i).reverse().find(sameStatus)
-    const after = lines.slice(i + 1).find(sameStatus)
+    const before = lines.slice(start, i).reverse().find(sameStatus)
+    const after = lines.slice(i + 1, end + 1).find(sameStatus)
     const neighbour = before ?? after
     line.kept = neighbour ? neighbour.kept : true
   }
@@ -189,10 +207,6 @@ function joinLines(lines: string[]): string {
     out.push(line)
   }
   return out.join('\n').trim()
-}
-
-function removeQuoteMarkers(line: string): string {
-  return line.replace(/^\s*>[>\s]*/, '')
 }
 
 export function splitNewText(
