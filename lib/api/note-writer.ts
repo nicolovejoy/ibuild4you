@@ -12,7 +12,9 @@
 //
 // Email-in: emails members sent to the project's address (project_emails) join
 // the chat messages as one stream ordered by time. Each email is first cut to
-// what the app has not already seen (lib/email-in/new-text.ts).
+// what the app has not already seen (lib/email-in/new-text.ts): quoted lines
+// the app holds are dropped, typed lines are kept, and an email that repeats
+// an earlier one from the same sender is left out whole.
 
 import Anthropic from '@anthropic-ai/sdk'
 import type {
@@ -39,7 +41,7 @@ import { normalizeResolvedRisks, normalizeRisks } from '@/lib/brief/risks'
 import { isArchivedSession } from '@/lib/sessions/active'
 import { isBuilderSideRole } from '@/lib/roles/member-role'
 import { listProjectEmails } from '@/lib/email-in/store'
-import { seenLines, splitNewText } from '@/lib/email-in/new-text'
+import { isRepeatOf, seenLines, splitNewText } from '@/lib/email-in/new-text'
 
 // How many messages before the first new one go in as continuity context.
 const EARLIER_CONTEXT_COUNT = 6
@@ -146,12 +148,18 @@ const CUT_MARK = '[cut here]'
 
 // Each email's new text. Its seen set is the stored text of every email on the
 // project before it (in the window or not), so a line someone quoted again is
-// dropped and a quote of mail the app never received is kept.
+// dropped and a quote of mail the app never received is kept. What the sender
+// typed is always kept, unless the whole email repeats an earlier one from the
+// same sender (sent twice, say): then it has no text left and is covered
+// without being shown, like an email whose every line was already seen.
 function splitEmails(emails: ProjectEmail[]): EmailItem[] {
   const seen = new Set<string>()
-  return emails.map((email) => {
+  return emails.map((email, i) => {
     const text = email.text ?? ''
-    const { typed, quotedUnseen } = splitNewText(text, seen)
+    const repeat = emails
+      .slice(0, i)
+      .some((earlier) => earlier.from_email === email.from_email && isRepeatOf(text, earlier.text ?? ''))
+    const { typed, quotedUnseen } = repeat ? { typed: '', quotedUnseen: '' } : splitNewText(text, seen)
     // Added after the split: an email is never evidence against itself.
     for (const line of seenLines([text])) seen.add(line)
     return { kind: 'email', at: email.received_at, email, typed, quotedUnseen }

@@ -712,7 +712,7 @@ describe('writeNoteForProject', () => {
       id: string,
       received_at: string,
       text: string,
-      extra: Partial<{ from_name: string; from_role: 'maker' | 'builder' }> = {}
+      extra: Partial<{ from_email: string; from_name: string; from_role: 'maker' | 'builder' }> = {}
     ) {
       coll('project_emails').set(id, {
         project_id: 'p1',
@@ -909,7 +909,7 @@ describe('writeNoteForProject', () => {
       expect(earlierBlock()).not.toContain('[cut here]')
     })
 
-    it("recovers a maker email the app never received from a builder's quote, and leaves it out when it arrives later", async () => {
+    it("recovers a maker email the app never received from a builder's quote, and shows it again when it arrives later", async () => {
       seedProject()
       seedSession('s1', '2026-11-19T00:00:00.000Z')
       seedEmail(
@@ -922,7 +922,7 @@ describe('writeNoteForProject', () => {
           '> I want the gallery page to load fast on phones',
           '> and show prices in euros please',
         ].join('\n'),
-        { from_name: 'Nico', from_role: 'builder' }
+        { from_email: 'nico@example.com', from_name: 'Nico', from_role: 'builder' }
       )
       mockMessagesCreate.mockResolvedValue(noteResponse(someNote))
 
@@ -934,19 +934,75 @@ describe('writeNoteForProject', () => {
       expect(quoted).toContain('I want the gallery page to load fast on phones')
       expect(quoted).toContain('and show prices in euros please')
 
-      // The maker's own copy arrives later (a Reply All they sent afterwards),
-      // with a chat message in the same window so the model is still called.
+      // The maker's own copy arrives later (a Reply All they sent afterwards).
+      // What a sender typed is never filtered line by line, and the earlier
+      // email only quoted these lines, so it is shown again: a few repeated
+      // tokens, never a lost answer (F2).
       seedEmail('e2_p1', '2026-11-19T19:00:00.000Z', 'I want the gallery page to load fast on phones\nand show prices in euros please')
       seedMessage('m1', 's1', '2026-11-19T20:00:00.000Z', 'hello again')
       const res = await writeNoteForProject(db, 'p1')
 
       expect(res.covered).toBe(2)
       const second = newMessagesBlock()
-      expect(second).not.toContain('Email from')
-      expect(second).not.toContain('gallery page')
+      expect(block(second, 'typed')).toBe('I want the gallery page to load fast on phones\nand show prices in euros please')
+      expect(second).not.toContain('quoted_not_seen_before')
       expect(second).toContain('User: hello again')
-      // Covered all the same, but it had no text to source the note from.
-      expect(notes()[1]).toMatchObject({ email_ids: ['e2_p1'], email_sources: [] })
+      expect(notes()[1]).toMatchObject({ email_ids: ['e2_p1'] })
+    })
+
+    it('keeps a typed answer the maker gave before, above a builder question the app holds', async () => {
+      const question = 'Should the week view start on Monday or on Sunday?'
+      seedProject({ notes_through_at: '2026-11-19T11:30:00.000Z' })
+      seedEmail('e1_p1', '2026-11-19T10:00:00.000Z', 'Yes, go ahead with that.')
+      seedEmail('e2_p1', '2026-11-19T11:00:00.000Z', question, {
+        from_email: 'nico@example.com',
+        from_name: 'Nico',
+        from_role: 'builder',
+      })
+      seedEmail(
+        'e3_p1',
+        '2026-11-19T12:00:00.000Z',
+        `Yes, go ahead with that.\n\nOn Wed, Nov 19, 2026 at 11:00 AM Nico <nico@example.com> wrote:\n> ${question}`
+      )
+      mockMessagesCreate.mockResolvedValue(noteResponse(someNote))
+
+      const res = await writeNoteForProject(db, 'p1')
+
+      expect(res.covered).toBe(1)
+      const nm = newMessagesBlock()
+      expect(block(nm, 'typed')).toBe('Yes, go ahead with that.')
+      expect(nm).not.toContain('quoted_not_seen_before')
+      expect(notes()[0]).toMatchObject({ email_ids: ['e3_p1'] })
+    })
+
+    it('the same email sent twice by the same sender: the second is covered with no model call', async () => {
+      const text = 'Please add a metronome to the practice page.\n\nThanks,\nBill'
+      seedProject({ notes_through_at: '2026-11-19T10:00:00.000Z' })
+      seedEmail('e1_p1', '2026-11-19T10:00:00.000Z', text)
+      seedEmail('e2_p1', '2026-11-19T11:00:00.000Z', text)
+
+      const res = await writeNoteForProject(db, 'p1')
+
+      expect(mockMessagesCreate).not.toHaveBeenCalled()
+      expect(res).toEqual({ note_id: null, covered: 1, through: '2026-11-19T11:00:00.000Z' })
+      expect(coll('projects').get('p1')!.notes_through_at).toBe('2026-11-19T11:00:00.000Z')
+    })
+
+    it('the same text from a different sender is not a repeat', async () => {
+      const text = 'Please add a metronome to the practice page.'
+      seedProject({ notes_through_at: '2026-11-19T10:00:00.000Z' })
+      seedEmail('e1_p1', '2026-11-19T10:00:00.000Z', text)
+      seedEmail('e2_p1', '2026-11-19T11:00:00.000Z', text, {
+        from_email: 'nico@example.com',
+        from_name: 'Nico',
+        from_role: 'builder',
+      })
+      mockMessagesCreate.mockResolvedValue(noteResponse(someNote))
+
+      await writeNoteForProject(db, 'p1')
+
+      expect(mockMessagesCreate).toHaveBeenCalledTimes(1)
+      expect(block(newMessagesBlock(), 'typed')).toBe(text)
     })
 
     it('a window holding only a fully seen email makes no model call and advances notes_through_at', async () => {

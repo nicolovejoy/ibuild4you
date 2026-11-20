@@ -5,6 +5,12 @@
 // quoted words must not be lost: a quoted line the app has never seen is
 // returned as `quotedUnseen`, apart from what the sender typed. When in doubt a
 // line is kept: keeping costs a few tokens, dropping can lose someone's words.
+//
+// What the sender typed is never dropped line by line: "Yes, go ahead with
+// that." typed under a new question is a new answer, even when the same words
+// answered an earlier one. Only quoted lines are filtered against the seen
+// set. A whole email that repeats an earlier one (isRepeatOf) is left out by
+// the note writer instead.
 
 // Lines shorter than this ("Thanks", "Hi Nico,", "Bill") appear in many emails,
 // so they are never evidence that the app has already seen an email.
@@ -153,18 +159,22 @@ function isLong(line: Line): boolean {
   return line.normalized.length >= MIN_EVIDENCE_LENGTH
 }
 
-// Step 3: a long line is dropped when the app has seen it. A short line takes
-// the fate of the nearest long line with the same quoted status, looking before
-// it first and then after it, so a short typed "Yes agreed" never follows a seen
-// quoted line out. Header lines are never that neighbour (step 4 decides them),
-// and the search stays between the header spans around the line, so a greeting
-// under one header never follows a line quoted under another. With no such
-// neighbour, a short line is kept.
-function decideFates(lines: Line[], seen: Set<string>): void {
-  const isEvidence = (line: Line) => line.headerId === null && isLong(line)
+// A line that can show the app has seen an email: long, and not a header line.
+function isEvidence(line: Line): boolean {
+  return line.headerId === null && isLong(line)
+}
 
+// Step 3: a long quoted line is dropped when the app has seen it; a long typed
+// line is always kept. A short line takes the fate of the nearest long line
+// with the same quoted status, looking before it first and then after it, so a
+// short typed "Yes agreed" never follows a seen quoted line out (and a short
+// typed line is therefore always kept too). Header lines are never that
+// neighbour (step 4 decides them), and the search stays between the header
+// spans around the line, so a greeting under one header never follows a line
+// quoted under another. With no such neighbour, a short line is kept.
+function decideFates(lines: Line[], seen: Set<string>): void {
   for (const line of lines) {
-    if (isEvidence(line)) line.kept = !seen.has(line.normalized)
+    if (isEvidence(line)) line.kept = !line.quoted || !seen.has(line.normalized)
   }
 
   for (let i = 0; i < lines.length; i++) {
@@ -229,4 +239,28 @@ export function splitNewText(
       kept.filter((line) => line.quoted).map((line) => removeQuoteMarkers(line.raw))
     ),
   }
+}
+
+// The normalized evidence lines of a text, typed and quoted apart.
+function evidenceLines(text: string): { typed: Set<string>; quoted: Set<string> } {
+  const typed = new Set<string>()
+  const quoted = new Set<string>()
+  for (const line of markLines(splitLines(text))) {
+    if (isEvidence(line)) (line.quoted ? quoted : typed).add(line.normalized)
+  }
+  return { typed, quoted }
+}
+
+// True when `text` holds nothing that `earlierText` did not: every long line
+// it typed was typed in the earlier email, and every long line it quoted was
+// quoted there. Short and header lines do not count. A text with no long line
+// is never a repeat, since nothing in it can show it was seen. The note writer
+// asks this only of an earlier email from the same sender.
+export function isRepeatOf(text: string, earlierText: string): boolean {
+  const now = evidenceLines(text)
+  if (now.typed.size === 0 && now.quoted.size === 0) return false
+  const earlier = evidenceLines(earlierText)
+  for (const line of now.typed) if (!earlier.typed.has(line)) return false
+  for (const line of now.quoted) if (!earlier.quoted.has(line)) return false
+  return true
 }

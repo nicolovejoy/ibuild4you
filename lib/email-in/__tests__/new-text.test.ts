@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { normalizeLine, seenLines, splitNewText, MIN_EVIDENCE_LENGTH } from '../new-text'
+import { isRepeatOf, normalizeLine, seenLines, splitNewText, MIN_EVIDENCE_LENGTH } from '../new-text'
 // A real Apple Mail reply recorded from Resend: its attribution sits behind a `>` marker.
 import receivedEmail from '../../../app/api/webhooks/resend/inbound/__tests__/fixtures/received-email.json'
 
@@ -161,8 +161,19 @@ describe('splitNewText', () => {
     expect(splitNewText('Thanks\nBill', seenLines(['Thanks\nNico'])).typed).toBe('Thanks\nBill')
   })
 
-  it('a fully seen email yields nothing', () => {
-    expect(splitNewText(original, seen)).toEqual({ typed: '', quotedUnseen: '' })
+  // Typed lines are never dropped line by line (F2): a member may type the same
+  // short answer twice. Only a whole repeat of an earlier email (isRepeatOf)
+  // has nothing new.
+  it('a fully seen email keeps its typed lines; only quoted lines are filtered', () => {
+    expect(splitNewText(original, seen)).toEqual({ typed: original, quotedUnseen: '' })
+  })
+
+  it('a typed answer seen in an earlier email is kept above a quote the app holds', () => {
+    const question = 'Should the week view start on Monday or on Sunday?'
+    const held = seenLines(['Yes, go ahead with that.', question])
+    expect(
+      splitNewText(`Yes, go ahead with that.\n\nOn Wed, Nov 18, 2026, Nico wrote:\n> ${question}`, held)
+    ).toEqual({ typed: 'Yes, go ahead with that.', quotedUnseen: '' })
   })
 
   it('a re-quoted line with extra markers and spacing still matches', () => {
@@ -248,17 +259,67 @@ describe('splitNewText', () => {
     })
   })
 
-  it('a short line whose only long neighbour comes after it takes that line’s fate', () => {
+  it('a short quoted line whose only long neighbour comes after it takes that line’s fate', () => {
     const held = seenLines(['Please add a metronome to the practice page.'])
-    expect(splitNewText('Hi Nico,\nPlease add a metronome to the practice page.', held)).toEqual({
+    expect(splitNewText('> Hi Nico,\n> Please add a metronome to the practice page.', held)).toEqual({
       typed: '',
       quotedUnseen: '',
     })
     expect(
-      splitNewText('Hi Nico,\nPlease add a metronome to the practice page.', new Set())
+      splitNewText('> Hi Nico,\n> Please add a metronome to the practice page.', new Set())
     ).toEqual({
+      typed: '',
+      quotedUnseen: 'Hi Nico,\nPlease add a metronome to the practice page.',
+    })
+  })
+
+  it('a short typed line is kept whatever its long typed neighbour', () => {
+    const held = seenLines(['Please add a metronome to the practice page.'])
+    expect(splitNewText('Hi Nico,\nPlease add a metronome to the practice page.', held)).toEqual({
       typed: 'Hi Nico,\nPlease add a metronome to the practice page.',
       quotedUnseen: '',
     })
+  })
+})
+
+describe('isRepeatOf', () => {
+  const question = 'Should the week view start on Monday or on Sunday?'
+  const reply = `Yes, go ahead with that.\n\nOn Wed, Nov 18, 2026, Nico wrote:\n> ${question}`
+
+  it('the same email sent twice is a repeat', () => {
+    expect(isRepeatOf(original, original)).toBe(true)
+    expect(isRepeatOf(reply, reply)).toBe(true)
+  })
+
+  it('ignores short lines, spacing, case and quote markers', () => {
+    expect(isRepeatOf('Hi Bill,\nThe Lesson planner should show the   whole week at once.\nNico', original)).toBe(true)
+  })
+
+  it('a repeated typed answer above a quote the earlier email did not hold is not a repeat', () => {
+    expect(isRepeatOf(reply, 'Yes, go ahead with that.')).toBe(false)
+  })
+
+  it('an email with no evidence-length line is never a repeat', () => {
+    expect(isRepeatOf('Thanks\nBill', 'Thanks\nBill')).toBe(false)
+    expect(isRepeatOf('', '')).toBe(false)
+  })
+
+  it('a typed line that the earlier email only quoted is not a repeat', () => {
+    const quotedIt = `Noted.\n\nOn Tue, Nov 17, 2026, Bill Duris wrote:\n> The lesson planner should show the whole week at once.`
+    expect(isRepeatOf(original, quotedIt)).toBe(false)
+  })
+
+  it('a quoted line that the earlier email only typed is not a repeat', () => {
+    expect(isRepeatOf('> The lesson planner should show the whole week at once.', original)).toBe(false)
+  })
+
+  it('a line added to an earlier email makes it new', () => {
+    expect(isRepeatOf(`${original}\nAnd a printable version for students too.`, original)).toBe(false)
+  })
+
+  it('leaves header lines out of the comparison', () => {
+    // Same answer and quote under an attribution with another date.
+    const later = reply.replace('Wed, Nov 18', 'Thu, Nov 19')
+    expect(isRepeatOf(later, reply)).toBe(true)
   })
 })
