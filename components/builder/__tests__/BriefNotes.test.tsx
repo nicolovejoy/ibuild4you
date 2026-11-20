@@ -88,24 +88,27 @@ describe('UnfoldedNotesList', () => {
     expect(screen.getByText('👎 on Sam’s reply “Hmm”')).toBeTruthy()
   })
 
-  it('says whose emails a note covered, each name once, in order', () => {
+  it('says whose emails a note covered, each name once, in order, with their Pacific days', () => {
     render(
       <UnfoldedNotesList
         notes={[
           {
             ...note,
-            email_ids: ['a_p1', 'b_p1', 'c_p1'],
+            email_ids: ['a_p1', 'b_p1', 'c_p1', 'd_p1', 'e_p1'],
             email_sources: [
-              { from_name: 'Bill Duris', from_role: 'maker', received_at: '2026-10-28T17:00:00.000Z' },
-              { from_name: 'Nico', from_role: 'builder', received_at: '2026-10-28T17:30:00.000Z' },
-              { from_name: 'Bill Duris', from_role: 'maker', received_at: '2026-10-28T17:45:00.000Z' },
+              // 02:00 UTC on Nov 20 is still Nov 19 in Pacific.
+              { from_name: 'Bill Duris', from_role: 'maker', received_at: '2026-11-20T02:00:00.000Z' },
+              { from_name: 'Nico', from_role: 'builder', received_at: '2026-11-19T17:30:00.000Z' },
+              { from_name: 'Bill Duris', from_role: 'maker', received_at: '2026-11-19T20:45:00.000Z' },
+              { from_name: 'Nico', from_role: 'builder', received_at: '2026-11-20T17:00:00.000Z' },
+              { from_name: 'Nico', from_role: 'builder', received_at: '2026-11-20T18:00:00.000Z' },
             ],
           },
         ]}
       />
     )
     fireEvent.click(screen.getByRole('button', { name: /New since last curation/ }))
-    expect(screen.getByText('From email: Bill Duris, Nico')).toBeTruthy()
+    expect(screen.getByText('From email: Bill Duris (Nov 19), Nico (Nov 19, Nov 20)')).toBeTruthy()
     expect(screen.queryByText(/too long to read in full/)).toBeNull()
   })
 

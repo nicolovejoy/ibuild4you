@@ -316,9 +316,10 @@ export const copy = {
       `Wants to change locked ${topic}: ${proposed} (${reason})`,
     noteThumbsDown: (excerpt: string, reason?: string) =>
       `👎 on Sam’s reply “${excerpt}”${reason ? `: ${reason}` : ''}`,
-    // Email-in: who wrote the emails a note covered (each name once), and the
-    // flag for an email that was cut to fit.
+    // Email-in: who wrote the emails a note covered (each name once, with the
+    // days they wrote), and the flag for an email that was cut to fit.
     fromEmail: (who: string) => `From email: ${who}`,
+    emailSender: (name: string, days: string) => `${name} (${days})`,
     emailCut: 'One email was too long to read in full. Check the original.',
     importStayHint: 'Brief updated. Read the note above, then continue.',
     importContinueButton: 'Continue to Conversations',
