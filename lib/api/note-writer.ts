@@ -5,14 +5,26 @@
 // reversal of a locked decision marks that decision `contested` (#197) so the
 // Contested badge and Sam's "don't reopen" behaviour don't wait for a paste.
 //
-// Where it starts: projects.notes_through_at (created_at of the newest message
-// a note has covered), else the live brief's updated_at (the old regen already
-// covered everything before it), else the very beginning.
+// Where it starts: projects.notes_through_at (created_at of the newest message,
+// or received_at of the newest email, a note has covered), else the live
+// brief's updated_at (the old regen already covered everything before it),
+// else the very beginning.
+//
+// Email-in: emails members sent to the project's address (project_emails) join
+// the chat messages as one stream ordered by time. Each email is first cut to
+// what the app has not already seen (lib/email-in/new-text.ts).
 
 import Anthropic from '@anthropic-ai/sdk'
-import type { BriefContent, BriefDecision, BriefNote, BriefNoteLockReversal, BriefNoteThumbsDown } from '@/lib/types'
-import { BRIEF_MODEL, BRIEF_TEMPERATURE, NOTE_MAX_TOKENS } from '@/lib/agent/constants'
-import { NOTE_SYSTEM_PROMPT, buildNoteUserContent } from '@/lib/agent/note-prompt'
+import type {
+  BriefContent,
+  BriefDecision,
+  BriefNote,
+  BriefNoteLockReversal,
+  BriefNoteThumbsDown,
+  ProjectEmail,
+} from '@/lib/types'
+import { BRIEF_MODEL, BRIEF_TEMPERATURE, EMAIL_WINDOW_CHAR_LIMIT, NOTE_MAX_TOKENS } from '@/lib/agent/constants'
+import { NOTE_SYSTEM_PROMPT, buildNoteUserContent, type Message as NoteTurn } from '@/lib/agent/note-prompt'
 import { logAnthropicCall } from '@/lib/observability/anthropic'
 import { addNote, isEmptyNote, listUnfoldedNotes } from '@/lib/api/brief-notes'
 import { upsertBrief } from '@/lib/api/briefs'
@@ -20,6 +32,8 @@ import { contestFor, normalizeDecisionText, topicKey } from '@/lib/api/brief-mer
 import { normalizeResolvedRisks, normalizeRisks } from '@/lib/brief/risks'
 import { isArchivedSession } from '@/lib/sessions/active'
 import { isBuilderSideRole } from '@/lib/roles/member-role'
+import { listProjectEmails } from '@/lib/email-in/store'
+import { seenLines, splitNewText } from '@/lib/email-in/new-text'
 
 // How many messages before the first new one go in as continuity context.
 const EARLIER_CONTEXT_COUNT = 6
@@ -114,6 +128,106 @@ function thumbsDownEntries(messages: Msg[]): BriefNoteThumbsDown[] {
       const reason = m.thumbsDown!.reason
       return reason ? { excerpt, reason } : { excerpt }
     })
+}
+
+// The stream the note writer reads: chat messages and emails, oldest first.
+// `at` is a message's created_at or an email's received_at, as stored.
+type EmailItem = { kind: 'email'; at: string; email: ProjectEmail; typed: string; quotedUnseen: string }
+type StreamItem = { kind: 'message'; at: string; msg: Msg } | EmailItem
+
+// Marks where an email too long for one note was cut.
+const CUT_MARK = '[cut here]'
+
+// Each email's new text. Its seen set is the stored text of every email on the
+// project before it (in the window or not), so a line someone quoted again is
+// dropped and a quote of mail the app never received is kept.
+function splitEmails(emails: ProjectEmail[]): EmailItem[] {
+  const seen = new Set<string>()
+  return emails.map((email) => {
+    const text = email.text ?? ''
+    const { typed, quotedUnseen } = splitNewText(text, seen)
+    // Added after the split: an email is never evidence against itself.
+    for (const line of seenLines([text])) seen.add(line)
+    return { kind: 'email', at: email.received_at, email, typed, quotedUnseen }
+  })
+}
+
+// Merge the two time-ordered lists. Each keeps its own order; on equal
+// timestamps the chat message comes first.
+function mergeStream(messages: Msg[], emails: EmailItem[]): StreamItem[] {
+  const out: StreamItem[] = []
+  let e = 0
+  for (const msg of messages) {
+    while (e < emails.length && emails[e].at < msg.created_at) out.push(emails[e++])
+    out.push({ kind: 'message', at: msg.created_at, msg })
+  }
+  while (e < emails.length) out.push(emails[e++])
+  return out
+}
+
+const hasText = (item: StreamItem) =>
+  item.kind === 'message' || item.typed !== '' || item.quotedUnseen !== ''
+
+// Cut to at most n UTF-16 units without splitting an emoji's surrogate pair.
+function cutTo(s: string, n: number): string {
+  const cut = s.slice(0, n)
+  const last = cut.charCodeAt(cut.length - 1)
+  return last >= 0xd800 && last <= 0xdbff ? cut.slice(0, -1) : cut
+}
+
+// One email longer than the limit on its own: typed text is kept first, the
+// quoted part gets whatever room is left, and CUT_MARK ends the part cut.
+function cutEmail(item: EmailItem): EmailItem {
+  const typed = cutTo(item.typed, EMAIL_WINDOW_CHAR_LIMIT)
+  const quotedUnseen = cutTo(item.quotedUnseen, EMAIL_WINDOW_CHAR_LIMIT - typed.length)
+  return quotedUnseen
+    ? { ...item, typed, quotedUnseen: `${quotedUnseen}\n${CUT_MARK}` }
+    : { ...item, typed: `${typed}\n${CUT_MARK}`, quotedUnseen: '' }
+}
+
+// This note's window: the longest prefix of the new items whose emails hold at
+// most EMAIL_WINDOW_CHAR_LIMIT characters of new text (chat adds nothing to
+// the sum). It stops before the email that would pass the limit, and the rest
+// waits for the next run. An email that passes the limit alone is cut instead,
+// so it cannot hold the stream back. Never empty when `items` is not.
+function takeWindow(items: StreamItem[]): { window: StreamItem[]; truncated: boolean } {
+  const window: StreamItem[] = []
+  let used = 0
+  let truncated = false
+  for (const item of items) {
+    if (item.kind === 'email') {
+      const size = item.typed.length + item.quotedUnseen.length
+      if (used + size > EMAIL_WINDOW_CHAR_LIMIT) {
+        if (used > 0) break
+        window.push(cutEmail(item))
+        truncated = true
+        used = EMAIL_WINDOW_CHAR_LIMIT
+        continue
+      }
+      used += size
+    }
+    window.push(item)
+  }
+  return { window, truncated }
+}
+
+const PACIFIC_DAY = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles' })
+
+// A stream item as the prompt builder takes it. An email's day is the Pacific
+// calendar date it was received (en-CA formats as YYYY-MM-DD).
+function toTurn(item: StreamItem): NoteTurn {
+  if (item.kind === 'message') return item.msg
+  return {
+    role: 'email',
+    content: '',
+    email: {
+      role: item.email.from_role,
+      name: item.email.from_name,
+      day: PACIFIC_DAY.format(new Date(item.email.received_at)),
+      typed: item.typed,
+      quotedUnseen: item.quotedUnseen,
+    },
+  }
 }
 
 const nonEmpty = (v: unknown): v is string => typeof v === 'string' && v.trim() !== ''
@@ -242,13 +356,28 @@ export async function writeNoteForProject(
   }
   all.sort((a, b) => (a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0))
 
-  const firstNew = start === null ? 0 : all.findIndex((m) => m.created_at > start)
-  if (firstNew === -1 || all.length === 0) throw new Error('write_note_no_messages')
-  const newMessages = all.slice(firstNew)
-  const earlierContext = all.slice(Math.max(0, firstNew - EARLIER_CONTEXT_COUNT), firstNew)
-  const through = newMessages[newMessages.length - 1].created_at
+  // Chat and email as one stream. `start` compares the same way for both, so
+  // an item stamped exactly at notes_through_at is never read twice.
+  const stream = mergeStream(all, splitEmails(await listProjectEmails(db, projectId)))
+  const firstNew = start === null ? 0 : stream.findIndex((item) => item.at > start)
+  if (firstNew === -1 || stream.length === 0) throw new Error('write_note_no_messages')
+  const earlierContext = stream.slice(Math.max(0, firstNew - EARLIER_CONTEXT_COUNT), firstNew)
+  const { window, truncated } = takeWindow(stream.slice(firstNew))
+  const covered = window.length
+  const through = window[window.length - 1].at
+  const newMessages = window.flatMap((item) => (item.kind === 'message' ? [item.msg] : []))
+  const newEmails = window.filter((item): item is EmailItem => item.kind === 'email')
 
-  // Latest non-archived session that owns a covered message.
+  // Nothing for the model to read: every item in the window is an email the
+  // app had already seen in full. No call; the window still advances, or every
+  // cron tick would come back to it.
+  if (!window.some(hasText)) {
+    await projectRef.update({ notes_through_at: through })
+    return { note_id: null, covered, through }
+  }
+
+  // Latest non-archived session that owns a covered message; null when the
+  // window held emails only.
   let sessionId: string | null = null
   for (const m of newMessages) {
     if (archived.has(m.session_id)) continue
@@ -282,7 +411,13 @@ export async function writeNoteForProject(
         content: [
           {
             type: 'text',
-            text: buildNoteUserContent({ currentBrief, notesSinceCuration, earlierContext, newMessages }),
+            // An email with nothing new left is covered but not shown.
+            text: buildNoteUserContent({
+              currentBrief,
+              notesSinceCuration,
+              earlierContext: earlierContext.filter(hasText).map(toTurn),
+              newMessages: window.filter(hasText).map(toTurn),
+            }),
           },
         ],
       },
@@ -320,6 +455,9 @@ export async function writeNoteForProject(
     ...coerceNote((toolUse.input ?? {}) as Record<string, unknown>),
     ...(thumbsDown.length > 0 && { thumbs_down: thumbsDown }),
   }
+  // A lock reversal contests the live brief without a paste, so it needs the
+  // maker's own chat turn. Never from an email or a Builder line alone.
+  if (!newMessages.some((m) => m.role === 'user' && !m.builder)) body.lock_reversals = []
 
   // Persist: note → notes_through_at → brief contest. A throw before
   // notes_through_at moves leaves it where it was, so the next run retries
@@ -337,6 +475,16 @@ export async function writeNoteForProject(
       created_at: new Date().toISOString(),
       folded_at: null,
       ...body,
+      // Stamped by code from the window, never by the model.
+      ...(newEmails.length > 0 && {
+        email_ids: newEmails.map((item) => item.email.id),
+        email_sources: newEmails.filter(hasText).map((item) => ({
+          from_name: item.email.from_name,
+          from_role: item.email.from_role,
+          received_at: item.email.received_at,
+        })),
+        ...(truncated && { email_truncated: true }),
+      }),
     }
     noteId = await addNote(db, briefId, note)
   }
@@ -356,7 +504,7 @@ export async function writeNoteForProject(
     }
   }
 
-  return { note_id: noteId, covered: newMessages.length, through }
+  return { note_id: noteId, covered, through }
 }
 
 // Re-read the live brief right before writing (the model call is slow and the

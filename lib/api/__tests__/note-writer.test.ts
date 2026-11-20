@@ -704,4 +704,407 @@ describe('writeNoteForProject', () => {
       expect(notes()[0]).not.toHaveProperty('thumbs_down')
     })
   })
+
+  // Email-in: stored emails from members join the chat messages as one stream
+  // ordered by time, after the line filter removes what the app already holds.
+  describe('emails', () => {
+    function seedEmail(
+      id: string,
+      received_at: string,
+      text: string,
+      extra: Partial<{ from_name: string; from_role: 'maker' | 'builder' }> = {}
+    ) {
+      coll('project_emails').set(id, {
+        project_id: 'p1',
+        from_email: 'bill@example.com',
+        from_name: 'Bill Duris',
+        from_role: 'maker',
+        received_at,
+        sent_at: null,
+        subject: 'Re: the shop',
+        message_id: `<${id}@mail>`,
+        text,
+        truncated: false,
+        attachments: [],
+        ...extra,
+      })
+    }
+    // Exactly n characters of lines no other email shares (each tagged), so the
+    // line filter keeps all of it.
+    function bigText(tag: string, n: number): string {
+      const lines: string[] = []
+      let length = -1
+      for (let i = 0; length < n; i++) {
+        const line = `${tag} line ${i} `.padEnd(99, 'x')
+        lines.push(line)
+        length += line.length + 1
+      }
+      // Never end on a newline: the filter trims it, and the count would be off by one.
+      return lines.join('\n').slice(0, n).replace(/\n$/, 'x')
+    }
+    const newMessagesBlock = () =>
+      userText(lastCall()).split('<new_messages>')[1].split('</new_messages>')[0]
+    const block = (text: string, tag: string) => text.split(`<${tag}>\n`)[1].split(`\n</${tag}>`)[0]
+
+    it('writes one note from two emails and no chat, with email_ids and email_sources stamped', async () => {
+      seedProject()
+      seedEmail('e1_p1', '2026-11-19T17:00:00.000Z', 'I want the gallery page to load fast')
+      seedEmail('e2_p1', '2026-11-19T18:00:00.000Z', 'Noted, I will check the hosting plan', {
+        from_name: 'Nico',
+        from_role: 'builder',
+      })
+      mockMessagesCreate.mockResolvedValue(noteResponse(someNote))
+
+      const res = await writeNoteForProject(db, 'p1')
+
+      expect(res.covered).toBe(2)
+      expect(res.through).toBe('2026-11-19T18:00:00.000Z')
+      expect(mockMessagesCreate).toHaveBeenCalledTimes(1)
+      const saved = notes()
+      expect(saved).toHaveLength(1)
+      expect(saved[0]).toMatchObject({
+        session_id: null,
+        email_ids: ['e1_p1', 'e2_p1'],
+        email_sources: [
+          { from_name: 'Bill Duris', from_role: 'maker', received_at: '2026-11-19T17:00:00.000Z' },
+          { from_name: 'Nico', from_role: 'builder', received_at: '2026-11-19T18:00:00.000Z' },
+        ],
+      })
+      expect(saved[0]).not.toHaveProperty('email_truncated')
+      expect(coll('projects').get('p1')!.notes_through_at).toBe('2026-11-19T18:00:00.000Z')
+      const nm = newMessagesBlock()
+      expect(nm).toContain('Email from Maker (Bill Duris), received 2026-11-19:\n<typed>\nI want the gallery page to load fast\n</typed>')
+      expect(nm).toContain('Email from Builder (Nico), received 2026-11-19:')
+    })
+
+    it("labels an email with the Pacific calendar day, not the UTC one", async () => {
+      seedProject()
+      // 05:00 UTC on the 20th is the evening of the 19th in Pacific time.
+      seedEmail('e1_p1', '2026-11-20T05:00:00.000Z', 'Prices in euros please')
+      mockMessagesCreate.mockResolvedValue(noteResponse(someNote))
+
+      await writeNoteForProject(db, 'p1')
+
+      expect(newMessagesBlock()).toContain('Email from Maker (Bill Duris), received 2026-11-19:')
+    })
+
+    it('interleaves chat messages and emails by time and ends notes_through_at at the later', async () => {
+      seedProject()
+      seedSession('s1', '2026-11-19T00:00:00.000Z')
+      seedMessage('m1', 's1', '2026-11-19T10:00:00.000Z', 'chat one')
+      seedEmail('e1_p1', '2026-11-19T11:00:00.000Z', 'email between the chats')
+      seedMessage('m2', 's1', '2026-11-19T12:00:00.000Z', 'chat two', 'agent')
+      seedEmail('e2_p1', '2026-11-19T13:00:00.000Z', 'email after both chats')
+      mockMessagesCreate.mockResolvedValue(noteResponse(someNote))
+
+      const res = await writeNoteForProject(db, 'p1')
+
+      const nm = newMessagesBlock()
+      const order = ['User: chat one', 'email between the chats', 'Assistant: chat two', 'email after both chats'].map(
+        (s) => nm.indexOf(s)
+      )
+      expect(order.every((i) => i > -1)).toBe(true)
+      expect([...order].sort((a, b) => a - b)).toEqual(order)
+      expect(res.covered).toBe(4)
+      expect(res.through).toBe('2026-11-19T13:00:00.000Z')
+      expect(coll('projects').get('p1')!.notes_through_at).toBe('2026-11-19T13:00:00.000Z')
+      expect(notes()[0]).toMatchObject({ session_id: 's1', email_ids: ['e1_p1', 'e2_p1'] })
+    })
+
+    it('ends notes_through_at at a chat message that comes after the last email', async () => {
+      seedProject()
+      seedSession('s1', '2026-11-19T00:00:00.000Z')
+      seedEmail('e1_p1', '2026-11-19T11:00:00.000Z', 'email before the chat')
+      seedMessage('m1', 's1', '2026-11-19T12:00:00.000Z', 'chat after the email')
+      mockMessagesCreate.mockResolvedValue(noteResponse(someNote))
+
+      const res = await writeNoteForProject(db, 'p1')
+
+      expect(res.through).toBe('2026-11-19T12:00:00.000Z')
+      expect(coll('projects').get('p1')!.notes_through_at).toBe('2026-11-19T12:00:00.000Z')
+    })
+
+    it('puts a chat message before an email with the same timestamp', async () => {
+      seedProject()
+      seedSession('s1', '2026-11-19T00:00:00.000Z')
+      seedEmail('e1_p1', '2026-11-19T11:00:00.000Z', 'email at the same moment')
+      seedMessage('m1', 's1', '2026-11-19T11:00:00.000Z', 'chat at the same moment')
+      mockMessagesCreate.mockResolvedValue(noteResponse(someNote))
+
+      await writeNoteForProject(db, 'p1')
+
+      const nm = newMessagesBlock()
+      expect(nm.indexOf('chat at the same moment')).toBeLessThan(nm.indexOf('email at the same moment'))
+    })
+
+    it('does not read again an email whose received_at equals notes_through_at', async () => {
+      seedProject({ notes_through_at: '2026-11-19T11:00:00.000Z' })
+      seedEmail('e1_p1', '2026-11-19T11:00:00.000Z', 'already covered email')
+      seedEmail('e2_p1', '2026-11-19T12:00:00.000Z', 'a brand new email here')
+      mockMessagesCreate.mockResolvedValue(noteResponse(someNote))
+
+      const res = await writeNoteForProject(db, 'p1')
+
+      expect(res.covered).toBe(1)
+      expect(newMessagesBlock()).not.toContain('already covered email')
+      expect(notes()[0].email_ids).toEqual(['e2_p1'])
+    })
+
+    it('shows an email from before the window as earlier context', async () => {
+      seedProject({ notes_through_at: '2026-11-19T11:00:00.000Z' })
+      seedEmail('e1_p1', '2026-11-19T11:00:00.000Z', 'an email noted last time')
+      seedEmail('e2_p1', '2026-11-19T12:00:00.000Z', 'a brand new email here')
+      mockMessagesCreate.mockResolvedValue(noteResponse(someNote))
+
+      await writeNoteForProject(db, 'p1')
+
+      const earlier = userText(lastCall()).split('<earlier_context>')[1].split('</earlier_context>')[0]
+      expect(earlier).toContain('an email noted last time')
+    })
+
+    it("recovers a maker email the app never received from a builder's quote, and leaves it out when it arrives later", async () => {
+      seedProject()
+      seedSession('s1', '2026-11-19T00:00:00.000Z')
+      seedEmail(
+        'e1_p1',
+        '2026-11-19T18:00:00.000Z',
+        [
+          'Thanks Bill, I will look into it.',
+          '',
+          'On Wed, Nov 19, 2026 at 9:00 AM Bill Duris <bill@example.com> wrote:',
+          '> I want the gallery page to load fast on phones',
+          '> and show prices in euros please',
+        ].join('\n'),
+        { from_name: 'Nico', from_role: 'builder' }
+      )
+      mockMessagesCreate.mockResolvedValue(noteResponse(someNote))
+
+      await writeNoteForProject(db, 'p1')
+
+      const first = newMessagesBlock()
+      expect(block(first, 'typed')).toBe('Thanks Bill, I will look into it.')
+      const quoted = block(first, 'quoted_not_seen_before')
+      expect(quoted).toContain('I want the gallery page to load fast on phones')
+      expect(quoted).toContain('and show prices in euros please')
+
+      // The maker's own copy arrives later (a Reply All they sent afterwards),
+      // with a chat message in the same window so the model is still called.
+      seedEmail('e2_p1', '2026-11-19T19:00:00.000Z', 'I want the gallery page to load fast on phones\nand show prices in euros please')
+      seedMessage('m1', 's1', '2026-11-19T20:00:00.000Z', 'hello again')
+      const res = await writeNoteForProject(db, 'p1')
+
+      expect(res.covered).toBe(2)
+      const second = newMessagesBlock()
+      expect(second).not.toContain('Email from')
+      expect(second).not.toContain('gallery page')
+      expect(second).toContain('User: hello again')
+      // Covered all the same, but it had no text to source the note from.
+      expect(notes()[1]).toMatchObject({ email_ids: ['e2_p1'], email_sources: [] })
+    })
+
+    it('a window holding only a fully seen email makes no model call and advances notes_through_at', async () => {
+      seedProject({ notes_through_at: '2026-11-19T17:00:00.000Z' })
+      seedEmail('e1_p1', '2026-11-19T17:00:00.000Z', 'I want the gallery page to load fast on phones')
+      seedEmail('e2_p1', '2026-11-19T18:00:00.000Z', '> I want the gallery page to load fast on phones')
+
+      const res = await writeNoteForProject(db, 'p1')
+
+      expect(mockMessagesCreate).not.toHaveBeenCalled()
+      expect(res).toEqual({ note_id: null, covered: 1, through: '2026-11-19T18:00:00.000Z' })
+      expect(coll('projects').get('p1')!.notes_through_at).toBe('2026-11-19T18:00:00.000Z')
+      expect(notes()).toHaveLength(0)
+      // The next run finds nothing new instead of calling again.
+      await expect(writeNoteForProject(db, 'p1')).rejects.toThrow('write_note_no_messages')
+      expect(mockMessagesCreate).not.toHaveBeenCalled()
+    })
+
+    it('three emails of 20,000 new characters: the first run covers two, the second the third', async () => {
+      seedProject()
+      const texts = ['alpha', 'bravo', 'charlie'].map((tag) => bigText(tag, 20_000))
+      seedEmail('e1_p1', '2026-11-19T10:00:00.000Z', texts[0])
+      seedEmail('e2_p1', '2026-11-19T11:00:00.000Z', texts[1])
+      seedEmail('e3_p1', '2026-11-19T12:00:00.000Z', texts[2])
+      mockMessagesCreate.mockResolvedValue(noteResponse(someNote))
+
+      const first = await writeNoteForProject(db, 'p1')
+
+      expect(first.covered).toBe(2)
+      expect(first.through).toBe('2026-11-19T11:00:00.000Z')
+      expect(coll('projects').get('p1')!.notes_through_at).toBe('2026-11-19T11:00:00.000Z')
+      let nm = newMessagesBlock()
+      expect(nm).toContain(texts[0])
+      expect(nm).toContain(texts[1])
+      expect(nm).not.toContain('charlie line')
+
+      const second = await writeNoteForProject(db, 'p1')
+
+      expect(second.covered).toBe(1)
+      expect(second.through).toBe('2026-11-19T12:00:00.000Z')
+      nm = newMessagesBlock()
+      expect(nm).toContain(texts[2])
+      expect(nm).not.toContain('alpha line')
+      expect(nm).not.toContain('bravo line')
+      expect(notes().map((n) => n.email_ids)).toEqual([['e1_p1', 'e2_p1'], ['e3_p1']])
+      expect(mockMessagesCreate).toHaveBeenCalledTimes(2)
+    })
+
+    it('leaves a chat message after the stopping email for the next run', async () => {
+      seedProject()
+      seedSession('s1', '2026-11-19T00:00:00.000Z')
+      seedEmail('e1_p1', '2026-11-19T10:00:00.000Z', bigText('alpha', 30_000))
+      seedEmail('e2_p1', '2026-11-19T11:00:00.000Z', bigText('bravo', 30_000))
+      seedMessage('m1', 's1', '2026-11-19T12:00:00.000Z', 'chat after the big emails')
+      mockMessagesCreate.mockResolvedValue(noteResponse(someNote))
+
+      const first = await writeNoteForProject(db, 'p1')
+
+      expect(first.covered).toBe(1)
+      expect(newMessagesBlock()).not.toContain('chat after the big emails')
+      expect(notes()[0].session_id).toBeNull()
+      const second = await writeNoteForProject(db, 'p1')
+      expect(second.covered).toBe(2)
+      expect(second.through).toBe('2026-11-19T12:00:00.000Z')
+      expect(newMessagesBlock()).toContain('User: chat after the big emails')
+    })
+
+    it('one email of 60,000 new characters: the prompt holds 40,000 of it and [cut here]', async () => {
+      seedProject()
+      const text = bigText('alpha', 60_000)
+      seedEmail('e1_p1', '2026-11-19T10:00:00.000Z', text)
+      mockMessagesCreate.mockResolvedValue(noteResponse(someNote))
+
+      const res = await writeNoteForProject(db, 'p1')
+
+      expect(block(newMessagesBlock(), 'typed')).toBe(`${text.slice(0, 40_000)}\n[cut here]`)
+      expect(res).toMatchObject({ covered: 1, through: '2026-11-19T10:00:00.000Z' })
+      expect(notes()[0]).toMatchObject({ email_ids: ['e1_p1'], email_truncated: true })
+    })
+
+    it('an oversized email keeps its typed text whole and cuts the quoted part to the room left', async () => {
+      seedProject()
+      const typed = bigText('alpha', 30_000)
+      const quoted = bigText('bravo', 30_000)
+      const text = `${typed}\n\nOn Wed, Nov 19, 2026 at 9:00 AM Bill Duris <bill@example.com> wrote:\n${quoted
+        .split('\n')
+        .map((l) => `> ${l}`)
+        .join('\n')}`
+      seedEmail('e1_p1', '2026-11-19T10:00:00.000Z', text, { from_name: 'Nico', from_role: 'builder' })
+      mockMessagesCreate.mockResolvedValue(noteResponse(someNote))
+
+      await writeNoteForProject(db, 'p1')
+
+      const nm = newMessagesBlock()
+      expect(block(nm, 'typed')).toBe(typed)
+      const keptQuote = block(nm, 'quoted_not_seen_before')
+      expect(keptQuote.endsWith('\n[cut here]')).toBe(true)
+      expect(keptQuote.length - '\n[cut here]'.length).toBe(10_000)
+      expect(notes()[0].email_truncated).toBe(true)
+    })
+
+    it('an email-only window drops the lock_reversals the model returned', async () => {
+      seedProject()
+      seedBrief(
+        { ...emptyBrief, decisions: [{ topic: 'Payment', decision: 'Stripe only', locked: true }] },
+        '2026-09-01T00:00:00Z'
+      )
+      seedEmail('e1_p1', '2026-11-19T10:00:00.000Z', 'Yes, I confirm: use Square instead of Stripe')
+      mockMessagesCreate.mockResolvedValue(
+        noteResponse({
+          ...someNote,
+          lock_reversals: [{ topic: 'Payment', proposed: 'Square', reason: 'Maker confirmed by email' }],
+        })
+      )
+
+      await writeNoteForProject(db, 'p1')
+
+      expect(notes()).toHaveLength(1)
+      expect(notes()[0].lock_reversals).toEqual([])
+      const brief = coll('briefs').get('b1')!
+      expect(brief.version).toBe(3)
+      expect(brief.source).toBe('paste')
+      expect((brief.content as { decisions: Data[] }).decisions[0].contested).toBeUndefined()
+      expect(coll('briefs/b1/versions').size).toBe(0)
+    })
+
+    it('a window with only a builder chat turn and an email drops lock_reversals too', async () => {
+      seedProject()
+      seedSession('s1', '2026-11-19T00:00:00.000Z')
+      coll('project_members').set('mem1', { project_id: 'p1', email: 'nico@example.com', role: 'owner' })
+      coll('messages').set('m1', {
+        session_id: 's1',
+        created_at: '2026-11-19T09:00:00.000Z',
+        content: 'builder guidance',
+        role: 'user',
+        sender_email: 'nico@example.com',
+      })
+      seedEmail('e1_p1', '2026-11-19T10:00:00.000Z', 'Yes, I confirm: use Square instead of Stripe')
+      mockMessagesCreate.mockResolvedValue(
+        noteResponse({
+          ...someNote,
+          lock_reversals: [{ topic: 'Payment', proposed: 'Square', reason: 'confirmed' }],
+        })
+      )
+
+      await writeNoteForProject(db, 'p1')
+
+      expect(notes()[0].lock_reversals).toEqual([])
+    })
+
+    it('a window with a maker chat turn still saves lock_reversals and contests the decision', async () => {
+      seedProject()
+      seedBrief(
+        { ...emptyBrief, decisions: [{ topic: 'Payment', decision: 'Stripe only', locked: true }] },
+        '2026-09-01T00:00:00Z'
+      )
+      seedSession('s1', '2026-10-01T00:00:00Z')
+      seedEmail('e1_p1', '2026-10-01T00:00:00.500Z', 'Thinking about payments again today')
+      seedMessage('m1', 's1', '2026-10-01T00:00:01Z', 'Yes, I confirm: use Square instead')
+      mockMessagesCreate.mockResolvedValue(
+        noteResponse({
+          ...someNote,
+          lock_reversals: [{ topic: 'Payment', proposed: 'Square', reason: 'Maker confirmed Oct 1' }],
+        })
+      )
+
+      await writeNoteForProject(db, 'p1')
+
+      expect(notes()[0].lock_reversals).toEqual([
+        { topic: 'Payment', proposed: 'Square', reason: 'Maker confirmed Oct 1' },
+      ])
+      const brief = coll('briefs').get('b1')!
+      expect(brief.source).toBe('note')
+      expect((brief.content as { decisions: Data[] }).decisions[0].contested).toEqual({
+        proposed: 'Square',
+        reason: 'Maker confirmed Oct 1',
+      })
+    })
+
+    it('throws write_note_no_messages when every email is already covered', async () => {
+      seedProject({ notes_through_at: '2026-11-19T12:00:00.000Z' })
+      seedEmail('e1_p1', '2026-11-19T11:00:00.000Z', 'an email noted last time')
+
+      await expect(writeNoteForProject(db, 'p1')).rejects.toThrow('write_note_no_messages')
+      expect(mockMessagesCreate).not.toHaveBeenCalled()
+    })
+
+    it('throws write_note_no_messages for a project with no messages and no emails', async () => {
+      seedProject()
+
+      await expect(writeNoteForProject(db, 'p1')).rejects.toThrow('write_note_no_messages')
+      expect(mockMessagesCreate).not.toHaveBeenCalled()
+    })
+
+    it('leaves the email fields off a note that covered no email', async () => {
+      seedProject()
+      seedSession('s1', '2026-10-01T00:00:00Z')
+      seedMessage('m1', 's1', '2026-10-01T00:00:01Z', 'hello')
+      mockMessagesCreate.mockResolvedValue(noteResponse(someNote))
+
+      await writeNoteForProject(db, 'p1')
+
+      expect(notes()[0]).not.toHaveProperty('email_ids')
+      expect(notes()[0]).not.toHaveProperty('email_sources')
+      expect(notes()[0]).not.toHaveProperty('email_truncated')
+    })
+  })
 })

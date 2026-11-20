@@ -466,6 +466,14 @@ export interface BriefNote {
   // Sam's replies the maker gave a 👎 in this stretch, copied by code (not the
   // model). Absent when there were none. Shown to the builder only.
   thumbs_down?: BriefNoteThumbsDown[]
+  // Email-in, stamped by code (never the model) on a note that covered emails.
+  // email_ids: every project_emails doc the note covered, fully seen ones too.
+  // email_sources: one entry per covered email that still had new text, in
+  // order, so the Brief tab can say who wrote and when without a second read.
+  // email_truncated: set when one email was cut to EMAIL_WINDOW_CHAR_LIMIT.
+  email_ids?: string[]
+  email_sources?: { from_name: string; from_role: 'maker' | 'builder'; received_at: string }[]
+  email_truncated?: boolean
 }
 
 export interface BriefNoteThumbsDown {
