@@ -850,6 +850,22 @@ describe('writeNoteForProject', () => {
       expect(notes()[0].email_ids).toEqual(['e2_p1'])
     })
 
+    // F1: received_at is the app's clock when it stored the email, so an email
+    // Resend delivered late (after a retried 500) still lands after the last
+    // note, whatever its Date header says.
+    it('covers an email stored after a note even when it was sent before that note', async () => {
+      seedProject({ notes_through_at: '2026-11-19T12:00:00.000Z' })
+      seedEmail('e1_p1', '2026-11-19T15:00:00.000Z', 'Sent this morning, stored this afternoon')
+      coll('project_emails').get('e1_p1')!.sent_at = '2026-11-19T09:00:00.000Z'
+      mockMessagesCreate.mockResolvedValue(noteResponse(someNote))
+
+      const res = await writeNoteForProject(db, 'p1')
+
+      expect(res).toMatchObject({ covered: 1, through: '2026-11-19T15:00:00.000Z' })
+      expect(newMessagesBlock()).toContain('Sent this morning, stored this afternoon')
+      expect(notes()[0].email_ids).toEqual(['e1_p1'])
+    })
+
     it('shows an email from before the window as earlier context', async () => {
       seedProject({ notes_through_at: '2026-11-19T11:00:00.000Z' })
       seedEmail('e1_p1', '2026-11-19T11:00:00.000Z', 'an email noted last time')

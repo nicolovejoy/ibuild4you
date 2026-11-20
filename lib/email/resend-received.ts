@@ -13,7 +13,6 @@ export interface ReceivedEmail {
   message_id: string
   text: string // plain text, else the html stripped, else ''
   sent_at: string | null // the Date header as UTC ISO, when it parses
-  received_at: string | null // Resend's created_at as UTC ISO, when it parses
   dmarc: string | null // authentication.dmarc as Resend gave it
   attachments: { filename: string; content_type: string }[] // names only
 }
@@ -79,7 +78,6 @@ function toReceivedEmail(json: unknown): ReceivedEmail | null {
     message_id: stringOr(json.message_id, ''),
     text,
     sent_at: parseDateHeader(headers.date),
-    received_at: isoOrNull(json.created_at),
     dmarc: typeof authentication.dmarc === 'string' ? authentication.dmarc : null,
     attachments: parseAttachments(json.attachments),
   }

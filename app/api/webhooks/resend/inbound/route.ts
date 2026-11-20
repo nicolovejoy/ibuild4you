@@ -166,10 +166,18 @@ export async function POST(request: Request) {
 
   // Project emails first, the Loop reply last: the store is idempotent, so a
   // retry after a failure part-way never writes a second Loop reply.
+  //
+  // received_at is the app's own clock, read once, just before the first store,
+  // and shared by every project the email is stored for. Not Resend's
+  // created_at: an email stored late (Resend retries a 500 for hours) must
+  // still sort after anything a note has covered since, or no note would ever
+  // read it.
   const projectEmails: Array<{ project_id: string; outcome: ProjectOutcome }> = []
   if (email) {
+    let receivedAt: string | null = null
+    const storeTime = () => (receivedAt ??= new Date().toISOString())
     for (const projectId of projectIds) {
-      const outcome = await handleProjectEmail(db, projectId, emailId, email, data)
+      const outcome = await handleProjectEmail(db, projectId, emailId, email, storeTime)
       projectEmails.push({ project_id: projectId, outcome })
     }
   }
@@ -195,13 +203,6 @@ function recipients(value: unknown): string | string[] | undefined {
   if (typeof value === 'string') return value
   if (Array.isArray(value)) return value.filter((v): v is string => typeof v === 'string')
   return undefined
-}
-
-// A time string as UTC ISO, or null when it is not a string or does not parse.
-function isoOrNull(value: unknown): string | null {
-  if (typeof value !== 'string') return null
-  const ms = Date.parse(value)
-  return Number.isNaN(ms) ? null : new Date(ms).toISOString()
 }
 
 // The ids of the projects holding any of these addresses, each once.
@@ -270,13 +271,14 @@ function cutText(text: string): { text: string; truncated: boolean } {
 }
 
 // Check the sender against this project's members and store the email, or
-// count the drop. Logs one line with ids and the outcome only.
+// count the drop. Logs one line with ids and the outcome only. `storeTime`
+// gives the webhook's one received_at (read on its first call).
 async function handleProjectEmail(
   db: Firestore,
   projectId: string,
   emailId: string,
   email: ReceivedEmail,
-  data: ResendReceivedData
+  storeTime: () => string
 ): Promise<ProjectOutcome> {
   const check = checkEmailSender(email, await loadMembers(db, projectId))
 
@@ -288,7 +290,7 @@ async function handleProjectEmail(
       from_email: check.from_email,
       from_name: check.from_name,
       from_role: check.from_role,
-      received_at: email.received_at ?? isoOrNull(data.created_at) ?? new Date().toISOString(),
+      received_at: storeTime(),
       sent_at: email.sent_at,
       subject: email.subject,
       message_id: email.message_id,

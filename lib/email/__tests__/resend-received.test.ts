@@ -65,7 +65,6 @@ describe('fetchReceivedEmail — mapping the recorded email', () => {
       message_id: '<REPLY-0001@example.com>',
       text: receivedEmail.text,
       sent_at: '2026-11-20T17:44:55.000Z',
-      received_at: '2026-11-20T17:47:09.765Z',
       dmarc: 'pass',
       attachments: [],
     })
@@ -131,18 +130,6 @@ describe('fetchReceivedEmail — fields of the wrong type', () => {
       mockFetch(variant({ headers }))
       expect((await fetchReceivedEmail(EMAIL_ID))?.header_from).toBeNull()
     }
-  })
-
-  it('received_at is null when created_at does not parse', async () => {
-    for (const created_at of ['yesterday', 1700000000, null]) {
-      mockFetch(variant({ created_at }))
-      expect((await fetchReceivedEmail(EMAIL_ID))?.received_at).toBeNull()
-    }
-  })
-
-  it('received_at is a UTC ISO string', async () => {
-    mockFetch(variant({ created_at: '2026-11-20T09:47:09.765-08:00' }))
-    expect((await fetchReceivedEmail(EMAIL_ID))?.received_at).toBe('2026-11-20T17:47:09.765Z')
   })
 
   it('dmarc is null when authentication or its dmarc is missing or not a string', async () => {

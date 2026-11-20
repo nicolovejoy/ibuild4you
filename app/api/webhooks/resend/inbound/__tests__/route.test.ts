@@ -445,6 +445,18 @@ describe('POST /api/webhooks/resend/inbound — happy path', () => {
 })
 
 describe('POST /api/webhooks/resend/inbound — project email (email-in)', () => {
+  // The app's clock while the webhook runs. received_at is this moment, not
+  // Resend's created_at (2026-11-20T17:47:09.765Z in the fixture): an email
+  // stored late, after a retry, must still sort after anything noted before it.
+  const NOW = '2026-11-21T09:00:00.000Z'
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date(NOW))
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   it('stores the recorded email for the project whose address is on CC', async () => {
     const fetchFn = mockFetchJson(fetchedEmail())
     const res = await POST(makeRequest(projectEvent()))
@@ -463,7 +475,7 @@ describe('POST /api/webhooks/resend/inbound — project email (email-in)', () =>
       from_email: BILL,
       from_name: 'Bill D',
       from_role: 'maker',
-      received_at: '2026-11-20T17:47:09.765Z',
+      received_at: NOW,
       sent_at: '2026-11-20T17:44:55.000Z',
       subject: 'Re: lesson planner',
       message_id: '<REPLY-0001@example.com>',
@@ -471,7 +483,7 @@ describe('POST /api/webhooks/resend/inbound — project email (email-in)', () =>
       truncated: false,
       attachments: [],
     })
-    expect(table('projects').get('p1')?.last_email_at).toBe('2026-11-20T17:47:09.765Z')
+    expect(table('projects').get('p1')?.last_email_at).toBe(NOW)
     expect(mockReplyAdd).not.toHaveBeenCalled()
   })
 
@@ -523,12 +535,15 @@ describe('POST /api/webhooks/resend/inbound — project email (email-in)', () =>
   it('a retried webhook is a duplicate: 200, the stored email unchanged', async () => {
     mockFetchJson(fetchedEmail())
     await POST(makeRequest(projectEvent()))
+    // The retry comes an hour later: nothing moves to the new time.
+    vi.setSystemTime(new Date('2026-11-21T10:00:00.000Z'))
     mockFetchJson(fetchedEmail({ text: 'changed', created_at: '2026-11-21T00:00:00.000Z' }))
     const res = await POST(makeRequest(projectEvent()))
     expect(res.status).toBe(200)
     expect((await res.json()).project_emails).toEqual([{ project_id: 'p1', outcome: 'duplicate' }])
     expect(table('project_emails').get(`${EMAIL_ID}_p1`)?.text).toBe(receivedEmail.text)
-    expect(table('projects').get('p1')?.last_email_at).toBe('2026-11-20T17:47:09.765Z')
+    expect(table('project_emails').get(`${EMAIL_ID}_p1`)?.received_at).toBe(NOW)
+    expect(table('projects').get('p1')?.last_email_at).toBe(NOW)
     expect(table('projects').get('p1')?.email_in_dropped).toBeUndefined()
   })
 
@@ -638,7 +653,7 @@ describe('POST /api/webhooks/resend/inbound — project email (email-in)', () =>
   })
 
   it('the 51st email in 24 hours is dropped as over_limit', async () => {
-    const at = Date.parse(receivedEmail.created_at)
+    const at = Date.parse(NOW)
     for (let i = 0; i < 50; i++) {
       table('project_emails').set(`seed${i}_p1`, {
         project_id: 'p1',
@@ -745,7 +760,10 @@ describe('POST /api/webhooks/resend/inbound — project email (email-in)', () =>
     expect(fetchFn).toHaveBeenCalledOnce()
     expect([...table('project_emails').keys()].sort()).toEqual([`${EMAIL_ID}_p1`, `${EMAIL_ID}_p2`])
     expect(table('project_emails').get(`${EMAIL_ID}_p2`)?.project_id).toBe('p2')
-    expect(table('projects').get('p2')?.last_email_at).toBe('2026-11-20T17:47:09.765Z')
+    // One clock reading for the whole webhook: both copies carry the same time.
+    expect(table('project_emails').get(`${EMAIL_ID}_p1`)?.received_at).toBe(NOW)
+    expect(table('project_emails').get(`${EMAIL_ID}_p2`)?.received_at).toBe(NOW)
+    expect(table('projects').get('p2')?.last_email_at).toBe(NOW)
   })
 
   it('each project checks its own members', async () => {
@@ -778,20 +796,13 @@ describe('POST /api/webhooks/resend/inbound — project email (email-in)', () =>
     expect(mockFeedbackUpdate).toHaveBeenCalledOnce()
   })
 
-  it('received_at falls back to the webhook created_at, then to now', async () => {
-    mockFetchJson(fetchedEmail({ created_at: null }))
-    await POST(makeRequest(projectEvent()))
-    expect(table('project_emails').get(`${EMAIL_ID}_p1`)?.received_at).toBe(
-      emailReceived.data.created_at
-    )
-
-    seedTables()
-    mockFetchJson(fetchedEmail({ created_at: 'never' }))
-    const t0 = Date.now()
-    await POST(makeRequest(projectEvent({ created_at: 42 })))
-    const at = Date.parse(String(table('project_emails').get(`${EMAIL_ID}_p1`)?.received_at))
-    expect(at).toBeGreaterThanOrEqual(t0 - 1000)
-    expect(at).toBeLessThanOrEqual(Date.now() + 1000)
+  it("received_at is the app's clock when it stores the email, never Resend's created_at", async () => {
+    // Resend's times are a day earlier than the app's clock here: a retried
+    // webhook that finally stores the email must not land behind a note.
+    mockFetchJson(fetchedEmail({ created_at: '2026-11-20T00:00:00.000Z' }))
+    await POST(makeRequest(projectEvent({ created_at: '2026-11-20T00:00:01.000Z' })))
+    expect(table('project_emails').get(`${EMAIL_ID}_p1`)?.received_at).toBe(NOW)
+    expect(table('projects').get('p1')?.last_email_at).toBe(NOW)
   })
 
   it('recipient fields of the wrong type are skipped, not a crash', async () => {

@@ -67,7 +67,8 @@ export async function storeProjectEmail(
   const ref = emailsRef(db).doc(projectEmailDocId(emailId, email.project_id))
   if ((await ref.get()).exists) return 'duplicate'
 
-  // The window ends at this email's received_at, which the route sets to now.
+  // The window ends at this email's received_at: the app's clock when the
+  // route stores it (read once per webhook), not Resend's time.
   if ((await countRecent(db, email.project_id, email.received_at)) >= EMAILS_PER_DAY_MAX) {
     return 'over_limit'
   }
