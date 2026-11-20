@@ -63,6 +63,19 @@ export interface Project extends BaseEntity {
   builder_directives?: string[] // things agent should actively push toward
   session_mode?: 'discover' | 'converge' // current operating mode (default: discover)
   slug?: string // URL-friendly identifier derived from title
+  // Project email address (email-in): the builder keeps it on CC, mail from
+  // members becomes brief notes. Minted by POST /api/projects/email-in.
+  email_in_address?: string
+  last_email_at?: string // ISO timestamp of the last accepted mail
+  // Counts of mail turned away, plus when it last happened. No message
+  // content; the only address kept is the last sender that failed auth.
+  email_in_dropped?: {
+    not_member?: number
+    auth_failed?: number
+    over_limit?: number
+    last_at?: string
+    last_auth_failed_from?: string
+  }
   identity?: string // custom agent identity/persona (overrides default)
   github_repo?: string // "owner/name" — the brief's codebase, for sibling decisions (#142)
   // Language the maker is addressed in (agent replies, outbound copy, link
