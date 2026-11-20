@@ -6,7 +6,10 @@ import { NextResponse } from 'next/server'
 // except randomTail, which the collision tests need to control.
 
 const mockGetProjectRole = vi.fn()
-const mockUpdate = vi.fn(async () => {})
+// A write merges into projectData, so a later read sees it (as Firestore would).
+const mockUpdate = vi.fn(async (data: Record<string, unknown>) => {
+  projectData = { ...projectData, ...data }
+})
 const mockTail = vi.fn()
 let projectData: Record<string, unknown> | undefined
 let takenAddresses: string[] = []
@@ -26,11 +29,29 @@ const mockCollection = vi.fn((name: string) => {
   }
 })
 
+// Transactions run one at a time, as Firestore serializes conflicting ones
+// (it retries the loser, which then re-reads). That is what lets the
+// concurrent test see a real race.
+let txChain: Promise<unknown> = Promise.resolve()
+type MockRef = { get: () => Promise<unknown>; update: (d: Record<string, unknown>) => Promise<void> }
+const mockRunTransaction = vi.fn(<T,>(fn: (tx: unknown) => Promise<T>): Promise<T> => {
+  const run = txChain.then(() =>
+    fn({
+      get: (ref: MockRef) => ref.get(),
+      update: (ref: MockRef, data: Record<string, unknown>) => {
+        void ref.update(data)
+      },
+    })
+  )
+  txChain = run.catch(() => {})
+  return run
+})
+
 let authResult: Record<string, unknown>
 
 vi.mock('@/lib/api/firebase-server-helpers', () => ({
   getAuthenticatedUser: vi.fn(async () => authResult),
-  getAdminDb: vi.fn(() => ({ collection: mockCollection })),
+  getAdminDb: vi.fn(() => ({ collection: mockCollection, runTransaction: mockRunTransaction })),
   getProjectRole: (...args: unknown[]) => mockGetProjectRole(...args),
   requireRole: (role: string | null, minimum: string) => {
     const levels: Record<string, number> = { maker: 0, apprentice: 1, builder: 2, owner: 3 }
@@ -57,6 +78,7 @@ beforeEach(() => {
   mockGetProjectRole.mockResolvedValue('builder')
   projectData = { title: 'Music Forge', slug: 'musicforge' }
   takenAddresses = []
+  mockTail.mockReset() // also drops any unused mockReturnValueOnce values
   mockTail.mockReturnValue('7k2q')
 })
 
@@ -111,6 +133,20 @@ describe('POST /api/projects/email-in', () => {
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({ address: 'musicforge-m3n4@inbox.ibuild4you.com' })
     expect(mockUpdate).toHaveBeenCalledWith({ email_in_address: 'musicforge-m3n4@inbox.ibuild4you.com' })
+  })
+
+  it('keeps the first address when two mints for the same project run at once', async () => {
+    mockTail.mockReturnValueOnce('aaaa').mockReturnValueOnce('bbbb')
+    const [first, second] = await Promise.all([
+      POST(postReq({ project_id: 'p1' })),
+      POST(postReq({ project_id: 'p1' })),
+    ])
+    const a = (await first.json()).address
+    const b = (await second.json()).address
+    expect(a).toBe('musicforge-aaaa@inbox.ibuild4you.com')
+    expect(b).toBe(a)
+    expect(mockUpdate).toHaveBeenCalledTimes(1)
+    expect(projectData?.email_in_address).toBe(a)
   })
 
   it('gives up with a 500 after 5 collisions and writes nothing', async () => {

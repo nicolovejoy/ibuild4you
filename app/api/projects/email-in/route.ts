@@ -24,31 +24,40 @@ export async function POST(request: Request) {
   const roleCheck = requireRole(role, 'builder')
   if (roleCheck) return roleCheck
 
+  // Read, check and write in one transaction. Two requests at once (a double
+  // click, two builders) cannot both mint: Firestore retries the loser, which
+  // re-reads, finds the address the first one stored, and returns it. An
+  // address that was handed out is never replaced.
   const projectRef = db.collection('projects').doc(projectId)
-  const projectDoc = await projectRef.get()
-  if (!projectDoc.exists) {
+  const result = await db.runTransaction(async (tx) => {
+    const projectDoc = await tx.get(projectRef)
+    if (!projectDoc.exists) return { status: 'not_found' as const }
+    const project = projectDoc.data() as { slug?: string; email_in_address?: string }
+
+    if (project.email_in_address) {
+      return { status: 'ok' as const, address: project.email_in_address }
+    }
+
+    // The tail is random, so a collision is rare; a few tries are plenty.
+    for (let attempt = 0; attempt < MAX_MINT_ATTEMPTS; attempt++) {
+      const address = mintEmailInAddress(project.slug, randomTail())
+      const taken = await tx.get(
+        db.collection('projects').where('email_in_address', '==', address).limit(1),
+      )
+      if (!taken.empty) continue
+
+      tx.update(projectRef, { email_in_address: address })
+      return { status: 'ok' as const, address }
+    }
+    return { status: 'collisions' as const }
+  })
+
+  if (result.status === 'not_found') {
     return NextResponse.json({ error: 'Project not found' }, { status: 404 })
   }
-  const project = projectDoc.data() as { slug?: string; email_in_address?: string }
-
-  if (project.email_in_address) {
-    return NextResponse.json({ address: project.email_in_address })
+  if (result.status === 'collisions') {
+    console.error('email-in mint failed: address collisions', { projectId, attempts: MAX_MINT_ATTEMPTS })
+    return NextResponse.json({ error: 'Could not mint an address' }, { status: 500 })
   }
-
-  // The tail is random, so a collision is rare; a few tries are plenty.
-  for (let attempt = 0; attempt < MAX_MINT_ATTEMPTS; attempt++) {
-    const address = mintEmailInAddress(project.slug, randomTail())
-    const taken = await db
-      .collection('projects')
-      .where('email_in_address', '==', address)
-      .limit(1)
-      .get()
-    if (!taken.empty) continue
-
-    await projectRef.update({ email_in_address: address })
-    return NextResponse.json({ address })
-  }
-
-  console.error('email-in mint failed: address collisions', { projectId, attempts: MAX_MINT_ATTEMPTS })
-  return NextResponse.json({ error: 'Could not mint an address' }, { status: 500 })
+  return NextResponse.json({ address: result.address })
 }
