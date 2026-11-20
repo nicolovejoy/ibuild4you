@@ -241,25 +241,32 @@ export function splitNewText(
   }
 }
 
-// The normalized evidence lines of a text, typed and quoted apart.
-function evidenceLines(text: string): { typed: Set<string>; quoted: Set<string> } {
+// A text's non-blank, non-header lines, normalized, typed and quoted apart,
+// and whether any of them is long enough to be evidence.
+function contentLines(text: string): { typed: Set<string>; quoted: Set<string>; hasEvidence: boolean } {
   const typed = new Set<string>()
   const quoted = new Set<string>()
+  let hasEvidence = false
   for (const line of markLines(splitLines(text))) {
-    if (isEvidence(line)) (line.quoted ? quoted : typed).add(line.normalized)
+    if (line.headerId !== null || line.normalized === '') continue
+    if (line.quoted) quoted.add(line.normalized)
+    else typed.add(line.normalized)
+    if (isLong(line)) hasEvidence = true
   }
-  return { typed, quoted }
+  return { typed, quoted, hasEvidence }
 }
 
-// True when `text` holds nothing that `earlierText` did not: every long line
-// it typed was typed in the earlier email, and every long line it quoted was
-// quoted there. Short and header lines do not count. A text with no long line
-// is never a repeat, since nothing in it can show it was seen. The note writer
-// asks this only of an earlier email from the same sender.
+// True when `text` holds nothing that `earlierText` did not: every line it
+// typed, of any length, was typed in the earlier email, and every line it
+// quoted was quoted there. Blank and header lines do not count. A short line
+// is never evidence that the email was seen ("Yes" is in many emails), so a
+// text with no long line is never a repeat; but a new short line ("Actually
+// no") is new words, so it always stops a repeat. The note writer asks this
+// only of an earlier email from the same sender.
 export function isRepeatOf(text: string, earlierText: string): boolean {
-  const now = evidenceLines(text)
-  if (now.typed.size === 0 && now.quoted.size === 0) return false
-  const earlier = evidenceLines(earlierText)
+  const now = contentLines(text)
+  if (!now.hasEvidence) return false
+  const earlier = contentLines(earlierText)
   for (const line of now.typed) if (!earlier.typed.has(line)) return false
   for (const line of now.quoted) if (!earlier.quoted.has(line)) return false
   return true

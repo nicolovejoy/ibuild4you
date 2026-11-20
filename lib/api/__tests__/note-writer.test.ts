@@ -1008,6 +1008,30 @@ describe('writeNoteForProject', () => {
       expect(coll('projects').get('p1')!.notes_through_at).toBe('2026-11-19T11:00:00.000Z')
     })
 
+    // N1: a short new line ("Actually no") is new words, so the second reply
+    // to the same quoted email is not a repeat of the first.
+    it('shows a second reply whose only new words are short, above the same quote', async () => {
+      const question = 'Should the week view start on Monday or on Sunday?'
+      const quote = `On Wed, Nov 19, 2026 at 11:00 AM Nico <nico@example.com> wrote:\n> ${question}`
+      seedProject({ notes_through_at: '2026-11-19T12:00:00.000Z' })
+      seedEmail('e1_p1', '2026-11-19T11:00:00.000Z', question, {
+        from_email: 'nico@example.com',
+        from_name: 'Nico',
+        from_role: 'builder',
+      })
+      seedEmail('e2_p1', '2026-11-19T12:00:00.000Z', `Yes\n\n${quote}`)
+      seedEmail('e3_p1', '2026-11-19T13:00:00.000Z', `Actually no\n\n${quote}`)
+      mockMessagesCreate.mockResolvedValue(noteResponse(someNote))
+
+      const res = await writeNoteForProject(db, 'p1')
+
+      expect(mockMessagesCreate).toHaveBeenCalledTimes(1)
+      expect(res).toMatchObject({ covered: 1, through: '2026-11-19T13:00:00.000Z' })
+      const nm = newMessagesBlock()
+      expect(block(nm, 'typed')).toBe('Actually no')
+      expect(nm).not.toContain('quoted_not_seen_before')
+    })
+
     it('the same text from a different sender is not a repeat', async () => {
       const text = 'Please add a metronome to the practice page.'
       seedProject({ notes_through_at: '2026-11-19T10:00:00.000Z' })

@@ -291,8 +291,33 @@ describe('isRepeatOf', () => {
     expect(isRepeatOf(reply, reply)).toBe(true)
   })
 
-  it('ignores short lines, spacing, case and quote markers', () => {
-    expect(isRepeatOf('Hi Bill,\nThe Lesson planner should show the   whole week at once.\nNico', original)).toBe(true)
+  it('ignores spacing and case', () => {
+    expect(isRepeatOf('hi nico,\nThe Lesson planner should show the   whole week at once.\n  Bill', original)).toBe(true)
+  })
+
+  it('a resend that only adds blank lines or changes whitespace is still a repeat', () => {
+    expect(isRepeatOf(`\n${original.replace(/\n/g, '\n\n  ')}\n\n`, original)).toBe(true)
+    expect(isRepeatOf(reply.replace('Yes, go', 'Yes,   go'), reply)).toBe(true)
+  })
+
+  // A short line is never evidence that something was seen, but a new short
+  // line is new words: it can only stop a repeat, never make one (N1).
+  it('a short new typed line above the same quote is not a repeat', () => {
+    const quote = `On Wed, Nov 18, 2026, Nico wrote:\n> ${question}`
+    expect(isRepeatOf(`Actually no\n\n${quote}`, `Yes\n\n${quote}`)).toBe(false)
+  })
+
+  it('Yes and No above the same long signature line are not a repeat', () => {
+    const signature = 'Bill Duris, piano teacher at L6 Music'
+    expect(isRepeatOf(`No\n\n${signature}`, `Yes\n\n${signature}`)).toBe(false)
+  })
+
+  it('a short line changed under the quote is not a repeat either', () => {
+    expect(isRepeatOf(`${reply}\n> ok`, `${reply}\n> no`)).toBe(false)
+  })
+
+  it('an exact resend, short lines included, is still a repeat', () => {
+    expect(isRepeatOf(`Yes\n\nOn Wed, Nov 18, 2026, Nico wrote:\n> ${question}\n> Nico`, `Yes\n\nOn Wed, Nov 18, 2026, Nico wrote:\n> ${question}\n> Nico`)).toBe(true)
   })
 
   it('a repeated typed answer above a quote the earlier email did not hold is not a repeat', () => {
