@@ -84,13 +84,18 @@ function fieldRunLength(lines: string[], index: number): number {
 function quoteHeaderLength(lines: string[], index: number): number {
   const line = lines[index].trim()
 
-  if (isAttribution(line)) return 1 + fieldRunLength(lines, index + 1)
+  // "On ... wrote:" is checked with its `>` markers stripped, since Apple Mail
+  // quotes the attribution along with the text under it.
+  const marked = /^\s*>/.test(lines[index])
+  const attribution = removeQuoteMarkers(lines[index]).trim()
+  if (isAttribution(attribution)) return 1 + fieldRunLength(lines, index + 1)
   // "On ... wrote:" wrapped over two lines by the sender's mail client. It never
-  // joins a blank line, a quoted line, or a line that is a whole attribution itself.
+  // joins a blank line or a line that is a whole attribution itself, and both
+  // lines carry a `>` marker or neither does.
   const rawNext = index + 1 < lines.length ? lines[index + 1] : ''
-  const next = rawNext.trim()
-  const nextCanJoin = next !== '' && !/^\s*>/.test(rawNext) && !isAttribution(next)
-  if (line.startsWith('On ') && nextCanJoin && isAttribution(`${line} ${next}`)) {
+  const next = removeQuoteMarkers(rawNext).trim()
+  const nextCanJoin = next !== '' && /^\s*>/.test(rawNext) === marked && !isAttribution(next)
+  if (attribution.startsWith('On ') && nextCanJoin && isAttribution(`${attribution} ${next}`)) {
     return 2 + fieldRunLength(lines, index + 2)
   }
 

@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { normalizeLine, seenLines, splitNewText, MIN_EVIDENCE_LENGTH } from '../new-text'
+// A real Apple Mail reply recorded from Resend: its attribution sits behind a `>` marker.
+import receivedEmail from '../../../app/api/webhooks/resend/inbound/__tests__/fixtures/received-email.json'
 
 const original = 'Hi Nico,\nThe lesson planner should show the whole week at once.\nBill'
 const seen = seenLines([original])
@@ -188,6 +190,61 @@ describe('splitNewText', () => {
       typed: 'Agreed.',
       quotedUnseen:
         'On Wed, Nov 18, 2026 at 3:04 PM Bill Duris <\nb@aol.com> wrote:\nStudents also need a printable version of the plan.',
+    })
+  })
+
+  describe('an Apple Mail reply whose attribution carries a quote marker', () => {
+    const quotedLine = 'I will build the week view of the lesson planner first.'
+
+    it('leaks no attribution when the quote is held', () => {
+      expect(splitNewText(receivedEmail.text, seenLines([quotedLine]))).toEqual({
+        typed: 'Sounds good, the week view first please.',
+        quotedUnseen: '',
+      })
+    })
+
+    it('keeps the attribution and the quoted line when the quote is unseen', () => {
+      expect(splitNewText(receivedEmail.text, new Set())).toEqual({
+        typed: 'Sounds good, the week view first please.',
+        quotedUnseen: `On Nov 20, 2026, at 9:31 AM, Nico Builder <nico@example.org> wrote:\n\n${quotedLine}`,
+      })
+    })
+
+    const wrapped =
+      'Sounds good.\n\n> On Nov 20, 2026, at 9:31 AM, Nico Builder\n> <nico@example.org> wrote:\n> \n> ' +
+      quotedLine
+
+    it('recognises it wrapped over two marked lines', () => {
+      expect(splitNewText(wrapped, seenLines([quotedLine]))).toEqual({
+        typed: 'Sounds good.',
+        quotedUnseen: '',
+      })
+      expect(splitNewText(wrapped, new Set())).toEqual({
+        typed: 'Sounds good.',
+        quotedUnseen: `On Nov 20, 2026, at 9:31 AM, Nico Builder\n<nico@example.org> wrote:\n\n${quotedLine}`,
+      })
+    })
+
+    it('a marked line does not join an unmarked or a blank marked line into a header', () => {
+      expect(
+        splitNewText(
+          '> On Nov 20, 2026, at 9:31 AM, Nico Builder\n<nico@example.org> wrote:\n> ' + quotedLine,
+          seenLines([quotedLine])
+        )
+      ).toEqual({
+        typed: '<nico@example.org> wrote:',
+        quotedUnseen: 'On Nov 20, 2026, at 9:31 AM, Nico Builder',
+      })
+      expect(
+        splitNewText(
+          '> On Nov 20, 2026, at 9:31 AM, Nico Builder\n> \n> <nico@example.org> wrote:\n> ' +
+            quotedLine,
+          seenLines([quotedLine])
+        )
+      ).toEqual({
+        typed: '',
+        quotedUnseen: 'On Nov 20, 2026, at 9:31 AM, Nico Builder\n\n<nico@example.org> wrote:',
+      })
     })
   })
 
