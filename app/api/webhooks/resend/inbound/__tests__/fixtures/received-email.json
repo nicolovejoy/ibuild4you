@@ -1,0 +1,49 @@
+{
+  "object": "email",
+  "id": "0a1b2c3d-1111-4222-8333-444455556666",
+  "to": [
+    "capture-test@inbox.ibuild4you.com"
+  ],
+  "from": "bduris@example.com",
+  "created_at": "2026-11-20T17:47:09.765Z",
+  "subject": "Re: lesson planner",
+  "message_id": "<REPLY-0001@example.com>",
+  "bcc": [],
+  "cc": [
+    "capture-test@inbox.ibuild4you.com"
+  ],
+  "reply_to": [],
+  "html": null,
+  "html_format": "data_uri",
+  "text": "Sounds good, the week view first please.\n\n> On Nov 20, 2026, at 9:31 AM, Nico Builder <nico@example.org> wrote:\n> \n> I will build the week view of the lesson planner first.\n\n",
+  "headers": {
+    "received": "[\"from mail.example.com (192.0.2.1) by receive.forge.rmta.net; redacted\"]",
+    "dkim-signature": "v=1",
+    "content-type": "text/plain",
+    "mime-version": "1.0 (Mac OS X Mail 16.0 \\(3901.200.71.1.16\\))",
+    "subject": "Re: lesson planner",
+    "from": "\"Bill Duris\" <bduris@example.com>",
+    "in-reply-to": "<ORIGINAL-0001@example.org>",
+    "date": "\"2026-11-20T17:44:55.000Z\"",
+    "cc": "capture-test@inbox.ibuild4you.com",
+    "content-transfer-encoding": "quoted-printable",
+    "message-id": "<REPLY-0001@example.com>",
+    "references": "<ORIGINAL-0001@example.org>",
+    "to": "\"Nico Builder\" <nico@example.org>",
+    "x-mailer": "Apple Mail (2.3901.200.71.1.16)",
+    "content-length": "147"
+  },
+  "received_for": [
+    "capture-test@inbox.ibuild4you.com"
+  ],
+  "authentication": {
+    "spf": "pass",
+    "dkim": "pass",
+    "dmarc": "pass"
+  },
+  "raw": {
+    "download_url": "https://example.com/receiving/raw/redacted",
+    "expires_at": "2026-11-20T18:53:53.027Z"
+  },
+  "attachments": []
+}

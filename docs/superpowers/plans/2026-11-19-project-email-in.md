@@ -10,6 +10,29 @@
 
 **Spec:** `docs/superpowers/specs/2026-11-19-project-email-in-design.md`. Read it before any task; this plan names files and interfaces, the spec says why.
 
+## Recorded payload (2026-11-20)
+
+One real email was sent to `capture-test@inbox.ibuild4you.com` (Apple Mail, from a yahoo.com address, a reply with the address on CC) and recorded. The two fixtures are in `app/api/webhooks/resend/inbound/__tests__/fixtures/`. Shapes and values are as recorded; addresses, names, ids, the subject and the body text are replaced, and the long provider headers are dropped. The recorded body was 135 characters with an empty quote, so the fixture's `text` is written by hand in the same form (typed lines, then a `> On … wrote:` line and `>` lines).
+
+Answers to the three checks:
+
+1. The webhook body carries `received_for`, `to`, `cc` and `bcc`, each an array of bare addresses. Matching the project happens before the fetch, as the spec says.
+2. `authentication` is `{ spf, dkim, dmarc }`, all three `"pass"` here. It is on the fetched email only, not on the webhook.
+3. `headers` carries `date`, but its value is an ISO time wrapped in literal double quotes: `"\"2026-11-20T17:44:55.000Z\""`. Strip the quotes before parsing; `sent_at` is `null` when it does not parse.
+
+Also seen, and Task 2 must hold for each:
+
+- `from` is a bare address at the top level in both the webhook and the fetched email. The display name is only in `headers.from` (`"Name" <addr>`).
+- The top-level `to` held the project address although the sender put it on CC and another address in To. The sender's real To line is only in `headers.to`. Do not treat top-level `to` and `cc` as the header lines.
+- An email with no body comes back with `text: null` and `html: null` (the first capture was one). Store it as empty text; do not fail.
+- `html` is `null` for a plain-text email. `reply_to` is an array. `attachments` is an array. The webhook's `data.created_at` and the fetched `created_at` are the same server time.
+- The fetch works with a Full access key. The key used is `op://dev-secrets/ibuild4you-resend-api-key/password`; whether the production `RESEND_API_KEY` can read received mail is still unchecked.
+- An Apple Mail reply to a reply puts the attribution itself behind a marker: `> On Nov 20, 2026, at 9:31 AM, Name <addr> wrote:`.
+
+**Defect found with the recorded form, to fix before Task 4 (TDD, in `lib/email-in/new-text.ts`):** the filter does not recognize an attribution that carries a `>` marker. With the fixture's `text` and its quoted line already seen, `splitNewText` returns `quotedUnseen: 'On Nov 20, 2026, at 9:31 AM, Nico Builder <nico@example.org> wrote:'` where it must return `''`. Every Apple Mail reply of this form would give the note writer an attribution with nothing under it. The "On … wrote:" check (one line and two lines, digit or `@` required) must run on the line with its leading `>` markers stripped, and the span rules then apply as for any header. Use the fixture's `text` as the test input: seen quote gives `{ typed: 'Sounds good, the week view first please.', quotedUnseen: '' }`; unseen quote keeps the attribution and the quoted line.
+
+Setup state: MX for `inbox.ibuild4you.com` is live (`receive.forge.rmta.net`), receiving is verified in Resend, and the webhook exists. The signing secret is in 1Password (`op://dev-secrets/resend-inbound-secret-ibuild4you/password`) and is NOT yet on Vercel, on purpose: push it to Production when Task 2's route ships, so Loop replies never arrive without their text. Until then the route answers 500 to Resend.
+
 ## Progress and rulings (2026-11-20)
 
 Branch `worktree-email-in`. Tasks 1 and 3 are done and reviewed clean. Tasks 2, 4, 5, 6 and 7 are not started. The whole-branch review has not run; it runs when every task is in.
