@@ -7,7 +7,7 @@ vi.mock('firebase-admin/firestore', () => ({
   FieldValue: { increment: (n: number) => ({ __increment: n }) },
 }))
 
-import { storeProjectEmail, recordDrop, listProjectEmails, EMAIL_TEXT_MAX } from '../store'
+import { storeProjectEmail, recordDrop, listProjectEmails, listRecentProjectEmailRows, EMAIL_TEXT_MAX } from '../store'
 
 type Doc = Record<string, unknown>
 
@@ -369,5 +369,32 @@ describe('listProjectEmails', () => {
   it('is empty for a project with no emails', async () => {
     const { db } = makeDb()
     expect(await listProjectEmails(db, 'p2')).toEqual([])
+  })
+})
+
+describe('listRecentProjectEmailRows', () => {
+  it('selects only who, role, when and subject, never the text', async () => {
+    const { db, calls } = makeDb()
+    await storeProjectEmail(db, 'a', email({ received_at: '2026-11-20T08:00:00.000Z' }))
+    calls.selects.length = 0
+    const out = await listRecentProjectEmailRows(db, 'p1', 10)
+    expect(calls.selects).toEqual([['from_name', 'from_role', 'received_at', 'subject']])
+    expect(out).toHaveLength(1)
+    expect(Object.keys(out[0]).sort()).toEqual(['from_name', 'from_role', 'received_at', 'subject'])
+  })
+
+  it('returns the newest `limit` rows, newest first, for that project only', async () => {
+    const { db } = makeDb()
+    await storeProjectEmail(db, 'b', email({ received_at: '2026-11-20T12:00:00.000Z', subject: 'B' }))
+    await storeProjectEmail(db, 'a', email({ received_at: '2026-11-20T08:00:00.000Z', subject: 'A' }))
+    await storeProjectEmail(db, 'c', email({ received_at: '2026-11-20T10:00:00.000Z', subject: 'C' }))
+    await storeProjectEmail(db, 'x', email({ project_id: 'p2', received_at: '2026-11-20T14:00:00.000Z' }))
+    const out = await listRecentProjectEmailRows(db, 'p1', 2)
+    expect(out.map((r) => r.subject)).toEqual(['B', 'C'])
+  })
+
+  it('is empty for a project with no emails', async () => {
+    const { db } = makeDb()
+    expect(await listRecentProjectEmailRows(db, 'p2', 10)).toEqual([])
   })
 })

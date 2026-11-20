@@ -17,6 +17,17 @@ const dayFmt = new Intl.DateTimeFormat('en-US', {
 const button =
   'px-3 py-1.5 text-sm border border-gray-200 rounded text-brand-charcoal hover:border-brand-navy hover:text-brand-navy disabled:opacity-30 disabled:cursor-not-allowed transition-colors'
 
+// Who the GET accepts: an owner or builder on the project, or a system admin
+// (an implicit owner on every project; their viewer_role can be a membership
+// role or 'admin'). The mount checks this before the panel, so the hook never
+// fires for a viewer the server would refuse.
+export function canSeeProjectEmail(
+  viewerRole: string | null | undefined,
+  isSystemAdmin: boolean
+): boolean {
+  return isSystemAdmin || viewerRole === 'owner' || viewerRole === 'builder' || viewerRole === 'admin'
+}
+
 // The project's email address: the builder keeps it on CC, and mail from
 // members becomes brief notes. Shows the address (or offers to create it), the
 // newest emails received (who, when, subject; never the text), and what was

@@ -68,8 +68,22 @@ vi.mock('@/lib/email-in/address', async (importOriginal) => {
 })
 
 let storedEmails: Record<string, unknown>[] = []
+// The route reads the panel's rows through the bounded read, not the full list.
+const mockListRecent = vi.fn(async (_db: unknown, _projectId: string, limit: number) =>
+  [...storedEmails]
+    .sort((a, b) => String(b.received_at).localeCompare(String(a.received_at)))
+    .slice(0, limit)
+    .map((e) => ({
+      from_name: e.from_name,
+      from_role: e.from_role,
+      received_at: e.received_at,
+      subject: e.subject,
+    }))
+)
+const mockListAll = vi.fn()
 vi.mock('@/lib/email-in/store', () => ({
-  listProjectEmails: vi.fn(async () => storedEmails),
+  listRecentProjectEmailRows: (...a: [unknown, string, number]) => mockListRecent(...a),
+  listProjectEmails: (...a: unknown[]) => mockListAll(...a),
 }))
 
 import { GET, POST } from '../route'
@@ -237,6 +251,8 @@ describe('GET /api/projects/email-in', () => {
       subject: 'Subject 11',
     })
     expect(body.recent[9].subject).toBe('Subject 2')
+    expect(mockListRecent).toHaveBeenCalledWith(expect.anything(), 'p1', 10)
+    expect(mockListAll).not.toHaveBeenCalled()
     for (const row of body.recent) {
       expect(Object.keys(row).sort()).toEqual(['from_name', 'from_role', 'received_at', 'subject'])
     }

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getAuthenticatedUser, getAdminDb, getProjectRole, requireRole } from '@/lib/api/firebase-server-helpers'
 import { mintEmailInAddress, randomTail } from '@/lib/email-in/address'
-import { listProjectEmails } from '@/lib/email-in/store'
+import { listRecentProjectEmailRows } from '@/lib/email-in/store'
 
 const MAX_MINT_ATTEMPTS = 5
 const RECENT_EMAILS = 10
@@ -44,17 +44,8 @@ export async function GET(request: Request) {
   }
   const dropped = project.email_in_dropped ?? {}
 
-  // listProjectEmails is oldest first; the panel wants the newest 10, newest first.
-  const emails = await listProjectEmails(db, projectId)
-  const recent = emails
-    .slice(-RECENT_EMAILS)
-    .reverse()
-    .map((e) => ({
-      from_name: e.from_name,
-      from_role: e.from_role,
-      received_at: e.received_at,
-      subject: e.subject,
-    }))
+  // The newest 10, newest first, read without the emails' text.
+  const recent = await listRecentProjectEmailRows(db, projectId, RECENT_EMAILS)
 
   return NextResponse.json({
     address: project.email_in_address ?? null,

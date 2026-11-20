@@ -26,7 +26,7 @@ vi.mock('@/lib/firebase/api-fetch', () => ({
   apiFetch: (...a: [string, { method?: string }?]) => apiFetchMock(...a),
 }))
 
-import { ProjectEmailPanel } from '../ProjectEmailPanel'
+import { ProjectEmailPanel, canSeeProjectEmail } from '../ProjectEmailPanel'
 
 const writeText = vi.fn().mockResolvedValue(undefined)
 
@@ -142,5 +142,26 @@ describe('ProjectEmailPanel on a failed load', () => {
     apiFetchMock.mockResolvedValueOnce(new Response('{}', { status: 500 }))
     renderPanel()
     expect((await screen.findByRole('alert')).textContent).toBe('Could not load the project email address.')
+  })
+})
+
+// Who sees the panel: the viewers the GET accepts (builder or owner on the
+// project, or a system admin, who is an implicit owner). Anyone else would only
+// see a load error, so the mount hides the panel before the hook runs.
+describe('canSeeProjectEmail', () => {
+  it('accepts an owner and a builder', () => {
+    expect(canSeeProjectEmail('owner', false)).toBe(true)
+    expect(canSeeProjectEmail('builder', false)).toBe(true)
+  })
+  it('refuses an apprentice, a maker and a viewer with no role', () => {
+    expect(canSeeProjectEmail('apprentice', false)).toBe(false)
+    expect(canSeeProjectEmail('maker', false)).toBe(false)
+    expect(canSeeProjectEmail(null, false)).toBe(false)
+    expect(canSeeProjectEmail(undefined, false)).toBe(false)
+  })
+  it('accepts a system admin whatever the project role', () => {
+    expect(canSeeProjectEmail('maker', true)).toBe(true)
+    expect(canSeeProjectEmail(null, true)).toBe(true)
+    expect(canSeeProjectEmail('admin', false)).toBe(true)
   })
 })
