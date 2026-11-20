@@ -492,3 +492,22 @@ export interface BuildReport extends BuildReportBody {
   folded_at?: string | null
   body_hash: string
 }
+
+// An email a project member sent to the project's address (email-in), stored in
+// the top-level, server-only project_emails collection. The doc id is
+// `<Resend email_id>_<project_id>`, so one email CC'd to two projects is stored
+// once for each and a retried webhook never duplicates.
+export interface ProjectEmail {
+  id: string
+  project_id: string
+  from_email: string // normalized
+  from_name: string // the member's display name, else the address's local part
+  from_role: 'maker' | 'builder' // stamped by code from the member row
+  received_at: string // server time, UTC ISO; this orders the stream
+  sent_at: string | null // the Date header when present, for display only
+  subject: string
+  message_id: string
+  text: string // plain text, at most EMAIL_TEXT_MAX characters
+  truncated: boolean
+  attachments: { filename: string; content_type: string }[] // names only
+}

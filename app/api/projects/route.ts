@@ -299,6 +299,14 @@ export async function DELETE(request: Request) {
     .get()
   reportsSnap.docs.forEach((r) => docsToDelete.push(r.ref))
 
+  // Emails members sent to the project's address (email-in). A top-level
+  // collection keyed by project_id, so it goes with the project too.
+  const emailsSnap = await db
+    .collection('project_emails')
+    .where('project_id', '==', projectId)
+    .get()
+  emailsSnap.docs.forEach((e) => docsToDelete.push(e.ref))
+
   // Project members
   const membersSnap = await db
     .collection('project_members')

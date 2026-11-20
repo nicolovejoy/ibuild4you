@@ -480,6 +480,23 @@ describe('DELETE /api/projects', () => {
     expect(deleted).toContain(r2)
   })
 
+  it("deletes the project's emails (top-level project_emails, email-in)", async () => {
+    const e1 = { id: 'em1_proj-1' }
+    const e2 = { id: 'em2_proj-1' }
+    mockWhereGet.mockImplementation(async () => {
+      if (lastCollectionName === 'project_emails') return { docs: [{ ref: e1 }, { ref: e2 }] }
+      return { docs: [] }
+    })
+
+    const res = await DELETE(makeDeleteRequest('proj-1'))
+    expect(res.status).toBe(200)
+    expect(mockCollection).toHaveBeenCalledWith('project_emails')
+    expect(mockWhere).toHaveBeenCalledWith('project_id', '==', 'proj-1')
+    const deleted = mockBatchDelete.mock.calls.map((c) => c[0])
+    expect(deleted).toContain(e1)
+    expect(deleted).toContain(e2)
+  })
+
   it('deletes S3 objects for ready files but skips pending ones', async () => {
     mockWhereGet.mockImplementation(async () => {
       if (lastCollectionName === 'files') {
