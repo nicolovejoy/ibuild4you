@@ -48,6 +48,65 @@ describe('splitNewText', () => {
     )
     expect(result.typed).toBe('FYI')
     expect(result.quotedUnseen).toContain('Please add a metronome to the practice page.')
+    // The divider stays with its From and Date lines.
+    expect(result.quotedUnseen).toBe(
+      '---------- Forwarded message ---------\nFrom: Bill Duris <b@aol.com>\nDate: Wed, Nov 18, 2026\n\nPlease add a metronome to the practice page.'
+    )
+  })
+
+  it('an Outlook reply quoting an email we hold leaks no header lines', () => {
+    expect(
+      splitNewText(
+        'Yes, will do.\r\n\r\nFrom: Bill Duris\r\nSent: Wednesday, November 18, 2026\r\nTo: Nico\r\nSubject: Planner\r\n\r\n' +
+          original,
+        seen
+      )
+    ).toEqual({ typed: 'Yes, will do.', quotedUnseen: '' })
+  })
+
+  it('a Gmail forward of an email we hold leaks no header lines', () => {
+    expect(
+      splitNewText(
+        'FYI\n\n---------- Forwarded message ---------\nFrom: Bill Duris <b@aol.com>\nDate: Wed, Nov 18, 2026\nSubject: Planner\nTo: Nico <n@example.com>\n\n' +
+          original,
+        seen
+      )
+    ).toEqual({ typed: 'FYI', quotedUnseen: '' })
+  })
+
+  it('a header, a blank line, then a fully seen quote yields no quote', () => {
+    expect(
+      splitNewText(
+        'Sounds good.\n\nOn Tue, Nov 17, 2026, Bill Duris wrote:\n\n> Hi Nico,\n> The lesson planner should show the whole week at once.\n> Bill',
+        seen
+      )
+    ).toEqual({ typed: 'Sounds good.', quotedUnseen: '' })
+  })
+
+  it('an "On ..." typed line does not join a date-less "wrote:" line into a header', () => {
+    expect(
+      splitNewText(
+        'On reflection, I agree.\nHere is what Danny wrote:\n> The lesson planner should show the whole week at once.',
+        seen
+      )
+    ).toEqual({ typed: 'On reflection, I agree.\nHere is what Danny wrote:', quotedUnseen: '' })
+  })
+
+  it('an "On ..." typed line does not join a quoted line into a header', () => {
+    const result = splitNewText(
+      '> The lesson planner should show the whole week at once.\nOn Tuesday works for me.\n> > On Mon, Nico wrote:\n> > The lesson planner should show the whole week at once.',
+      seen
+    )
+    expect(result.typed).toContain('On Tuesday works for me.')
+  })
+
+  it('a one-line "wrote:" with no date or address stays typed', () => {
+    expect(
+      splitNewText(
+        'On reflection, this is what Danny wrote:\n> The lesson planner should show the whole week at once.',
+        seen
+      )
+    ).toEqual({ typed: 'On reflection, this is what Danny wrote:', quotedUnseen: '' })
   })
 
   it('handles CRLF and an Outlook header block', () => {

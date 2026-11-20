@@ -36,8 +36,9 @@ type Line = {
   raw: string
   normalized: string
   quoted: boolean
-  // Which quote header this line belongs to (a wrapped header spans two lines),
-  // or null when it is not a header line.
+  // Which quote header this line belongs to, or null when it is not a header
+  // line. A header spans several lines (a wrapped "On ... wrote:", a divider
+  // with its From/Date block); they all share one id and one fate.
   headerId: number | null
   kept: boolean
 }
@@ -47,21 +48,58 @@ function splitLines(text: string): string[] {
   return text.replace(/\r\n/g, '\n').split('\n')
 }
 
+// "On <date>, <name> wrote:". Real attributions carry a date or an address, so
+// a typed "On reflection, this is what Danny wrote:" is not one. Missing a
+// date-less attribution is the safe direction: its lines stay typed.
+function isAttribution(text: string): boolean {
+  return /^On .+ wrote:$/.test(text) && /[\d@]/.test(text)
+}
+
+const DIVIDERS = [
+  /^-{2,}\s*Original Message\s*-{2,}$/i,
+  /^-{2,}\s*Forwarded message\s*-{2,}$/i,
+  /^Begin forwarded message:$/,
+]
+
+const HEADER_FIELD = /^(From|Sent|Date|To|Cc|Subject):/i
+
+// How many header-field lines (From:, Sent:, Date:, To:, Cc:, Subject:) run
+// directly from `index`. The run ends at the first other line, a blank one included.
+function fieldRunLength(lines: string[], index: number): number {
+  let end = index
+  while (end < lines.length && HEADER_FIELD.test(lines[end].trim())) end++
+  return end - index
+}
+
 // How many lines the quote header starting at `index` spans: 0 when there is none.
+// The span is the header line plus the header fields directly under it, so a
+// quote we already hold does not leak its Sent:/To:/Subject: lines as unseen text.
 function quoteHeaderLength(lines: string[], index: number): number {
   const line = lines[index].trim()
-  if (/^On .+ wrote:$/.test(line)) return 1
-  // "On ... wrote:" wrapped over two lines by the sender's mail client. When the
-  // next line is a whole header by itself, this line is not part of it.
-  const next = index + 1 < lines.length ? lines[index + 1].trim() : ''
-  if (!/^On .+ wrote:$/.test(next) && /^On .+ wrote:$/.test(`${line} ${next}`)) return 2
-  if (/^-{2,}\s*Original Message\s*-{2,}$/i.test(line)) return 1
-  if (/^-{2,}\s*Forwarded message\s*-{2,}$/i.test(line)) return 1
-  if (line === 'Begin forwarded message:') return 1
+
+  if (isAttribution(line)) return 1 + fieldRunLength(lines, index + 1)
+  // "On ... wrote:" wrapped over two lines by the sender's mail client. It never
+  // joins a blank line, a quoted line, or a line that is a whole attribution itself.
+  const rawNext = index + 1 < lines.length ? lines[index + 1] : ''
+  const next = rawNext.trim()
+  const nextCanJoin = next !== '' && !/^\s*>/.test(rawNext) && !isAttribution(next)
+  if (line.startsWith('On ') && nextCanJoin && isAttribution(`${line} ${next}`)) {
+    return 2 + fieldRunLength(lines, index + 2)
+  }
+
+  // A divider, any blank lines directly under it, then its header fields.
+  if (DIVIDERS.some((divider) => divider.test(line))) {
+    let end = index + 1
+    while (end < lines.length && lines[end].trim() === '') end++
+    return end - index + fieldRunLength(lines, end)
+  }
+
   // Outlook: "From:" with "Sent:" or "Date:" within the next 4 lines.
   if (line.startsWith('From:')) {
     const following = lines.slice(index + 1, index + 5).map((l) => l.trim())
-    if (following.some((l) => l.startsWith('Sent:') || l.startsWith('Date:'))) return 1
+    if (following.some((l) => l.startsWith('Sent:') || l.startsWith('Date:'))) {
+      return 1 + fieldRunLength(lines, index + 1)
+    }
   }
   return 0
 }
@@ -79,18 +117,21 @@ function markLines(rawLines: string[]): Line[] {
 
   let headerCount = 0
   let insideQuote = false
-  for (let i = 0; i < lines.length; i++) {
+  let i = 0
+  while (i < lines.length) {
     const span = quoteHeaderLength(rawLines, i)
     if (span > 0) {
-      for (let j = i; j < i + span; j++) lines[j].headerId = headerCount
+      for (let j = i; j < i + span; j++) {
+        lines[j].headerId = headerCount
+        lines[j].quoted = true
+      }
       headerCount++
       insideQuote = true
+      i += span
+      continue
     }
     if (insideQuote) lines[i].quoted = true
-    if (span === 2) {
-      lines[i + 1].quoted = true
-      i++ // the second line of a wrapped header is already marked
-    }
+    i++
   }
   return lines
 }
@@ -123,27 +164,19 @@ function decideFates(lines: Line[], seen: Set<string>): void {
 }
 
 // Step 4: a quote header is kept only when a kept, non-blank quoted line follows
-// it before the next header.
+// it before the next header. Every line of a header's span shares that fate.
 function decideHeaders(lines: Line[]): void {
-  for (let i = 0; i < lines.length; i++) {
-    const headerId = lines[i].headerId
-    if (headerId === null) continue
-    let hasKeptQuote = false
-    for (let j = i + 1; j < lines.length; j++) {
-      const other = lines[j]
-      if (other.headerId === headerId) continue // second line of a wrapped header
-      if (other.headerId !== null) break
-      if (other.quoted && other.kept && other.normalized !== '') {
-        hasKeptQuote = true
-        break
-      }
+  const headersWithKeptQuote = new Set<number>()
+  let currentHeader: number | null = null
+  for (const line of lines) {
+    if (line.headerId !== null) {
+      currentHeader = line.headerId
+    } else if (currentHeader !== null && line.quoted && line.kept && line.normalized !== '') {
+      headersWithKeptQuote.add(currentHeader)
     }
-    lines[i].kept = hasKeptQuote
-    // A wrapped header's second line shares its fate.
-    if (i + 1 < lines.length && lines[i + 1].headerId === headerId) {
-      lines[i + 1].kept = hasKeptQuote
-      i++
-    }
+  }
+  for (const line of lines) {
+    if (line.headerId !== null) line.kept = headersWithKeptQuote.has(line.headerId)
   }
 }
 
