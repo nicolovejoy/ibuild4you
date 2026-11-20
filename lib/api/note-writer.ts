@@ -202,20 +202,45 @@ function cutEmail(item: EmailItem, limit: number): EmailItem {
     : { ...item, typed: `${typed}\n${CUT_MARK}`, quotedUnseen: '' }
 }
 
+const emailSize = (item: EmailItem) => item.typed.length + item.quotedUnseen.length
+
 // This note's window: the longest prefix of the new items whose emails hold at
 // most EMAIL_WINDOW_CHAR_LIMIT characters of new text (chat adds nothing to
 // the sum). It stops before the email that would pass the limit, and the rest
 // waits for the next run. An email that passes the limit alone is cut instead,
 // so it cannot hold the stream back. Never empty when `items` is not.
+//
+// The window never ends between two items with the same timestamp: the next
+// run starts after notes_through_at, the last covered item's timestamp, so the
+// second of the pair would never be read. A stop inside such a run moves back
+// to where the run starts; when the run is the whole window, the window takes
+// the rest of the run instead (each email in it cut as above when it passes
+// the limit alone).
 function takeWindow(items: StreamItem[]): { window: StreamItem[]; truncated: boolean } {
   const window: StreamItem[] = []
   let used = 0
   let truncated = false
-  for (const item of items) {
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i]
     if (item.kind === 'email') {
-      const size = item.typed.length + item.quotedUnseen.length
+      const size = emailSize(item)
       if (used + size > EMAIL_WINDOW_CHAR_LIMIT) {
-        if (used > 0) break
+        if (used > 0) {
+          let runStart = window.length
+          while (runStart > 0 && window[runStart - 1].at === item.at) runStart--
+          if (runStart > 0) return { window: window.slice(0, runStart), truncated }
+          let runEnd = i
+          while (runEnd < items.length && items[runEnd].at === item.at) runEnd++
+          for (const rest of items.slice(i, runEnd)) {
+            if (rest.kind === 'email' && emailSize(rest) > EMAIL_WINDOW_CHAR_LIMIT) {
+              window.push(cutEmail(rest, EMAIL_WINDOW_CHAR_LIMIT))
+              truncated = true
+            } else {
+              window.push(rest)
+            }
+          }
+          return { window, truncated }
+        }
         window.push(cutEmail(item, EMAIL_WINDOW_CHAR_LIMIT))
         truncated = true
         used = EMAIL_WINDOW_CHAR_LIMIT

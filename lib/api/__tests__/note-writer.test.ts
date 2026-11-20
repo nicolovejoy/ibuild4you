@@ -1070,6 +1070,42 @@ describe('writeNoteForProject', () => {
       expect(newMessagesBlock()).toContain('User: chat after the big emails')
     })
 
+    // F6: notes_through_at is the last covered item's timestamp, and the next
+    // run reads only items after it, so a window that ended between two items
+    // stamped alike would skip the second for good.
+    it('never ends a window between two emails with the same timestamp', async () => {
+      seedProject()
+      seedEmail('e1_p1', '2026-11-19T10:00:00.000Z', bigText('alpha', 20_000))
+      seedEmail('e2_p1', '2026-11-19T11:00:00.000Z', bigText('bravo', 15_000))
+      seedEmail('e3_p1', '2026-11-19T11:00:00.000Z', bigText('charlie', 15_000))
+      mockMessagesCreate.mockResolvedValue(noteResponse(someNote))
+
+      const first = await writeNoteForProject(db, 'p1')
+      // The limit falls between e2 and e3: both wait for the next run.
+      expect(first).toMatchObject({ covered: 1, through: '2026-11-19T10:00:00.000Z' })
+
+      const second = await writeNoteForProject(db, 'p1')
+      expect(second).toMatchObject({ covered: 2, through: '2026-11-19T11:00:00.000Z' })
+      expect(notes().map((n) => n.email_ids)).toEqual([['e1_p1'], ['e2_p1', 'e3_p1']])
+    })
+
+    it('takes a whole run of same-timestamp emails when cutting it would leave the window empty', async () => {
+      seedProject()
+      const texts = [bigText('alpha', 30_000), bigText('bravo', 30_000)]
+      seedEmail('e1_p1', '2026-11-19T10:00:00.000Z', texts[0])
+      seedEmail('e2_p1', '2026-11-19T10:00:00.000Z', texts[1])
+      mockMessagesCreate.mockResolvedValue(noteResponse(someNote))
+
+      const res = await writeNoteForProject(db, 'p1')
+
+      expect(res).toMatchObject({ covered: 2, through: '2026-11-19T10:00:00.000Z' })
+      const nm = newMessagesBlock()
+      expect(nm).toContain(texts[0])
+      expect(nm).toContain(texts[1])
+      expect(notes()[0].email_ids).toEqual(['e1_p1', 'e2_p1'])
+      await expect(writeNoteForProject(db, 'p1')).rejects.toThrow('write_note_no_messages')
+    })
+
     it('one email of 60,000 new characters: the prompt holds 40,000 of it and [cut here]', async () => {
       seedProject()
       const text = bigText('alpha', 60_000)
