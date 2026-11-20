@@ -80,7 +80,10 @@ export function renderBriefMd({ project, brief, sessions, reviews, files = [], n
   // Coverage: how far the notes reach and when the maker last wrote, so a
   // reader can judge how stale the brief is. No line when neither is known.
   const coverage = []
-  const notesThrough = project.notes_through_at ? pacificMinute(project.notes_through_at) : null
+  // The epoch is NOTHING_COVERED_YET in app/api/projects/email-in/route.ts: no notes yet.
+  const notesThroughAt =
+    project.notes_through_at === '1970-01-01T00:00:00.000Z' ? null : project.notes_through_at
+  const notesThrough = notesThroughAt ? pacificMinute(notesThroughAt) : null
   const makerLast = project.last_maker_message_at ? pacificMinute(project.last_maker_message_at) : null
   if (notesThrough) coverage.push(`Notes cover conversations through ${notesThrough}.`)
   if (makerLast) coverage.push(`Maker last wrote ${makerLast}.`)
