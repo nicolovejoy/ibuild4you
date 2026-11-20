@@ -5,6 +5,7 @@ import { getAdminDb } from '@/lib/firebase/admin'
 import { getUserDisplayName } from '@/lib/api/firebase-server-helpers'
 import { buildInboundReply, findFeedbackIdInRecipients } from '@/lib/feedback/inbound'
 import { normalizeEmail } from '@/lib/email/normalize'
+import { formatDisplayName } from '@/lib/copy'
 import { fetchReceivedEmail, type ReceivedEmail } from '@/lib/email/resend-received'
 import { projectAddressesIn } from '@/lib/email-in/address'
 import { checkSender, type SenderCheck, type SenderMember } from '@/lib/email-in/sender'
@@ -72,6 +73,19 @@ type ProjectOutcome = 'stored' | 'duplicate' | 'not_member' | 'auth_failed' | 'o
 // would only make Resend retry it for nothing.
 const EMAIL_ID_SHAPE = /^[A-Za-z0-9_-]{1,128}$/
 
+// Each project address is one Firestore query, so an email naming many
+// inbox-host addresses (guesses, a long CC list) is looked up for the first
+// ones only; the rest are ignored.
+const MAX_PROJECT_ADDRESSES = 10
+
+// A project the email is addressed to, with the requester fields that can
+// name a member who has never signed in (they come with the lookup, no read).
+interface MatchedProject {
+  id: string
+  requester_email: string // normalized, '' when absent
+  requester_name: string | null // formatted as getUserDisplayName does
+}
+
 export async function POST(request: Request) {
   const secret = process.env.RESEND_INBOUND_SECRET
   if (!secret) {
@@ -128,9 +142,9 @@ export async function POST(request: Request) {
     recipients(data.cc),
     recipients(data.bcc),
   ])
-  const projectIds = await findProjectIds(db, addresses)
+  const projects = await findProjects(db, addresses.slice(0, MAX_PROJECT_ADDRESSES))
 
-  if (!feedback && projectIds.length === 0) {
+  if (!feedback && projects.length === 0) {
     const ignored = feedbackId
       ? 'feedback-not-found'
       : addresses.length
@@ -141,11 +155,17 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, ignored })
   }
 
+  // The fetch-failure line serves both branches; `projects` and `loop` say
+  // which one it held up (a Loop-only failure has projects 0).
+  const fetchFailedFields = { projects: projects.length, loop: feedback !== null }
+
   // No usable id: nothing can be fetched now or on a retry. The id itself is
   // untrusted text, so it is not logged. The project branch writes nothing;
   // a Loop reply still gets its placeholder.
   if (!emailId) {
-    console.warn(JSON.stringify({ event: 'email_in_fetch_failed', reason: 'bad_email_id' }))
+    console.warn(
+      JSON.stringify({ event: 'email_in_fetch_failed', reason: 'bad_email_id', ...fetchFailedFields })
+    )
     if (!feedback) return NextResponse.json({ ok: true, ignored: 'bad-email-id' })
     await writeLoopReply(feedback.ref, feedback.id, null, data)
     return NextResponse.json({ ok: true, feedback_id: feedback.id })
@@ -155,11 +175,16 @@ export async function POST(request: Request) {
   const email = await fetchReceivedEmail(emailId)
   if (!email) {
     console.warn(
-      JSON.stringify({ event: 'email_in_fetch_failed', email_id: emailId, reason: 'fetch_failed' })
+      JSON.stringify({
+        event: 'email_in_fetch_failed',
+        email_id: emailId,
+        reason: 'fetch_failed',
+        ...fetchFailedFields,
+      })
     )
     // A project email must not be lost: write nothing (not the Loop reply
     // either) and let Resend retry the whole email.
-    if (projectIds.length > 0) {
+    if (projects.length > 0) {
       return NextResponse.json({ error: 'Could not fetch the email' }, { status: 500 })
     }
   }
@@ -176,9 +201,9 @@ export async function POST(request: Request) {
   if (email) {
     let receivedAt: string | null = null
     const storeTime = () => (receivedAt ??= new Date().toISOString())
-    for (const projectId of projectIds) {
-      const outcome = await handleProjectEmail(db, projectId, emailId, email, storeTime)
-      projectEmails.push({ project_id: projectId, outcome })
+    for (const project of projects) {
+      const outcome = await handleProjectEmail(db, project, emailId, email, storeTime)
+      projectEmails.push({ project_id: project.id, outcome })
     }
   }
 
@@ -205,26 +230,57 @@ function recipients(value: unknown): string | string[] | undefined {
   return undefined
 }
 
-// The ids of the projects holding any of these addresses, each once.
-async function findProjectIds(db: Firestore, addresses: string[]): Promise<string[]> {
-  const ids = new Set<string>()
+// The projects holding any of these addresses, each once.
+async function findProjects(db: Firestore, addresses: string[]): Promise<MatchedProject[]> {
+  const found = new Map<string, MatchedProject>()
   for (const address of addresses) {
     const snap = await db
       .collection('projects')
       .where('email_in_address', '==', address)
       .limit(1)
       .get()
-    for (const doc of snap.docs) ids.add(doc.id)
+    for (const doc of snap.docs) {
+      const d = doc.data()
+      const str = (v: unknown) => (typeof v === 'string' ? v : undefined)
+      found.set(doc.id, {
+        id: doc.id,
+        requester_email: normalizeEmail(str(d.requester_email) ?? ''),
+        requester_name: formatDisplayName(str(d.requester_first_name), str(d.requester_last_name)),
+      })
+    }
   }
-  return [...ids]
+  return [...found.values()]
 }
 
-// The project's member rows for checkSender, display names resolved the way
-// the members route builds ProjectMemberSummary.display_name (the rows carry
-// none). Removed rows are passed through, unresolved, so checkSender sees
-// them as removed.
-async function loadMembers(db: Firestore, projectId: string): Promise<SenderMember[]> {
-  const snap = await db.collection('project_members').where('project_id', '==', projectId).get()
+// The name of an active member, resolved the way the members route builds
+// ProjectMemberSummary.display_name (the rows carry none): their users row,
+// else the email's local part. A maker who has never signed in has no users
+// row, so before that last fallback the project's requester name is used when
+// the member is the requester.
+async function memberDisplayName(
+  db: Firestore,
+  project: MatchedProject,
+  uid: string,
+  email: string
+): Promise<string> {
+  const name = await getUserDisplayName(db, uid, email)
+  // getUserDisplayName gives the local part when nothing names the member.
+  const unnamed = name === email.split('@')[0]
+  if (
+    unnamed &&
+    project.requester_name &&
+    project.requester_email &&
+    normalizeEmail(email) === project.requester_email
+  ) {
+    return project.requester_name
+  }
+  return name
+}
+
+// The project's member rows for checkSender, display names resolved. Removed
+// rows are passed through, unresolved, so checkSender sees them as removed.
+async function loadMembers(db: Firestore, project: MatchedProject): Promise<SenderMember[]> {
+  const snap = await db.collection('project_members').where('project_id', '==', project.id).get()
   return Promise.all(
     snap.docs.map(async (doc) => {
       const d = doc.data()
@@ -236,7 +292,7 @@ async function loadMembers(db: Firestore, projectId: string): Promise<SenderMemb
         email,
         role: d.role,
         removed_at,
-        display_name: removed_at || !email ? undefined : await getUserDisplayName(db, uid, email),
+        display_name: removed_at || !email ? undefined : await memberDisplayName(db, project, uid, email),
       }
     })
   )
@@ -275,12 +331,13 @@ function cutText(text: string): { text: string; truncated: boolean } {
 // gives the webhook's one received_at (read on its first call).
 async function handleProjectEmail(
   db: Firestore,
-  projectId: string,
+  project: MatchedProject,
   emailId: string,
   email: ReceivedEmail,
   storeTime: () => string
 ): Promise<ProjectOutcome> {
-  const check = checkEmailSender(email, await loadMembers(db, projectId))
+  const projectId = project.id
+  const check = checkEmailSender(email, await loadMembers(db, project))
 
   let outcome: ProjectOutcome
   if (check.ok) {

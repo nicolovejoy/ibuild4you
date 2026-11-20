@@ -88,8 +88,12 @@ function applyPatch(target: Doc, patch: Doc): Doc {
 const alreadyExists = () => Object.assign(new Error('6 ALREADY_EXISTS'), { code: 6 })
 const notFound = () => Object.assign(new Error('5 NOT_FOUND'), { code: 5 })
 
+// Every where() query the route makes, to count lookups.
+const queries: Array<{ collection: string; field: string; value: unknown }> = []
+
 function fakeCollection(name: string) {
   const query = (field: string, value: unknown) => {
+    queries.push({ collection: name, field, value })
     const q = {
       limit: () => q,
       select: () => q,
@@ -237,6 +241,7 @@ const BILL = 'bduris@example.com' // the recorded sender
 // Bill has a users row (display name "Bill D"); Nico has none.
 function seedTables() {
   for (const name of Object.keys(tables)) delete tables[name]
+  queries.length = 0
   table('projects').set('p1', { title: 'One', email_in_address: P1_ADDRESS })
   table('projects').set('p2', { title: 'Two', email_in_address: P2_ADDRESS })
   table('projects').set('p3', { title: 'No address' })
@@ -678,7 +683,33 @@ describe('POST /api/webhooks/resend/inbound — project email (email-in)', () =>
     expect(table('project_emails').size).toBe(0)
     expect(table('projects')).toEqual(before)
     expect(loggedEvents()).toEqual([
-      { event: 'email_in_fetch_failed', email_id: EMAIL_ID, reason: 'fetch_failed' },
+      {
+        event: 'email_in_fetch_failed',
+        email_id: EMAIL_ID,
+        reason: 'fetch_failed',
+        projects: 1,
+        loop: false,
+      },
+    ])
+  })
+
+  // F12: the same event covers a Loop reply alone, told apart by its fields.
+  it('a failed body fetch for a Loop reply alone logs projects 0 and loop true', async () => {
+    mockFetchJson({ error: 'not found' }, 404)
+    const res = await POST(makeRequest(receivedEvent()))
+    expect(res.status).toBe(200)
+    expect(loggedEvents()).toEqual([
+      { event: 'email_in_fetch_failed', email_id: 'em_123', reason: 'fetch_failed', projects: 0, loop: true },
+    ])
+  })
+
+  it('a failed body fetch for a project and a Loop reply logs both', async () => {
+    mockFetchJson({ error: 'not found' }, 404)
+    await POST(
+      makeRequest(projectEvent({ to: [`feedback+fb-1@${FEEDBACK_INBOX_HOST}`], cc: [P1_ADDRESS, P2_ADDRESS] }))
+    )
+    expect(loggedEvents()).toEqual([
+      { event: 'email_in_fetch_failed', email_id: EMAIL_ID, reason: 'fetch_failed', projects: 2, loop: true },
     ])
   })
 
@@ -703,7 +734,9 @@ describe('POST /api/webhooks/resend/inbound — project email (email-in)', () =>
     expect(fetchFn).not.toHaveBeenCalled()
     expect(table('project_emails').size).toBe(0)
     expect(table('projects')).toEqual(before)
-    expect(loggedEvents()).toEqual([{ event: 'email_in_fetch_failed', reason: 'bad_email_id' }])
+    expect(loggedEvents()).toEqual([
+      { event: 'email_in_fetch_failed', reason: 'bad_email_id', projects: 1, loop: false },
+    ])
     expect(loggedText()).not.toContain('SECRET')
   })
 
@@ -822,6 +855,63 @@ describe('POST /api/webhooks/resend/inbound — project email (email-in)', () =>
       expect(res.status).toBe(200)
     }
     expect(table('project_emails').size).toBe(0)
+  })
+
+  // F13: one Firestore query per address, so an email naming many inbox-host
+  // addresses is capped.
+  it('looks up at most 10 project addresses per email', async () => {
+    mockFetchJson(fetchedEmail())
+    const many = Array.from({ length: 12 }, (_, i) => `guess-${i}@inbox.ibuild4you.com`)
+    const res = await POST(makeRequest(projectEvent({ to: many, cc: [], received_for: [] })))
+    expect(res.status).toBe(200)
+    const lookups = queries.filter((q) => q.collection === 'projects' && q.field === 'email_in_address')
+    expect(lookups.map((q) => q.value)).toEqual(many.slice(0, 10))
+  })
+
+  // F14: a maker who never signed in has no users row; the project's requester
+  // fields name them when the address is the requester's.
+  it("names a member with no users row by the project's requester name when the address matches", async () => {
+    table('projects').set('p1', {
+      title: 'One',
+      email_in_address: P1_ADDRESS,
+      requester_email: 'BDuris@Example.com',
+      requester_first_name: 'Bill',
+      requester_last_name: 'Duris',
+    })
+    table('project_members').set('m1', { project_id: 'p1', email: BILL, role: 'maker' })
+    mockFetchJson(fetchedEmail())
+    await POST(makeRequest(projectEvent()))
+    expect(table('project_emails').get(`${EMAIL_ID}_p1`)?.from_name).toBe('Bill D')
+  })
+
+  it('falls back to the local part when the requester is someone else or has no name', async () => {
+    table('project_members').set('m1', { project_id: 'p1', email: BILL, role: 'maker' })
+    table('projects').set('p1', {
+      email_in_address: P1_ADDRESS,
+      requester_email: 'someone@example.com',
+      requester_first_name: 'Someone',
+    })
+    mockFetchJson(fetchedEmail())
+    await POST(makeRequest(projectEvent()))
+    expect(table('project_emails').get(`${EMAIL_ID}_p1`)?.from_name).toBe('bduris')
+
+    seedTables()
+    table('project_members').set('m1', { project_id: 'p1', email: BILL, role: 'maker' })
+    table('projects').set('p1', { email_in_address: P1_ADDRESS, requester_email: BILL })
+    mockFetchJson(fetchedEmail())
+    await POST(makeRequest(projectEvent()))
+    expect(table('project_emails').get(`${EMAIL_ID}_p1`)?.from_name).toBe('bduris')
+  })
+
+  it("prefers the member's own users row over the requester name", async () => {
+    table('projects').set('p1', {
+      email_in_address: P1_ADDRESS,
+      requester_email: BILL,
+      requester_first_name: 'William',
+    })
+    mockFetchJson(fetchedEmail())
+    await POST(makeRequest(projectEvent()))
+    expect(table('project_emails').get(`${EMAIL_ID}_p1`)?.from_name).toBe('Bill D')
   })
 
   it('a member row with a removed_at is not a member', async () => {
