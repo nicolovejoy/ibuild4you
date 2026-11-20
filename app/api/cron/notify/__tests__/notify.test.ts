@@ -7,7 +7,11 @@ import { GET } from '../route'
 // The route writes notes for projects idle ≥10 min that no note covers yet. (Notification email moved out to /api/cron/notify-digest — #65.)
 //
 // The mock supports multiple where() calls per collection by keying results
-// on the field name passed to .where(). The briefs lookup uses
+// on the field name passed to .where(), so the two idle queries
+// (last_maker_message_at and last_email_at) return separate lists and a
+// project put in both lists exercises the route's merge. The mock does not
+// apply the '<' cutoff itself: a doc in a list is returned as is, so the
+// route's own idle check is what the tests exercise. The briefs lookup uses
 // where(...).orderBy(...).limit(...).get() — modeled explicitly.
 // =============================================================================
 
@@ -16,13 +20,15 @@ type DocLike = { id: string; data: () => Record<string, unknown>; ref?: { update
 const whereResults: Record<string, Record<string, DocLike[]>> = {}
 const briefResults: Record<string, DocLike[]> = {} // keyed by project_id (where('project_id','==',X))
 const memberResults: Record<string, DocLike[]> = {} // project_members keyed by project_id
+// Every projects where() call, to check both idle queries run with the same cutoff.
+const projectWheres: { field: string; op: string; value: unknown }[] = []
 
 const mockDoc = {
   update: vi.fn(async () => {}),
 }
 
 const mockCollection = vi.fn((name: string) => ({
-  where: vi.fn((field: string, _op: string, value: unknown) => {
+  where: vi.fn((field: string, op: string, value: unknown) => {
     // briefs lookup: where('project_id','==',X).orderBy(...).limit(...).get()
     if (name === 'briefs' && field === 'project_id') {
       const docs = briefResults[String(value)] || []
@@ -40,6 +46,7 @@ const mockCollection = vi.fn((name: string) => ({
       return { get: async () => ({ docs, empty: docs.length === 0, size: docs.length }) }
     }
     // projects lookup: where(field, '<', cutoff).get()
+    if (name === 'projects') projectWheres.push({ field, op, value })
     const docs = whereResults[name]?.[field] || []
     return { get: async () => ({ docs, size: docs.length }) }
   }),
@@ -71,6 +78,7 @@ beforeEach(() => {
   for (const k of Object.keys(whereResults)) delete whereResults[k]
   for (const k of Object.keys(briefResults)) delete briefResults[k]
   for (const k of Object.keys(memberResults)) delete memberResults[k]
+  projectWheres.length = 0
   whereResults.projects = {}
   process.env.CRON_SECRET = 'test-secret'
   process.env.RESEND_API_KEY = 'test-key'
@@ -288,7 +296,9 @@ describe('GET /api/cron/notify — idle brief regeneration', () => {
   })
 
   it('clears the circuit breaker once the maker has messaged after the failure streak', async () => {
-    const lastMakerAt = new Date().toISOString() // fresh maker turn
+    // A maker turn after the streak began, and itself idle (30m ago): a turn
+    // under 10 min old is not idle yet, so the cron would not pick it up.
+    const lastMakerAt = new Date(Date.now() - 30 * 60 * 1000).toISOString()
     const failuresSince = new Date(Date.now() - 60 * 60 * 1000).toISOString() // 1hr ago
     whereResults.projects.last_maker_message_at = [
       {
@@ -392,5 +402,183 @@ describe('GET /api/cron/notify — idle brief regeneration', () => {
     expect(body.notes_written).toBe(1)
     expect(body.archived_skipped).toBe(0)
     expect(mockRegenerate).toHaveBeenCalledWith(expect.anything(), 'p1')
+  })
+})
+
+describe('GET /api/cron/notify — email activity (email-in)', () => {
+  const minsAgo = (m: number) => new Date(Date.now() - m * 60 * 1000).toISOString()
+
+  it('runs a second idle query on last_email_at with the same cutoff', async () => {
+    await GET(req('Bearer test-secret'))
+    const maker = projectWheres.find((w) => w.field === 'last_maker_message_at')
+    const email = projectWheres.find((w) => w.field === 'last_email_at')
+    expect(maker?.op).toBe('<')
+    expect(email?.op).toBe('<')
+    expect(email?.value).toBe(maker?.value)
+  })
+
+  it('writes a note for a project with an 11-minute-old email and no maker message', async () => {
+    whereResults.projects.last_email_at = [
+      { id: 'p1', data: () => ({ last_email_at: minsAgo(11) }), ref: { update: mockDoc.update } },
+    ]
+    const body = await (await GET(req('Bearer test-secret'))).json()
+    expect(mockRegenerate).toHaveBeenCalledWith(expect.anything(), 'p1')
+    expect(body.notes_written).toBe(1)
+    expect(body.idle_checked).toBe(1)
+  })
+
+  it('does not write a note while the latest email is only 2 minutes old', async () => {
+    // Defensive: the real query would not return this doc, but the route's own
+    // check must hold too.
+    whereResults.projects.last_email_at = [
+      { id: 'p1', data: () => ({ last_email_at: minsAgo(2) }), ref: { update: mockDoc.update } },
+    ]
+    const body = await (await GET(req('Bearer test-secret'))).json()
+    expect(mockRegenerate).not.toHaveBeenCalled()
+    expect(body.notes_written).toBe(0)
+  })
+
+  it('does not write a note when the maker turn is old but an email arrived 2 minutes ago', async () => {
+    // The maker query matches this project; the fresh email means the thread
+    // is not idle yet.
+    whereResults.projects.last_maker_message_at = [
+      {
+        id: 'p1',
+        data: () => ({ last_maker_message_at: minsAgo(60), last_email_at: minsAgo(2) }),
+        ref: { update: mockDoc.update },
+      },
+    ]
+    const body = await (await GET(req('Bearer test-secret'))).json()
+    expect(mockRegenerate).not.toHaveBeenCalled()
+    expect(body.notes_written).toBe(0)
+  })
+
+  it('does not write a note when the email is old but a maker turn came 2 minutes ago', async () => {
+    whereResults.projects.last_email_at = [
+      {
+        id: 'p1',
+        data: () => ({ last_maker_message_at: minsAgo(2), last_email_at: minsAgo(60) }),
+        ref: { update: mockDoc.update },
+      },
+    ]
+    const body = await (await GET(req('Bearer test-secret'))).json()
+    expect(mockRegenerate).not.toHaveBeenCalled()
+    expect(body.notes_written).toBe(0)
+  })
+
+  it('skips when notes_through_at is at the email', async () => {
+    const emailAt = minsAgo(11)
+    whereResults.projects.last_email_at = [
+      { id: 'p1', data: () => ({ last_email_at: emailAt, notes_through_at: emailAt }), ref: { update: mockDoc.update } },
+    ]
+    const body = await (await GET(req('Bearer test-secret'))).json()
+    expect(mockRegenerate).not.toHaveBeenCalled()
+    expect(body.notes_written).toBe(0)
+  })
+
+  it('skips when notes_through_at is past the email', async () => {
+    whereResults.projects.last_email_at = [
+      {
+        id: 'p1',
+        data: () => ({ last_email_at: minsAgo(11), notes_through_at: minsAgo(5) }),
+        ref: { update: mockDoc.update },
+      },
+    ]
+    const body = await (await GET(req('Bearer test-secret'))).json()
+    expect(mockRegenerate).not.toHaveBeenCalled()
+    expect(body.notes_written).toBe(0)
+  })
+
+  it('writes a note when an email is newer than notes_through_at, though the maker turn is covered', async () => {
+    whereResults.projects.last_maker_message_at = [
+      {
+        id: 'p1',
+        data: () => ({
+          last_maker_message_at: minsAgo(60),
+          notes_through_at: minsAgo(60),
+          last_email_at: minsAgo(15),
+        }),
+        ref: { update: mockDoc.update },
+      },
+    ]
+    const body = await (await GET(req('Bearer test-secret'))).json()
+    expect(mockRegenerate).toHaveBeenCalledWith(expect.anything(), 'p1')
+    expect(body.notes_written).toBe(1)
+  })
+
+  it('falls back to the brief age against the email when no note exists yet', async () => {
+    whereResults.projects.last_email_at = [
+      { id: 'p1', data: () => ({ last_email_at: minsAgo(30) }), ref: { update: mockDoc.update } },
+    ]
+    // The brief was updated after the email: already covered.
+    briefResults.p1 = [{ id: 'b1', data: () => ({ updated_at: minsAgo(20) }) }]
+    const body = await (await GET(req('Bearer test-secret'))).json()
+    expect(mockRegenerate).not.toHaveBeenCalled()
+    expect(body.notes_written).toBe(0)
+  })
+
+  it('retries a project three failures deep when an email is newer than the streak', async () => {
+    whereResults.projects.last_email_at = [
+      {
+        id: 'p1',
+        data: () => ({
+          last_maker_message_at: minsAgo(120),
+          last_email_at: minsAgo(15),
+          brief_regen_failures: 3,
+          brief_regen_failures_since: minsAgo(60),
+        }),
+        ref: { update: mockDoc.update },
+      },
+    ]
+    const body = await (await GET(req('Bearer test-secret'))).json()
+    expect(body.circuit_broken).toBe(0)
+    expect(mockRegenerate).toHaveBeenCalledWith(expect.anything(), 'p1')
+    expect(body.notes_written).toBe(1)
+  })
+
+  it('keeps the breaker tripped when the email is older than the streak', async () => {
+    whereResults.projects.last_email_at = [
+      {
+        id: 'p1',
+        data: () => ({
+          last_email_at: minsAgo(90),
+          brief_regen_failures: 3,
+          brief_regen_failures_since: minsAgo(60),
+        }),
+        ref: { update: mockDoc.update },
+      },
+    ]
+    const body = await (await GET(req('Bearer test-secret'))).json()
+    expect(body.circuit_broken).toBe(1)
+    expect(mockRegenerate).not.toHaveBeenCalled()
+  })
+
+  it('processes a project matched by both queries once, and counts it once', async () => {
+    const data = { last_maker_message_at: minsAgo(30), last_email_at: minsAgo(20) }
+    whereResults.projects.last_maker_message_at = [
+      { id: 'p1', data: () => data, ref: { update: mockDoc.update } },
+    ]
+    whereResults.projects.last_email_at = [
+      { id: 'p1', data: () => data, ref: { update: mockDoc.update } },
+      { id: 'p2', data: () => ({ last_email_at: minsAgo(20) }), ref: { update: mockDoc.update } },
+    ]
+    const body = await (await GET(req('Bearer test-secret'))).json()
+    expect(mockRegenerate).toHaveBeenCalledTimes(2)
+    expect(mockRegenerate.mock.calls.map((c) => c[1]).sort()).toEqual(['p1', 'p2'])
+    expect(body.notes_written).toBe(2)
+    expect(body.idle_checked).toBe(2)
+  })
+
+  it('never writes last_maker_message_at from an email', async () => {
+    whereResults.projects.last_email_at = [
+      { id: 'p1', data: () => ({ last_email_at: minsAgo(11) }), ref: { update: mockDoc.update } },
+    ]
+    mockRegenerate.mockRejectedValueOnce(new Error('boom'))
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    await GET(req('Bearer test-secret'))
+    for (const call of mockDoc.update.mock.calls as unknown as [Record<string, unknown>][]) {
+      expect(call[0]).not.toHaveProperty('last_maker_message_at')
+    }
+    consoleError.mockRestore()
   })
 })
