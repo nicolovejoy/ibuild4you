@@ -29,16 +29,22 @@ function applyPatch(target: Doc, patch: Doc): Doc {
   return out
 }
 
+const alreadyExists = () => Object.assign(new Error('6 ALREADY_EXISTS'), { code: 6 })
+const notFound = () => Object.assign(new Error('5 NOT_FOUND'), { code: 5 })
+
 // In-memory stand-in for the project_emails and projects collections:
 // project_emails supports doc(id).get()/create(), where('project_id','==').get()
-// and .select(...).get(); projects supports doc(id).get()/update().
+// and .select(...).get(); projects supports doc(id).get()/update(). db.batch()
+// is all-or-nothing like Firestore's: commit() checks every write first, and if
+// a create meets an existing doc (6) or an update a missing one (5), nothing is
+// applied and it rejects with that code.
 function makeDb() {
   const emails = new Map<string, Doc>()
   const projects = new Map<string, Doc>([
     ['p1', { title: 'One' }],
     ['p2', { title: 'Two' }],
   ])
-  const calls = { emailReads: 0, selects: [] as string[][] }
+  const calls = { emailReads: 0, selects: [] as string[][], batchCommits: 0 }
 
   const whereProject = (projectId: string, fields?: string[]) => ({
     get: async () => {
@@ -55,16 +61,59 @@ function makeDb() {
     },
   })
 
+  const maps: Record<string, Map<string, Doc>> = { project_emails: emails, projects }
+  type Ref = { __collection: string; __id: string }
+  const refOf = (r: unknown): Ref => {
+    const ref = r as Partial<Ref>
+    if (!ref?.__collection || !ref.__id)
+      throw new Error('batch write with a ref the fake did not make')
+    return ref as Ref
+  }
+
+  const batch = () => {
+    const writes: Array<{ kind: 'create' | 'update'; ref: Ref; data: Doc }> = []
+    let committed = false
+    const b = {
+      create: (ref: unknown, data: Doc) => {
+        writes.push({ kind: 'create', ref: refOf(ref), data })
+        return b
+      },
+      update: (ref: unknown, data: Doc) => {
+        writes.push({ kind: 'update', ref: refOf(ref), data })
+        return b
+      },
+      commit: async () => {
+        if (committed) throw new Error('batch committed twice')
+        committed = true
+        calls.batchCommits++
+        for (const w of writes) {
+          const has = maps[w.ref.__collection].has(w.ref.__id)
+          if (w.kind === 'create' && has) throw alreadyExists()
+          if (w.kind === 'update' && !has) throw notFound()
+        }
+        for (const w of writes) {
+          const map = maps[w.ref.__collection]
+          map.set(
+            w.ref.__id,
+            w.kind === 'create' ? structuredClone(w.data) : applyPatch(map.get(w.ref.__id)!, w.data)
+          )
+        }
+      },
+    }
+    return b
+  }
+
   const db = {
+    batch,
     collection: (name: string) => {
       if (name === 'project_emails') {
         return {
           doc: (id: string) => ({
+            __collection: 'project_emails',
+            __id: id,
             get: async () => ({ id, exists: emails.has(id), data: () => emails.get(id) }),
             create: async (data: Doc) => {
-              if (emails.has(id)) {
-                throw Object.assign(new Error('6 ALREADY_EXISTS'), { code: 6 })
-              }
+              if (emails.has(id)) throw alreadyExists()
               emails.set(id, data)
             },
           }),
@@ -88,9 +137,11 @@ function makeDb() {
       if (name === 'projects') {
         return {
           doc: (id: string) => ({
+            __collection: 'projects',
+            __id: id,
             get: async () => ({ id, exists: projects.has(id), data: () => projects.get(id) }),
             update: async (patch: Doc) => {
-              if (!projects.has(id)) throw new Error('NOT_FOUND')
+              if (!projects.has(id)) throw notFound()
               projects.set(id, applyPatch(projects.get(id)!, patch))
             },
           }),
@@ -151,9 +202,9 @@ describe('storeProjectEmail', () => {
     expect(projects.get('p1')?.last_email_at).toBe('2026-11-20T10:00:00.000Z')
   })
 
-  it('a create that races and loses is duplicate', async () => {
+  it('a create that races and loses is duplicate and changes nothing', async () => {
     const { db, emails, projects } = makeDb()
-    // Another delivery creates the doc between our existence check and create().
+    // Another delivery creates the doc after our existence check, before commit.
     const real = db.collection('project_emails')
     const racing = {
       ...db,
@@ -162,10 +213,10 @@ describe('storeProjectEmail', () => {
         return {
           ...real,
           doc: (id: string) => ({
-            get: async () => ({ id, exists: false, data: () => undefined }),
-            create: async (data: Doc) => {
-              emails.set(id, { ...data, text: 'first writer' })
-              return real.doc(id).create(data)
+            ...real.doc(id),
+            get: async () => {
+              emails.set(id, { ...email(), text: 'first writer' })
+              return { id, exists: false, data: () => undefined }
             },
           }),
         }
@@ -176,24 +227,44 @@ describe('storeProjectEmail', () => {
     expect(projects.get('p1')?.last_email_at).toBeUndefined()
   })
 
-  it('rethrows a create error that is not already-exists', async () => {
-    const { db } = makeDb()
-    const real = db.collection('project_emails')
+  it('stores the email and last_email_at in one batch commit', async () => {
+    const { db, calls } = makeDb()
+    await storeProjectEmail(db, 'em1', email())
+    expect(calls.batchCommits).toBe(1)
+  })
+
+  it('rethrows a commit error that is not already-exists', async () => {
+    const { db, emails } = makeDb()
     const failing = {
-      collection: (name: string) => {
-        if (name !== 'project_emails') return db.collection(name)
+      ...db,
+      batch: () => {
+        const b = db.batch()
         return {
-          ...real,
-          doc: (id: string) => ({
-            get: async () => ({ id, exists: false, data: () => undefined }),
-            create: async () => {
-              throw Object.assign(new Error('14 UNAVAILABLE'), { code: 14 })
-            },
-          }),
+          ...b,
+          commit: async () => {
+            throw Object.assign(new Error('14 UNAVAILABLE'), { code: 14 })
+          },
         }
       },
     } as unknown as Firestore
     await expect(storeProjectEmail(failing, 'em1', email())).rejects.toThrow('UNAVAILABLE')
+    expect(emails.has('em1_p1')).toBe(false)
+  })
+
+  it('a failing project update stores nothing and rethrows; the retry then stores', async () => {
+    const { db, emails, projects } = makeDb()
+    // The project doc is missing on the first delivery, so the update half fails.
+    const saved = projects.get('p1')!
+    projects.delete('p1')
+    await expect(storeProjectEmail(db, 'em1', email())).rejects.toMatchObject({ code: 5 })
+    expect(emails.has('em1_p1')).toBe(false)
+
+    // Resend retries once the project is back: not a duplicate, and the cron's
+    // last_email_at is set.
+    projects.set('p1', saved)
+    expect(await storeProjectEmail(db, 'em1', email())).toBe('stored')
+    expect(emails.get('em1_p1')).toEqual(email())
+    expect(projects.get('p1')?.last_email_at).toBe('2026-11-20T10:00:00.000Z')
   })
 
   it('the 51st email in 24 hours is over_limit and writes nothing', async () => {

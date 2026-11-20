@@ -24,7 +24,8 @@ export function projectEmailDocId(emailId: string, projectId: string): string {
   return `${emailId}_${projectId}`
 }
 
-// Firestore create() on a doc that exists fails with gRPC ALREADY_EXISTS (6).
+// A create() on a doc that exists, alone or in a batch, fails with gRPC
+// ALREADY_EXISTS (6).
 function isAlreadyExists(err: unknown): boolean {
   const code = (err as { code?: unknown } | null)?.code
   return code === 6 || code === 'already-exists'
@@ -47,9 +48,17 @@ async function countRecent(db: Firestore, projectId: string, at: string): Promis
 // already stored is 'duplicate' and changes nothing: it does not move
 // received_at or last_email_at, and it is checked before the flood guard so a
 // retry never reads as 'over_limit' (which the route would count as a drop).
-// The existence check, the count and the create are not one transaction, so
-// two deliveries racing can both pass the guard; create() still stores the
-// email only once.
+//
+// The email and the project's last_email_at go in one batch, so either both
+// are written or neither is. Were they two writes, a failed second one would
+// leave the email stored with no last_email_at; Resend's retry would then read
+// 'duplicate' and the cron would never pick the email up. Any commit error
+// other than already-exists (a missing project included) rethrows with
+// nothing stored, so the route answers 500 and the retry starts clean.
+//
+// The existence check, the count and the commit are not one transaction, so
+// two deliveries racing can both pass the guard; the batch's create still
+// stores the email only once, and the loser's commit applies nothing.
 export async function storeProjectEmail(
   db: Firestore,
   emailId: string,
@@ -63,14 +72,17 @@ export async function storeProjectEmail(
     return 'over_limit'
   }
 
+  const batch = db.batch()
+  batch.create(ref, email)
+  batch.update(db.collection('projects').doc(email.project_id), {
+    last_email_at: email.received_at,
+  })
   try {
-    await ref.create(email)
+    await batch.commit()
   } catch (err) {
     if (isAlreadyExists(err)) return 'duplicate'
     throw err
   }
-
-  await db.collection('projects').doc(email.project_id).update({ last_email_at: email.received_at })
   return 'stored'
 }
 

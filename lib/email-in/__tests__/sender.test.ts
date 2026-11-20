@@ -145,4 +145,120 @@ describe('checkSender', () => {
       reason: 'not_member',
     })
   })
+  it('uses the address after a quoted name, even when the name holds an address', () => {
+    // The quoted name is free text: a member's address inside it must never be
+    // the one checked. These are validly shaped, so they parse to the real
+    // (last) address, which is not a member.
+    for (const from of [
+      '"<bduris@aol.com>" <attacker@evil.com>',
+      '"Bill <bduris@aol.com>" <attacker@evil.com>',
+    ]) {
+      expect(checkSender({ from, dmarc: 'pass', members })).toEqual({
+        ok: false,
+        reason: 'not_member',
+      })
+    }
+  })
+
+  it('pins the real address when the one in the quoted name is not it', () => {
+    const withAttacker = [...members, { email: 'attacker@evil.com', role: 'builder' }]
+    expect(
+      checkSender({
+        from: '"<bduris@aol.com>" <attacker@evil.com>',
+        dmarc: 'pass',
+        members: withAttacker,
+      })
+    ).toMatchObject({ ok: true, from_email: 'attacker@evil.com', from_role: 'builder' })
+  })
+
+  it('fails closed on From shapes outside the two accepted ones', () => {
+    for (const from of [
+      'attacker@evil.com (<bduris@aol.com>)',
+      'attacker@evil.com, <bduris@aol.com>',
+      'Bill <bduris@aol.com> trailing',
+      'bduris@aol.com, attacker@evil.com',
+      '<bduris@aol.com>, <attacker@evil.com>',
+      '<attacker@evil.com> <bduris@aol.com>',
+      'Bill <x@y.com> <bduris@aol.com>',
+      'Duris, Bill <bduris@aol.com>',
+      'Bill (Home) <bduris@aol.com>',
+      'bduris@aol.com (Bill)',
+      '"Bill <bduris@aol.com>',
+      '"Bill" "Duris" <bduris@aol.com>',
+      'Bill "Duris" <bduris@aol.com>',
+      '<bduris@aol.com',
+      'bduris@aol.com>',
+      '<>',
+      '< bduris@aol.com >',
+      '<bduris@aol.com>>',
+      'Bill <<bduris@aol.com>',
+    ]) {
+      expect(checkSender({ from, dmarc: 'pass', members }), from).toEqual({
+        ok: false,
+        reason: 'not_member',
+      })
+    }
+  })
+
+  it('accepts a quoted name holding commas, brackets, parentheses and escaped quotes', () => {
+    for (const from of [
+      '"Duris, Bill" <bduris@aol.com>',
+      '"Bill (Home)" <bduris@aol.com>',
+      '"Bill \\"B\\" <x>, y" <bduris@aol.com>',
+      '<bduris@aol.com>',
+      '  "Bill"<bduris@aol.com>  ',
+    ]) {
+      expect(checkSender({ from, dmarc: 'pass', members }), from).toMatchObject({
+        ok: true,
+        from_email: 'bduris@aol.com',
+      })
+    }
+  })
+
+  it('rejects an address that is not plain printable ASCII', () => {
+    const ken = [{ email: 'ken@mail.com', role: 'maker' }]
+    // U+212A KELVIN SIGN lowercases to a plain k.
+    expect(checkSender({ from: '\u212Aen@mail.com', dmarc: 'pass', members: ken })).toEqual({
+      ok: false,
+      reason: 'not_member',
+    })
+    expect(checkSender({ from: 'Ken <\u212Aen@mail.com>', dmarc: 'pass', members: ken })).toEqual({
+      ok: false,
+      reason: 'not_member',
+    })
+    // A zero-width space, bare and inside angle brackets.
+    for (const from of ['bduris@aol.com\u200B', 'Bill <bduris@aol.com\u200B>']) {
+      expect(checkSender({ from, dmarc: 'pass', members }), from).toEqual({
+        ok: false,
+        reason: 'not_member',
+      })
+    }
+  })
+
+  it('rejects addresses without exactly one @ and a valid shape', () => {
+    for (const from of ['a@b@aol.com', '@aol.com', 'bduris@', 'bduris@aol', '<bduris@>']) {
+      expect(checkSender({ from, dmarc: 'pass', members }), from).toEqual({
+        ok: false,
+        reason: 'not_member',
+      })
+    }
+  })
+
+  it('takes builder when active rows for one address disagree on role', () => {
+    for (const rows of [
+      [
+        { email: 'dup@example.com', role: 'maker', display_name: 'Dup' },
+        { email: 'dup@example.com', role: 'apprentice' },
+      ],
+      [
+        { email: 'dup@example.com', role: 'apprentice' },
+        { email: 'dup@example.com', role: 'maker', display_name: 'Dup' },
+      ],
+    ]) {
+      expect(checkSender({ from: 'dup@example.com', dmarc: 'pass', members: rows })).toMatchObject({
+        ok: true,
+        from_role: 'builder',
+      })
+    }
+  })
 })
