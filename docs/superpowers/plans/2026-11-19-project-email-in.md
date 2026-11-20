@@ -10,6 +10,31 @@
 
 **Spec:** `docs/superpowers/specs/2026-11-19-project-email-in-design.md`. Read it before any task; this plan names files and interfaces, the spec says why.
 
+## Progress and rulings (2026-11-20)
+
+Branch `worktree-email-in`. Tasks 1 and 3 are done and reviewed clean. Tasks 2, 4, 5, 6 and 7 are not started. The whole-branch review has not run; it runs when every task is in.
+
+Not blocked on the fixtures, so they can be built now: Task 5 (it needs only `projects.last_email_at`, typed in Task 1, and the unchanged `writeNoteForProject` signature), and from Task 2 the sender check, `store.ts` and the delete cascade (steps 1, 2, 5, 6, 9). Task 2's `fetchReceivedEmail` and route branch (steps 3, 4, 7, 8) wait for the two recorded fixtures. Tasks 4 and 6 need Task 2's `store.ts` first.
+
+Rulings made while building. Where one differs from the task text below, the ruling stands.
+
+- **Task 1, slug cleaning.** Lowercase; each run of whitespace becomes one hyphen; everything outside `[a-z0-9-]` is removed; repeated hyphens collapse; hyphens are trimmed from both ends; cut to 40; `project` when nothing is left. The task's own test needs `bills-app`.
+- **Task 1, mint.** The project read, the already-has-address check, the uniqueness query and the write run inside `db.runTransaction`, so two mints at once cannot replace an address already returned.
+- **Task 3, step 3.** A short line (under 12 normalized characters, blank lines included) takes the fate of the nearest long line of the same quoted status, before it first and then after it. The search never crosses a quote header span, and a header line is never the neighbour. With no such line the short line is kept.
+- **Task 3, headers are spans.** A header is the header line plus the run of `From|Sent|Date|To|Cc|Subject:` lines under it, recognized with leading `>` markers stripped; for a divider, also the blank lines between it and that run. A span is never evidence and is kept or dropped as one by step 4. A kept blank line does not keep a header alive.
+- **Task 3, "On … wrote:".** It is a header, in one line or two, only when it contains a digit or `@`. The two-line form never joins a blank line or a `>` line.
+- **Fix commits** are separate commits on the branch; the PR is squash-merged.
+
+Known gaps, for the whole-branch review to weigh:
+
+- A `To:` or `Cc:` list wrapped onto a second line ends the field run, so a held email's header block can still come back as unseen.
+- An Outlook block quoted with `>` (`> From:` / `> Sent:`) with no divider or attribution above it does not start a header; same effect.
+- A typed two-line "On 3 points … / … what Danny wrote:" (it holds a digit) above a seen quote is read as an attribution and dropped. This is the one known case that loses typed words.
+- A typed line starting `From:` with `Date:` or `Sent:` within 4 lines is read as a header; its text moves to `quotedUnseen`, none is lost.
+- A quoted body line that starts like a field (`> Date: Thursday works`) directly under an "On … wrote:" line joins the header span.
+- `mintEmailInAddress` does not lowercase the host; it matters only if `FEEDBACK_INBOX_HOST` is set with capitals. The address tests assume the default host.
+- No test for the unparsable-JSON 400 in the mint route. The short-line neighbour search is O(n²). `removeQuoteMarkers` strips indentation after `>`.
+
 ## Global Constraints
 
 - The address never sends anything. No task adds an outbound email.
