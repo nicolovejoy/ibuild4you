@@ -14,7 +14,31 @@ const mockTail = vi.fn()
 let projectData: Record<string, unknown> | undefined
 let takenAddresses: string[] = []
 
+// The project's briefs, as the writer reads them: where project_id, newest
+// version first, one doc.
+let briefs: Array<Record<string, unknown>> = []
+const briefQueries: Array<{ field: string; value: unknown; order: string; dir: string; n: number }> = []
+
 const mockCollection = vi.fn((name: string) => {
+  if (name === 'briefs') {
+    return {
+      where: (field: string, _op: string, value: unknown) => ({
+        orderBy: (order: string, dir: string) => ({
+          limit: (n: number) => ({
+            get: async () => {
+              briefQueries.push({ field, value, order, dir, n })
+              const docs = briefs
+                .filter((b) => b[field] === value)
+                .sort((a, b) => Number(b.version) - Number(a.version))
+                .slice(0, n)
+                .map((b) => ({ data: () => b }))
+              return { empty: docs.length === 0, docs }
+            },
+          }),
+        }),
+      }),
+    }
+  }
   if (name !== 'projects') throw new Error(`unexpected collection ${name}`)
   return {
     doc: vi.fn(() => ({
@@ -97,6 +121,8 @@ const getReq = (projectId?: string) =>
 beforeEach(() => {
   vi.clearAllMocks()
   storedEmails = []
+  briefs = []
+  briefQueries.length = 0
   authResult = { uid: 'u1', email: 'b@ibuild4you.com', systemRoles: [], error: null }
   mockGetProjectRole.mockResolvedValue('builder')
   projectData = { title: 'Music Forge', slug: 'musicforge' }
@@ -138,7 +164,52 @@ describe('POST /api/projects/email-in', () => {
     expect(address).toMatch(/^[a-z0-9-]+-[a-z2-9]{4}@inbox\.ibuild4you\.com$/)
     expect(address).toBe('musicforge-7k2q@inbox.ibuild4you.com')
     expect(mockUpdate).toHaveBeenCalledTimes(1)
-    expect(mockUpdate).toHaveBeenCalledWith({ email_in_address: address })
+    expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({ email_in_address: address }))
+  })
+
+  // F3: with no notes_through_at, the writer starts at the brief's updated_at,
+  // so a brief save before the first note would move the start past an email
+  // that arrived just before it. Minting the address pins the start once.
+  describe('pins notes_through_at when the project has none', () => {
+    it("to the brief's updated_at when there is a brief", async () => {
+      briefs = [
+        { project_id: 'p1', version: 2, updated_at: '2026-11-18T10:00:00.000Z' },
+        { project_id: 'p1', version: 5, updated_at: '2026-11-19T10:00:00.000Z' },
+        { project_id: 'p2', version: 9, updated_at: '2026-11-20T10:00:00.000Z' },
+      ]
+      await POST(postReq({ project_id: 'p1' }))
+      expect(mockUpdate).toHaveBeenCalledTimes(1)
+      expect(mockUpdate).toHaveBeenCalledWith({
+        email_in_address: 'musicforge-7k2q@inbox.ibuild4you.com',
+        notes_through_at: '2026-11-19T10:00:00.000Z',
+      })
+      // The same lookup as the cron and the note writer.
+      expect(briefQueries).toEqual([
+        { field: 'project_id', value: 'p1', order: 'version', dir: 'desc', n: 1 },
+      ])
+    })
+
+    it('to now when there is no brief', async () => {
+      vi.useFakeTimers({ toFake: ['Date'] })
+      vi.setSystemTime(new Date('2026-11-20T12:00:00.000Z'))
+      try {
+        await POST(postReq({ project_id: 'p1' }))
+      } finally {
+        vi.useRealTimers()
+      }
+      expect(mockUpdate).toHaveBeenCalledWith({
+        email_in_address: 'musicforge-7k2q@inbox.ibuild4you.com',
+        notes_through_at: '2026-11-20T12:00:00.000Z',
+      })
+    })
+
+    it('leaves a notes_through_at the project already has alone', async () => {
+      projectData = { slug: 'musicforge', notes_through_at: '2026-11-01T00:00:00.000Z' }
+      briefs = [{ project_id: 'p1', version: 5, updated_at: '2026-11-19T10:00:00.000Z' }]
+      await POST(postReq({ project_id: 'p1' }))
+      expect(mockUpdate).toHaveBeenCalledWith({ email_in_address: 'musicforge-7k2q@inbox.ibuild4you.com' })
+      expect(projectData?.notes_through_at).toBe('2026-11-01T00:00:00.000Z')
+    })
   })
 
   it('returns the same address and writes nothing on a second call', async () => {
@@ -155,7 +226,9 @@ describe('POST /api/projects/email-in', () => {
     const res = await POST(postReq({ project_id: 'p1' }))
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({ address: 'musicforge-m3n4@inbox.ibuild4you.com' })
-    expect(mockUpdate).toHaveBeenCalledWith({ email_in_address: 'musicforge-m3n4@inbox.ibuild4you.com' })
+    expect(mockUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ email_in_address: 'musicforge-m3n4@inbox.ibuild4you.com' })
+    )
   })
 
   it('keeps the first address when two mints for the same project run at once', async () => {

@@ -88,10 +88,30 @@ export async function POST(request: Request) {
   const result = await db.runTransaction(async (tx) => {
     const projectDoc = await tx.get(projectRef)
     if (!projectDoc.exists) return { status: 'not_found' as const }
-    const project = projectDoc.data() as { slug?: string; email_in_address?: string }
+    const project = projectDoc.data() as {
+      slug?: string
+      email_in_address?: string
+      notes_through_at?: string | null
+    }
 
     if (project.email_in_address) {
       return { status: 'ok' as const, address: project.email_in_address }
+    }
+
+    // A project with no notes_through_at has its note writer (and the cron's
+    // covered check) start at the live brief's updated_at. A brief save after
+    // an email arrived but before its first note would move that start past
+    // the email, and no note would read it. So the start is pinned once, here,
+    // where it stood: the brief's updated_at, else now. The brief is found as
+    // the writer and the cron find it.
+    let notesThroughAt: string | null = null
+    if (!project.notes_through_at) {
+      const briefSnap = await tx.get(
+        db.collection('briefs').where('project_id', '==', projectId).orderBy('version', 'desc').limit(1),
+      )
+      const briefUpdatedAt = briefSnap.empty ? undefined : briefSnap.docs[0].data().updated_at
+      notesThroughAt =
+        typeof briefUpdatedAt === 'string' && briefUpdatedAt ? briefUpdatedAt : new Date().toISOString()
     }
 
     // The tail is random, so a collision is rare; a few tries are plenty.
@@ -102,7 +122,10 @@ export async function POST(request: Request) {
       )
       if (!taken.empty) continue
 
-      tx.update(projectRef, { email_in_address: address })
+      tx.update(projectRef, {
+        email_in_address: address,
+        ...(notesThroughAt && { notes_through_at: notesThroughAt }),
+      })
       return { status: 'ok' as const, address }
     }
     return { status: 'collisions' as const }
