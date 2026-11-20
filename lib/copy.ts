@@ -316,6 +316,10 @@ export const copy = {
       `Wants to change locked ${topic}: ${proposed} (${reason})`,
     noteThumbsDown: (excerpt: string, reason?: string) =>
       `👎 on Sam’s reply “${excerpt}”${reason ? `: ${reason}` : ''}`,
+    // Email-in: who wrote the emails a note covered (each name once), and the
+    // flag for an email that was cut to fit.
+    fromEmail: (who: string) => `From email: ${who}`,
+    emailCut: 'One email was too long to read in full. Check the original.',
     importStayHint: 'Brief updated. Read the note above, then continue.',
     importContinueButton: 'Continue to Conversations',
     emptyTitle: 'No brief yet',
@@ -656,6 +660,34 @@ export const copy = {
     loading: 'Loading…',
     error: 'Could not change the build status key.',
     loadError: 'Could not load the build status key.',
+  },
+
+  // The project's email address (Setup tab). Builder side, English only.
+  projectEmail: {
+    heading: 'Project email',
+    none: 'No address yet.',
+    create: 'Create project email address',
+    howTo: 'Keep this address on CC when you email the maker. It never replies.',
+    addressLabel: 'Project email address',
+    recentHeading: 'Received',
+    noneReceived: 'Nothing received yet.',
+    noSubject: '(no subject)',
+    // A received email: day (Pacific), who, their role, subject.
+    recentRow: (day: string, name: string, role: string, subject: string) =>
+      `${day} · ${name} (${role}) · ${subject}`,
+    roles: { maker: 'maker', builder: 'builder' },
+    droppedNotMember: (n: number) =>
+      `${n} ${n === 1 ? 'email was' : 'emails were'} ignored because the sender is not on this project. To have their mail read, add them as a member.`,
+    // `from` is empty when the sender was not kept.
+    droppedAuthFailed: (n: number, from: string) =>
+      `${n} ${n === 1 ? 'email' : 'emails'}${from ? ` from ${from}` : ''} failed the sender check and ${n === 1 ? 'was' : 'were'} ignored. Ask them to send it again.`,
+    droppedOverLimit: (n: number) =>
+      `${n} ${n === 1 ? 'email was' : 'emails were'} ignored because the project reached its daily limit. Try again tomorrow.`,
+    copy: 'Copy',
+    copied: 'Copied',
+    loading: 'Loading…',
+    error: 'Could not create the project email address.',
+    loadError: 'Could not load the project email address.',
   },
 
   // --- General ---

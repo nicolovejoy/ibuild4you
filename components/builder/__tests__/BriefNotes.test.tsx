@@ -87,4 +87,38 @@ describe('UnfoldedNotesList', () => {
     expect(screen.getByText('👎 on Sam’s reply “What is your budget?”: asked twice')).toBeTruthy()
     expect(screen.getByText('👎 on Sam’s reply “Hmm”')).toBeTruthy()
   })
+
+  it('says whose emails a note covered, each name once, in order', () => {
+    render(
+      <UnfoldedNotesList
+        notes={[
+          {
+            ...note,
+            email_ids: ['a_p1', 'b_p1', 'c_p1'],
+            email_sources: [
+              { from_name: 'Bill Duris', from_role: 'maker', received_at: '2026-10-28T17:00:00.000Z' },
+              { from_name: 'Nico', from_role: 'builder', received_at: '2026-10-28T17:30:00.000Z' },
+              { from_name: 'Bill Duris', from_role: 'maker', received_at: '2026-10-28T17:45:00.000Z' },
+            ],
+          },
+        ]}
+      />
+    )
+    fireEvent.click(screen.getByRole('button', { name: /New since last curation/ }))
+    expect(screen.getByText('From email: Bill Duris, Nico')).toBeTruthy()
+    expect(screen.queryByText(/too long to read in full/)).toBeNull()
+  })
+
+  it('flags an email that was cut', () => {
+    render(<UnfoldedNotesList notes={[{ ...note, email_truncated: true }]} />)
+    fireEvent.click(screen.getByRole('button', { name: /New since last curation/ }))
+    expect(screen.getByText('One email was too long to read in full. Check the original.')).toBeTruthy()
+  })
+
+  it('shows neither line on a note without email fields', () => {
+    render(<UnfoldedNotesList notes={[note]} />)
+    fireEvent.click(screen.getByRole('button', { name: /New since last curation/ }))
+    expect(screen.queryByText(/From email/)).toBeNull()
+    expect(screen.queryByText(/too long to read in full/)).toBeNull()
+  })
 })

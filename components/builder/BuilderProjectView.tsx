@@ -76,6 +76,7 @@ import { BriefEditor } from './BriefEditor'
 import { FerryDesk } from './FerryDesk'
 import { ConversationComposer } from './ConversationComposer'
 import { BuildStatusKeyPanel } from './BuildStatusKeyPanel'
+import { ProjectEmailPanel } from './ProjectEmailPanel'
 import { OpenQuestionsCard } from './OpenQuestionsCard'
 import { StalePrepNotice, UnfoldedNotesList } from './BriefNotes'
 import { makerQuestions, riskOwner, riskText } from '@/lib/brief/risks'
@@ -1997,6 +1998,7 @@ function AgentConfigCard({ project }: { project: Project }) {
               </div>
               {/* The saved repo, not the unsaved input, so the panel names the repo the server uses. */}
               <BuildStatusKeyPanel projectId={project.id} githubRepo={project.github_repo} isSystemAdmin={isAdmin} />
+              <ProjectEmailPanel projectId={project.id} />
               <div>
                 <label className="text-sm font-medium text-gray-700 block mb-1.5">Voice sample (optional)</label>
                 <textarea value={voiceSample} onChange={(e) => setVoiceSample(e.target.value)} placeholder="One paragraph showing how you'd text this person by hand." rows={3} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy" />

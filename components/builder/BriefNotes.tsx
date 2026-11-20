@@ -61,6 +61,11 @@ function noteLines(n: BriefNote): string[] {
   for (const r of n.risks_resolved ?? []) lines.push(c.noteRiskResolved(resolvedLine(r)))
   for (const l of n.lock_reversals ?? []) lines.push(c.noteLockReversal(l.topic, l.proposed, l.reason))
   for (const t of n.thumbs_down ?? []) lines.push(c.noteThumbsDown(t.excerpt, t.reason))
+  // Email-in: who wrote the emails behind this note (each name once, first-seen
+  // order), and a flag when one was cut to fit.
+  const senders = [...new Set((n.email_sources ?? []).map((s) => s.from_name))]
+  if (senders.length > 0) lines.push(c.fromEmail(senders.join(', ')))
+  if (n.email_truncated) lines.push(c.emailCut)
   return lines
 }
 

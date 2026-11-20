@@ -1,8 +1,73 @@
 import { NextResponse } from 'next/server'
 import { getAuthenticatedUser, getAdminDb, getProjectRole, requireRole } from '@/lib/api/firebase-server-helpers'
 import { mintEmailInAddress, randomTail } from '@/lib/email-in/address'
+import { listProjectEmails } from '@/lib/email-in/store'
 
 const MAX_MINT_ATTEMPTS = 5
+const RECENT_EMAILS = 10
+
+// A stored counter as a number: 0 when missing or not a number.
+function count(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0
+}
+
+// GET /api/projects/email-in?project_id= — what the Setup panel shows (builder+):
+// the address (null until minted), the newest emails as who/when/subject, and
+// the drop counters. Never an email's text, sender address or attachments.
+export async function GET(request: Request) {
+  const auth = await getAuthenticatedUser(request)
+  if (auth.error) return auth.error
+
+  const projectId = new URL(request.url).searchParams.get('project_id')
+  if (!projectId) {
+    return NextResponse.json({ error: 'project_id is required' }, { status: 400 })
+  }
+
+  const db = getAdminDb()
+
+  const role = await getProjectRole(db, projectId, auth.uid, auth.email, auth.systemRoles, auth)
+  const roleCheck = requireRole(role, 'builder')
+  if (roleCheck) return roleCheck
+
+  const projectDoc = await db.collection('projects').doc(projectId).get()
+  if (!projectDoc.exists) {
+    return NextResponse.json({ error: 'Project not found' }, { status: 404 })
+  }
+  const project = projectDoc.data() as {
+    email_in_address?: string
+    email_in_dropped?: {
+      not_member?: unknown
+      auth_failed?: unknown
+      over_limit?: unknown
+      last_auth_failed_from?: unknown
+    }
+  }
+  const dropped = project.email_in_dropped ?? {}
+
+  // listProjectEmails is oldest first; the panel wants the newest 10, newest first.
+  const emails = await listProjectEmails(db, projectId)
+  const recent = emails
+    .slice(-RECENT_EMAILS)
+    .reverse()
+    .map((e) => ({
+      from_name: e.from_name,
+      from_role: e.from_role,
+      received_at: e.received_at,
+      subject: e.subject,
+    }))
+
+  return NextResponse.json({
+    address: project.email_in_address ?? null,
+    recent,
+    dropped: {
+      not_member: count(dropped.not_member),
+      auth_failed: count(dropped.auth_failed),
+      over_limit: count(dropped.over_limit),
+      last_auth_failed_from:
+        typeof dropped.last_auth_failed_from === 'string' ? dropped.last_auth_failed_from : null,
+    },
+  })
+}
 
 // POST /api/projects/email-in { project_id } — the project's email address
 // (builder+). Minted once: a project that already has one gets it back

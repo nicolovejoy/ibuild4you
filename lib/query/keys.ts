@@ -19,5 +19,6 @@ export const queryKeys = {
   appAdmins: (slug: string | undefined) => ['app-admins', slug] as const,
   appReadKey: (slug: string | undefined) => ['app-read-key', slug] as const,
   buildStatusKey: (projectId: string | undefined) => ['build-status-key', projectId] as const,
+  projectEmailIn: (projectId: string | undefined) => ['project-email-in', projectId] as const,
   fileUrl: (fileId: string | undefined) => ['fileUrl', fileId] as const,
 }

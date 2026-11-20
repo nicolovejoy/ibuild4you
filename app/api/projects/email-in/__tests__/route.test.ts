@@ -67,13 +67,22 @@ vi.mock('@/lib/email-in/address', async (importOriginal) => {
   return { ...actual, randomTail: () => mockTail() }
 })
 
-import { POST } from '../route'
+let storedEmails: Record<string, unknown>[] = []
+vi.mock('@/lib/email-in/store', () => ({
+  listProjectEmails: vi.fn(async () => storedEmails),
+}))
+
+import { GET, POST } from '../route'
 
 const postReq = (body: unknown) =>
   new Request('http://localhost/api/projects/email-in', { method: 'POST', body: JSON.stringify(body) })
 
+const getReq = (projectId?: string) =>
+  new Request(`http://localhost/api/projects/email-in${projectId ? `?project_id=${projectId}` : ''}`)
+
 beforeEach(() => {
   vi.clearAllMocks()
+  storedEmails = []
   authResult = { uid: 'u1', email: 'b@ibuild4you.com', systemRoles: [], error: null }
   mockGetProjectRole.mockResolvedValue('builder')
   projectData = { title: 'Music Forge', slug: 'musicforge' }
@@ -157,5 +166,109 @@ describe('POST /api/projects/email-in', () => {
     expect(res.status).toBe(500)
     expect(mockTail).toHaveBeenCalledTimes(5)
     expect(mockUpdate).not.toHaveBeenCalled()
+  })
+})
+
+// GET /api/projects/email-in?project_id=: what the Setup panel shows. Counts and
+// a short list of who wrote and when; never an email's text.
+describe('GET /api/projects/email-in', () => {
+  // Twelve stored emails, ascending by received_at as listProjectEmails returns them.
+  const makeEmails = (n: number) =>
+    Array.from({ length: n }, (_, i) => ({
+      id: `e${i}_p1`,
+      project_id: 'p1',
+      from_email: `bill${i}@example.com`,
+      from_name: `Bill ${i}`,
+      from_role: i % 2 ? 'builder' : 'maker',
+      received_at: `2026-11-${String(i + 1).padStart(2, '0')}T10:00:00.000Z`,
+      sent_at: null,
+      subject: `Subject ${i}`,
+      message_id: `<m${i}@example.com>`,
+      text: `SECRET BODY ${i}`,
+      truncated: false,
+      attachments: [{ filename: 'secret.pdf', content_type: 'application/pdf' }],
+    }))
+
+  it('returns the auth error when not signed in', async () => {
+    authResult = { error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
+    const res = await GET(getReq('p1'))
+    expect(res.status).toBe(401)
+  })
+
+  it('is 400 without a project_id', async () => {
+    const res = await GET(getReq())
+    expect(res.status).toBe(400)
+  })
+
+  it('is 403 for a maker', async () => {
+    mockGetProjectRole.mockResolvedValue('maker')
+    const res = await GET(getReq('p1'))
+    expect(res.status).toBe(403)
+  })
+
+  it('is 404 when the project does not exist', async () => {
+    projectData = undefined
+    const res = await GET(getReq('p1'))
+    expect(res.status).toBe(404)
+  })
+
+  it('has no address and zeroed counts for a project with none', async () => {
+    const res = await GET(getReq('p1'))
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({
+      address: null,
+      recent: [],
+      dropped: { not_member: 0, auth_failed: 0, over_limit: 0, last_auth_failed_from: null },
+    })
+  })
+
+  it('gives a builder the address, the newest 10 emails newest first, and no email text', async () => {
+    projectData = { slug: 'musicforge', email_in_address: 'musicforge-abcd@inbox.ibuild4you.com' }
+    storedEmails = makeEmails(12)
+    const res = await GET(getReq('p1'))
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.address).toBe('musicforge-abcd@inbox.ibuild4you.com')
+    expect(body.recent).toHaveLength(10)
+    expect(body.recent[0]).toEqual({
+      from_name: 'Bill 11',
+      from_role: 'builder',
+      received_at: '2026-11-12T10:00:00.000Z',
+      subject: 'Subject 11',
+    })
+    expect(body.recent[9].subject).toBe('Subject 2')
+    for (const row of body.recent) {
+      expect(Object.keys(row).sort()).toEqual(['from_name', 'from_role', 'received_at', 'subject'])
+    }
+    const raw = JSON.stringify(body)
+    expect(raw).not.toContain('SECRET BODY')
+    expect(raw).not.toContain('example.com')
+    expect(raw).not.toContain('secret.pdf')
+  })
+
+  it('works for an owner', async () => {
+    mockGetProjectRole.mockResolvedValue('owner')
+    const res = await GET(getReq('p1'))
+    expect(res.status).toBe(200)
+  })
+
+  it('passes the drop counts and the last failed sender through', async () => {
+    projectData = {
+      email_in_address: 'musicforge-abcd@inbox.ibuild4you.com',
+      email_in_dropped: { not_member: 3, auth_failed: 2, over_limit: 1, last_at: 'x', last_auth_failed_from: 'bduris@aol.com' },
+    }
+    const body = await (await GET(getReq('p1'))).json()
+    expect(body.dropped).toEqual({
+      not_member: 3,
+      auth_failed: 2,
+      over_limit: 1,
+      last_auth_failed_from: 'bduris@aol.com',
+    })
+  })
+
+  it('reads a count that is missing or not a number as 0', async () => {
+    projectData = { email_in_dropped: { not_member: 'lots', auth_failed: null, last_auth_failed_from: 7 } }
+    const body = await (await GET(getReq('p1'))).json()
+    expect(body.dropped).toEqual({ not_member: 0, auth_failed: 0, over_limit: 0, last_auth_failed_from: null })
   })
 })
