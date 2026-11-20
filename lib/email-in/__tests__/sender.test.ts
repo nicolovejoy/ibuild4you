@@ -244,6 +244,119 @@ describe('checkSender', () => {
     }
   })
 
+  it('fails closed when an unquoted name hides a mailbox or a group', () => {
+    for (const from of [
+      'attacker@evil.com <bduris@aol.com>',
+      'g: attacker@evil.com; <bduris@aol.com>',
+      'attacker@evil.com: <bduris@aol.com>',
+      'Bill:attacker@evil.com;<bduris@aol.com>',
+      'Bill [x] <bduris@aol.com>',
+      'Bill \\ D <bduris@aol.com>',
+    ]) {
+      expect(checkSender({ from, dmarc: 'pass', members }), from).toEqual({
+        ok: false,
+        reason: 'not_member',
+      })
+    }
+  })
+
+  it('still accepts ordinary unquoted and quoted names', () => {
+    for (const from of [
+      'Bill D. <bduris@aol.com>',
+      '=?UTF-8?Q?Bill?= <bduris@aol.com>',
+      '=?UTF-8?Q?Duris=2C_Bill?= <bduris@aol.com>',
+      'Café Bill <bduris@aol.com>',
+      // The same é written as e plus a combining acute accent.
+      'Café Bill <bduris@aol.com>',
+      '"Duris, Bill" <bduris@aol.com>',
+      '"bill@work" <bduris@aol.com>',
+      '"g: a@b.com; [x] \\\\" <bduris@aol.com>',
+      'Bill\t<bduris@aol.com>\t',
+    ]) {
+      expect(checkSender({ from, dmarc: 'pass', members }), from).toMatchObject({
+        ok: true,
+        from_email: 'bduris@aol.com',
+      })
+    }
+  })
+
+  it('fails closed on control characters anywhere, without unfolding', () => {
+    for (const from of [
+      'attacker@evil.com\n<bduris@aol.com>',
+      'attacker@evil.com\r\n <bduris@aol.com>',
+      'attacker@evil.com\0<bduris@aol.com>',
+      '"x\nFrom: attacker@evil.com\n" <bduris@aol.com>',
+      'Bill <bduris@aol.com>\n',
+      'bduris@aol.com\r',
+      'Bill\x7f <bduris@aol.com>',
+      '"Bill\x1b" <bduris@aol.com>',
+      'Bill <bduris@aol.com>',
+      '"Bill " <bduris@aol.com>',
+    ]) {
+      expect(checkSender({ from, dmarc: 'pass', members }), JSON.stringify(from)).toEqual({
+        ok: false,
+        reason: 'not_member',
+      })
+    }
+  })
+
+  it('treats only space and tab as whitespace', () => {
+    for (const from of [
+      ' bduris@aol.com',
+      'bduris@aol.com ',
+      '﻿bduris@aol.com',
+      'Bill <bduris@aol.com> ',
+      'Bill <bduris@aol.com>﻿',
+      ' <bduris@aol.com>',
+      // Not letters, so not allowed in an unquoted name.
+      '​Bill <bduris@aol.com>',
+      'Bill Duris <bduris@aol.com>',
+    ]) {
+      expect(checkSender({ from, dmarc: 'pass', members }), JSON.stringify(from)).toEqual({
+        ok: false,
+        reason: 'not_member',
+      })
+    }
+  })
+
+  it('rejects an over-long header fast and still reads a padded one under the cap', () => {
+    for (const from of [
+      ' '.repeat(50000) + '<a',
+      ' '.repeat(50000) + '<x>>',
+      ' '.repeat(25000) + '<' + ' '.repeat(25000),
+      ' '.repeat(50000) + 'bduris@aol.com',
+    ]) {
+      const start = performance.now()
+      expect(checkSender({ from, dmarc: 'pass', members })).toEqual({
+        ok: false,
+        reason: 'not_member',
+      })
+      expect(performance.now() - start).toBeLessThan(50)
+    }
+    const name = 'Bill <bduris@aol.com>'
+    const padded = ' '.repeat(500) + name + '\t'.repeat(998 - 500 - name.length)
+    expect(padded.length).toBe(998)
+    expect(checkSender({ from: padded, dmarc: 'pass', members })).toMatchObject({
+      ok: true,
+      from_email: 'bduris@aol.com',
+    })
+    expect(checkSender({ from: padded + ' ', dmarc: 'pass', members })).toEqual({
+      ok: false,
+      reason: 'not_member',
+    })
+  })
+
+  it('is not_member when one active row has an unknown role, even beside a maker row', () => {
+    const rows = [
+      { email: 'dup@example.com', role: 'maker' },
+      { email: 'dup@example.com', role: 'admin' },
+    ]
+    expect(checkSender({ from: 'dup@example.com', dmarc: 'pass', members: rows })).toEqual({
+      ok: false,
+      reason: 'not_member',
+    })
+  })
+
   it('takes builder when active rows for one address disagree on role', () => {
     for (const rows of [
       [

@@ -18,22 +18,55 @@ export type SenderCheck =
 
 // The address a mail receiver treats as the From address, or null. DMARC is
 // checked by Resend against that real address, so taking any other address
-// out of the header (one inside a quoted display name, a comment, a second
+// out of the header (one inside a display name, a comment, a group, a second
 // mailbox) would let a sender whose own domain passes DMARC put words in a
 // member's mouth. So only two shapes are accepted, and anything else fails
 // closed:
-//   bare:   addr                         (whitespace around it only)
-//   named:  [name] <addr>                (angle group last, whitespace after)
-// where name is one double-quoted string (anything inside, with \" escapes)
-// or unquoted text with none of < > ( ) , ". That rejects some legal headers
-// a real client could send, such as Duris, Bill <b@aol.com> or
-// Bill (Home) <b@aol.com>: dropping those is the price of never guessing.
-const BARE = /^\s*([^\s<>()",]+)\s*$/
-const NAMED = /^\s*(?:"(?:[^"\\]|\\.)*"\s*|[^<>()",]*)<([^<>]*)>\s*$/
+//   bare:   addr
+//   named:  [name] <addr>                (the angle group is last)
+// Spaces and tabs may surround either shape; they are the only whitespace.
+// The name is either
+//   - one double-quoted string: anything inside but " and \, which must be
+//     escaped as \" and \\, or
+//   - unquoted text of spaces, tabs, printable ASCII other than
+//     < > ( ) , " @ : ; [ ] \, and Unicode letters and combining marks.
+//     Excluding @ : ; [ ] \ is what stops a mailbox or a group
+//     (g: a@b.com;) hiding in front of the real angle group.
+// addr must be plain printable ASCII with exactly one @.
+// Rejected outright, never unfolded or cleaned: a header over 998 characters
+// and any control character (every C0 control but tab, DEL, U+2028, U+2029).
+// That rejects some legal headers a real client could send, such as
+// Duris, Bill <b@aol.com>, Bill (Home) <b@aol.com> or a folded line:
+// dropping those is the price of never guessing.
+
+// RFC 5322's line limit. Checked first so that no pattern below ever runs on
+// a long adversarial input.
+const MAX_FROM_LENGTH = 998
+// Every C0 control except tab, plus DEL and the two Unicode line separators.
+const FORBIDDEN_CHAR = /[\x00-\x08\x0a-\x1f\x7f\u2028\u2029]/
+const BARE = /^([^ \t<>()",]+)$/
+// Anchored at both ends, with no leading or trailing whitespace to match
+// (trimSpaceTab does that). The two name forms cannot overlap (the unquoted
+// one has no "), the quoted one ends at its first unescaped ", and the
+// unquoted one stops at the first < (it holds none), so each step has one
+// way forward and failing costs one pass, not a retry per split point.
+const NAMED = /^(?:"(?:[^"\\]|\\.)*"[ \t]*|[ \t!#-'*+\-./0-9=?A-Z^-~\p{L}\p{M}]*)<([^<>]*)>$/u
 const PRINTABLE_ASCII = /^[\x21-\x7e]+$/
 
+// Strip spaces and tabs from both ends, by index, with no regex.
+function trimSpaceTab(s: string): string {
+  let start = 0
+  let end = s.length
+  while (start < end && (s[start] === ' ' || s[start] === '\t')) start++
+  while (end > start && (s[end - 1] === ' ' || s[end - 1] === '\t')) end--
+  return s.slice(start, end)
+}
+
 function fromAddress(from: string): string | null {
-  const match = from.match(BARE) ?? from.match(NAMED)
+  if (from.length > MAX_FROM_LENGTH) return null
+  if (FORBIDDEN_CHAR.test(from)) return null
+  const header = trimSpaceTab(from)
+  const match = header.match(BARE) ?? header.match(NAMED)
   if (!match) return null
   const raw = match[1]
   // Before lowercasing: toLowerCase maps some non-ASCII letters to ASCII ones
