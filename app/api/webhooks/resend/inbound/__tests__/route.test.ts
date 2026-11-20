@@ -604,12 +604,37 @@ describe('POST /api/webhooks/resend/inbound — project email (email-in)', () =>
     expect((table('projects').get('p1')!.email_in_dropped as Doc).not_member).toBe(1)
   })
 
-  it('falls back to the top-level from when there is no From header string', async () => {
+  it('no From header is not_member, even when the top-level from is a member', async () => {
     const email = fetchedEmail()
     delete (email.headers as Doc).from
     mockFetchJson(email)
+    const res = await POST(makeRequest(projectEvent()))
+    expect(res.status).toBe(200)
+    expect(table('project_emails').size).toBe(0)
+    expect((table('projects').get('p1')!.email_in_dropped as Doc).not_member).toBe(1)
+    expect(loggedEvents()).toEqual([
+      { event: 'email_in_dropped', project_id: 'p1', email_id: EMAIL_ID, reason: 'not_member' },
+    ])
+  })
+
+  it('two From headers (an array, one a member) are not_member', async () => {
+    mockFetchJson(
+      fetchedEmail({ headers: { from: [`"Bill Duris" <${BILL}>`, 'attacker@evil.com'] } })
+    )
+    await POST(makeRequest(projectEvent({ cc: [P1_ADDRESS, P2_ADDRESS] })))
+    expect(table('project_emails').size).toBe(0)
+    expect((table('projects').get('p1')!.email_in_dropped as Doc).not_member).toBe(1)
+    expect((table('projects').get('p2')!.email_in_dropped as Doc).not_member).toBe(1)
+    expect(JSON.stringify([...table('projects').values()])).not.toContain('attacker')
+  })
+
+  it('a fetched email with no headers object is not_member', async () => {
+    const email = fetchedEmail() as Record<string, unknown>
+    delete email.headers
+    mockFetchJson(email)
     await POST(makeRequest(projectEvent()))
-    expect(table('project_emails').get(`${EMAIL_ID}_p1`)?.from_email).toBe(BILL)
+    expect(table('project_emails').size).toBe(0)
+    expect((table('projects').get('p1')!.email_in_dropped as Doc).not_member).toBe(1)
   })
 
   it('the 51st email in 24 hours is dropped as over_limit', async () => {
@@ -637,7 +662,9 @@ describe('POST /api/webhooks/resend/inbound — project email (email-in)', () =>
     expect(res.status).toBe(500)
     expect(table('project_emails').size).toBe(0)
     expect(table('projects')).toEqual(before)
-    expect(loggedEvents()).toEqual([{ event: 'email_in_fetch_failed', email_id: EMAIL_ID }])
+    expect(loggedEvents()).toEqual([
+      { event: 'email_in_fetch_failed', email_id: EMAIL_ID, reason: 'fetch_failed' },
+    ])
   })
 
   it('a failed body fetch with a Loop reply too answers 500 and writes neither', async () => {
@@ -651,12 +678,49 @@ describe('POST /api/webhooks/resend/inbound — project email (email-in)', () =>
     expect(mockFeedbackUpdate).not.toHaveBeenCalled()
   })
 
-  it('an email_id that is not an id shape is not fetched: 500, nothing written', async () => {
+  // A bad id is permanent: answering 500 would only make Resend retry it.
+  it('an email_id that is not an id shape: 200, no fetch, nothing written, the id not logged', async () => {
     const fetchFn = mockFetchJson(fetchedEmail())
-    const res = await POST(makeRequest(projectEvent({ email_id: 'a/b/c' })))
-    expect(res.status).toBe(500)
+    const before = structuredClone(table('projects'))
+    const res = await POST(makeRequest(projectEvent({ email_id: 'a/b/c-SECRET' })))
+    expect(res.status).toBe(200)
+    expect((await res.json()).ignored).toBe('bad-email-id')
     expect(fetchFn).not.toHaveBeenCalled()
     expect(table('project_emails').size).toBe(0)
+    expect(table('projects')).toEqual(before)
+    expect(loggedEvents()).toEqual([{ event: 'email_in_fetch_failed', reason: 'bad_email_id' }])
+    expect(loggedText()).not.toContain('SECRET')
+  })
+
+  it('a missing or non-string email_id: 200, no fetch, nothing written', async () => {
+    for (const email_id of [undefined, '', 42, { id: EMAIL_ID }]) {
+      const fetchFn = mockFetchJson(fetchedEmail())
+      const res = await POST(makeRequest(projectEvent({ email_id })))
+      expect(res.status).toBe(200)
+      expect(fetchFn).not.toHaveBeenCalled()
+    }
+    expect(table('project_emails').size).toBe(0)
+    expect(table('projects').get('p1')?.email_in_dropped).toBeUndefined()
+  })
+
+  it('a bad email_id with a Loop reply too: the reply gets the placeholder, the project nothing', async () => {
+    const fetchFn = mockFetchJson(fetchedEmail())
+    const res = await POST(
+      makeRequest(
+        projectEvent({
+          email_id: 'a/b',
+          to: [`feedback+fb-1@${FEEDBACK_INBOX_HOST}`],
+          cc: [P1_ADDRESS],
+        })
+      )
+    )
+    expect(res.status).toBe(200)
+    expect((await res.json()).feedback_id).toBe('fb-1')
+    expect(fetchFn).not.toHaveBeenCalled()
+    expect(table('project_emails').size).toBe(0)
+    expect(mockReplyAdd).toHaveBeenCalledOnce()
+    expect((mockReplyAdd.mock.calls[0][0] as { body: string }).body).toMatch(/Reply received/)
+    expect(mockFeedbackUpdate).toHaveBeenCalledOnce()
   })
 
   it('no project holding the address: 200, no fetch, nothing written', async () => {

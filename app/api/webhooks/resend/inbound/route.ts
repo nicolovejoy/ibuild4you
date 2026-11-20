@@ -68,7 +68,8 @@ type ProjectOutcome = 'stored' | 'duplicate' | 'not_member' | 'auth_failed' | 'o
 
 // Resend's email ids are UUIDs. The id goes into a fetch URL and a Firestore
 // document id, so anything else (a slash would make a nested path) is treated
-// as no id at all.
+// as no id at all. A bad or missing id is permanent, so it answers 200: a 500
+// would only make Resend retry it for nothing.
 const EMAIL_ID_SHAPE = /^[A-Za-z0-9_-]{1,128}$/
 
 export async function POST(request: Request) {
@@ -140,10 +141,22 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, ignored })
   }
 
+  // No usable id: nothing can be fetched now or on a retry. The id itself is
+  // untrusted text, so it is not logged. The project branch writes nothing;
+  // a Loop reply still gets its placeholder.
+  if (!emailId) {
+    console.warn(JSON.stringify({ event: 'email_in_fetch_failed', reason: 'bad_email_id' }))
+    if (!feedback) return NextResponse.json({ ok: true, ignored: 'bad-email-id' })
+    await writeLoopReply(feedback.ref, feedback.id, null, data)
+    return NextResponse.json({ ok: true, feedback_id: feedback.id })
+  }
+
   // The webhook ships metadata only; fetch the body, headers and DMARC once.
   const email = await fetchReceivedEmail(emailId)
   if (!email) {
-    console.warn(JSON.stringify({ event: 'email_in_fetch_failed', email_id: emailId }))
+    console.warn(
+      JSON.stringify({ event: 'email_in_fetch_failed', email_id: emailId, reason: 'fetch_failed' })
+    )
     // A project email must not be lost: write nothing (not the Loop reply
     // either) and let Resend retry the whole email.
     if (projectIds.length > 0) {
@@ -229,13 +242,19 @@ async function loadMembers(db: Firestore, projectId: string): Promise<SenderMemb
 }
 
 // Who sent it, failing closed. The strict parser in checkSender reads the raw
-// From header; Resend's top-level from is an address it parsed itself, and
-// DMARC was checked for that one. When there is a header the two must agree,
-// or the email is treated as from a non-member (and no address is kept).
+// From header, and only that: with no header string (none at all, or an
+// array for two From headers) the email is from a non-member. Resend's
+// top-level from is an address it parsed itself, and DMARC was checked for
+// that one, so the two must also agree, or the email is treated as from a
+// non-member (and no address is kept).
 function checkEmailSender(email: ReceivedEmail, members: SenderMember[]): SenderCheck {
-  const check = checkSender({ from: email.header_from ?? email.from, dmarc: email.dmarc, members })
-  if (email.header_from !== null && (check.ok || check.reason === 'auth_failed')) {
-    if (check.from_email !== normalizeEmail(email.from)) return { ok: false, reason: 'not_member' }
+  if (email.header_from === null) return { ok: false, reason: 'not_member' }
+  const check = checkSender({ from: email.header_from, dmarc: email.dmarc, members })
+  if (
+    (check.ok || check.reason === 'auth_failed') &&
+    check.from_email !== normalizeEmail(email.from)
+  ) {
+    return { ok: false, reason: 'not_member' }
   }
   return check
 }
