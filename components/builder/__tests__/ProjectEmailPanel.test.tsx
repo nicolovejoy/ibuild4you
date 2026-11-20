@@ -11,9 +11,15 @@ const ADDRESS = 'musicforge-7k2q@inbox.ibuild4you.com'
 type Status = {
   address: string | null
   recent: { from_name: string; from_role: 'maker' | 'builder'; received_at: string; subject: string }[]
-  dropped: { not_member: number; auth_failed: number; over_limit: number; last_auth_failed_from: string | null }
+  dropped: {
+    not_member: number
+    auth_failed: number
+    over_limit: number
+    last_at: string | null
+    last_auth_failed_from: string | null
+  }
 }
-const noDrops = { not_member: 0, auth_failed: 0, over_limit: 0, last_auth_failed_from: null }
+const noDrops = { not_member: 0, auth_failed: 0, over_limit: 0, last_at: null, last_auth_failed_from: null }
 let status: Status
 const apiFetchMock = vi.fn(async (_url: string, init?: { method?: string }) => {
   if (init?.method === 'POST') {
@@ -106,12 +112,26 @@ describe('ProjectEmailPanel with an address', () => {
     expect(await screen.findByText('Nothing received yet.')).toBeTruthy()
   })
 
-  it('says what the sender check did, with the sender', async () => {
+  // A sender check that failed fails again on a resend, so the line offers what
+  // works instead (F10).
+  it('says what the sender check did, with the sender, and what works instead', async () => {
     status = { ...status, dropped: { ...noDrops, auth_failed: 2, last_auth_failed_from: 'bduris@aol.com' } }
     renderPanel()
     expect(
       await screen.findByText(
-        '2 emails from bduris@aol.com failed the sender check and were ignored. Ask them to send it again.'
+        '2 emails from bduris@aol.com were not read: the sender check failed for that address. Ask them to paste what they wrote into the conversation.'
+      )
+    ).toBeTruthy()
+    expect(screen.queryByText(/send it again/)).toBeNull()
+    expect(screen.queryByText(/DMARC/)).toBeNull()
+  })
+
+  it('names no address when the sender was not kept', async () => {
+    status = { ...status, dropped: { ...noDrops, auth_failed: 1 } }
+    renderPanel()
+    expect(
+      await screen.findByText(
+        '1 email was not read: the sender check failed for the sender’s address. Ask the sender to paste what they wrote into the conversation.'
       )
     ).toBeTruthy()
   })
@@ -125,15 +145,32 @@ describe('ProjectEmailPanel with an address', () => {
       )
     ).toBeTruthy()
     expect(
-      screen.getByText('3 emails were ignored because the project reached its daily limit. Try again tomorrow.')
+      screen.getByText('3 emails were not read: the project had reached its daily limit and took no more email that day.')
     ).toBeTruthy()
     expect(screen.queryByText(/sender check/)).toBeNull()
+    expect(screen.queryByText(/tomorrow/)).toBeNull()
+  })
+
+  it('says once, after the dropped lines, when the last one happened (Pacific day)', async () => {
+    // 03:00 UTC on Nov 20 is still Nov 19 in Pacific.
+    status = {
+      ...status,
+      dropped: { ...noDrops, not_member: 1, over_limit: 3, last_at: '2026-11-20T03:00:00.000Z' },
+    }
+    renderPanel()
+    const last = await screen.findByText('Last one: November 19.')
+    expect(screen.getAllByText(/^Last one:/)).toHaveLength(1)
+    const overLimit = screen.getByText(/daily limit/)
+    // After the dropped lines in the page.
+    expect(overLimit.compareDocumentPosition(last) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
   it('shows no dropped line when every count is zero', async () => {
+    status = { ...status, dropped: { ...noDrops, last_at: '2026-11-20T03:00:00.000Z' } }
     renderPanel()
     await screen.findByLabelText('Project email address')
-    expect(screen.queryByText(/ignored/)).toBeNull()
+    expect(screen.queryByText(/ignored|not read/)).toBeNull()
+    expect(screen.queryByText(/Last one/)).toBeNull()
   })
 })
 

@@ -55,6 +55,11 @@ export function ProjectEmailPanel({ projectId }: { projectId: string }) {
     }
     if (dropped.over_limit > 0) droppedLines.push(t.droppedOverLimit(dropped.over_limit))
   }
+  // When the latest drop was, said once under the lines. Skipped when the
+  // stored time does not parse (format would throw on an invalid date).
+  const lastDropMs = dropped?.last_at ? Date.parse(dropped.last_at) : NaN
+  const lastDropLine =
+    droppedLines.length > 0 && !Number.isNaN(lastDropMs) ? t.droppedLastAt(dayFmt.format(new Date(lastDropMs))) : null
 
   return (
     <section className="bg-white rounded-lg border border-gray-200 p-4 space-y-3">
@@ -111,6 +116,7 @@ export function ProjectEmailPanel({ projectId }: { projectId: string }) {
                   {line}
                 </p>
               ))}
+              {lastDropLine && <p className="text-xs text-gray-500">{lastDropLine}</p>}
             </div>
           )}
         </>

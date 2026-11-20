@@ -678,11 +678,15 @@ export const copy = {
     roles: { maker: 'maker', builder: 'builder' },
     droppedNotMember: (n: number) =>
       `${n} ${n === 1 ? 'email was' : 'emails were'} ignored because the sender is not on this project. To have their mail read, add them as a member.`,
-    // `from` is empty when the sender was not kept.
+    // `from` is empty when the sender was not kept. A resend fails the same
+    // check, so the line says what works instead.
     droppedAuthFailed: (n: number, from: string) =>
-      `${n} ${n === 1 ? 'email' : 'emails'}${from ? ` from ${from}` : ''} failed the sender check and ${n === 1 ? 'was' : 'were'} ignored. Ask them to send it again.`,
+      `${n} ${n === 1 ? 'email' : 'emails'}${from ? ` from ${from}` : ''} ${n === 1 ? 'was' : 'were'} not read: the sender check failed for ${from ? 'that address' : 'the sender’s address'}. Ask ${from ? 'them' : 'the sender'} to paste what they wrote into the conversation.`,
+    // The counts are running totals, so this is told in the past.
     droppedOverLimit: (n: number) =>
-      `${n} ${n === 1 ? 'email was' : 'emails were'} ignored because the project reached its daily limit. Try again tomorrow.`,
+      `${n} ${n === 1 ? 'email was' : 'emails were'} not read: the project had reached its daily limit and took no more email that day.`,
+    // Shown once under the dropped lines: the Pacific day of the latest one.
+    droppedLastAt: (day: string) => `Last one: ${day}.`,
     copy: 'Copy',
     copied: 'Copied',
     loading: 'Loading…',

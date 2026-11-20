@@ -13,7 +13,8 @@ function count(value: unknown): number {
 
 // GET /api/projects/email-in?project_id= — what the Setup panel shows (builder+):
 // the address (null until minted), the newest emails as who/when/subject, and
-// the drop counters. Never an email's text, sender address or attachments.
+// the drop counters with when the last drop was. Never an email's text, sender
+// address or attachments.
 export async function GET(request: Request) {
   const auth = await getAuthenticatedUser(request)
   if (auth.error) return auth.error
@@ -39,6 +40,7 @@ export async function GET(request: Request) {
       not_member?: unknown
       auth_failed?: unknown
       over_limit?: unknown
+      last_at?: unknown
       last_auth_failed_from?: unknown
     }
   }
@@ -54,6 +56,7 @@ export async function GET(request: Request) {
       not_member: count(dropped.not_member),
       auth_failed: count(dropped.auth_failed),
       over_limit: count(dropped.over_limit),
+      last_at: typeof dropped.last_at === 'string' ? dropped.last_at : null,
       last_auth_failed_from:
         typeof dropped.last_auth_failed_from === 'string' ? dropped.last_auth_failed_from : null,
     },

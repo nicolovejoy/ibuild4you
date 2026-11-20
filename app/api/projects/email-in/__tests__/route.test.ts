@@ -305,7 +305,7 @@ describe('GET /api/projects/email-in', () => {
     expect(await res.json()).toEqual({
       address: null,
       recent: [],
-      dropped: { not_member: 0, auth_failed: 0, over_limit: 0, last_auth_failed_from: null },
+      dropped: { not_member: 0, auth_failed: 0, over_limit: 0, last_at: null, last_auth_failed_from: null },
     })
   })
 
@@ -341,23 +341,38 @@ describe('GET /api/projects/email-in', () => {
     expect(res.status).toBe(200)
   })
 
-  it('passes the drop counts and the last failed sender through', async () => {
+  it('passes the drop counts, when the last drop was, and the last failed sender through', async () => {
     projectData = {
       email_in_address: 'musicforge-abcd@inbox.ibuild4you.com',
-      email_in_dropped: { not_member: 3, auth_failed: 2, over_limit: 1, last_at: 'x', last_auth_failed_from: 'bduris@aol.com' },
+      email_in_dropped: {
+        not_member: 3,
+        auth_failed: 2,
+        over_limit: 1,
+        last_at: '2026-11-19T18:00:00.000Z',
+        last_auth_failed_from: 'bduris@aol.com',
+      },
     }
     const body = await (await GET(getReq('p1'))).json()
     expect(body.dropped).toEqual({
       not_member: 3,
       auth_failed: 2,
       over_limit: 1,
+      last_at: '2026-11-19T18:00:00.000Z',
       last_auth_failed_from: 'bduris@aol.com',
     })
   })
 
-  it('reads a count that is missing or not a number as 0', async () => {
-    projectData = { email_in_dropped: { not_member: 'lots', auth_failed: null, last_auth_failed_from: 7 } }
+  it('reads a count that is missing or not a number as 0, and a last_at that is not a string as null', async () => {
+    projectData = {
+      email_in_dropped: { not_member: 'lots', auth_failed: null, last_at: 5, last_auth_failed_from: 7 },
+    }
     const body = await (await GET(getReq('p1'))).json()
-    expect(body.dropped).toEqual({ not_member: 0, auth_failed: 0, over_limit: 0, last_auth_failed_from: null })
+    expect(body.dropped).toEqual({
+      not_member: 0,
+      auth_failed: 0,
+      over_limit: 0,
+      last_at: null,
+      last_auth_failed_from: null,
+    })
   })
 })

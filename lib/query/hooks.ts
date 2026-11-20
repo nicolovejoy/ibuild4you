@@ -1243,6 +1243,7 @@ export interface ProjectEmailIn {
     not_member: number
     auth_failed: number
     over_limit: number
+    last_at: string | null // when the latest one was dropped
     last_auth_failed_from: string | null
   }
 }
