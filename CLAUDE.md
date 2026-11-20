@@ -46,6 +46,7 @@ npm run test:watch   # Run tests in watch mode
 - `lib/copy.ts` — All user-facing text centralized in one file
 - `lib/agent/` — Agent system prompt, prep prompt, welcome message generator, constants
 - `components/ui/` — Reusable UI primitives; `components/builder/` — builder project view (sessions, brief, setup tabs); `components/maker/` — maker project view (chat, brief card)
+- `lib/email-in/` + `app/api/webhooks/resend/inbound/` — project email (email-in): the address, the sender check, the store and the new-text filter. Runbook: `docs/runbooks.md`, "Project email"
 - `lib/integration/` + `app/api/integrations/` — stars-demo round-two integration
 - **Loop** — the feedback mechanism: a widget embedded on host apps → `/api/feedback` → admin inbox at `/admin/feedback` (per-app at `/admin/apps/<slug>`) → optional GitHub issue. Overview and how to embed: `docs/loop.md`. Wire contract: `lib/feedback/README.md`.
 
@@ -63,6 +64,7 @@ One line per collection. Fields, limits and history are in `docs/data-model.md`;
 - **messages** — role (user/agent), timestamp, optional `file_ids`, `kind`, and the maker's `rating`
 - **files** — metadata in Firestore, bytes in S3
 - **briefs** — the living brief, versioned (`briefs/{id}/versions`), with `briefs/{id}/notes`: one short note per conversation stretch, folded in at the next curated paste. The app does not rewrite the brief after a conversation; the comms agent curates it at each paste
+- **project_emails** — mail members sent to a project's email address; the note writer reads it with the chat. The address never sends
 - **reviews** — builder annotations on a brief
 - **apps**, **loop_read_keys**, `loop_signing_secrets` — Loop host apps and their keys. App admins live only in Garm
 - **build_status_keys**, **projects/{id}/build_reports** — the per-repo key and the status reports Claude Code posts from a build repo
