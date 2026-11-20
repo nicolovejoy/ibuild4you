@@ -267,7 +267,7 @@ describe('checkSender', () => {
       '=?UTF-8?Q?Duris=2C_Bill?= <bduris@aol.com>',
       'Café Bill <bduris@aol.com>',
       // The same é written as e plus a combining acute accent.
-      'Café Bill <bduris@aol.com>',
+      'Cafe\u0301 Bill <bduris@aol.com>',
       '"Duris, Bill" <bduris@aol.com>',
       '"bill@work" <bduris@aol.com>',
       '"g: a@b.com; [x] \\\\" <bduris@aol.com>',
@@ -290,8 +290,8 @@ describe('checkSender', () => {
       'bduris@aol.com\r',
       'Bill\x7f <bduris@aol.com>',
       '"Bill\x1b" <bduris@aol.com>',
-      'Bill <bduris@aol.com>',
-      '"Bill " <bduris@aol.com>',
+      'Bill\u2028<bduris@aol.com>',
+      '"Bill\u2029" <bduris@aol.com>',
     ]) {
       expect(checkSender({ from, dmarc: 'pass', members }), JSON.stringify(from)).toEqual({
         ok: false,
@@ -302,15 +302,15 @@ describe('checkSender', () => {
 
   it('treats only space and tab as whitespace', () => {
     for (const from of [
-      ' bduris@aol.com',
-      'bduris@aol.com ',
-      '﻿bduris@aol.com',
-      'Bill <bduris@aol.com> ',
-      'Bill <bduris@aol.com>﻿',
-      ' <bduris@aol.com>',
+      '\u00a0bduris@aol.com',
+      'bduris@aol.com\u00a0',
+      '\ufeffbduris@aol.com',
+      'Bill <bduris@aol.com>\u00a0',
+      'Bill <bduris@aol.com>\ufeff',
+      '\u00a0<bduris@aol.com>',
       // Not letters, so not allowed in an unquoted name.
-      '​Bill <bduris@aol.com>',
-      'Bill Duris <bduris@aol.com>',
+      '\u200bBill <bduris@aol.com>',
+      'Bill\u00a0Duris <bduris@aol.com>',
     ]) {
       expect(checkSender({ from, dmarc: 'pass', members }), JSON.stringify(from)).toEqual({
         ok: false,
@@ -325,6 +325,11 @@ describe('checkSender', () => {
       ' '.repeat(50000) + '<x>>',
       ' '.repeat(25000) + '<' + ' '.repeat(25000),
       ' '.repeat(50000) + 'bduris@aol.com',
+      // Under the cap, so the patterns do run: these pin that a regex change
+      // cannot bring backtracking back unseen.
+      '"' + '\\a'.repeat(498) + '<',
+      ' '.repeat(996) + '<a',
+      ' '.repeat(498) + '<' + ' '.repeat(499),
     ]) {
       const start = performance.now()
       expect(checkSender({ from, dmarc: 'pass', members })).toEqual({
