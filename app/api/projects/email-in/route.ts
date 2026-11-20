@@ -4,6 +4,9 @@ import { mintEmailInAddress, randomTail } from '@/lib/email-in/address'
 import { listRecentProjectEmailRows } from '@/lib/email-in/store'
 
 const MAX_MINT_ATTEMPTS = 5
+// notes_through_at for a project with no brief and no note: earlier than any
+// stored timestamp, so the writer reads everything, as it does with none set.
+const NOTHING_COVERED_YET = '1970-01-01T00:00:00.000Z'
 const RECENT_EMAILS = 10
 
 // A stored counter as a number: 0 when missing or not a number.
@@ -102,11 +105,13 @@ export async function POST(request: Request) {
     }
 
     // A project with no notes_through_at has its note writer (and the cron's
-    // covered check) start at the live brief's updated_at. A brief save after
-    // an email arrived but before its first note would move that start past
-    // the email, and no note would read it. So the start is pinned once, here,
-    // where it stood: the brief's updated_at, else now. The brief is found as
-    // the writer and the cron find it.
+    // covered check) start at the live brief's updated_at, or at the very
+    // beginning when there is no brief. A brief save after an email arrived but
+    // before its first note would move that start past the email, and no note
+    // would read it. So the start is pinned once, here, where it stood: the
+    // brief's updated_at, else the epoch (nothing covered yet, so chat from
+    // before the mint is still noted). Never now, which would skip that chat.
+    // The brief is found as the writer and the cron find it.
     let notesThroughAt: string | null = null
     if (!project.notes_through_at) {
       const briefSnap = await tx.get(
@@ -114,7 +119,7 @@ export async function POST(request: Request) {
       )
       const briefUpdatedAt = briefSnap.empty ? undefined : briefSnap.docs[0].data().updated_at
       notesThroughAt =
-        typeof briefUpdatedAt === 'string' && briefUpdatedAt ? briefUpdatedAt : new Date().toISOString()
+        typeof briefUpdatedAt === 'string' && briefUpdatedAt ? briefUpdatedAt : NOTHING_COVERED_YET
     }
 
     // The tail is random, so a collision is rare; a few tries are plenty.

@@ -189,17 +189,14 @@ describe('POST /api/projects/email-in', () => {
       ])
     })
 
-    it('to now when there is no brief', async () => {
-      vi.useFakeTimers({ toFake: ['Date'] })
-      vi.setSystemTime(new Date('2026-11-20T12:00:00.000Z'))
-      try {
-        await POST(postReq({ project_id: 'p1' }))
-      } finally {
-        vi.useRealTimers()
-      }
+    // With no brief and no notes_through_at nothing is covered yet: the writer
+    // starts at the very beginning. The epoch keeps that (chat before the mint
+    // is still noted) and stops a brief created later from moving the start.
+    it('to the epoch when there is no brief, never to now', async () => {
+      await POST(postReq({ project_id: 'p1' }))
       expect(mockUpdate).toHaveBeenCalledWith({
         email_in_address: 'musicforge-7k2q@inbox.ibuild4you.com',
-        notes_through_at: '2026-11-20T12:00:00.000Z',
+        notes_through_at: '1970-01-01T00:00:00.000Z',
       })
     })
 

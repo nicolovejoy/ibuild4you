@@ -506,6 +506,22 @@ describe('GET /api/cron/notify — email activity (email-in)', () => {
     expect(body.notes_written).toBe(1)
   })
 
+  // F3: an address minted on a project with no brief sets notes_through_at to
+  // the epoch. A brief created later must not make the email look covered.
+  it('an epoch notes_through_at covers nothing, whatever the brief age', async () => {
+    whereResults.projects.last_email_at = [
+      {
+        id: 'p1',
+        data: () => ({ last_email_at: minsAgo(30), notes_through_at: '1970-01-01T00:00:00.000Z' }),
+        ref: { update: mockDoc.update },
+      },
+    ]
+    briefResults.p1 = [{ id: 'b1', data: () => ({ updated_at: minsAgo(20) }) }]
+    const body = await (await GET(req('Bearer test-secret'))).json()
+    expect(mockRegenerate).toHaveBeenCalledWith(expect.anything(), 'p1')
+    expect(body.notes_written).toBe(1)
+  })
+
   it('falls back to the brief age against the email when no note exists yet', async () => {
     whereResults.projects.last_email_at = [
       { id: 'p1', data: () => ({ last_email_at: minsAgo(30) }), ref: { update: mockDoc.update } },

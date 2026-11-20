@@ -866,6 +866,26 @@ describe('writeNoteForProject', () => {
       expect(notes()[0].email_ids).toEqual(['e1_p1'])
     })
 
+    // F3: minting an address on a project with no brief and no note sets
+    // notes_through_at to the epoch. Chat from before the mint is still read,
+    // and a brief created after an email does not move the start past it.
+    it('an epoch notes_through_at (minted with no brief) still covers chat sent before the mint', async () => {
+      seedProject({ notes_through_at: '1970-01-01T00:00:00.000Z' })
+      seedSession('s1', '2026-11-19T00:00:00.000Z')
+      seedMessage('m1', 's1', '2026-11-19T10:00:00.000Z', 'chat before the address existed')
+      seedEmail('e1_p1', '2026-11-19T11:00:00.000Z', 'an email after the mint')
+      // A paste made after both creates the brief.
+      seedBrief(emptyBrief, '2026-11-19T12:00:00.000Z')
+      mockMessagesCreate.mockResolvedValue(noteResponse(someNote))
+
+      const res = await writeNoteForProject(db, 'p1')
+
+      expect(res).toMatchObject({ covered: 2, through: '2026-11-19T11:00:00.000Z' })
+      const nm = newMessagesBlock()
+      expect(nm).toContain('User: chat before the address existed')
+      expect(nm).toContain('an email after the mint')
+    })
+
     it('shows an email from before the window as earlier context', async () => {
       seedProject({ notes_through_at: '2026-11-19T11:00:00.000Z' })
       seedEmail('e1_p1', '2026-11-19T11:00:00.000Z', 'an email noted last time')
