@@ -289,7 +289,8 @@ export function BuilderProjectView({ projectId }: { projectId: string }) {
                 </div>
               )}
             </div>
-            {turn && (
+            {/* Conversations shows whose turn it is in its own status row. */}
+            {turn && activeTab !== 'conversations' && (
               <TurnBadge turn={turn} className={`text-xs px-2.5 py-1 rounded-full font-medium shrink-0 ${turn.className}`} />
             )}
           </div>
