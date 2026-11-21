@@ -8,10 +8,13 @@ import React from 'react'
 import { copy } from '@/lib/copy'
 
 // Route each URL to a canned JSON answer; a value of null means "answer 500".
+// A function is called on every request, so one URL can answer differently
+// the second time.
 const answers: Record<string, unknown> = {}
 const apiFetch = vi.fn(async (url: string) => {
   const path = url.split('?')[0]
-  const answer = path in answers ? answers[path] : []
+  let answer = path in answers ? answers[path] : []
+  if (typeof answer === 'function') answer = (answer as () => unknown)()
   if (answer === null) return new Response('{}', { status: 500 })
   return new Response(JSON.stringify(answer), { status: 200 })
 })
@@ -148,5 +151,45 @@ describe('Brief tab: copy next-convo prep with build reports', () => {
     await clickCopyPrep()
     expect(await screen.findByText(copy.brief.copyPrepReportsFailed)).toBeTruthy()
     expect(writeText).not.toHaveBeenCalled()
+  })
+})
+
+// The session count comes from the page's sessions query. A copy made while
+// that query has no data used to print "Sessions so far: 0" on a project with
+// 26 conversations (2026-11-21).
+describe('Brief tab: copy next-convo prep, session count', () => {
+  const noReports = { reports: [], latest_posted_at: null }
+  const twoSessions = [
+    { id: 's1', project_id: 'p1', status: 'completed', created_at: '2026-11-10T10:00:00.000Z' },
+    { id: 's2', project_id: 'p1', status: 'active', created_at: '2026-11-12T10:00:00.000Z' },
+  ]
+
+  it('prints the count from the loaded sessions', async () => {
+    setAnswers({ reports: noReports })
+    answers['/api/sessions'] = twoSessions
+    await clickCopyPrep()
+    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1))
+    expect(writeText.mock.calls[0][0]).toContain('Sessions so far: 2')
+  })
+
+  it('reads the sessions itself when the page has none loaded', async () => {
+    setAnswers({ reports: noReports })
+    // The page's own query fails; the read made by the copy succeeds.
+    let calls = 0
+    answers['/api/sessions'] = () => (++calls === 1 ? null : twoSessions)
+    await clickCopyPrep()
+    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1))
+    const prep = writeText.mock.calls[0][0] as string
+    expect(prep).toContain('Sessions so far: 2')
+  })
+
+  it('leaves the line out when the sessions cannot be read, and never prints 0 for it', async () => {
+    setAnswers({ reports: noReports })
+    answers['/api/sessions'] = null
+    await clickCopyPrep()
+    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1))
+    const prep = writeText.mock.calls[0][0] as string
+    expect(prep).not.toContain('Sessions so far')
+    expect(prep).toContain('Title: Cafe')
   })
 })

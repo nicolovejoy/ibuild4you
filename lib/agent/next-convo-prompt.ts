@@ -19,7 +19,9 @@ interface NextConvoPromptInput {
   reports?: BuildReport[]
   latestReportAt?: string | null
   projectTitle: string
-  sessionCount: number
+  // Undefined when the caller could not read the sessions: the line is left
+  // out, since a wrong 0 tells the comms agent the project has not started.
+  sessionCount?: number
   language?: Locale
 }
 
@@ -170,8 +172,7 @@ export function buildNextConvoUserContent({
   const size = shown ? briefSizeChars(shown) : 0
   return [
     `<project>
-Title: ${projectTitle}
-Sessions so far: ${sessionCount}
+Title: ${projectTitle}${sessionCount === undefined ? '' : `\nSessions so far: ${sessionCount}`}
 Maker's language: ${LOCALE_NAMES[toLocale(language)]}
 </project>`,
     `<current_brief version="${stamp.brief_version}">
