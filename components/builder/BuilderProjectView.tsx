@@ -641,6 +641,24 @@ function BriefTab({
         latest_posted_at: string | null
       }
 
+      // The session count comes from the page's sessions query. While that
+      // query has no data (still loading, or it failed) the count is unknown,
+      // not zero: a prep once said "Sessions so far: 0" on a project with 26
+      // conversations. Read the sessions here in that case; if that fails too,
+      // the prep leaves the line out.
+      let sessionCount: number | undefined = briefTabSessions?.length
+      if (sessionCount === undefined) {
+        try {
+          const sessionsRes = await apiFetch(`/api/sessions?project_id=${projectId}`)
+          if (sessionsRes.ok) {
+            const list = (await sessionsRes.json()) as unknown
+            if (Array.isArray(list)) sessionCount = list.length
+          }
+        } catch {
+          // Count stays unknown.
+        }
+      }
+
       // The stamp lists EVERY unfolded report, including any the prompt leaves
       // out for length: the paste folds exactly the ids the stamp carries.
       const prompt = buildNextConvoPrompt({
@@ -654,7 +672,7 @@ function BriefTab({
         reports,
         latestReportAt: latest_posted_at,
         projectTitle: project.title,
-        sessionCount: briefTabSessions?.length ?? 0,
+        sessionCount,
         language: project.language,
       })
 
