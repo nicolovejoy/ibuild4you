@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import {
   useBuildStatusKey,
   useMintBuildStatusKey,
@@ -8,6 +8,7 @@ import {
 } from '@/lib/query/hooks'
 import { fullRepo, normalizeGithubRepo } from '@/lib/github/repo'
 import { copy } from '@/lib/copy'
+import { CopyField } from '@/components/ui/CopyField'
 
 const t = copy.buildStatusKey
 
@@ -15,64 +16,6 @@ const dateFmt = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Los_Angele
 
 const button =
   'px-3 py-1.5 text-sm border border-gray-200 rounded text-brand-charcoal hover:border-brand-navy hover:text-brand-navy disabled:opacity-30 disabled:cursor-not-allowed transition-colors'
-
-const fieldClass = 'flex-1 px-2 py-1 text-sm font-mono border border-gray-200 rounded'
-
-// A read-only text field with autofill switched off, so a password manager
-// cannot offer to fill it. (Same treatment as ReadKeyPanel: otherwise 1Password
-// offers "Sign in" on the shown-once key and accepting it would overwrite it.)
-function CopyField({ id, label, value }: { id: string; label: string; value: string }) {
-  const [copied, setCopied] = useState(false)
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  // Clear the "Copied" reset timer when the field goes away.
-  useEffect(
-    () => () => {
-      if (timer.current) clearTimeout(timer.current)
-    },
-    []
-  )
-
-  const onCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(value)
-      setCopied(true)
-      if (timer.current) clearTimeout(timer.current)
-      timer.current = setTimeout(() => setCopied(false), 2000)
-    } catch {
-      setCopied(false)
-    }
-  }
-
-  return (
-    <div>
-      <label htmlFor={id} className="block text-xs text-gray-500 mb-0.5">
-        {label}
-      </label>
-      <div className="flex items-center gap-2">
-        <input
-          type="text"
-          id={id}
-          name={id}
-          value={value}
-          readOnly
-          autoComplete="off"
-          autoCorrect="off"
-          autoCapitalize="off"
-          spellCheck={false}
-          data-1p-ignore
-          data-lpignore="true"
-          data-form-type="other"
-          onFocus={(e) => e.currentTarget.select()}
-          className={fieldClass}
-        />
-        <button type="button" onClick={onCopy} className={button}>
-          {copied ? t.copied : t.copy}
-        </button>
-      </div>
-    </div>
-  )
-}
 
 // The build status key for a brief's repo: lets Claude Code in the build repo
 // post status reports and nothing else. System admin only. The key is shown
@@ -172,7 +115,13 @@ export function BuildStatusKeyPanel({
         // not type="password". See CopyField.
         <div className="space-y-3">
           <div className="space-y-1">
-            <CopyField id={`build-status-key-${projectId}`} label={t.keyLabel} value={shownKey} />
+            <CopyField
+              id={`build-status-key-${projectId}`}
+              label={t.keyLabel}
+              value={shownKey}
+              copyLabel={t.copy}
+              copiedLabel={t.copied}
+            />
             <p className="text-xs text-gray-500">{t.shownOnce}</p>
           </div>
           <div className="space-y-1">
@@ -180,6 +129,8 @@ export function BuildStatusKeyPanel({
               id={`build-status-op-${projectId}`}
               label={t.opLabel}
               value={t.opCommand(repo)}
+              copyLabel={t.copy}
+              copiedLabel={t.copied}
             />
             <p className="text-xs text-gray-500">{t.opNote}</p>
           </div>

@@ -63,6 +63,19 @@ export interface Project extends BaseEntity {
   builder_directives?: string[] // things agent should actively push toward
   session_mode?: 'discover' | 'converge' // current operating mode (default: discover)
   slug?: string // URL-friendly identifier derived from title
+  // Project email address (email-in): the builder keeps it on CC, mail from
+  // members becomes brief notes. Minted by POST /api/projects/email-in.
+  email_in_address?: string
+  last_email_at?: string // ISO timestamp of the last accepted mail
+  // Counts of mail turned away, plus when it last happened. No message
+  // content; the only address kept is the last sender that failed auth.
+  email_in_dropped?: {
+    not_member?: number
+    auth_failed?: number
+    over_limit?: number
+    last_at?: string
+    last_auth_failed_from?: string
+  }
   identity?: string // custom agent identity/persona (overrides default)
   github_repo?: string // "owner/name" — the brief's codebase, for sibling decisions (#142)
   // Language the maker is addressed in (agent replies, outbound copy, link
@@ -453,6 +466,14 @@ export interface BriefNote {
   // Sam's replies the maker gave a 👎 in this stretch, copied by code (not the
   // model). Absent when there were none. Shown to the builder only.
   thumbs_down?: BriefNoteThumbsDown[]
+  // Email-in, stamped by code (never the model) on a note that covered emails.
+  // email_ids: every project_emails doc the note covered, fully seen ones too.
+  // email_sources: one entry per covered email that still had new text, in
+  // order, so the Brief tab can say who wrote and when without a second read.
+  // email_truncated: set when one email was cut to EMAIL_WINDOW_CHAR_LIMIT.
+  email_ids?: string[]
+  email_sources?: { from_name: string; from_role: 'maker' | 'builder'; received_at: string }[]
+  email_truncated?: boolean
 }
 
 export interface BriefNoteThumbsDown {
@@ -478,4 +499,23 @@ export interface BuildReport extends BuildReportBody {
   posted_at: string
   folded_at?: string | null
   body_hash: string
+}
+
+// An email a project member sent to the project's address (email-in), stored in
+// the top-level, server-only project_emails collection. The doc id is
+// `<Resend email_id>_<project_id>`, so one email CC'd to two projects is stored
+// once for each and a retried webhook never duplicates.
+export interface ProjectEmail {
+  id: string
+  project_id: string
+  from_email: string // normalized
+  from_name: string // the member's display name, else the address's local part
+  from_role: 'maker' | 'builder' // stamped by code from the member row
+  received_at: string // server time, UTC ISO; this orders the stream
+  sent_at: string | null // the Date header when present, for display only
+  subject: string
+  message_id: string
+  text: string // plain text, at most EMAIL_TEXT_MAX characters
+  truncated: boolean
+  attachments: { filename: string; content_type: string }[] // names only
 }

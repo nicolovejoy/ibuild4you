@@ -1,14 +1,22 @@
 import { NextResponse } from 'next/server'
 import { getAdminDb } from '@/lib/api/firebase-server-helpers'
 import { writeNoteForProject } from '@/lib/api/note-writer'
-import { normalizeRegenStreak, isCircuitBroken, streakAfterFailure } from '@/lib/api/brief-regen-gate'
+import {
+  normalizeRegenStreak,
+  isCircuitBroken,
+  streakAfterFailure,
+  lastActivityAt,
+} from '@/lib/api/brief-regen-gate'
 import { isAuthorizedCron } from '@/lib/api/cron-auth'
 
-const BRIEF_IDLE_MS = 10 * 60 * 1000 // 10 min — the note writer fires once a session has been idle this long
+const BRIEF_IDLE_MS = 10 * 60 * 1000 // 10 min — the note writer fires once a project has been idle this long
 
 // Every 5 min (see vercel.json). Writes a per-conversation note (#229) for
-// projects whose latest maker message is at least 10 minutes old and that no
-// note has covered yet. The brief itself is no longer rewritten here.
+// projects whose latest activity is at least 10 minutes old and that no note
+// has covered yet. Activity is the later of the last maker chat message and the
+// last email received at the project's address (email-in); see lastActivityAt.
+// Email never touches last_maker_message_at, which stays about chat (kickoff
+// gap, notify digest). The brief itself is no longer rewritten here.
 //
 // Notification email moved out to the daily /api/cron/notify-digest cron (#65) —
 // /api/chat still sets notify_after/notify_pending_since; this cron no longer
@@ -24,10 +32,18 @@ export async function GET(request: Request) {
   // ---- Idle-based note writing --------------------------------------
 
   const idleCutoff = new Date(Date.now() - BRIEF_IDLE_MS).toISOString()
-  const idleSnap = await db
-    .collection('projects')
-    .where('last_maker_message_at', '<', idleCutoff)
-    .get()
+  // Two queries, one per activity field: Firestore cannot OR two range filters
+  // on different fields in one query. Merged by document id so a project
+  // matched by both is processed once. Each query only guarantees that ONE of
+  // the two fields is old; the loop checks the later of the two.
+  const [makerIdleSnap, emailIdleSnap] = await Promise.all([
+    db.collection('projects').where('last_maker_message_at', '<', idleCutoff).get(),
+    db.collection('projects').where('last_email_at', '<', idleCutoff).get(),
+  ])
+  const idleDocs = new Map<string, (typeof makerIdleSnap.docs)[number]>()
+  for (const doc of [...makerIdleSnap.docs, ...emailIdleSnap.docs]) {
+    if (!idleDocs.has(doc.id)) idleDocs.set(doc.id, doc)
+  }
 
   let notesWritten = 0
   const regenErrors: string[] = []
@@ -35,36 +51,42 @@ export async function GET(request: Request) {
   let circuitBroken = 0
   let archivedSkipped = 0
 
-  for (const doc of idleSnap.docs) {
+  for (const doc of idleDocs.values()) {
     const projectId = doc.id
     const data = doc.data()
-    const lastMakerAt = data.last_maker_message_at as string | undefined
-    if (!lastMakerAt) continue
+    const activity = lastActivityAt(
+      data.last_maker_message_at as string | undefined,
+      data.last_email_at as string | undefined,
+    )
+    if (!activity) continue
+    // Matched on one field while the other is recent: a chat turn or an email
+    // in the last 10 minutes means the thread is not idle yet.
+    if (activity >= idleCutoff) continue
 
     // Circuit breaker: once a project's note has failed
     // BRIEF_REGEN_FAILURE_CAP times in a row, stop retrying every 5 min — a
     // permanently-failing project would otherwise bill a Sonnet call on every
     // tick (the 2026-06-15 cost runaway).
-    // A maker message newer than the streak's start resets it (see
-    // normalizeRegenStreak — this is the bit the old inline code got wrong, where
-    // it cleared the counter but kept the stale timestamp and retried forever).
-    // A manual POST /api/briefs/notes also clears the counter.
+    // Activity (a maker message or an email) newer than the streak's start
+    // resets it (see normalizeRegenStreak — this is the bit the old inline code
+    // got wrong, where it cleared the counter but kept the stale timestamp and
+    // retried forever). A manual POST /api/briefs/notes also clears the counter.
     const streak = normalizeRegenStreak(
       data.brief_regen_failures as number | undefined,
       data.brief_regen_failures_since as string | undefined,
-      lastMakerAt,
+      activity,
     )
     if (isCircuitBroken(streak)) {
       circuitBroken++
       continue
     }
 
-    // Skip if a note already covers the last maker turn. A project that has
-    // never had a note falls back to the live brief's age (the old regen
-    // covered everything before it).
+    // Skip if a note already covers the latest activity (maker turn or email).
+    // A project that has never had a note falls back to the live brief's age
+    // (the old regen covered everything before it).
     const notesThroughAt = data.notes_through_at as string | undefined
     if (notesThroughAt) {
-      if (notesThroughAt >= lastMakerAt) continue
+      if (notesThroughAt >= activity) continue
     } else {
       const briefSnap = await db
         .collection('briefs')
@@ -75,7 +97,7 @@ export async function GET(request: Request) {
       const briefUpdatedAt = briefSnap.empty
         ? null
         : (briefSnap.docs[0].data().updated_at as string | undefined)
-      if (briefUpdatedAt && briefUpdatedAt >= lastMakerAt) continue
+      if (briefUpdatedAt && briefUpdatedAt >= activity) continue
     }
 
     // Skip briefs everyone has archived — nobody's watching, so don't spend on
@@ -122,6 +144,6 @@ export async function GET(request: Request) {
     regen_errors: regenErrors,
     circuit_broken: circuitBroken,
     archived_skipped: archivedSkipped,
-    idle_checked: idleSnap.size,
+    idle_checked: idleDocs.size,
   })
 }

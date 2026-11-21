@@ -1232,3 +1232,49 @@ export function useRevokeBuildStatusKey() {
       queryClient.invalidateQueries({ queryKey: queryKeys.buildStatusKey(projectId) }),
   })
 }
+
+// --- Project email (email-in): the address and what arrived at it ---
+
+export interface ProjectEmailIn {
+  address: string | null
+  // The newest 10, newest first. Who and when only; the server never sends email text.
+  recent: { from_name: string; from_role: 'maker' | 'builder'; received_at: string; subject: string }[]
+  dropped: {
+    not_member: number
+    auth_failed: number
+    over_limit: number
+    last_at: string | null // when the latest one was dropped
+    last_auth_failed_from: string | null
+  }
+}
+
+export function useProjectEmailIn(projectId: string | undefined) {
+  return useQuery<ProjectEmailIn>({
+    queryKey: queryKeys.projectEmailIn(projectId),
+    queryFn: async () => {
+      const res = await apiFetch(`/api/projects/email-in?project_id=${projectId}`)
+      if (!res.ok) throw new HttpError('Failed to load project email', res.status)
+      return res.json()
+    },
+    enabled: !!projectId,
+    retry: false,
+  })
+}
+
+// Creating is safe to repeat: a project that already has an address gets it back.
+export function useCreateProjectEmailIn(projectId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (): Promise<{ address: string }> => {
+      const res = await apiFetch('/api/projects/email-in', {
+        method: 'POST',
+        body: JSON.stringify({ project_id: projectId }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new HttpError(data?.error || 'Could not create the address', res.status)
+      return data
+    },
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: queryKeys.projectEmailIn(projectId) }),
+  })
+}

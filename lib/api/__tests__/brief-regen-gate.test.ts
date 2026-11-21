@@ -3,12 +3,35 @@ import {
   normalizeRegenStreak,
   isCircuitBroken,
   streakAfterFailure,
+  lastActivityAt,
   BRIEF_REGEN_FAILURE_CAP,
 } from '../brief-regen-gate'
 
 const T0 = Date.parse('2026-06-15T12:00:00.000Z')
 const at = (msFromT0: number) => new Date(T0 + msFromT0).toISOString()
 const MIN = 60 * 1000
+
+describe('lastActivityAt', () => {
+  it('is undefined when neither a maker message nor an email exists', () => {
+    expect(lastActivityAt(undefined, undefined)).toBeUndefined()
+    expect(lastActivityAt(null, null)).toBeUndefined()
+  })
+
+  it('is the maker message when there is no email', () => {
+    expect(lastActivityAt(at(-30 * MIN), undefined)).toBe(at(-30 * MIN))
+    expect(lastActivityAt(at(-30 * MIN), null)).toBe(at(-30 * MIN))
+  })
+
+  it('is the email when there is no maker message', () => {
+    expect(lastActivityAt(undefined, at(-30 * MIN))).toBe(at(-30 * MIN))
+    expect(lastActivityAt(null, at(-30 * MIN))).toBe(at(-30 * MIN))
+  })
+
+  it('is the later of the two when both exist, in either order', () => {
+    expect(lastActivityAt(at(-30 * MIN), at(-10 * MIN))).toBe(at(-10 * MIN))
+    expect(lastActivityAt(at(-10 * MIN), at(-30 * MIN))).toBe(at(-10 * MIN))
+  })
+})
 
 describe('normalizeRegenStreak', () => {
   it('preserves the streak when no maker message exists', () => {
@@ -29,6 +52,15 @@ describe('normalizeRegenStreak', () => {
   it('RESETS the streak when the maker messaged AFTER it started (the bug)', () => {
     // streak began 60m ago; maker messaged 30m ago → new signal, reset entirely
     expect(normalizeRegenStreak(3, at(-60 * MIN), at(-30 * MIN))).toEqual({
+      failures: 0,
+      failuresSince: null,
+    })
+  })
+
+  it('RESETS the streak when an email arrived AFTER it started (activity = the email)', () => {
+    // streak began 60m ago; maker last messaged 90m ago, but an email came 30m ago
+    const activity = lastActivityAt(at(-90 * MIN), at(-30 * MIN))
+    expect(normalizeRegenStreak(3, at(-60 * MIN), activity)).toEqual({
       failures: 0,
       failuresSince: null,
     })

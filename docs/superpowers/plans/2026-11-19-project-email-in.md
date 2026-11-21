@@ -10,6 +10,122 @@
 
 **Spec:** `docs/superpowers/specs/2026-11-19-project-email-in-design.md`. Read it before any task; this plan names files and interfaces, the spec says why.
 
+## Recorded payload (2026-11-20)
+
+One real email was sent to `capture-test@inbox.ibuild4you.com` (Apple Mail, from a yahoo.com address, a reply with the address on CC) and recorded. The two fixtures are in `app/api/webhooks/resend/inbound/__tests__/fixtures/`. Shapes and values are as recorded; addresses, names, ids, the subject and the body text are replaced, and the long provider headers are dropped. The recorded body was 135 characters with an empty quote, so the fixture's `text` is written by hand in the same form (typed lines, then a `> On … wrote:` line and `>` lines).
+
+Answers to the three checks:
+
+1. The webhook body carries `received_for`, `to`, `cc` and `bcc`, each an array of bare addresses. Matching the project happens before the fetch, as the spec says.
+2. `authentication` is `{ spf, dkim, dmarc }`, all three `"pass"` here. It is on the fetched email only, not on the webhook.
+3. `headers` carries `date`, but its value is an ISO time wrapped in literal double quotes: `"\"2026-11-20T17:44:55.000Z\""`. Strip the quotes before parsing; `sent_at` is `null` when it does not parse.
+
+Also seen, and Task 2 must hold for each:
+
+- `from` is a bare address at the top level in both the webhook and the fetched email. The display name is only in `headers.from` (`"Name" <addr>`).
+- The top-level `to` held the project address although the sender put it on CC and another address in To. The sender's real To line is only in `headers.to`. Do not treat top-level `to` and `cc` as the header lines.
+- An email with no body comes back with `text: null` and `html: null` (the first capture was one). Store it as empty text; do not fail.
+- `html` is `null` for a plain-text email. `reply_to` is an array. `attachments` is an array. The webhook's `data.created_at` and the fetched `created_at` are the same server time.
+- The fetch works with a Full access key. The key used is `op://dev-secrets/ibuild4you-resend-api-key/password`; whether the production `RESEND_API_KEY` can read received mail is still unchecked.
+- An Apple Mail reply to a reply puts the attribution itself behind a marker: `> On Nov 20, 2026, at 9:31 AM, Name <addr> wrote:`.
+
+**Defect found with the recorded form, to fix before Task 4 (TDD, in `lib/email-in/new-text.ts`):** the filter does not recognize an attribution that carries a `>` marker. With the fixture's `text` and its quoted line already seen, `splitNewText` returns `quotedUnseen: 'On Nov 20, 2026, at 9:31 AM, Nico Builder <nico@example.org> wrote:'` where it must return `''`. Every Apple Mail reply of this form would give the note writer an attribution with nothing under it. The "On … wrote:" check (one line and two lines, digit or `@` required) must run on the line with its leading `>` markers stripped, and the span rules then apply as for any header. Use the fixture's `text` as the test input: seen quote gives `{ typed: 'Sounds good, the week view first please.', quotedUnseen: '' }`; unseen quote keeps the attribution and the quoted line.
+
+Setup state: MX for `inbox.ibuild4you.com` is live (`receive.forge.rmta.net`), receiving is verified in Resend, and the webhook exists. The signing secret is in 1Password (`op://dev-secrets/resend-inbound-secret-ibuild4you/password`) and is NOT yet on Vercel, on purpose: push it to Production when Task 2's route ships, so Loop replies never arrive without their text. Until then the route answers 500 to Resend.
+
+## Progress and rulings (2026-11-20)
+
+Branch `worktree-email-in`. As of the third session (2026-11-20) Tasks 1 to 6 and the docs of Task 7 are built and reviewed, and the whole-branch review and its fix wave have run; see "Added 2026-11-20, third session" below, which is the current state. What follows in this section is the record of the first session.
+
+Tasks 1 and 3 are done and reviewed clean. Tasks 2, 4, 5, 6 and 7 are not started. The whole-branch review has not run; it runs when every task is in.
+
+Not blocked on the fixtures, so they can be built now: Task 5 (it needs only `projects.last_email_at`, typed in Task 1, and the unchanged `writeNoteForProject` signature), and from Task 2 the sender check, `store.ts` and the delete cascade (steps 1, 2, 5, 6, 9). Task 2's `fetchReceivedEmail` and route branch (steps 3, 4, 7, 8) wait for the two recorded fixtures. Tasks 4 and 6 need Task 2's `store.ts` first.
+
+Rulings made while building. Where one differs from the task text below, the ruling stands.
+
+- **Task 1, slug cleaning.** Lowercase; each run of whitespace becomes one hyphen; everything outside `[a-z0-9-]` is removed; repeated hyphens collapse; hyphens are trimmed from both ends; cut to 40; `project` when nothing is left. The task's own test needs `bills-app`.
+- **Task 1, mint.** The project read, the already-has-address check, the uniqueness query and the write run inside `db.runTransaction`, so two mints at once cannot replace an address already returned.
+- **Task 3, step 3.** A short line (under 12 normalized characters, blank lines included) takes the fate of the nearest long line of the same quoted status, before it first and then after it. The search never crosses a quote header span, and a header line is never the neighbour. With no such line the short line is kept.
+- **Task 3, headers are spans.** A header is the header line plus the run of `From|Sent|Date|To|Cc|Subject:` lines under it, recognized with leading `>` markers stripped; for a divider, also the blank lines between it and that run. A span is never evidence and is kept or dropped as one by step 4. A kept blank line does not keep a header alive.
+- **Task 3, "On … wrote:".** It is a header, in one line or two, only when it contains a digit or `@`. The two-line form never joins a blank line or a `>` line.
+- **Fix commits** are separate commits on the branch; the PR is squash-merged.
+
+Known gaps, for the whole-branch review to weigh:
+
+- A `To:` or `Cc:` list wrapped onto a second line ends the field run, so a held email's header block can still come back as unseen.
+- An Outlook block quoted with `>` (`> From:` / `> Sent:`) with no divider or attribution above it does not start a header; same effect.
+- A typed two-line "On 3 points … / … what Danny wrote:" (it holds a digit) above a seen quote is read as an attribution and dropped. This is the one known case that loses typed words.
+- A typed line starting `From:` with `Date:` or `Sent:` within 4 lines is read as a header; its text moves to `quotedUnseen`, none is lost.
+- A quoted body line that starts like a field (`> Date: Thursday works`) directly under an "On … wrote:" line joins the header span.
+- `mintEmailInAddress` does not lowercase the host; it matters only if `FEEDBACK_INBOX_HOST` is set with capitals. The address tests assume the default host.
+- No test for the unparsable-JSON 400 in the mint route. The short-line neighbour search is O(n²). `removeQuoteMarkers` strips indentation after `>`.
+
+### Added 2026-11-20, second session: Task 2 in part, and Task 5
+
+Done and reviewed: from Task 2, steps 1, 2, 5, 6 and 9 (`checkSender`, `store.ts`, `ProjectEmail`, the delete cascade), and Task 5 in full. Still not started: Task 2 steps 3, 4, 7 and 8 (`fetchReceivedEmail` and the route branch, waiting for the fixtures), and Tasks 4, 6 and 7. Commits: `0c20ab3`, `632433b`, then the fix commits `7757054` and `7108338` and a test-only commit after them.
+
+Rulings. Where one differs from the task text below, the ruling stands.
+
+- **Task 2, the From header is parsed strictly and fails closed.** `checkSender` accepts two shapes only: a bare address, or an optional name followed by one `<address>` as the last thing. The name is one double-quoted string, or unquoted text with none of `< > ( ) , " @ : ; [ ] \`. A header over 998 characters, or holding a control character other than tab, is refused. The address must be printable ASCII with one `@`. Anything else is `not_member`. The first version took the first `<…>` group anywhere, so `"<bduris@aol.com>" <attacker@evil.com>` passed as Bill on the attacker's own DMARC pass.
+- **Task 2, legal headers this refuses.** An unquoted name with a comma or parentheses (`Duris, Bill <b@aol.com>`, `Bill (Home) <b@aol.com>`), the comment form `b@aol.com (Bill)`, and a folded header. Such mail counts under `email_in_dropped.not_member`, so the panel shows a count and no address. If Bill's first real email is dropped this way, loosen the parser on purpose; the shapes are pinned as tests.
+- **Task 2, roles.** An unknown or missing role on any active row for the address is `not_member`. Two active rows for one address that disagree give `builder`. A removed row beside an active one is ignored.
+- **Task 2, DMARC is compared exactly** with `'pass'`. `not_member` is decided before DMARC, so a stranger's address is never kept.
+- **Task 2, `storeProjectEmail`.** It reads the document first and returns `'duplicate'` before the flood guard, so a retried webhook at the limit is never `over_limit` and never counts as a drop. The create and the `last_email_at` update are one batch: both are written or neither is, and a missing project stores nothing.
+- **Task 2, flood window.** The 24 hours end at the incoming email's `received_at`, so the function takes no clock. The 50th email is stored and the 51st refused.
+- **Task 2, no composite index.** The count and the list query on `project_id` alone and filter and sort in memory, as build reports and brief notes do. The count selects `received_at` only.
+- **Task 2, `recordDrop`** uses `update()`, so it never creates a project document, and it ignores an address passed with `not_member` or `over_limit`.
+- **Task 5.** The two queries run together and are merged by document id. A project whose later activity is under 10 minutes old is skipped and still counts in `idle_checked`. `normalizeRegenStreak`'s third parameter is now `lastActivity`. One existing test moved its maker turn from now to 30 minutes ago; the real query never returned such a project.
+
+For the tasks still to build:
+
+- **Step 8 (route) must pass a resolved name.** `project_members` rows may not carry `display_name`. Fill it with `getUserDisplayName(db, uid, email)` from `lib/api/firebase-server-helpers.ts` before calling `checkSender`, or every email shows the address's local part.
+- **Step 8, when the fixtures exist:** check whether Resend's `from` is the raw header or an address it parsed, what it gives for two From mailboxes or two From headers, and that `authentication.dmarc` covers that same address.
+- **Task 4 must advance `notes_through_at` to the exact `received_at` of the last email it covered**, on the no-model-call path too. The cron's covered check is `notes_through_at >= last_email_at`. If it does not advance, every tick calls the writer again.
+- **Do not ship the route branch ahead of Task 4.** Until the note writer reads emails, a project with a new `last_email_at` and no new chat throws `write_note_no_messages` (before any model call) three times and sits with the breaker tripped. No cost, but a false `brief_regen_last_error`.
+
+Known gaps, for the whole-branch review to weigh:
+
+- The From parser took three review rounds. The last compared it with Python's `email` parser on about 460,000 generated headers and found no input that returns a member's address while Python reads another From.
+- A quoted display name may hold `@` (`"x@evil.com" <bduris@aol.com>`), C1 controls and bidi characters. The address is not affected and the header's name is never stored (`from_name` comes from the member row). If the header's name is ever shown or stored, refuse `\x80-\x9f` too.
+- The flood guard is not atomic: two different emails arriving together can both take a project's 50th slot.
+- `last_email_at` is a plain overwrite, so two stores at once can leave the older `received_at` in place.
+- The count reads every `received_at` the project has ever stored; the cost grows with the project's history.
+- An `emailId` with `/` in it would make Firestore throw. Resend ids are UUIDs; nothing checks.
+- A project email deleted before a note covers it leaves `last_email_at` pointing at nothing; the breaker trips after three free failures.
+- DMARC proves the domain, not the mailbox. On a shared domain (aol.com, gmail.com) the gate relies on the provider refusing to let one user send as another. Worth a sentence in the spec's "Trust" section.
+- The real Firestore error codes for a failed batch (6 for a create on an existing document, 5 for an update on a missing one) are from the reviewer's knowledge of the Admin SDK, not from a run against Firestore.
+- The cron comment "Firestore cannot OR two range filters on different fields in one query" may be out of date; two simple queries keep it on single-field indexes either way.
+- The delete-cascade test's `mockWhere` assertion is weak (other collections run the same query); the `deleted` assertions are what pin it.
+- `docs/data-model.md` and `docs/runbooks.md` do not mention any of this yet (Task 7).
+- `lib/email-in/__tests__/address.test.ts` from Task 1 is not Prettier-clean.
+
+### Added 2026-11-20, third session: the rest of the build, the whole-branch review and its fix wave
+
+Built and reviewed: the `>`-marked attribution fix in `new-text.ts`; Task 2 steps 3, 4, 7 and 8 (`lib/email/resend-received.ts` and the route branch); Task 4; Task 6; the docs of Task 7. The whole-branch review found no Critical issue and four Important ones (F1 to F4); one fix wave built those and eight minors. Still to do from Task 7: the preview check, the production smoke, MusicForge, the changelog entry.
+
+Rulings. Where one differs from the task text below, or from an earlier ruling above, this one stands.
+
+- **`received_at` is the app's clock at the moment of storing** (F1; this reverses an earlier ruling of this session that took Resend's `created_at`). A retried email would otherwise land behind `notes_through_at` and never be noted. `sent_at` still comes from the `date` header.
+- **Typed lines are never dropped line by line** (F2; this changes the spec's filter). Only quoted lines are checked against the seen set. An email's text is left out whole only when it repeats one earlier email from the same sender (`isRepeatOf`: it has at least one line of 12 characters or more, every typed line of any length is typed there, and every quoted line of any length is quoted there; a short line can prevent a repeat and never make one). Before this, a maker who typed "Yes, go ahead with that." in two emails lost the second. Cost: a repeated signature or a re-typed line is read again.
+- **Minting an address pins the note writer's start** (F3). With no `notes_through_at`, the mint writes it once: the brief's `updated_at` when a brief exists, else the epoch value (nothing covered yet). A later brief save can then no longer move the start past an email already stored.
+- **A quote belongs to its author, not to the email's sender** (F4). The builder's words, typed or quoted by anyone, create no decision. A quote with no clear author goes in the note's text only. The prompt also says the quoted block may hold the sender's own answers typed under the quote, because the filter marks everything after an attribution as quoted.
+- **The From header is required.** The route runs `checkSender` on the raw `headers.from` only; a missing header, or two From headers, is `not_member`. The parsed address must also equal Resend's top-level `from`.
+- **Both matches are found before the one fetch.** A failed fetch with a project matched answers 500 and writes nothing, the Loop reply included; project emails are stored before the Loop reply, because the store is idempotent and the Loop write is not. A missing or malformed `email_id` answers 200 and writes nothing for projects.
+- **A null body is stored as empty text.** At most 10 project addresses are looked up per email.
+- **The note writer.** Chat sorts before an email at the same timestamp; only emails count toward the 40,000; the window is a prefix of the merged stream and never ends between two items with the same timestamp; an oversized single email cuts `typed` first. An email shown as earlier context carries at most 2,000 characters (`EMAIL_CONTEXT_CHAR_LIMIT`). Email text has the prompt's own tag names and turn labels neutralized before it is shown to the model.
+- **The panel** is mounted only for an owner, a builder or a system admin (`canSeeProjectEmail`). Its received list is a projected read of four fields. `GET /api/projects` removes `email_in_address`, `last_email_at` and `email_in_dropped` for any other viewer.
+- **A member who never signed in** and is the project's requester is named by the requester's name, not by the address's local part.
+
+Known gaps left on purpose:
+
+- `last_email_at` is still a plain overwrite (F8); after F1 it can go backwards only by a race of milliseconds.
+- The repeat check compares an email with every earlier email from its sender, and the note writer loads every stored email's text on each run. Fine at tens of emails per project; worth a bound at hundreds.
+- In a window that holds a maker chat turn and a maker email, a lock reversal drawn from the email is stopped by the prompt, not by code. The effect is a Contested mark the builder can dismiss.
+- A note's email window can pass 40,000 characters when it has to take a whole run of emails stored in the same millisecond.
+- The dropped-mail counts are running totals; the panel shows when the last one happened, and nothing resets them.
+- Unchecked until the production smoke: that Resend's `authentication.dmarc` is about the header From address, and that the production `RESEND_API_KEY` can read received mail.
+- `GET /api/projects?slug=` returns a project to any signed-in user with no role check. Older than this branch; worth its own issue.
+
 ## Global Constraints
 
 - The address never sends anything. No task adds an outbound email.

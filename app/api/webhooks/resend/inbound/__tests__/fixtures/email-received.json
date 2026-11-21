@@ -1,0 +1,22 @@
+{
+  "created_at": "2026-11-20T17:44:55.000Z",
+  "data": {
+    "attachments": [],
+    "bcc": [],
+    "cc": [
+      "capture-test@inbox.ibuild4you.com"
+    ],
+    "created_at": "2026-11-20T17:47:09.765Z",
+    "email_id": "0a1b2c3d-1111-4222-8333-444455556666",
+    "from": "bduris@example.com",
+    "message_id": "<REPLY-0001@example.com>",
+    "received_for": [
+      "capture-test@inbox.ibuild4you.com"
+    ],
+    "subject": "Re: lesson planner",
+    "to": [
+      "capture-test@inbox.ibuild4you.com"
+    ]
+  },
+  "type": "email.received"
+}

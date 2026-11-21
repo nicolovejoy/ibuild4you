@@ -316,6 +316,11 @@ export const copy = {
       `Wants to change locked ${topic}: ${proposed} (${reason})`,
     noteThumbsDown: (excerpt: string, reason?: string) =>
       `👎 on Sam’s reply “${excerpt}”${reason ? `: ${reason}` : ''}`,
+    // Email-in: who wrote the emails a note covered (each name once, with the
+    // days they wrote), and the flag for an email that was cut to fit.
+    fromEmail: (who: string) => `From email: ${who}`,
+    emailSender: (name: string, days: string) => `${name} (${days})`,
+    emailCut: 'One email was too long to read in full. Check the original.',
     importStayHint: 'Brief updated. Read the note above, then continue.',
     importContinueButton: 'Continue to Conversations',
     emptyTitle: 'No brief yet',
@@ -656,6 +661,38 @@ export const copy = {
     loading: 'Loading…',
     error: 'Could not change the build status key.',
     loadError: 'Could not load the build status key.',
+  },
+
+  // The project's email address (Setup tab). Builder side, English only.
+  projectEmail: {
+    heading: 'Project email',
+    none: 'No address yet.',
+    create: 'Create project email address',
+    howTo: 'Keep this address on CC when you email the maker. It never replies.',
+    addressLabel: 'Project email address',
+    recentHeading: 'Received',
+    noneReceived: 'Nothing received yet.',
+    noSubject: '(no subject)',
+    // A received email: day (Pacific), who, their role, subject.
+    recentRow: (day: string, name: string, role: string, subject: string) =>
+      `${day} · ${name} (${role}) · ${subject}`,
+    roles: { maker: 'maker', builder: 'builder' },
+    droppedNotMember: (n: number) =>
+      `${n} ${n === 1 ? 'email was' : 'emails were'} ignored because the sender is not on this project. To have their mail read, add them as a member.`,
+    // `from` is empty when the sender was not kept. A resend fails the same
+    // check, so the line says what works instead.
+    droppedAuthFailed: (n: number, from: string) =>
+      `${n} ${n === 1 ? 'email' : 'emails'}${from ? ` from ${from}` : ''} ${n === 1 ? 'was' : 'were'} not read: the sender check failed for ${from ? 'that address' : 'the sender’s address'}. Ask ${from ? 'them' : 'the sender'} to paste what they wrote into the conversation.`,
+    // The counts are running totals, so this is told in the past.
+    droppedOverLimit: (n: number) =>
+      `${n} ${n === 1 ? 'email was' : 'emails were'} not read: the project had reached its daily limit and took no more email that day.`,
+    // Shown once under the dropped lines: the Pacific day of the latest one.
+    droppedLastAt: (day: string) => `Last one: ${day}.`,
+    copy: 'Copy',
+    copied: 'Copied',
+    loading: 'Loading…',
+    error: 'Could not create the project email address.',
+    loadError: 'Could not load the project email address.',
   },
 
   // --- General ---

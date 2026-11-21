@@ -61,6 +61,19 @@ function noteLines(n: BriefNote): string[] {
   for (const r of n.risks_resolved ?? []) lines.push(c.noteRiskResolved(resolvedLine(r)))
   for (const l of n.lock_reversals ?? []) lines.push(c.noteLockReversal(l.topic, l.proposed, l.reason))
   for (const t of n.thumbs_down ?? []) lines.push(c.noteThumbsDown(t.excerpt, t.reason))
+  // Email-in: who wrote the emails behind this note, each name once in
+  // first-seen order with the Pacific day or days their emails came, and a
+  // flag when one was cut to fit.
+  const daysBySender = new Map<string, Set<string>>()
+  for (const s of n.email_sources ?? []) {
+    if (!daysBySender.has(s.from_name)) daysBySender.set(s.from_name, new Set())
+    daysBySender.get(s.from_name)!.add(noteDay(s.received_at))
+  }
+  if (daysBySender.size > 0) {
+    const senders = [...daysBySender].map(([name, days]) => c.emailSender(name, [...days].join(', ')))
+    lines.push(c.fromEmail(senders.join(', ')))
+  }
+  if (n.email_truncated) lines.push(c.emailCut)
   return lines
 }
 

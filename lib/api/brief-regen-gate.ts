@@ -11,9 +11,12 @@
 // failure COUNTER when the maker messaged after the streak began, but rewrote
 // `failures_since` to the STALE old timestamp — so "maker messaged after the
 // streak" stayed true on every subsequent tick and it cleared-and-retried
-// forever. The fix: a maker message newer than the streak's start invalidates the
+// forever. The fix: new activity newer than the streak's start invalidates the
 // WHOLE streak (count + since), so the next failure starts a fresh streak from
 // `now` and the breaker re-trips and holds.
+//
+// "Activity" is the later of the project's last maker message and its last
+// received email (email-in): either one is new signal worth another attempt.
 
 export const BRIEF_REGEN_FAILURE_CAP = 3
 
@@ -22,18 +25,30 @@ export interface RegenStreak {
   failuresSince: string | null
 }
 
-// Normalize a project's persisted failure streak against the latest maker
-// message. A maker message strictly newer than the streak's start means the brief
-// has new signal worth another attempt — so the streak resets entirely. Otherwise
-// the persisted streak stands.
+// The project's latest activity the note writer cares about: the later of the
+// last maker chat message and the last received email, or undefined when there
+// is neither. Both are UTC ISO strings, so string comparison orders them.
+export function lastActivityAt(
+  lastMakerMessageAt: string | null | undefined,
+  lastEmailAt: string | null | undefined,
+): string | undefined {
+  if (!lastMakerMessageAt) return lastEmailAt ?? undefined
+  if (!lastEmailAt) return lastMakerMessageAt
+  return lastEmailAt > lastMakerMessageAt ? lastEmailAt : lastMakerMessageAt
+}
+
+// Normalize a project's persisted failure streak against its latest activity
+// (see lastActivityAt). Activity strictly newer than the streak's start means
+// there is new signal worth another attempt — so the streak resets entirely.
+// Otherwise the persisted streak stands.
 export function normalizeRegenStreak(
   failures: number | null | undefined,
   failuresSince: string | null | undefined,
-  lastMakerMessageAt: string | null | undefined,
+  lastActivity: string | null | undefined,
 ): RegenStreak {
   const since = failuresSince ?? null
   const count = failures ?? 0
-  if (since && lastMakerMessageAt && lastMakerMessageAt > since) {
+  if (since && lastActivity && lastActivity > since) {
     return { failures: 0, failuresSince: null }
   }
   return { failures: count, failuresSince: since }

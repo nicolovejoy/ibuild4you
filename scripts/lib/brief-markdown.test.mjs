@@ -279,6 +279,20 @@ describe('renderBriefMd notes, shipped, queued, contested', () => {
     expect(md).not.toContain('Notes cover')
   })
 
+  // The mint of a project email address on a project with no brief and no
+  // note sets notes_through_at to the epoch: that means no notes yet.
+  it('treats the nothing-covered mark (the epoch) as no notes', () => {
+    const p = {
+      ...project,
+      notes_through_at: '1970-01-01T00:00:00.000Z',
+      last_maker_message_at: '2026-03-05T20:00:00Z',
+    }
+    const md = renderBriefMd({ project: p, brief, sessions, reviews })
+    expect(md).not.toContain('Notes cover')
+    expect(md).not.toMatch(/1969|1970/)
+    expect(md).toContain('Maker last wrote ')
+  })
+
   it('omits shipped and queued when empty', () => {
     const md = renderBriefMd({ project, brief, sessions, reviews })
     expect(md).not.toContain('## Shipped')

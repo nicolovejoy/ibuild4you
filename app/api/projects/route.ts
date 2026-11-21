@@ -39,6 +39,22 @@ async function ensureUniqueSlug(db: FirebaseFirestore.Firestore, slug: string, e
   }
 }
 
+// The email-in fields of a project doc (its address, when mail last came, and
+// the drop counters, which can hold a member's address) are builder-side only:
+// the Setup panel reads them through /api/projects/email-in, and a maker's or
+// apprentice's browser never gets them.
+const EMAIL_IN_FIELDS = ['email_in_address', 'last_email_at', 'email_in_dropped'] as const
+
+function withoutEmailInFields<T extends Record<string, unknown>>(
+  project: T,
+  viewerRole: string | null | undefined
+): T {
+  if (viewerRole === 'owner' || viewerRole === 'builder' || viewerRole === 'admin') return project
+  const stripped: Record<string, unknown> = { ...project }
+  for (const field of EMAIL_IN_FIELDS) delete stripped[field]
+  return stripped as T
+}
+
 // GET /api/projects — list projects, or look up a single project by slug/id
 export async function GET(request: Request) {
   const auth = await getAuthenticatedUser(request)
@@ -79,7 +95,12 @@ export async function GET(request: Request) {
     // (Contributor vs Originator), not just their access tier.
     const viewerBriefRole = await getViewerBriefRole(db, docId, auth.uid, auth.email)
 
-    return NextResponse.json({ id: docId, ...docData, viewer_role: viewerRole, viewer_brief_role: viewerBriefRole })
+    return NextResponse.json(
+      withoutEmailInFields(
+        { id: docId, ...docData, viewer_role: viewerRole, viewer_brief_role: viewerBriefRole },
+        viewerRole
+      )
+    )
   }
 
   // Admins see all projects
@@ -106,6 +127,8 @@ export async function GET(request: Request) {
       viewerArchived.set(d.project_id as string, !!d.archived_at)
     }
 
+    // A system admin keeps the email-in fields on every project, whatever
+    // their membership role on it.
     const enriched = await enrichProjects(db, projects, viewerRoles, viewerBriefRoles, viewerArchived)
     return NextResponse.json(sortProjectsByActivity(enriched))
   }
@@ -168,7 +191,9 @@ export async function GET(request: Request) {
   }
 
   const enriched = await enrichProjects(db, projects, viewerRoles, viewerBriefRoles, viewerArchived)
-  return NextResponse.json(sortProjectsByActivity(enriched))
+  return NextResponse.json(
+    sortProjectsByActivity(enriched.map((p) => withoutEmailInFields(p, p.viewer_role)))
+  )
 }
 
 // PATCH /api/projects — update project setup fields (builder+)
@@ -298,6 +323,14 @@ export async function DELETE(request: Request) {
     .collection('build_reports')
     .get()
   reportsSnap.docs.forEach((r) => docsToDelete.push(r.ref))
+
+  // Emails members sent to the project's address (email-in). A top-level
+  // collection keyed by project_id, so it goes with the project too.
+  const emailsSnap = await db
+    .collection('project_emails')
+    .where('project_id', '==', projectId)
+    .get()
+  emailsSnap.docs.forEach((e) => docsToDelete.push(e.ref))
 
   // Project members
   const membersSnap = await db
