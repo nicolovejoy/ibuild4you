@@ -30,8 +30,8 @@ await page.waitForTimeout(3000)
 
 // --- Check A: reminder copy in the "Waiting on" card textarea ---
 const reminderText = await page.locator('textarea[readonly]').first().inputValue().catch(() => '')
-check('reminder copy = "Sam, your next conversation (#3) awaits:"',
-  /^Sam, your next conversation \(#3\) awaits:/.test(reminderText),
+check('reminder copy opens "Hi Sam," and names conversation #3',
+  /^Hi Sam,\n\nConversation #3 about /.test(reminderText),
   JSON.stringify(reminderText.split('\n')[0] || '(none)'))
 
 // --- Check B: "Waiting on" card sits ABOVE "Agent setup" ---

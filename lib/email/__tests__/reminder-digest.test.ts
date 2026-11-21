@@ -52,20 +52,26 @@ describe('groupReminderSends', () => {
 })
 
 describe('buildReminderEmail', () => {
-  it('single brief is byte-identical to the pre-#141 reminder copy', () => {
+  it('single brief: the reminder copy, no reply line (the cron sends from noreply), then the sign-off', () => {
     const batch = groupReminderSends([pending({ sessionNumber: 3 })])[0]
-    const { subject, text } = buildReminderEmail(batch)
-    expect(subject).toBe('Your conversation for "Sam\'s Cafe" is ready')
+    const { subject, text, html } = buildReminderEmail(batch)
+    expect(subject).toBe("Your conversation for Sam's Cafe is ready")
     expect(text).toBe(
       [
-        'Sam, your next conversation (#3) awaits:',
+        'Hi Sam,',
         '',
-        'https://ibuild4you.com/projects/sams-cafe',
+        "Conversation #3 about Sam's Cafe is ready on iBuild4you. Sam picks up where you left off. It takes about 15 minutes, and you can stop and come back any time.",
+        '',
+        'Here is your link: https://ibuild4you.com/projects/sams-cafe',
         '',
         '—',
         'iBuild4you',
       ].join('\n'),
     )
+    // The link's visible text is words, not the URL.
+    expect(html).toContain('<a href="https://ibuild4you.com/projects/sams-cafe"')
+    expect(html).toContain('>Open the Sam&#39;s Cafe conversation</a>')
+    expect(html).not.toContain('>https://ibuild4you.com/projects/sams-cafe</a>')
   })
 
   it('single brief without a name or session number degrades gracefully', () => {
@@ -73,7 +79,7 @@ describe('buildReminderEmail', () => {
       pending({ makerFirstName: null, sessionNumber: null }),
     ])[0]
     const { text } = buildReminderEmail(batch)
-    expect(text).toMatch(/^Your next conversation awaits:/)
+    expect(text).toMatch(/^Hello,\n\nYour next conversation about Sam's Cafe is ready/)
   })
 
   it('2+ briefs: subject counts briefs, body lists every link', () => {
@@ -88,6 +94,17 @@ describe('buildReminderEmail', () => {
     // sessionNumber null → no "conversation #n"
     expect(text).toContain('- "Beta": https://ibuild4you.com/projects/beta')
     expect(text.trimEnd().endsWith('iBuild4you')).toBe(true)
+  })
+
+  it('2+ briefs: each link in the HTML reads as words naming its brief', () => {
+    const batch = groupReminderSends([
+      pending({ projectId: 'a', projectTitle: 'Alpha', shareLink: 'https://ibuild4you.com/projects/alpha' }),
+      pending({ projectId: 'b', projectTitle: 'Beta', shareLink: 'https://ibuild4you.com/projects/beta' }),
+    ])[0]
+    const { html } = buildReminderEmail(batch)
+    expect(html).toContain('<a href="https://ibuild4you.com/projects/alpha"')
+    expect(html).toContain('>Open the Alpha conversation</a>')
+    expect(html).toContain('>Open the Beta conversation</a>')
   })
 
   it('2+ briefs without a name drops the greeting name', () => {
@@ -105,9 +122,11 @@ describe('buildReminderEmail', () => {
     expect(subject).toBe('Votre conversation pour « Sam\'s Cafe » est prête')
     expect(text).toBe(
       [
-        'Sam, votre prochaine conversation (nº 1) vous attend :',
+        'Bonjour Sam,',
         '',
-        'https://ibuild4you.com/projects/sams-cafe',
+        "Votre conversation au sujet de Sam's Cafe est prête sur iBuild4you. Sam, l’assistant, vous posera des questions sur votre idée et prendra des notes au fil de l’échange. Comptez environ 15 minutes ; vous pouvez vous arrêter et reprendre à tout moment.",
+        '',
+        'Voici votre lien : https://ibuild4you.com/projects/sams-cafe',
         '',
         '—',
         'iBuild4you',

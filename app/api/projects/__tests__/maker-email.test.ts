@@ -124,6 +124,12 @@ describe('POST /api/projects/[id]/email', () => {
     expect(call.replyTo).toBe('builder@example.com')
     expect(call.bcc).toEqual(['builder@example.com'])
     expect(call.text).toContain('https://ibuild4you.com/projects/byside')
+    // Replies reach the builder, so the body says a reply works; the HTML
+    // link reads as words (a body that was mostly a bare link went to junk).
+    expect(call.text).toContain('Questions? Reply to this email.')
+    expect(call.html).toContain('<a href="https://ibuild4you.com/projects/byside"')
+    expect(call.html).toMatch(/>Open the .+ conversation<\/a>/)
+    expect(call.subject).not.toContain('"')
     expect(mockProjectUpdate).toHaveBeenCalledWith(
       expect.objectContaining({ last_nudged_at: expect.any(String) })
     )
@@ -137,17 +143,21 @@ describe('POST /api/projects/[id]/email', () => {
     await POST(makeReq({ kind: 'reminder' }), { params })
     const reminder = sendMakerEmailMock.mock.calls[0][0]
     expect(reminder.subject).toBe('Votre conversation pour « BySide » est prête')
-    expect(reminder.text).toMatch(/^Mathilde, votre prochaine conversation \(nº 1\) vous attend :/)
+    expect(reminder.text).toMatch(/^Bonjour Mathilde,\n\nVotre conversation au sujet de BySide est prête/)
+    expect(reminder.text).toContain('Une question ? Répondez à cet e-mail.')
+    expect(reminder.html).toContain('>Ouvrir la conversation BySide</a>')
 
     await POST(makeReq({ kind: 'nudge' }), { params })
     const nudge = sendMakerEmailMock.mock.calls[1][0]
     expect(nudge.subject).toBe('Nouvelle conversation prête pour « BySide »')
     expect(nudge.text).toMatch(/^Nouvelle conversation prête pour BySide\./)
+    expect(nudge.html).toContain('>Ouvrir la conversation BySide</a>')
 
     await POST(makeReq({ kind: 'invite' }), { params })
     const invite = sendMakerEmailMock.mock.calls[2][0]
     expect(invite.subject).toBe('Votre brief pour « BySide »')
     expect(invite.text).toContain('Mot de passe oublié')
+    expect(invite.html).toContain('>Ouvrir la conversation BySide</a>')
   })
 
   it('mints a password-setup link for the recipient, embeds it in the invite body, and stamps shared_at (Garm PR A)', async () => {

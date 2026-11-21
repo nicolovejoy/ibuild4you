@@ -54,8 +54,8 @@ export function groupReminderSends(items: PendingReminder[]): MakerBatch[] {
     })
 }
 
-// Single-brief body is byte-identical to the pre-#141 reminder email: the
-// shared #21 reminder copy plus the minimal sign-off.
+// Single-brief body: the shared #21 reminder copy plus the minimal sign-off.
+// No reply line: the cron sends with Reply-To noreply.
 function singleBriefBody(batch: MakerBatch): string {
   const item = batch.items[0]
   const oc = outboundCopy[batch.language]
@@ -63,6 +63,7 @@ function singleBriefBody(batch: MakerBatch): string {
     oc.nudge.reminder({
       firstName: item.makerFirstName,
       sessionNumber: item.sessionNumber,
+      projectTitle: item.projectTitle,
       shareLink: item.shareLink,
     }),
     '',
@@ -82,9 +83,17 @@ function multiBriefBody(batch: MakerBatch): string {
   return [oc.digest.lead(batch.firstName), '', ...lines, '', ...oc.signOff].join('\n')
 }
 
-// Build the subject + text + html for one maker's batch. 1 brief → today's
-// exact copy (so single-brief behavior is unchanged); 2+ → a digest with one
-// line per brief. The html is derived from the text so links are clickable.
+// Each brief's share link → the words shown for it in the HTML part.
+function linkLabelsFor(batch: MakerBatch): Record<string, string> {
+  const oc = outboundCopy[batch.language]
+  const labels: Record<string, string> = {}
+  for (const item of batch.items) labels[item.shareLink] = oc.linkLabel(item.projectTitle)
+  return labels
+}
+
+// Build the subject + text + html for one maker's batch. 1 brief → the plain
+// reminder; 2+ → a digest with one line per brief. The html is derived from
+// the text, with each link shown as words naming its brief.
 export function buildReminderEmail(batch: MakerBatch): {
   subject: string
   text: string
@@ -96,7 +105,7 @@ export function buildReminderEmail(batch: MakerBatch): {
     return {
       subject: oc.subject.reminder(batch.items[0].projectTitle),
       text,
-      html: textToEmailHtml(text),
+      html: textToEmailHtml(text, { linkLabels: linkLabelsFor(batch) }),
     }
   }
 
@@ -104,6 +113,6 @@ export function buildReminderEmail(batch: MakerBatch): {
   return {
     subject: oc.digest.subject(batch.items.length),
     text,
-    html: textToEmailHtml(text),
+    html: textToEmailHtml(text, { linkLabels: linkLabelsFor(batch) }),
   }
 }
