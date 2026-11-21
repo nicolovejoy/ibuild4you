@@ -29,22 +29,22 @@ export function CollapsibleSection({
           aria-expanded={open}
           aria-controls={bodyId}
           onClick={() => setOpen(!open)}
-          className="w-full flex items-center gap-2 px-4 py-3 text-left"
+          className="w-full flex items-center gap-3 min-h-14 px-5 py-2 text-left"
         >
           <ChevronRight
             aria-hidden
-            className={`h-4 w-4 shrink-0 text-gray-500 transition-transform ${open ? 'rotate-90' : ''}`}
+            className={`h-4 w-4 shrink-0 text-brand-ink-soft transition-transform ${open ? 'rotate-90' : ''}`}
           />
-          <span className="text-sm font-semibold text-brand-slate uppercase tracking-wide">
+          <span className="font-heading text-[15px] font-semibold text-brand-charcoal">
             {title}
           </span>
           {summary && (
-            <span className="ml-auto min-w-0 truncate text-xs text-gray-500">{summary}</span>
+            <span className="ml-auto min-w-0 truncate text-[13px] text-brand-ink-soft">{summary}</span>
           )}
         </button>
       </h2>
       {open && (
-        <div id={bodyId} className="px-4 pb-4">
+        <div id={bodyId} className="px-5 pb-4 sm:pl-12">
           {children}
         </div>
       )}

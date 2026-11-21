@@ -35,7 +35,7 @@ export function DeleteBriefModal({ project, onClose }: { project: Project; onClo
             value={confirmation}
             onChange={(e) => setConfirmation(e.target.value)}
             placeholder="delete"
-            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+            className="w-full px-3 py-2 border border-brand-line-strong rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
             autoFocus
           />
         </div>
@@ -46,7 +46,7 @@ export function DeleteBriefModal({ project, onClose }: { project: Project; onClo
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800"
+            className="px-4 py-2 text-sm text-brand-ink-soft hover:text-gray-800"
           >
             Cancel
           </button>

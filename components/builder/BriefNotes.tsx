@@ -39,7 +39,7 @@ export function StalePrepNotice({
         message={`${c.stalePrepTitle}: ${c.stalePrepNote(info.unlisted_notes.length, info.live_version, info.prep_version)}`}
       />
       {info.unlisted_notes.length > 0 && (
-        <ul className="pl-4 text-xs text-gray-600 list-disc">
+        <ul className="pl-4 text-xs text-brand-ink-soft list-disc">
           {info.unlisted_notes.map((n) => (
             <li key={n.id}>{c.stalePrepMissedNote(noteDay(n.created_at))}</li>
           ))}
@@ -86,7 +86,7 @@ export function UnfoldedNotesList({ notes }: { notes: BriefNote[] | undefined })
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
-        className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand-navy"
+        className="flex items-center gap-1.5 text-xs text-brand-ink-soft hover:text-brand-navy"
       >
         {open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
         <NotebookPen className="h-3.5 w-3.5" /> {c.newSinceCuration(notes.length)}
@@ -94,7 +94,7 @@ export function UnfoldedNotesList({ notes }: { notes: BriefNote[] | undefined })
       {open && (
         <div className="mt-2 space-y-3">
           {notes.map((n) => (
-            <div key={n.id} className="text-xs text-gray-600">
+            <div key={n.id} className="text-xs text-brand-ink-soft">
               <p className="font-medium text-gray-800">{c.noteHeading(noteDay(n.created_at))}</p>
               {noteLines(n).map((line, i) => (
                 <p key={i}>{line}</p>

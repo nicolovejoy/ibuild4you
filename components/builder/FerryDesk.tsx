@@ -60,9 +60,9 @@ function StampCard({
   return (
     <div
       data-testid={testId}
-      className={`rounded-lg border border-l-4 border-gray-200 bg-white px-3 py-2 ${recency?.border ?? ''}`}
+      className={`rounded-lg border border-l-4 border-brand-line bg-white px-3 py-2 ${recency?.border ?? ''}`}
     >
-      <div className="flex items-center gap-1.5 text-xs text-gray-500">
+      <div className="flex items-center gap-1.5 text-xs text-brand-ink-soft">
         {stamp.recency && recency && (
           <span
             role="img"
@@ -77,7 +77,7 @@ function StampCard({
         {stamp.absolute || copy.brief.never}
       </div>
       {subLine && (
-        <div className={`text-xs ${hot ? 'text-brand-navy' : 'text-gray-500'}`}>{subLine}</div>
+        <div className={`text-xs ${hot ? 'text-brand-navy' : 'text-brand-ink-soft'}`}>{subLine}</div>
       )}
     </div>
   )
@@ -153,7 +153,7 @@ export function FerryDesk({
         <span data-testid="brief-version" className="text-base font-semibold text-brand-navy">
           {copy.brief.versionLine(briefVersion, sessionCount)}
         </span>
-        <kbd className="rounded border border-gray-300 px-1.5 py-0.5 font-sans text-xs text-gray-400">
+        <kbd className="rounded border border-brand-line-strong px-1.5 py-0.5 font-sans text-xs text-gray-400">
           {copy.brief.escHint}
         </kbd>
       </div>
@@ -187,13 +187,13 @@ export function FerryDesk({
         onKeyDown={handleKeyDown}
         placeholder={copy.brief.pastePlaceholder}
         aria-label={copy.brief.pastePlaceholder}
-        className="w-full min-h-[55vh] rounded-lg border border-gray-300 bg-white p-3 font-mono text-sm focus:border-brand-navy focus:outline-none"
+        className="w-full min-h-[55vh] rounded-lg border border-brand-line-strong bg-white p-3 font-mono text-sm focus:border-brand-navy focus:outline-none"
       />
 
       {pasteVersionLine && (
         <p
           data-testid="paste-version"
-          className={`text-sm ${pasteVersionLine.stale ? 'font-medium text-amber-700' : 'text-gray-500'}`}
+          className={`text-sm ${pasteVersionLine.stale ? 'font-medium text-amber-700' : 'text-brand-ink-soft'}`}
         >
           {pasteVersionLine.text}
         </p>
@@ -203,7 +203,7 @@ export function FerryDesk({
         <p
           key={line.id}
           data-testid={`paste-${line.id}`}
-          className={`text-sm ${line.warn ? 'font-medium text-amber-700' : 'text-gray-500'}`}
+          className={`text-sm ${line.warn ? 'font-medium text-amber-700' : 'text-brand-ink-soft'}`}
         >
           {line.text}
         </p>
@@ -238,7 +238,7 @@ export function FerryDesk({
 
       {openQuestions}
 
-      <div className="border-t border-gray-200 pt-3">
+      <div className="border-t border-brand-line pt-3">
         <div className="flex items-baseline gap-3">
           <button
             type="button"

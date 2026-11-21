@@ -59,7 +59,7 @@ export function ConversationComposer({ projectId, sessionId }: { projectId: stri
   const error = noteError || streamError
 
   return (
-    <div className="border-t border-gray-200 p-3 space-y-2">
+    <div className="border-t border-brand-line p-3 space-y-2">
       {error && <StatusMessage type="error" message={error} />}
       <textarea
         value={text}
@@ -67,7 +67,7 @@ export function ConversationComposer({ projectId, sessionId }: { projectId: stri
         placeholder={copy.builderChat.placeholder}
         aria-label={copy.builderChat.placeholder}
         rows={3}
-        className="w-full rounded border border-gray-300 p-2 text-sm"
+        className="w-full rounded border border-brand-line-strong p-2 text-sm"
       />
       <div className="flex items-center justify-between gap-3">
         <label className="flex items-center gap-1.5 text-sm text-gray-700" title={copy.builderChat.samRepliesHint}>
@@ -75,7 +75,7 @@ export function ConversationComposer({ projectId, sessionId }: { projectId: stri
           {copy.builderChat.samReplies}
         </label>
         <div className="flex items-center gap-3">
-          {streaming && <span className="text-xs text-gray-500">{copy.builderChat.samReplying}</span>}
+          {streaming && <span className="text-xs text-brand-ink-soft">{copy.builderChat.samReplying}</span>}
           <button
             onClick={send}
             disabled={!canSend}
