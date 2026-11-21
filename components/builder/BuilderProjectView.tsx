@@ -3,12 +3,11 @@
 import { useState, useEffect, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
-  ArrowLeft, MessageSquare, Send, FileText, Sparkles, Plus, X,
+  ArrowLeft, MessageSquare, Send, FileText, X,
   Share2, ChevronDown, ChevronUp, Copy, Check, Mail, RotateCw,
   Trash2, Settings, Upload, Users, UserPlus, NotebookPen,
 } from 'lucide-react'
 import { BuildTimestamp } from '@/components/build-timestamp'
-import { Card, CardBody } from '@/components/ui/Card'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { StatusMessage } from '@/components/ui/StatusMessage'
 import { Button } from '@/components/ui/Button'
@@ -17,7 +16,6 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { MessageContent } from '@/components/ui/MessageContent'
 import { parseNextConvoPayload, nextConvoImportWarnings, type NextConvoPayload } from '@/lib/api/import-payload'
 import { briefSizeWarning, regenFailureNotice } from '@/lib/agent/brief-size'
-import { nextReminderAt } from '@/lib/api/reminder-cadence'
 import { useEscapeBack } from '@/lib/hooks/useEscapeBack'
 import { useNudgeCopy } from '@/lib/hooks/useNudgeCopy'
 import { getProjectShareLink } from '@/lib/url'
@@ -32,19 +30,13 @@ import {
   useMessages,
   useDeleteMessage,
   useUpdateProject,
-  useGenerateWelcome,
   useShareProject,
   useChangeRequesterEmail,
   useCreateSession,
   useProjectFiles,
   useProjectMembers,
-  useSetBriefRole,
-  useSetMemberRole,
-  useRemoveMember,
-  useRestoreMember,
   useSendMakerEmail,
   useGeneratePrep,
-  useDeleteProject,
   useCurrentUser,
   useBriefNotes,
   StalePrepError,
@@ -53,15 +45,10 @@ import {
 } from '@/lib/query/hooks'
 import { buildNextConvoPrompt } from '@/lib/agent/next-convo-prompt'
 import { copy } from '@/lib/copy'
-import { AgentModelSelect } from './AgentModelSelect'
-import { isBriefModel } from '@/lib/agent/model-choices'
 import { outboundCopyFor } from '@/lib/email/outbound-copy'
 import { formatCostUsd } from '@/lib/observability/session-cost'
 import { briefRoleLabel, briefRoleShort, viewerBriefRole } from '@/lib/roles/display'
-import { MEMBER_ROLES, memberRoleLabel } from '@/lib/roles/member-role'
 import { apiFetch } from '@/lib/firebase/api-fetch'
-import { useAuth } from '@/lib/hooks/useAuth'
-import { isSelfRow } from '@/lib/members/self'
 import { useRealtimeMessages } from '@/lib/hooks/useRealtimeMessages'
 import {
   makerRoster,
@@ -75,8 +62,8 @@ import { BuilderFilesTab } from './BuilderFilesTab'
 import { BriefEditor } from './BriefEditor'
 import { FerryDesk } from './FerryDesk'
 import { ConversationComposer } from './ConversationComposer'
-import { BuildStatusKeyPanel } from './BuildStatusKeyPanel'
-import { ProjectEmailPanel, canSeeProjectEmail } from './ProjectEmailPanel'
+import { SettingsTab } from './SettingsTab'
+import { NextRoundPanel } from './NextRoundPanel'
 import { OpenQuestionsCard } from './OpenQuestionsCard'
 import { StalePrepNotice, UnfoldedNotesList } from './BriefNotes'
 import { makerQuestions, riskOwner, riskText } from '@/lib/brief/risks'
@@ -86,13 +73,13 @@ import { ferryStamps } from '@/lib/builder/ferry-stamps'
 import { getTurnIndicator } from '@/lib/turn-indicator'
 import { TurnBadge } from '@/components/ui/TurnBadge'
 import { BriefSwitcher } from '@/components/brief-switcher'
-import { toLocale, type Locale } from '@/lib/locale'
 import { resolveBuilderTab, DEFAULT_BUILDER_TAB, type BuilderTabId } from '@/lib/projects/project-view'
 import type { Project, Session, BriefContent, BriefNote, BuildReport, ProjectFile } from '@/lib/types'
 
-// Builder nav is Brief · Conversations · People · Agent setup. #120 made
-// Conversations reader-first (the transcript is the page), which pushed agent
-// config back out to its own Setup tab.
+// Builder nav is Brief · Conversations · Settings. #120 made Conversations
+// reader-first (the transcript is the page). Settings holds the people on the
+// brief and the standing settings (SettingsTab); the per-round agent config is
+// set by each paste and shown read only on Conversations (NextRoundPanel).
 // Opening a brief lands on Brief; see resolveBuilderTab for the URL rules.
 type TabId = BuilderTabId
 
@@ -165,8 +152,7 @@ export function BuilderProjectView({ projectId }: { projectId: string }) {
   const tabs: { id: TabId; label: string; shortLabel: string; Icon: typeof MessageSquare; tooltip: string }[] = [
     { id: 'brief', label: 'Brief', shortLabel: 'Brief', Icon: FileText, tooltip: copy.glossary.brief.short },
     { id: 'conversations', label: 'Conversations', shortLabel: 'Convos', Icon: MessageSquare, tooltip: copy.glossary.conversations.short },
-    { id: 'people', label: 'People', shortLabel: 'People', Icon: Users, tooltip: copy.glossary.people.short },
-    { id: 'setup', label: 'Agent setup', shortLabel: 'Setup', Icon: Settings, tooltip: copy.glossary.setup.short },
+    { id: 'settings', label: 'Settings', shortLabel: 'Settings', Icon: Settings, tooltip: copy.glossary.settings.short },
   ]
 
   return (
@@ -321,17 +307,18 @@ export function BuilderProjectView({ projectId }: { projectId: string }) {
               onImportedConsumed={() => setImportedPayload(null)}
             />
           )}
-          {activeTab === 'people' && (
-            <PeopleTab project={project} onShare={openShare} />
-          )}
-          {activeTab === 'setup' && (
-            project ? <AgentConfigCard project={project} /> : <Skeleton className="h-64 w-full rounded-lg" />
+          {activeTab === 'settings' && (
+            project ? (
+              <SettingsTab project={project} onShare={openShare} onGoToConversations={() => setTab('conversations')} />
+            ) : (
+              <Skeleton className="h-64 w-full rounded-lg" />
+            )
           )}
         </main>
       </div>
 
       {/* Mobile bottom tab bar */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-slate-900 text-slate-100 border-t border-slate-800 grid grid-cols-4 z-20">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-slate-900 text-slate-100 border-t border-slate-800 grid grid-cols-3 z-20">
         {tabs.map(({ id, shortLabel, Icon }) => (
           <button
             key={id}
@@ -1161,37 +1148,6 @@ function ConversationsTab({
   )
 }
 
-// --- People Tab (#19 Phase 2) ---
-// Roster + per-person access, extracted from the old Setup tab.
-
-function PeopleTab({ project, onShare }: { project: Project | undefined; onShare: (mode?: 'maker' | 'add') => void }) {
-  if (!project) return <Skeleton className="h-48 w-full rounded-lg" />
-
-  if (!project.requester_email) {
-    return (
-      <Card hover={false}>
-        <CardBody>
-          <h2 className="text-sm font-semibold text-brand-slate uppercase tracking-wide flex items-center gap-1.5 mb-3">
-            <Users className="h-4 w-4" /> People on this brief
-          </h2>
-          <p className="text-sm text-gray-600 mb-4">
-            No one yet. Invite the person this brief is for — you&apos;ll get a link to send them.
-          </p>
-          <LoadingButton variant="primary" icon={Share2} onClick={() => onShare('maker')}>
-            Invite someone
-          </LoadingButton>
-        </CardBody>
-      </Card>
-    )
-  }
-
-  return <PeoplePanel project={project} onInvite={() => onShare('add')} />
-}
-
-// --- Status strip + dispatch (#120) ---
-// One row: turn state, the full maker roster (not just the first requester),
-// reminders state, and the single state-aware dispatch action.
-
 function StatusStrip({
   project,
   projectId,
@@ -1240,6 +1196,7 @@ function StatusStrip({
   } | null>(null)
 
   return (
+    <>
     <div className="bg-white border border-gray-200 rounded-lg px-4 py-3 space-y-2">
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 min-w-0">
@@ -1330,6 +1287,19 @@ function StatusStrip({
         </div>
       )}
     </div>
+
+    {/* What the next conversation opens with. Left out while the open
+        conversation waits on the maker's first reply: that round is already
+        running, and its transcript shows the config it used. */}
+    {dispatch.kind !== 'nudge' && (
+      <NextRoundPanel
+        project={project}
+        sessions={sessions}
+        unusedSessionId={activeSession && !hasUserMessages ? activeSession.id : null}
+        onOpenImport={onOpenImport}
+      />
+    )}
+    </>
   )
 }
 
@@ -1573,533 +1543,6 @@ function ShareModal({ project, onClose, mode = 'maker' }: { project: Project; on
         </form>
       )}
       {changeEmail.error && <StatusMessage type="error" message={changeEmail.error.message} />}
-    </Modal>
-  )
-}
-
-// People on this brief: lists members with their access tier + an editable
-// brief_role for chat participants (Originator/Contributor/Reviewer). Console
-// operators (owner/builder) operate in a reviewing capacity — shown read-only.
-function PeoplePanel({ project, onInvite }: { project: Project; onInvite: () => void }) {
-  // include_removed so moved-out members show with a Restore action (#106 P2).
-  const { data: members, isLoading, error } = useProjectMembers(project.id, true, true)
-  const setBriefRole = useSetBriefRole(project.id)
-  const setMemberRole = useSetMemberRole(project.id)
-  const removeMember = useRemoveMember(project.id)
-  const restoreMember = useRestoreMember(project.id)
-  const [pendingEmail, setPendingEmail] = useState<string | null>(null)
-  const [pendingTierId, setPendingTierId] = useState<string | null>(null)
-  const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null)
-  const { user } = useAuth()
-
-  const active = members?.filter((m) => !m.removed_at) ?? []
-  const removed = members?.filter((m) => m.removed_at) ?? []
-
-  return (
-    <Card hover={false}>
-      <CardBody>
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-semibold text-brand-slate uppercase tracking-wide flex items-center gap-1.5">
-            <Users className="h-4 w-4" /> People on this brief
-          </h2>
-          <button onClick={onInvite} className="text-xs text-brand-navy hover:underline flex items-center gap-1">
-            <Plus className="h-3.5 w-3.5" /> Invite
-          </button>
-        </div>
-
-        {/* One sign-in link for the whole brief (#81, reshaped by Garm PR D):
-            everyone signs in with Google or their own password, so there is
-            nothing per-person to reveal — this is the link the operator re-sends. */}
-        <ProjectLinkCopy project={project} />
-
-        {isLoading && <Skeleton className="h-12 w-full" />}
-        {error && <StatusMessage type="error" message={(error as Error).message} />}
-        {members && members.length === 0 && (
-          <p className="text-sm text-gray-500">No one yet. Invite someone to start the brief.</p>
-        )}
-
-        <ul className="divide-y divide-gray-100">
-          {active.map((m) => {
-            const isConsole = m.role === 'owner' || m.role === 'builder'
-            const confirming = confirmRemoveId === m.id
-            // #245: your own row is read-only; the server refuses self-edits too.
-            const isSelf = isSelfRow(m.email, user?.email)
-            return (
-              <li key={m.id} className="py-2">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-brand-charcoal truncate">
-                      {m.display_name}
-                      {isSelf && (
-                        <span className="ml-1 text-xs font-normal text-gray-400">
-                          {copy.builderChat.you}
-                        </span>
-                      )}
-                    </p>
-                    <p className="text-xs text-gray-500 truncate">{m.email}</p>
-                  </div>
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    {/* Access tier (permission level) — editable for every member but you. */}
-                    {isSelf ? (
-                      <span className="text-xs text-gray-600 px-1">
-                        {memberRoleLabel(m.role ?? 'maker')}
-                      </span>
-                    ) : (
-                      <select
-                        aria-label="Access tier"
-                        value={m.role ?? 'maker'}
-                        disabled={setMemberRole.isPending && pendingTierId === m.id}
-                        onChange={async (e) => {
-                          const value = e.target.value
-                          setPendingTierId(m.id)
-                          try {
-                            await setMemberRole.mutateAsync({ memberId: m.id, role: value })
-                          } finally {
-                            setPendingTierId(null)
-                          }
-                        }}
-                        className="px-2 py-1 border border-gray-300 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-brand-navy"
-                      >
-                        {MEMBER_ROLES.map((r) => (
-                          <option key={r} value={r}>
-                            {memberRoleLabel(r)}
-                          </option>
-                        ))}
-                      </select>
-                    )}
-                    {/* Brief role (what they do) — console operators review by default. */}
-                    {isConsole ? (
-                      <span className="text-xs text-gray-400 px-1" title={briefRoleShort('reviewer')}>
-                        {briefRoleLabel('reviewer')}
-                      </span>
-                    ) : isSelf ? (
-                      <span className="text-xs text-gray-600 px-1">
-                        {briefRoleLabel(m.brief_role ?? 'originator')}
-                      </span>
-                    ) : (
-                      <select
-                        aria-label="Brief role"
-                        value={m.brief_role ?? 'originator'}
-                        disabled={setBriefRole.isPending && pendingEmail === m.email}
-                        onChange={async (e) => {
-                          const value = e.target.value
-                          setPendingEmail(m.email)
-                          try {
-                            await setBriefRole.mutateAsync({ email: m.email, brief_role: value })
-                          } finally {
-                            setPendingEmail(null)
-                          }
-                        }}
-                        className="px-2 py-1 border border-gray-300 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-brand-navy"
-                      >
-                        <option value="originator">{briefRoleLabel('originator')}</option>
-                        <option value="contributor">{briefRoleLabel('contributor')}</option>
-                        <option value="reviewer">{briefRoleLabel('reviewer')}</option>
-                      </select>
-                    )}
-                    {/* Move out (#106) — non-destructive, two-step inline confirm. */}
-                    {!isSelf && (
-                      <button
-                        onClick={() => setConfirmRemoveId(m.id)}
-                        title="Remove from brief"
-                        aria-label="Remove from brief"
-                        className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                {confirming && (
-                  <div className="mt-2 flex items-center justify-between gap-2 rounded-md bg-red-50 border border-red-200 p-2">
-                    <span className="text-xs text-red-800">Remove {m.display_name} from this brief? Their access is revoked; you can restore them later.</span>
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <button onClick={() => setConfirmRemoveId(null)} className="text-xs text-gray-600 hover:underline px-1">Cancel</button>
-                      <button
-                        onClick={async () => {
-                          try {
-                            await removeMember.mutateAsync(m.id)
-                          } finally {
-                            setConfirmRemoveId(null)
-                          }
-                        }}
-                        disabled={removeMember.isPending}
-                        className="text-xs font-medium text-white bg-red-600 hover:bg-red-700 rounded px-2 py-1 disabled:opacity-50"
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </li>
-            )
-          })}
-        </ul>
-
-        {removed.length > 0 && (
-          <div className="mt-4">
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Removed</p>
-            <ul className="divide-y divide-gray-100">
-              {removed.map((m) => (
-                <li key={m.id} className="py-2 flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="text-sm text-gray-500 truncate line-through">{m.display_name}</p>
-                    <p className="text-xs text-gray-400 truncate">
-                      {m.email}
-                      {m.removed_at && ` · removed ${new Date(m.removed_at).toLocaleDateString()}`}
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => restoreMember.mutate(m.id)}
-                    disabled={restoreMember.isPending}
-                    className="text-xs text-brand-navy hover:underline flex items-center gap-1 shrink-0 disabled:opacity-50"
-                  >
-                    <RotateCw className="h-3.5 w-3.5" /> Restore
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        {setBriefRole.error && <StatusMessage type="error" message={(setBriefRole.error as Error).message} />}
-        {setMemberRole.error && <StatusMessage type="error" message={(setMemberRole.error as Error).message} />}
-        {removeMember.error && <StatusMessage type="error" message={(removeMember.error as Error).message} />}
-        {restoreMember.error && <StatusMessage type="error" message={(restoreMember.error as Error).message} />}
-      </CardBody>
-    </Card>
-  )
-}
-
-// The brief's sign-in link, copyable once for the whole roster. Passcodes are
-// retired (Garm PR D): everyone signs in with Google or their own password
-// ("Forgot password?" sets one), so the share link is all there is to re-send.
-function ProjectLinkCopy({ project }: { project: Project }) {
-  const [copied, setCopied] = useState(false)
-  const link = getProjectShareLink(project.slug, project.id)
-
-  const handleCopy = async () => {
-    await navigator.clipboard.writeText(link)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
-  }
-
-  return (
-    <div className="mb-3 rounded-md bg-gray-50 border border-gray-200 p-2.5">
-      <p className="text-[11px] text-gray-500 mb-0.5">Sign-in link</p>
-      <div className="flex items-center gap-1.5">
-        <code className="flex-1 min-w-0 truncate px-2 py-1 bg-white border border-gray-300 rounded text-xs text-gray-700">{link}</code>
-        <button onClick={handleCopy} className="p-1 text-gray-500 hover:text-brand-navy hover:bg-gray-100 rounded shrink-0" title="Copy link">
-          {copied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
-        </button>
-      </div>
-      <p className="text-[11px] text-gray-400 mt-1">
-        They sign in with Google or their email + password &mdash; &ldquo;Forgot password?&rdquo; on the sign-in page sets one.
-      </p>
-    </div>
-  )
-}
-
-// The single agent-config home (#19 UX-scrub Phase 1). Formerly the "Agent
-// setup" card (EditableSetup); the duplicate config fold inside the dispatch
-// card is gone, so this is now the ONE place to edit how the agent behaves.
-// Always expanded: it is the Setup tab's whole content, so a collapse toggle
-// only hid the thing the builder came to edit.
-function AgentConfigCard({ project }: { project: Project }) {
-  const [welcomeMessage, setWelcomeMessage] = useState(project.welcome_message || '')
-  const [seedQuestions, setSeedQuestions] = useState<string[]>(project.seed_questions || [])
-  const [newQuestion, setNewQuestion] = useState('')
-  const [sessionMode, setSessionMode] = useState<'discover' | 'converge'>(project.session_mode || 'discover')
-  const [directives, setDirectives] = useState<string[]>(project.builder_directives || [])
-  const [newDirective, setNewDirective] = useState('')
-  const [identity, setIdentity] = useState(project.identity || '')
-  const [nudgeMessageOverride, setNudgeMessageOverride] = useState(project.nudge_message || '')
-  const [voiceSample, setVoiceSample] = useState(project.voice_sample || '')
-  const [autoReminders, setAutoReminders] = useState(project.auto_reminders_enabled === true)
-  const [githubRepo, setGithubRepo] = useState(project.github_repo || '')
-  const [language, setLanguage] = useState<Locale>(toLocale(project.language))
-  const [model, setModel] = useState(isBriefModel(project.model) ? project.model : '')
-  const [hideTitleInPreviews, setHideTitleInPreviews] = useState(project.hide_title_in_previews === true)
-  const [saved, setSaved] = useState(false)
-  const [deleting, setDeleting] = useState(false)
-
-  const updateProject = useUpdateProject()
-  const generateWelcome = useGenerateWelcome()
-  const { data: currentUser } = useCurrentUser()
-  // Destructive delete is the owner's escape hatch, relocated here from the
-  // dashboard card so it can't be hit by accident next to Archive (#16). Same
-  // gate as the old card control (system admin); the route enforces owner too.
-  const isAdmin = currentUser?.system_roles?.includes('admin') ?? false
-
-  useEffect(() => {
-    setWelcomeMessage(project.welcome_message || '')
-    setSeedQuestions(project.seed_questions || [])
-    setSessionMode(project.session_mode || 'discover')
-    setDirectives(project.builder_directives || [])
-    setIdentity(project.identity || '')
-    setNudgeMessageOverride(project.nudge_message || '')
-    setVoiceSample(project.voice_sample || '')
-    setAutoReminders(project.auto_reminders_enabled === true)
-    setGithubRepo(project.github_repo || '')
-    setLanguage(toLocale(project.language))
-    setModel(isBriefModel(project.model) ? project.model : '')
-    setHideTitleInPreviews(project.hide_title_in_previews === true)
-  }, [project.welcome_message, project.seed_questions, project.session_mode, project.builder_directives, project.identity, project.nudge_message, project.voice_sample, project.auto_reminders_enabled, project.github_repo, project.language, project.model, project.hide_title_in_previews])
-
-  const handleSave = async () => {
-    await updateProject.mutateAsync({
-      project_id: project.id,
-      welcome_message: welcomeMessage,
-      seed_questions: seedQuestions,
-      session_mode: sessionMode,
-      builder_directives: directives,
-      identity: identity || undefined,
-      nudge_message: nudgeMessageOverride || undefined,
-      voice_sample: voiceSample || undefined,
-      auto_reminders_enabled: autoReminders,
-      github_repo: githubRepo.trim() || undefined,
-      language,
-      model: model || null,
-      hide_title_in_previews: hideTitleInPreviews,
-      last_builder_activity_at: new Date().toISOString(),
-    })
-    setSaved(true)
-    setTimeout(() => setSaved(false), 2000)
-  }
-
-  // Reminder status line (#67): read-only, derived from persisted fields + the
-  // live toggle. Same gating as the cron via nextReminderAt() so it never shows a
-  // phantom send (e.g. after the maker replied, or once the 3-send cap is hit).
-  const reminderNext = nextReminderAt({
-    autoRemindersEnabled: autoReminders,
-    remindersSentCount: project.reminders_sent_count,
-    lastReminderSentAt: project.last_reminder_sent_at,
-    latestSessionCreatedAt: project.latest_session_created_at,
-    sharedAt: project.shared_at,
-    lastMakerMessageAt: project.last_maker_message_at,
-    requesterEmail: project.requester_email,
-  })
-  const fmtDate = (iso: string) =>
-    new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-  let reminderNextLine: string
-  if (reminderNext.at !== null) {
-    const days = Math.ceil((Date.parse(reminderNext.at) - Date.now()) / 86400000)
-    reminderNextLine =
-      days <= 0
-        ? 'Next reminder: due now (goes out on the next daily run)'
-        : `Next reminder: in ~${days} day${days === 1 ? '' : 's'} (${fmtDate(reminderNext.at)})`
-  } else {
-    reminderNextLine = {
-      no_maker_email: 'No maker email set — add one to enable reminders.',
-      cap_reached: 'All 3 reminders sent — paused until the maker replies.',
-      maker_already_responded: 'Maker has replied — reminders paused.',
-      no_reference_timestamp: 'No conversation shared yet — nothing to remind about.',
-      disabled: 'Reminders are off.',
-    }[reminderNext.block]
-  }
-
-  return (
-    <Card hover={false}>
-      <CardBody>
-        <h2 className="flex items-center gap-1.5 text-sm font-semibold text-brand-slate uppercase tracking-wide">
-          <Settings className="h-4 w-4" />
-          Agent setup
-        </h2>
-        <div className="space-y-5 mt-4">
-          {/* Opening message */}
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="text-sm font-medium text-gray-700">Opening message</label>
-              <LoadingButton variant="ghost" size="sm" loading={generateWelcome.isPending} loadingText="Generating..." onClick={async () => { const r = await generateWelcome.mutateAsync(project.id); setWelcomeMessage(r.welcome_message) }} icon={Sparkles}>
-                {welcomeMessage ? 'Regenerate' : 'Generate'}
-              </LoadingButton>
-            </div>
-            <textarea value={welcomeMessage} onChange={(e) => setWelcomeMessage(e.target.value)} placeholder="The message the agent sends when the maker opens this conversation." rows={4} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy" />
-          </div>
-
-          {/* Maker's language — agent replies, outbound copy, link previews */}
-          <div>
-            <label htmlFor="maker-language" className="text-sm font-medium text-gray-700 block mb-1.5">Maker&apos;s language</label>
-            <select
-              id="maker-language"
-              value={language}
-              onChange={(e) => setLanguage(toLocale(e.target.value))}
-              className="px-3 py-2 border border-gray-300 rounded-md text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
-            >
-              <option value="en">English</option>
-              <option value="fr">French</option>
-            </select>
-            <p className="text-xs text-gray-400 mt-1">The agent talks to the maker in this language from the first message, and link previews use it. The brief itself stays in English.</p>
-          </div>
-
-          {/* Agent model (#189) — per-brief chat model, applies from the next conversation */}
-          <AgentModelSelect value={model} onChange={setModel} />
-
-          {/* Mode */}
-          <SessionModeToggle mode={sessionMode} onChange={setSessionMode} />
-
-          {/* Seed questions / directives */}
-          {sessionMode === 'discover' ? (
-            <ListEditor label="Seed questions" description="Questions the agent should weave into the conversation early on." items={seedQuestions} newItem={newQuestion} onNewItemChange={setNewQuestion} onAdd={() => { if (!newQuestion.trim()) return; setSeedQuestions(p => [...p, newQuestion.trim()]); setNewQuestion('') }} onBulkAdd={(bulk) => setSeedQuestions(p => [...p, ...bulk])} onRemove={(i) => setSeedQuestions(p => p.filter((_, idx) => idx !== i))} placeholder="What does a typical day look like for you?" />
-          ) : (
-            <ListEditor label="Builder directives" description="Things the agent should actively drive toward." items={directives} newItem={newDirective} onNewItemChange={setNewDirective} onAdd={() => { if (!newDirective.trim()) return; setDirectives(p => [...p, newDirective.trim()]); setNewDirective('') }} onBulkAdd={(bulk) => setDirectives(p => [...p, ...bulk])} onRemove={(i) => setDirectives(p => p.filter((_, idx) => idx !== i))} placeholder="Get them to pick 1-2 tickers to start with" />
-          )}
-
-          {/* Nudge override */}
-          <div>
-            <label className="text-sm font-medium text-gray-700 block mb-1.5">Nudge override (optional)</label>
-            <textarea value={nudgeMessageOverride} onChange={(e) => setNudgeMessageOverride(e.target.value)} placeholder="Leave blank to use the default boilerplate nudge. Fill this in to send a specific message verbatim." rows={3} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy" />
-            <p className="text-xs text-gray-400 mt-1">When set, the next nudge uses this text verbatim instead of the default template.</p>
-          </div>
-
-          {/* Auto-reminders */}
-          <label className="flex items-start gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={autoReminders}
-              onChange={(e) => setAutoReminders(e.target.checked)}
-              className="mt-0.5 h-4 w-4 rounded border-gray-300 text-brand-navy focus:ring-brand-navy"
-            />
-            <div>
-              <div className="text-sm font-medium text-gray-700">Auto-remind the maker if they don&apos;t respond</div>
-              <p className="text-xs text-gray-400">Sends up to 3 reminder emails on a 2 / 5 / 10 day cadence after a new conversation is ready. Stops the moment the maker replies.</p>
-            </div>
-          </label>
-
-          {/* Link previews are public to anyone holding the link */}
-          <label className="flex items-start gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={hideTitleInPreviews}
-              onChange={(e) => setHideTitleInPreviews(e.target.checked)}
-              className="mt-0.5 h-4 w-4 rounded border-gray-300 text-brand-navy focus:ring-brand-navy"
-            />
-            <div>
-              <div className="text-sm font-medium text-gray-700">Don&apos;t show the brief title in link previews</div>
-              <p className="text-xs text-gray-400">When a link to this brief is pasted into a message, the preview card shows its title. Anyone holding the link can see that card, and messaging apps keep old previews.</p>
-            </div>
-          </label>
-
-          {/* Reminder status (#67) — only meaningful when reminders are on */}
-          {autoReminders && (
-            <div className="ml-6 -mt-2 rounded-md bg-gray-50 border border-gray-100 px-3 py-2 text-xs text-gray-600 space-y-0.5">
-              <div>
-                {(project.reminders_sent_count ?? 0)} of 3 reminders sent this round
-                {project.last_reminder_sent_at ? ` · last ${fmtDate(project.last_reminder_sent_at)}` : ''}
-              </div>
-              <div className="text-gray-500">{reminderNextLine}</div>
-            </div>
-          )}
-
-          {/* Advanced — rarely touched: agent persona + the codebase link
-              for sibling decisions (not maker-send config; lives here so it isn't stranded
-              while the eventual "Brief settings" home is built — #19 Phase 4). */}
-          <details className="group">
-            <summary className="cursor-pointer text-xs font-medium text-gray-400 hover:text-gray-600 list-none">Advanced</summary>
-            <div className="mt-3 space-y-5">
-              <div>
-                <label className="text-sm font-medium text-gray-700 block mb-1.5">Agent identity (optional)</label>
-                <textarea value={identity} onChange={(e) => setIdentity(e.target.value)} placeholder="Override the default agent persona. Leave blank for standard intake assistant." rows={2} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy" />
-                <p className="text-xs text-gray-400 mt-1">Changes how the agent introduces itself and frames its role.</p>
-              </div>
-              <div>
-                <label className="text-sm font-medium text-gray-700 block mb-1.5">GitHub repo (optional)</label>
-                <input
-                  type="text"
-                  value={githubRepo}
-                  onChange={(e) => setGithubRepo(e.target.value)}
-                  placeholder="owner/name — e.g. nicolovejoy/prntd"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
-                />
-                <p className="text-xs text-gray-400 mt-1">Links this brief to its codebase so decisions can be shared with sibling briefs. Loop feedback uses the app&apos;s own repo, set at /admin/apps.</p>
-              </div>
-              {/* The saved repo, not the unsaved input, so the panel names the repo the server uses. */}
-              <BuildStatusKeyPanel projectId={project.id} githubRepo={project.github_repo} isSystemAdmin={isAdmin} />
-              {canSeeProjectEmail(project.viewer_role, isAdmin) && <ProjectEmailPanel projectId={project.id} />}
-              <div>
-                <label className="text-sm font-medium text-gray-700 block mb-1.5">Voice sample (optional)</label>
-                <textarea value={voiceSample} onChange={(e) => setVoiceSample(e.target.value)} placeholder="One paragraph showing how you'd text this person by hand." rows={3} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy" />
-                <p className="text-xs text-gray-400 mt-1">Anchors the AI-drafted nudge to your voice. Ignored when a nudge override is set.</p>
-              </div>
-              {isAdmin && (
-                <div className="pt-4 border-t border-red-100">
-                  <label className="text-sm font-medium text-red-700 block mb-1.5">Danger zone</label>
-                  <p className="text-xs text-gray-400 mb-2">{copy.deleteProject.warning} To just hide it from your dashboard, use Archive instead.</p>
-                  <button
-                    onClick={() => setDeleting(true)}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-red-600 border border-red-200 rounded-md hover:bg-red-50"
-                  >
-                    <Trash2 className="h-4 w-4" /> Delete brief
-                  </button>
-                </div>
-              )}
-            </div>
-          </details>
-
-          <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
-            <LoadingButton variant="secondary" size="sm" loading={updateProject.isPending} loadingText="Saving..." onClick={handleSave}>
-              {saved ? 'Saved!' : 'Save setup'}
-            </LoadingButton>
-            {updateProject.error && <span className="text-xs text-red-500">{updateProject.error.message}</span>}
-          </div>
-        </div>
-      </CardBody>
-      {deleting && <DeleteBriefModal project={project} onClose={() => setDeleting(false)} />}
-    </Card>
-  )
-}
-
-// Owner-only destructive delete, relocated from the dashboard card into the
-// brief's Advanced section (#16). Type-"delete"-to-confirm; on success the brief
-// is gone, so we leave the brief view for the dashboard.
-function DeleteBriefModal({ project, onClose }: { project: Project; onClose: () => void }) {
-  const router = useRouter()
-  const [confirmation, setConfirmation] = useState('')
-  const deleteProject = useDeleteProject()
-  const canDelete = confirmation.toLowerCase() === 'delete'
-
-  return (
-    <Modal isOpen onClose={onClose} title={`Delete "${project.title}"?`}>
-      <div className="space-y-4">
-        <p className="text-sm text-gray-700">{copy.deleteProject.warning}</p>
-        <div>
-          <label htmlFor="brief-delete-confirm" className="block text-sm font-medium text-gray-700 mb-1">
-            Type <span className="font-mono font-bold">delete</span> to confirm
-          </label>
-          <input
-            id="brief-delete-confirm"
-            type="text"
-            value={confirmation}
-            onChange={(e) => setConfirmation(e.target.value)}
-            placeholder="delete"
-            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
-            autoFocus
-          />
-        </div>
-        {deleteProject.error && <StatusMessage type="error" message={deleteProject.error.message} />}
-        <div className="flex justify-end gap-2">
-          <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800">
-            Cancel
-          </button>
-          <LoadingButton
-            variant="danger"
-            loading={deleteProject.isPending}
-            loadingText="Deleting..."
-            disabled={!canDelete}
-            onClick={async () => {
-              try {
-                await deleteProject.mutateAsync(project.id)
-                router.push('/dashboard')
-              } catch {
-                // error shown via deleteProject.error
-              }
-            }}
-          >
-            Delete
-          </LoadingButton>
-        </div>
-      </div>
     </Modal>
   )
 }
@@ -2368,7 +1811,7 @@ function StartDispatch({
     ? [nudgeBodyText, '', shareLink].join('\n')
     : outboundCopyFor(project.language).nudge.body({ projectTitle: project.title, shareLink, sessionMode })
 
-  // Config is saved separately (Agent setup tab); the dispatch just creates
+  // The agent config comes from the last paste; the dispatch just creates
   // the session + sends. Touch builder activity + refresh prep so a stale
   // fingerprint re-warms.
   const createAndThen = async () => {
@@ -2484,112 +1927,10 @@ function StartDispatch({
               Start conversation {sessionNumber}
             </LoadingButton>
           </div>
-          <p className="text-xs text-gray-400">Edit how the agent behaves in the Agent setup tab.</p>
+          <p className="text-xs text-gray-400">{copy.nextRound.startHint}</p>
         </div>
       </Modal>
     </>
-  )
-}
-
-// --- Shared Components ---
-
-function SessionModeToggle({ mode, onChange }: { mode: 'discover' | 'converge'; onChange: (m: 'discover' | 'converge') => void }) {
-  return (
-    <div>
-      <label className="text-sm font-medium text-gray-700 block mb-1.5">Mode</label>
-      <div className="flex gap-2">
-        <button
-          onClick={() => onChange('discover')}
-          className={`flex-1 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-            mode === 'discover' ? 'bg-brand-navy text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-          }`}
-        >
-          Discover
-        </button>
-        <button
-          onClick={() => onChange('converge')}
-          className={`flex-1 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-            mode === 'converge' ? 'bg-brand-navy text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-          }`}
-        >
-          Converge
-        </button>
-      </div>
-      <p className="text-xs text-gray-500 mt-1">
-        {mode === 'discover'
-          ? 'Broad exploration \u2014 the agent asks open-ended questions'
-          : 'Push for decisions \u2014 the agent narrows scope and presents options'}
-      </p>
-    </div>
-  )
-}
-
-function ListEditor({
-  label,
-  description,
-  items,
-  newItem,
-  onNewItemChange,
-  onAdd,
-  onBulkAdd,
-  onRemove,
-  placeholder,
-}: {
-  label: string
-  description: string
-  items: string[]
-  newItem: string
-  onNewItemChange: (v: string) => void
-  onAdd: () => void
-  onBulkAdd: (items: string[]) => void
-  onRemove: (i: number) => void
-  placeholder: string
-}) {
-  const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
-    const text = e.clipboardData.getData('text')
-    if (!text.includes('\n')) return // single line — let default paste handle it
-
-    e.preventDefault()
-    // Strip common header lines and split by newline
-    const lines = text
-      .split('\n')
-      .map((line) => line.trim())
-      .filter((line) => line && !/^(builder directives|seed questions):?\s*$/i.test(line))
-    if (lines.length > 0) onBulkAdd(lines)
-  }
-
-  return (
-    <div>
-      <label className="text-sm font-medium text-gray-700 block mb-1.5">{label}</label>
-      <p className="text-xs text-gray-500 mb-2">{description}</p>
-      {items.length > 0 && (
-        <ul className="space-y-1.5 mb-2">
-          {items.map((item, i) => (
-            <li key={i} className="flex items-start gap-2 text-sm text-gray-700 bg-gray-50 rounded px-2.5 py-1.5">
-              <span className="text-gray-400 text-xs mt-0.5">{i + 1}.</span>
-              <span className="flex-1">{item}</span>
-              <button onClick={() => onRemove(i)} className="p-0.5 text-gray-400 hover:text-red-500 shrink-0">
-                <X className="h-3.5 w-3.5" />
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-      <div className="flex gap-2">
-        <input
-          type="text"
-          value={newItem}
-          onChange={(e) => onNewItemChange(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); onAdd() } }}
-          onPaste={handlePaste}
-          placeholder={placeholder}
-          className="flex-1 px-3 py-1.5 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
-        />
-        <button onClick={onAdd} disabled={!newItem.trim()} className="p-1.5 text-gray-400 hover:text-brand-navy hover:bg-gray-100 rounded disabled:opacity-40">
-          <Plus className="h-4 w-4" />
-        </button>
-      </div>
-    </div>
   )
 }
 

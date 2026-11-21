@@ -15,6 +15,7 @@ let projects: Record<string, Doc>
 let members: Doc[]
 let auth: { uid: string; email: string; systemRoles: string[]; error: null }
 const mockGetProjectRole = vi.fn()
+const mockGetViewerMembership = vi.fn()
 
 const EMAIL_IN = {
   email_in_address: 'cafe-7k2q@inbox.ibuild4you.com',
@@ -64,7 +65,7 @@ vi.mock('@/lib/api/firebase-server-helpers', () => ({
   getAuthenticatedUser: vi.fn(async () => auth),
   getAdminDb: vi.fn(() => db),
   getProjectRole: (...args: unknown[]) => mockGetProjectRole(...args),
-  getViewerBriefRole: vi.fn(async () => null),
+  getViewerMembership: (...args: unknown[]) => mockGetViewerMembership(...args),
   requireRole: vi.fn(() => null),
   hasSystemRole: (a: { systemRoles: string[] }, role: string) => a.systemRoles.includes(role),
 }))
@@ -90,6 +91,7 @@ const hasAll = (p: Doc) =>
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mockGetViewerMembership.mockResolvedValue({ brief_role: null, archived: false })
   auth = { uid: 'u1', email: 'viewer@example.com', systemRoles: [], error: null }
   projects = {
     p1: { title: 'Cafe', slug: 'cafe', ...EMAIL_IN },
@@ -121,6 +123,17 @@ describe('GET /api/projects?slug= (one project)', () => {
     const body = await get('?slug=p1')
     expect(body.viewer_role).toBe('admin')
     expect(hasAll(body)).toBe(true)
+  })
+
+  // The Settings tab's Archive button reads these from the one-project lookup.
+  it("carries the viewer's brief role and whether they archived the brief", async () => {
+    mockGetProjectRole.mockResolvedValue('builder')
+    expect((await get('?slug=cafe')).viewer_archived).toBe(false)
+
+    mockGetViewerMembership.mockResolvedValue({ brief_role: 'contributor', archived: true })
+    const body = await get('?slug=cafe')
+    expect(body.viewer_archived).toBe(true)
+    expect(body.viewer_brief_role).toBe('contributor')
   })
 })
 

@@ -19,7 +19,7 @@ reference. History: `docs/changelog.md` (Reminders Phase 1, 2026-05-30; flip,
   `noreply@`. Honors `REMINDER_DRY_RUN` (logs a would-send, no email, counters
   untouched).
 - **Toggle** `auto_reminders_enabled` on the project — per-brief, defaults on for
-  new projects. Set it from either: the brief's **Setup tab**
+  new projects. Set it from either: the brief's **Settings tab**
   (`BuilderProjectView`), or the **Auto-reminders panel on `/admin/reminders`**
   (`GET /api/admin/reminders/projects` + Switch; flip reuses `PATCH
   /api/projects` since admins get implicit owner on all projects).

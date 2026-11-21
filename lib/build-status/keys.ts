@@ -5,7 +5,7 @@ import { hashReadKey, readKeyMatches } from '@/lib/feedback/read-crypto'
 import { LAST_USED_THROTTLE_MS } from '@/lib/feedback/read-keys'
 import { fullRepo } from '@/lib/github/repo'
 
-// fullRepo lives with the other repo helpers (the Setup tab uses it too);
+// fullRepo lives with the other repo helpers (the Settings tab uses it too);
 // re-exported here because every key caller needs it.
 export { fullRepo }
 

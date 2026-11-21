@@ -103,7 +103,7 @@ export const copy = {
   },
 
   // Subjects for builder-initiated outbound email (sent via Resend from the
-  // builder Setup tab). Bodies reuse copy.invite.body / copy.nudge.* above.
+  // builder Settings tab). Bodies reuse copy.invite.body / copy.nudge.* above.
   email: {
     subject: {
       // No quotation marks around the title: a straight double quote makes
@@ -519,11 +519,8 @@ export const copy = {
       short:
         'Read the conversation as it happened, and send the next round when the current one is done.',
     },
-    people: {
-      short: 'Who’s on this brief — their roles and access links. Invite from here.',
-    },
-    setup: {
-      short: 'Context, seed questions, and directives that shape what Sam opens with next.',
+    settings: {
+      short: 'Who is on this brief, how Sam talks and follows up, and what the brief connects to.',
     },
     needsSetup: {
       term: 'Needs setup',
@@ -555,7 +552,7 @@ export const copy = {
     requiresIdentity: 'This app requires you to be signed in before sending feedback.',
   },
 
-  // --- Builder Setup tab: per-brief agent model (#189). English only. ---
+  // --- Builder Settings tab: per-brief agent model (#189). English only. ---
   agentModel: {
     label: 'Agent model',
     default: 'Default',
@@ -565,6 +562,98 @@ export const copy = {
       'claude-opus-5-5': 'Opus 5.5',
     },
     help: 'Which model Sam talks with on this brief. A change applies from the next conversation. Default follows the app-wide setting.',
+  },
+
+  // --- Builder Settings tab: people, standing settings, archive, delete. English only. ---
+  settings: {
+    saving: 'Saving…',
+    saved: 'Saved',
+    saveFailed: 'Could not save.',
+    people: {
+      heading: 'People',
+      summary: (count: number) => `${count} on this brief`,
+      summaryNone: 'No one yet',
+      empty: 'No one yet. Invite the person this brief is for, and you get a link to send them.',
+      invite: 'Invite someone',
+    },
+    sam: {
+      heading: 'Sam',
+      summary: (language: string, model: string, remindersOn: boolean) =>
+        `${language} · ${model} · reminders ${remindersOn ? 'on' : 'off'}`,
+      defaultModel: 'Default model',
+      language: "Maker's language",
+      languageHelp:
+        'Sam talks to the maker in this language from the first message, and link previews use it. The brief itself stays in English.',
+      reminders: "Remind the maker by email if they don't respond",
+      remindersHelp:
+        'Up to 3 emails, 2, 5 and 10 days after a new conversation is ready. They stop the moment the maker replies.',
+      hideTitle: "Don't show the brief title in link previews",
+      hideTitleHelp:
+        'When a link to this brief is pasted into a message, the preview card shows its title. Anyone holding the link can see that card, and messaging apps keep old previews.',
+      nextRound: 'What Sam opens with next comes with each paste.',
+      nextRoundLink: 'See it on Conversations',
+    },
+    reminders: {
+      sent: (count: number) => `${count} of 3 reminders sent this round`,
+      last: (day: string) => ` · last ${day}`,
+      dueNow: 'Next reminder: due now (goes out on the next daily run)',
+      nextIn: (days: number, day: string) =>
+        `Next reminder: in about ${days} day${days === 1 ? '' : 's'} (${day})`,
+      noMakerEmail: 'No maker email set. Add one to turn reminders on.',
+      capReached: 'All 3 reminders sent. Paused until the maker replies.',
+      makerReplied: 'The maker has replied. Reminders are paused.',
+      nothingShared: 'No conversation shared yet, so there is nothing to remind about.',
+    },
+    connections: {
+      heading: 'Connections',
+      noRepo: 'No repo linked',
+      repo: 'GitHub repo',
+      repoPlaceholder: 'owner/name, for example nicolovejoy/prntd',
+      repoHelp:
+        "Links this brief to its codebase so decisions can be shared with sibling briefs. Loop feedback uses the app's own repo, set at /admin/apps.",
+    },
+    archive: {
+      heading: 'Archive',
+      help: 'Hides this brief from your dashboard. Nothing is lost, and other people on the brief still see it.',
+      archivedHelp: 'This brief is archived: it is hidden from your dashboard. Other people on the brief still see it.',
+      action: 'Archive brief',
+      undo: 'Unarchive brief',
+    },
+    delete: {
+      heading: 'Delete',
+      action: 'Delete brief',
+    },
+  },
+
+  // --- Builder Conversations tab: the read-only "Next round" panel. English only. ---
+  nextRound: {
+    heading: 'Next round',
+    pasted: (day: string, version: number | null) =>
+      version != null ? `From the paste of ${day} · brief v${version}` : `From the paste of ${day}`,
+    neverPasted: 'Nothing pasted yet',
+    opening: 'Sam opens with',
+    openingDefault: 'The standard welcome. No opening message is set.',
+    openingKickoff: 'No new opening message. Sam greets the maker and picks up where they left off.',
+    mode: 'Mode',
+    modes: {
+      discover: 'Discover',
+      converge: 'Converge',
+    },
+    modeHelp: {
+      discover: 'broad exploration, with open questions',
+      converge: 'pushing for decisions',
+    },
+    points: {
+      discover: 'Questions to weave in',
+      converge: 'Steering toward',
+    },
+    noPoints: 'None set.',
+    nudge: 'Nudge email',
+    nudgeDrafted: 'Sam drafts it.',
+    readOnly: 'Read only. To change any of this, paste a new payload.',
+    pasteLink: 'Go to the paste box on Brief',
+    // Under the Start conversation modal's buttons.
+    startHint: 'What Sam opens with is under Next round on this tab. A new paste changes it.',
   },
 
   // --- Admin: Loop feedback inbox bulk actions (#232). English only. ---
@@ -655,7 +744,7 @@ export const copy = {
     noAccessApps: 'You do not administer any apps yet.',
   },
 
-  // --- Build status key (Setup tab > Advanced, system admin only). English
+  // --- Build status key (Settings tab > Connections, system admin only). English
   // only, like the other admin screens. ---
   buildStatusKey: {
     heading: (repo: string) => `Build status key for ${repo}`,
@@ -685,7 +774,7 @@ export const copy = {
     loadError: 'Could not load the build status key.',
   },
 
-  // The project's email address (Setup tab). Builder side, English only.
+  // The project's email address (Settings tab > Connections). Builder side, English only.
   projectEmail: {
     heading: 'Project email',
     none: 'No address yet.',

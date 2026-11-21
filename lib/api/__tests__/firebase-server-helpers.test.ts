@@ -5,6 +5,7 @@ import {
   getAuthenticatedUser,
   getProjectRole,
   getViewerBriefRole,
+  getViewerMembership,
   getUserDisplayName,
   hasSystemRole,
   isApprovedEmail,
@@ -492,6 +493,40 @@ describe('getProjectRole / getViewerBriefRole — email fallback normalization',
     const briefRole = await getViewerBriefRole(db, 'p1', 'uid-no-match', '  Sam@Example.COM  ')
     expect(briefRole).toBe('contributor')
     expect(emailWhereSpy).toHaveBeenCalledWith('sam@example.com')
+  })
+
+  it('getViewerMembership reads the brief role and the archive flag from the same row', async () => {
+    const db = fakeDbWithEmailMember({
+      storedEmail: 'sam@example.com',
+      memberData: { brief_role: 'contributor', archived_at: '2026-11-20T18:00:00.000Z' },
+      emailWhereSpy: () => {},
+    })
+    expect(await getViewerMembership(db, 'p1', 'uid-no-match', 'Sam@Example.com')).toEqual({
+      brief_role: 'contributor',
+      archived: true,
+    })
+  })
+
+  it('getViewerMembership says not archived when the flag is cleared or there is no row', async () => {
+    const cleared = fakeDbWithEmailMember({
+      storedEmail: 'sam@example.com',
+      memberData: { archived_at: null },
+      emailWhereSpy: () => {},
+    })
+    expect(await getViewerMembership(cleared, 'p1', 'uid-no-match', 'sam@example.com')).toEqual({
+      brief_role: null,
+      archived: false,
+    })
+
+    const noRow = fakeDbWithEmailMember({
+      storedEmail: 'someone-else@example.com',
+      memberData: {},
+      emailWhereSpy: () => {},
+    })
+    expect(await getViewerMembership(noRow, 'p1', 'uid-no-match', 'sam@example.com')).toEqual({
+      brief_role: null,
+      archived: false,
+    })
   })
 })
 

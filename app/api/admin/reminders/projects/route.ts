@@ -4,7 +4,7 @@ import { getAuthenticatedUser, getAdminDb, hasSystemRole } from '@/lib/api/fireb
 // GET /api/admin/reminders/projects — admin-only list of reminder-eligible
 // projects (those with a maker email) plus their auto-reminder toggle state.
 // Powers the toggle on /admin/reminders so the admin can flip
-// auto_reminders_enabled without opening each brief's Setup tab. The toggle
+// auto_reminders_enabled without opening each brief's Settings tab. The toggle
 // itself reuses PATCH /api/projects (admins get implicit owner on all projects).
 
 export async function GET(request: Request) {

@@ -45,7 +45,7 @@ npm run test:watch   # Run tests in watch mode
 - `lib/hooks/`, `lib/query/`, `lib/types/` — React hooks, React Query config and hooks, entity types
 - `lib/copy.ts` — All user-facing text centralized in one file
 - `lib/agent/` — Agent system prompt, prep prompt, welcome message generator, constants
-- `components/ui/` — Reusable UI primitives; `components/builder/` — builder project view (sessions, brief, setup tabs); `components/maker/` — maker project view (chat, brief card)
+- `components/ui/` — Reusable UI primitives; `components/builder/` — builder project view (Brief, Conversations, Settings tabs); `components/maker/` — maker project view (chat, brief card)
 - `lib/email-in/` + `app/api/webhooks/resend/inbound/` — project email (email-in): the address, the sender check, the store and the new-text filter. Runbook: `docs/runbooks.md`, "Project email"
 - `lib/integration/` + `app/api/integrations/` — stars-demo round-two integration
 - **Loop** — the feedback mechanism: a widget embedded on host apps → `/api/feedback` → admin inbox at `/admin/feedback` (per-app at `/admin/apps/<slug>`) → optional GitHub issue. Overview and how to embed: `docs/loop.md`. Wire contract: `lib/feedback/README.md`.

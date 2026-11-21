@@ -88,14 +88,18 @@ describe('resolveBuilderTab', () => {
 
   it('honours an explicit tab', () => {
     expect(resolveBuilderTab('conversations', null)).toBe('conversations')
-    expect(resolveBuilderTab('people', null)).toBe('people')
-    expect(resolveBuilderTab('setup', null)).toBe('setup')
+    expect(resolveBuilderTab('settings', null)).toBe('settings')
     expect(resolveBuilderTab('brief', 'abc')).toBe('brief')
   })
 
   it('maps legacy tab names', () => {
     expect(resolveBuilderTab('sessions', null)).toBe('conversations')
     expect(resolveBuilderTab('files', null)).toBe('brief')
+  })
+
+  it('sends the old People and Agent setup tabs to Settings', () => {
+    expect(resolveBuilderTab('people', null)).toBe('settings')
+    expect(resolveBuilderTab('setup', null)).toBe('settings')
   })
 
   it('opens conversations when a session is selected and no tab is given', () => {

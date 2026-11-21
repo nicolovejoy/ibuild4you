@@ -46,8 +46,9 @@ const call = (method, path, data) =>
     })
 
 const openPanel = async () => {
-  await page.goto(`${BASE}/projects/${slug}?tab=setup`, { waitUntil: 'domcontentloaded' })
-  await page.locator('summary', { hasText: 'Advanced' }).click()
+  await page.goto(`${BASE}/projects/${slug}?tab=settings`, { waitUntil: 'domcontentloaded' })
+  // Connections starts folded on the Settings tab.
+  await page.getByRole('button', { name: /^Connections/ }).click()
   await page.getByRole('heading', { name: 'Project email' }).waitFor({ timeout: 15000 })
 }
 

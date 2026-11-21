@@ -175,7 +175,7 @@ Address them by their first name (${makerFirstName}). A trailing last initial, i
   }
 
   // #192: seed questions are a discover-mode tool and directives a
-  // converge-mode tool — the dashboard Setup tab shows one or the other per
+  // converge-mode tool — the Conversations tab's Next round panel shows one or the other per
   // mode, and the prompt now matches. Both fields stay on the project doc so
   // flipping the mode never loses them; the hidden one is simply not sent.
   const converge = sessionMode === 'converge'

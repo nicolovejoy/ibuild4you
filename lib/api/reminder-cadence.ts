@@ -41,7 +41,7 @@ export type ReminderBlock =
   | 'no_reference_timestamp'
 
 // When the next maker reminder is due (ISO), or the reason none is scheduled.
-// Read-only companion to decideReminder for surfacing status on the Setup tab
+// Read-only companion to decideReminder for surfacing status on the Settings tab
 // (#67); the cron itself still drives sends via decideReminder.
 export function nextReminderAt(
   state: ReminderState,

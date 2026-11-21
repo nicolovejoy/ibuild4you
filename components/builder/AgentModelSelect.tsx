@@ -3,7 +3,7 @@
 import { copy } from '@/lib/copy'
 import { BRIEF_MODELS } from '@/lib/agent/model-choices'
 
-// Per-brief agent model dropdown for the Setup tab (#189). '' means Default
+// Per-brief agent model dropdown for the Settings tab (#189). '' means Default
 // (follow the app-wide setting); the parent saves that as null.
 export function AgentModelSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   return (
