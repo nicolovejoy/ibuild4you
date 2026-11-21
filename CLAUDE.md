@@ -111,10 +111,10 @@ Clarity over cleverness: clear and straightforward code, no clever abstractions,
 > Shipped history lives in `docs/changelog.md` (newest first). **Prepend an entry there at session end**; `/handoff` does not touch docs. This section is live work only. Backlog: `gh issue list --state open`.
 
 **Watch.**
-- Return leg: l6-music's reader works and it has posted with `post_build_status` (twice on 2026-11-18 against brief v60; their handoff entry of 2026-11-20). Still to check: "Copy next-convo prep" on F4FC shows the posted report. If a later session finds the reader missing, its report will say which check failed and quote the `/mcp` text.
 - Notes after PR #267 (merged 2026-11-18): on the next few F4FC notes, a half-answered risk should be settled with its answer plus one new risk for what is left, and no topic should be a risk's text. The comms agent was to give the "Builder placeholders to react to…" decision a short topic at its next paste.
-- The F4FC brief is over the 20,000 budget (22.6k at v60). With project 4 the next prep asks for one whole rewrite trimmed to fit; rounds after that are patches.
-- Project 4 in real use (PR #268): the first F4FC round after its compaction is the first real `brief_patch`. Check that the comms agent sends a patch, that the line under the paste box matches what it meant, and that nothing is refused for a drop text that does not match.
+- The F4FC brief was rewritten to fit: 17,788 characters at v62 (seen in the prep of 2026-11-21), under the 20,000 budget but close. Rounds from here are patches.
+- Project 4 in real use (PR #268): the compaction is done (v62), so the next F4FC paste is the first real `brief_patch`. Check that the comms agent sends a patch, that the line under the paste box matches what it meant, and that nothing is refused for a drop text that does not match.
+- The prep of 2026-11-21 on F4FC said `Sessions so far: 0` on a project with 26 conversations. `BuilderProjectView.tsx` passes `briefTabSessions?.length ?? 0`, so a copy made before the sessions query returns prints 0. Not confirmed as the cause.
 - musicforge: their from-server read-key smoke once the Fly route ships (#244; key at `op://dev-secrets/loop-read-key-musicforge/password`). Embed spike (Loop Phase 2) only if their panel proves not enough.
 
 **Queue.** Relay efficiency, six projects (spec `docs/superpowers/specs/2026-11-15-relay-efficiency-design.md`). Done: project 1 (PRs #261, #262), project 2 (l6-music #224), project 3 (PR #263), the return leg (PR #266), and project 4, payload as changes (PR #268, `brief_patch`). Remaining, in order:
