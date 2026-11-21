@@ -3,7 +3,7 @@ import {
   getAuthenticatedUser,
   getAdminDb,
   getProjectRole,
-  getViewerBriefRole,
+  getViewerMembership,
   requireRole,
   hasSystemRole,
 } from '@/lib/api/firebase-server-helpers'
@@ -93,11 +93,19 @@ export async function GET(request: Request) {
       : await getProjectRole(db, docId, auth.uid, auth.email, auth.systemRoles, auth)
     // Viewer's stored brief_role so chrome badges reflect what they're *doing*
     // (Contributor vs Originator), not just their access tier.
-    const viewerBriefRole = await getViewerBriefRole(db, docId, auth.uid, auth.email)
+    // The same row says whether they archived the brief from their dashboard,
+    // which the Settings tab's Archive button reads.
+    const viewer = await getViewerMembership(db, docId, auth.uid, auth.email)
 
     return NextResponse.json(
       withoutEmailInFields(
-        { id: docId, ...docData, viewer_role: viewerRole, viewer_brief_role: viewerBriefRole },
+        {
+          id: docId,
+          ...docData,
+          viewer_role: viewerRole,
+          viewer_brief_role: viewer.brief_role,
+          viewer_archived: viewer.archived,
+        },
         viewerRole
       )
     )

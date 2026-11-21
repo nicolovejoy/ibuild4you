@@ -35,18 +35,21 @@ export function countsAsMakerActivity(role: MemberRole | null): boolean {
   return role === 'maker' || role === 'apprentice'
 }
 
-export type BuilderTabId = 'brief' | 'conversations' | 'people' | 'setup'
+export type BuilderTabId = 'brief' | 'conversations' | 'settings'
 
 // The tab a builder lands on when the URL doesn't name one.
 export const DEFAULT_BUILDER_TAB: BuilderTabId = 'brief'
 
-const BUILDER_TABS: BuilderTabId[] = ['brief', 'conversations', 'people', 'setup']
+const BUILDER_TABS: BuilderTabId[] = ['brief', 'conversations', 'settings']
 
-// Map legacy ?tab= values (sessions/files) so old links/bookmarks land on
-// the right tab after the IA flatten.
+// Map legacy ?tab= values so old links/bookmarks land on the right tab:
+// sessions/files from the IA flatten, people/setup from before the two were
+// merged into Settings.
 const LEGACY_TAB: Record<string, BuilderTabId> = {
   sessions: 'conversations',
   files: 'brief',
+  people: 'settings',
+  setup: 'settings',
 }
 
 // Which builder tab the URL asks for. An explicit (or legacy) ?tab= wins.

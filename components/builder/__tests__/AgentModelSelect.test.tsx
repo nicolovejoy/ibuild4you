@@ -6,7 +6,7 @@ import { AgentModelSelect } from '../AgentModelSelect'
 
 afterEach(cleanup)
 
-// #189: the Setup tab's per-brief model dropdown.
+// #189: the Settings tab's per-brief model dropdown.
 describe('AgentModelSelect', () => {
   it('lists Default then the three models, in order, with their values', () => {
     render(<AgentModelSelect value="" onChange={() => {}} />)

@@ -90,7 +90,7 @@ notes, and a **Convert to GitHub issue** button. For that button to work on a
 given project:
 
 1. The project needs a `github_repo` set (`owner/name`). Set it from the
-   builder's **Agent setup** panel ("GitHub repo" field), or via PATCH
+   builder's **Settings** tab (Connections, "GitHub repo" field), or via PATCH
    `/api/projects`.
 2. The server's `GITHUB_TOKEN` (fine-grained PAT) must have `Issues: Read &
    write` on that repo. The PAT's repo scope is managed on GitHub — add new host

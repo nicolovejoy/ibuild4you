@@ -129,14 +129,32 @@ export async function getViewerBriefRole(
   userId: string,
   email: string
 ): Promise<BriefRole | null> {
+  return (await getViewerMembership(db, projectId, userId, email)).brief_role
+}
+
+// What the viewer's own membership row says about them on this brief: their
+// brief_role, and whether they archived the brief from their dashboard (the
+// archive flag is per viewer, see PATCH /api/projects/archive). One lookup for
+// both, by uid first and then by email. No row means no role and not archived.
+export async function getViewerMembership(
+  db: FirebaseFirestore.Firestore,
+  projectId: string,
+  userId: string,
+  email: string
+): Promise<{ brief_role: BriefRole | null; archived: boolean }> {
   email = normalizeEmail(email) // #155 — same defensive normalize as getProjectRole
+  const read = (data: FirebaseFirestore.DocumentData) => ({
+    brief_role: (data.brief_role as BriefRole | null) ?? null,
+    archived: !!data.archived_at,
+  })
+
   const byUid = await db
     .collection('project_members')
     .where('project_id', '==', projectId)
     .where('user_id', '==', userId)
     .limit(1)
     .get()
-  if (!byUid.empty) return (byUid.docs[0].data().brief_role as BriefRole | null) ?? null
+  if (!byUid.empty) return read(byUid.docs[0].data())
 
   const byEmail = await db
     .collection('project_members')
@@ -144,9 +162,9 @@ export async function getViewerBriefRole(
     .where('email', '==', email)
     .limit(1)
     .get()
-  if (!byEmail.empty) return (byEmail.docs[0].data().brief_role as BriefRole | null) ?? null
+  if (!byEmail.empty) return read(byEmail.docs[0].data())
 
-  return null
+  return { brief_role: null, archived: false }
 }
 
 // Require a minimum role on a project. Returns a 403 response if insufficient, or null if OK.

@@ -443,6 +443,9 @@ export function useArchiveProject() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.projects() })
+      // The one-project lookup carries viewer_archived too (Settings tab). It is
+      // keyed by slug or id, so refresh every one rather than guess the key.
+      queryClient.invalidateQueries({ queryKey: ['resolveProject'] })
     },
   })
 }
@@ -1181,7 +1184,7 @@ export function useRevokeAppReadKey(slug: string) {
   })
 }
 
-// --- Build status key (per repo, minted from a brief's Setup tab) ---
+// --- Build status key (per repo, minted from a brief's Settings tab) ---
 
 export interface BuildStatusKeyStatus extends ReadKeyStatus {
   repo: string

@@ -74,8 +74,9 @@ const BRIEF = {
 }
 
 const openAdvanced = async () => {
-  await page.goto(`${BASE}/projects/${slug}?tab=setup`, { waitUntil: 'domcontentloaded' })
-  await page.locator('summary', { hasText: 'Advanced' }).click()
+  await page.goto(`${BASE}/projects/${slug}?tab=settings`, { waitUntil: 'domcontentloaded' })
+  // Connections starts folded on the Settings tab.
+  await page.getByRole('button', { name: /^Connections/ }).click()
   await page.getByRole('heading', { name: `Build status key for ${REPO}` }).waitFor({ timeout: 15000 })
 }
 
