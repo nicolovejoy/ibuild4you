@@ -7,7 +7,9 @@ export const REPORT_LIMITS = { itemsPerList: 30, charsPerString: 500, charsTotal
 
 export interface BuildReportBody {
   // Only what was checked in production belongs here; `checked` says how.
-  live: { what: string; checked: string }[]
+  // `try_it` is optional: what the maker can do to try it, in plain words, for
+  // the comms agent to base its test steps on. Absent, never empty.
+  live: { what: string; checked: string; try_it?: string }[]
   merged: string[]
   proposed: string[]
   questions: string[]
@@ -41,13 +43,14 @@ export function validateReport(raw: unknown): ValidationResult {
 
     // Per-item shape: every string trimmed and non-empty, live items complete.
     const strings: string[] = [] // every string in this list, for the length check
+    const owners: number[] = [] // the item each string belongs to (a live item holds two or three)
     for (let i = 0; i < value.length; i++) {
       const item: unknown = value[i]
       if (name === 'live') {
         if (typeof item !== 'object' || item === null || Array.isArray(item)) {
           return fail(`live[${i}] must be { "what", "checked" }.`)
         }
-        const { what, checked } = item as Record<string, unknown>
+        const { what, checked, try_it } = item as Record<string, unknown>
         if (typeof what !== 'string' || what.trim() === '') {
           return fail(`live[${i}] must be { "what", "checked" }.`)
         }
@@ -56,14 +59,28 @@ export function validateReport(raw: unknown): ValidationResult {
             `live[${i}] has no "checked". Say what was checked in production, or move it to "merged".`
           )
         }
-        report.live.push({ what: what.trim(), checked: checked.trim() })
+        if (try_it !== undefined && try_it !== null && typeof try_it !== 'string') {
+          return fail(`live[${i}].try_it must be a string: what the maker can do to try it.`)
+        }
+        const tryIt = typeof try_it === 'string' ? try_it.trim() : ''
+        report.live.push({
+          what: what.trim(),
+          checked: checked.trim(),
+          ...(tryIt ? { try_it: tryIt } : {}),
+        })
         strings.push(what.trim(), checked.trim())
+        owners.push(i, i)
+        if (tryIt) {
+          strings.push(tryIt)
+          owners.push(i)
+        }
       } else {
         if (typeof item !== 'string' || item.trim() === '') {
           return fail(`${name}[${i}] must be a non-empty string.`)
         }
         report[name].push(item.trim())
         strings.push(item.trim())
+        owners.push(i)
       }
     }
 
@@ -73,10 +90,8 @@ export function validateReport(raw: unknown): ValidationResult {
 
     for (let i = 0; i < strings.length; i++) {
       if (strings[i].length > REPORT_LIMITS.charsPerString) {
-        // A live item holds two strings (what, checked) per index.
-        const index = name === 'live' ? Math.floor(i / 2) : i
         return fail(
-          `${name}[${index}] is ${strings[i].length} characters; the limit is ${REPORT_LIMITS.charsPerString}.`
+          `${name}[${owners[i]}] is ${strings[i].length} characters; the limit is ${REPORT_LIMITS.charsPerString}.`
         )
       }
       total += strings[i].length
@@ -98,7 +113,13 @@ export function validateReport(raw: unknown): ValidationResult {
 // always hashes the same (used to spot a duplicate post).
 export function reportBodyHash(report: BuildReportBody): string {
   const ordered = {
-    live: report.live.map((item) => ({ what: item.what, checked: item.checked })),
+    // try_it is added only when present, so a report without one hashes as it
+    // did before the field existed.
+    live: report.live.map((item) => ({
+      what: item.what,
+      checked: item.checked,
+      ...(item.try_it ? { try_it: item.try_it } : {}),
+    })),
     merged: report.merged,
     proposed: report.proposed,
     questions: report.questions,

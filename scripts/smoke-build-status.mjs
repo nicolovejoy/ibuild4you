@@ -55,6 +55,7 @@ export function goodReport({ repo, project, tag }) {
       {
         what: `Smoke test report ${tag}, not real: ignore`,
         checked: 'Posted by scripts/smoke-build-status.mjs; nothing was deployed',
+        try_it: `Smoke test steps ${tag}, not real: ignore`,
       },
     ],
     merged: [],

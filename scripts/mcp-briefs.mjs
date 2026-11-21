@@ -272,13 +272,15 @@ server.registerTool(
   {
     title: 'Post build status',
     description:
-      'Post this session\'s build status for one brief to the ibuild4you app, so the comms agent sees it in the next prep without Nico copying it. Report what this session did and found, not the whole state of the repo. Rules: (1) "live" is only for what you checked in production; every live item says what you checked. Merged but not deployed goes in "merged". (2) Proposed or unbuilt work goes in "proposed", never in "live". (3) Put questions only the maker can answer in "questions"; read the brief and notes first so you do not ask one they already answer. (4) Write for the comms agent: plain, short, no file paths the maker would not know. Call get_brief for the slug first.',
+      'Post this session\'s build status for one brief to the ibuild4you app, so the comms agent sees it in the next prep without Nico copying it. Report what this session did and found, not the whole state of the repo. Rules: (1) "live" is only for what you checked in production; every live item says what you checked. Merged but not deployed goes in "merged". (2) Proposed or unbuilt work goes in "proposed", never in "live". (3) Put questions only the maker can answer in "questions"; read the brief and notes first so you do not ask one they already answer. (4) Write for the comms agent: plain, short, no file paths the maker would not know. (5) When a live item is something the maker can try, add "try_it" to it: the steps in plain words (where to go, what to tap, what they should see). Only on live items, and only steps you ran yourself. Call get_brief for the slug first.',
     inputSchema: {
       slug: z.string().describe('Brief slug from list_briefs'),
       live: z
-        .array(z.object({ what: z.string(), checked: z.string() }))
+        .array(z.object({ what: z.string(), checked: z.string(), try_it: z.string().optional() }))
         .optional()
-        .describe('What is live in production, each with what you checked'),
+        .describe(
+          'What is live in production, each with what you checked. Optional try_it: what the maker can do to try it, in plain words they would use (where to go, what to tap, what they should see)'
+        ),
       merged: z.array(z.string()).optional().describe('Merged but not yet deployed'),
       proposed: z.array(z.string()).optional().describe('Proposed or unbuilt work'),
       questions: z.array(z.string()).optional().describe('Questions only the maker can answer'),
