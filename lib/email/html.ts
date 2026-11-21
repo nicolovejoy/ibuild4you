@@ -9,6 +9,12 @@
 //     belongs to the bullet above it
 //   - bare http(s) URLs become anchors; trailing .,;:!?) stays outside
 //   - linkified on the raw text, then every piece is HTML-escaped once
+//   - a URL listed in `linkLabels` shows its label as the link text. The text
+//     body keeps the URL. A body whose only link text was the bare URL scored
+//     as spam on a maker's mail server (2026-11-21).
+
+// URL (exactly as it appears in the text) → the words to show for it.
+export type LinkLabels = Record<string, string>
 
 export function escapeHtml(s: string): string {
   return s
@@ -26,14 +32,16 @@ const URL_RE = /https?:\/\/[^\s<>"']+?(?=[.,;:!?)]*(?:[\s<>"']|$))/g
 // Linkify raw text, escaping each piece exactly once. The URL is escaped once
 // and used for both the href and the visible text. word-break:break-all keeps
 // long links (e.g. Firebase reset links) from overflowing a phone screen.
-function renderInline(raw: string): string {
+function renderInline(raw: string, linkLabels: LinkLabels): string {
   let out = ''
   let last = 0
   for (const m of raw.matchAll(URL_RE)) {
     const start = m.index ?? 0
     out += escapeHtml(raw.slice(last, start))
     const url = escapeHtml(m[0])
-    out += `<a href="${url}" style="color:#1f3a5f;word-break:break-all">${url}</a>`
+    const label = linkLabels[m[0]]
+    const shown = label ? escapeHtml(label) : url
+    out += `<a href="${url}" style="color:#1f3a5f;word-break:break-all">${shown}</a>`
     last = start + m[0].length
   }
   return out + escapeHtml(raw.slice(last))
@@ -41,7 +49,7 @@ function renderInline(raw: string): string {
 
 const BULLET_RE = /^(?:•|-)\s+/
 
-function renderParagraph(block: string): string {
+function renderParagraph(block: string, linkLabels: LinkLabels): string {
   const lines = block.split('\n')
   const isList =
     BULLET_RE.test(lines[0]) && lines.every((l) => BULLET_RE.test(l) || /^\s+\S/.test(l))
@@ -55,21 +63,24 @@ function renderParagraph(block: string): string {
       else items[items.length - 1].push(line.trim())
     }
     const lis = items.map(
-      (parts) => `<li style="margin:0 0 8px 0">${parts.map(renderInline).join('<br>')}</li>`
+      (parts) => `<li style="margin:0 0 8px 0">${parts.map((part) => renderInline(part, linkLabels)).join('<br>')}</li>`
     )
     return `<ul style="padding-left:20px;margin:0 0 16px 0">${lis.join('')}</ul>`
   }
 
-  const withBreaks = lines.map(renderInline).join('<br>')
+  const withBreaks = lines.map((line) => renderInline(line, linkLabels)).join('<br>')
   return `<p style="margin:0 0 16px 0">${withBreaks}</p>`
 }
 
-export function textToEmailHtml(text: string): string {
+export function textToEmailHtml(
+  text: string,
+  { linkLabels = {} }: { linkLabels?: LinkLabels } = {},
+): string {
   const blocks = text
     .replace(/\r\n/g, '\n')
     .trim()
     .split(/\n\s*\n/)
-  const body = blocks.map(renderParagraph).join('')
+  const body = blocks.map((block) => renderParagraph(block, linkLabels)).join('')
   return [
     '<!doctype html>',
     '<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>',

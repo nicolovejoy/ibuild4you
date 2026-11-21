@@ -2224,7 +2224,9 @@ function NudgeDispatch({
   const reminderMessage = outboundCopyFor(project.language).nudge.reminder({
     firstName: project.requester_first_name || null,
     sessionNumber,
+    projectTitle: project.title,
     shareLink,
+    canReply: true,
   })
 
   if (sentTo) {

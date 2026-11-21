@@ -65,23 +65,40 @@ export const copy = {
       note?: string
       sessionMode?: 'discover' | 'converge'
     }) => [copy.nudge.bodyText({ projectTitle, note, sessionMode }), '', shareLink].join('\n'),
-    // Short, personal reminder (#21). Names the maker if known and carries the
-    // conversation number as a concrete progress signal. "next" signals
-    // continuity from prior sessions. The link sits on its own line so a long
-    // URL renders cleanly. firstName/sessionNumber are optional — both degrade
-    // gracefully (no name → "Your…"; no number → no "(#n)").
+    // The reminder email (#21), also shown to the builder before they send it.
+    // A greeting, a few sentences, the link and (when a reply reaches a
+    // person) a line saying so. It used to be one sentence and a bare link,
+    // which a maker's mail server filed as junk (2026-11-21): a body that is
+    // mostly a link reads as phishing. Conversation 1 says what happens there;
+    // a later one says Sam picks up where they left off. firstName and
+    // sessionNumber are optional and degrade to "Hello," and "Your next
+    // conversation". canReply is true only when Reply-To is a person (the
+    // builder's send); the cron sends from noreply and leaves the line out.
     reminder: ({
       firstName,
       sessionNumber,
+      projectTitle,
       shareLink,
+      canReply,
     }: {
       firstName?: string | null
       sessionNumber?: number | null
+      projectTitle: string
       shareLink: string
+      canReply?: boolean
     }) => {
-      const lead = firstName ? `${firstName}, your` : 'Your'
-      const num = sessionNumber ? ` (#${sessionNumber})` : ''
-      return [`${lead} next conversation${num} awaits:`, '', shareLink].join('\n')
+      const length = 'It takes about 15 minutes, and you can stop and come back any time.'
+      let about: string
+      if (sessionNumber === 1) {
+        about = `Your conversation about ${projectTitle} is ready on iBuild4you. Sam, the assistant, will ask about your idea and keep notes as you go. ${length}`
+      } else if (sessionNumber) {
+        about = `Conversation #${sessionNumber} about ${projectTitle} is ready on iBuild4you. Sam picks up where you left off. ${length}`
+      } else {
+        about = `Your next conversation about ${projectTitle} is ready on iBuild4you. ${length}`
+      }
+      const lines = [firstName ? `Hi ${firstName},` : 'Hello,', '', about, '', `Here is your link: ${shareLink}`]
+      if (canReply) lines.push('', 'Questions? Reply to this email.')
+      return lines.join('\n')
     },
   },
 
@@ -89,11 +106,16 @@ export const copy = {
   // builder Setup tab). Bodies reuse copy.invite.body / copy.nudge.* above.
   email: {
     subject: {
-      invite: (projectTitle: string) => `Your brief for "${projectTitle}"`,
-      nudge: (projectTitle: string) => `New conversation ready for "${projectTitle}"`,
-      reminder: (projectTitle: string) => `Your conversation for "${projectTitle}" is ready`,
+      // No quotation marks around the title: a straight double quote makes
+      // the mail library encode the whole subject, which spam filters score.
+      invite: (projectTitle: string) => `Your brief for ${projectTitle}`,
+      nudge: (projectTitle: string) => `New conversation ready for ${projectTitle}`,
+      reminder: (projectTitle: string) => `Your conversation for ${projectTitle} is ready`,
       passwordReset: 'Set a new password for iBuild4you',
     },
+    // The words shown for the share link in an email's HTML part, in place of
+    // the bare URL (lib/email/html.ts, linkLabels).
+    linkLabel: (projectTitle: string) => `Open the ${projectTitle} conversation`,
   },
 
   // Password-reset email. We send this ourselves via Resend rather than letting

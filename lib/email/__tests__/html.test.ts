@@ -101,4 +101,31 @@ describe('textToEmailHtml', () => {
     const html = textToEmailHtml('Hi')
     expect(html).toMatch(/<body style="margin:0"><div style="[^"]*background:#faf8f3/)
   })
+
+  // A body whose link text is the bare URL scored as spam on a maker's mail
+  // server (2026-11-21). A caller can give a URL words to show instead.
+  describe('linkLabels', () => {
+    const url = 'https://ibuild4you.com/projects/stem-karaoke'
+
+    it('shows the label as the link text and keeps the URL in the href', () => {
+      const html = textToEmailHtml(`Here is your link: ${url}`, {
+        linkLabels: { [url]: 'Open the Stem Karaoke conversation' },
+      })
+      expect(html).toContain(`Here is your link: <a href="${url}"`)
+      expect(html).toContain('>Open the Stem Karaoke conversation</a>')
+      expect(html).not.toContain(`>${url}</a>`)
+    })
+
+    it('escapes the label', () => {
+      const html = textToEmailHtml(url, { linkLabels: { [url]: 'Open the <b>"A&B"</b> conversation' } })
+      expect(html).toContain('>Open the &lt;b&gt;&quot;A&amp;B&quot;&lt;/b&gt; conversation</a>')
+    })
+
+    it('leaves a URL without a label as it was', () => {
+      const other = 'https://ibuild4you.com/reset?x=1'
+      const html = textToEmailHtml(`${url}\n${other}`, { linkLabels: { [url]: 'Open it' } })
+      expect(html).toContain('>Open it</a>')
+      expect(html).toContain('>https://ibuild4you.com/reset?x=1</a>')
+    })
+  })
 })

@@ -6,6 +6,7 @@ import {
   requireRole,
 } from '@/lib/api/firebase-server-helpers'
 import { sendMakerEmail } from '@/lib/email/send-maker-email'
+import { textToEmailHtml } from '@/lib/email/html'
 import { getServerShareLink } from '@/lib/url'
 import { ensureInviteResetLink } from '@/lib/auth/ensure-invite-account'
 import { outboundCopyFor } from '@/lib/email/outbound-copy'
@@ -103,6 +104,9 @@ export async function POST(
   const shareLink = getServerShareLink((project.slug as string) || projectId)
   const oc = outboundCopyFor(project.language)
   const now = new Date().toISOString()
+  // In the HTML part the share link reads as words, not the bare URL: a body
+  // that is mostly a link is scored as spam (2026-11-21).
+  const linkLabels = { [shareLink]: oc.linkLabel(projectTitle) }
 
   let subject: string
   // The nudge/reminder body is the same for everyone; the invite body is
@@ -132,7 +136,10 @@ export async function POST(
     sharedText = oc.nudge.reminder({
       firstName: (project.requester_first_name as string | undefined) || null,
       sessionNumber: (project.session_count as number | undefined) ?? null,
+      projectTitle,
       shareLink,
+      // Reply-To is the builder who sends this, so a reply reaches a person.
+      canReply: !!auth.email,
     })
   }
 
@@ -164,6 +171,7 @@ export async function POST(
           replyTo: auth.email || undefined,
           subject,
           text,
+          html: textToEmailHtml(text, { linkLabels }),
         }))
       }
       results.push({ to: r.email, emailId, suppressed })
@@ -181,6 +189,7 @@ export async function POST(
         replyTo: auth.email || undefined,
         subject,
         text: sharedText!,
+        html: textToEmailHtml(sharedText!, { linkLabels }),
       }))
     }
     for (const r of recipients) {

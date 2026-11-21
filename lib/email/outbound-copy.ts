@@ -29,6 +29,7 @@ const en = {
     reminder: copy.email.subject.reminder,
     passwordReset: copy.email.subject.passwordReset,
   },
+  linkLabel: copy.email.linkLabel,
   passwordResetEmail: copy.passwordResetEmail,
   // The cron's multi-brief digest (#141): one email for a maker on N briefs.
   digest: {
@@ -79,10 +80,19 @@ const fr: OutboundCopy = {
     },
     body: ({ projectTitle, shareLink, note, sessionMode }) =>
       [fr.nudge.bodyText({ projectTitle, note, sessionMode }), '', shareLink].join('\n'),
-    reminder: ({ firstName, sessionNumber, shareLink }) => {
-      const lead = firstName ? `${firstName}, votre` : 'Votre'
-      const num = sessionNumber ? ` (nº ${sessionNumber})` : ''
-      return [`${lead} prochaine conversation${num} vous attend :`, '', shareLink].join('\n')
+    reminder: ({ firstName, sessionNumber, projectTitle, shareLink, canReply }) => {
+      const length = 'Comptez environ 15 minutes ; vous pouvez vous arrêter et reprendre à tout moment.'
+      let about: string
+      if (sessionNumber === 1) {
+        about = `Votre conversation au sujet de ${projectTitle} est prête sur iBuild4you. Sam, l’assistant, vous posera des questions sur votre idée et prendra des notes au fil de l’échange. ${length}`
+      } else if (sessionNumber) {
+        about = `La conversation nº ${sessionNumber} au sujet de ${projectTitle} est prête sur iBuild4you. Sam reprend là où la précédente s’est arrêtée. ${length}`
+      } else {
+        about = `Votre prochaine conversation au sujet de ${projectTitle} est prête sur iBuild4you. ${length}`
+      }
+      const lines = [firstName ? `Bonjour ${firstName},` : 'Bonjour,', '', about, '', `Voici votre lien : ${shareLink}`]
+      if (canReply) lines.push('', 'Une question ? Répondez à cet e-mail.')
+      return lines.join('\n')
     },
   },
   subject: {
@@ -91,6 +101,7 @@ const fr: OutboundCopy = {
     reminder: (projectTitle) => `Votre conversation pour « ${projectTitle} » est prête`,
     passwordReset: 'Définir un nouveau mot de passe pour iBuild4you',
   },
+  linkLabel: (projectTitle) => `Ouvrir la conversation ${projectTitle}`,
   passwordResetEmail: ({ resetLink }) =>
     [
       'Quelqu’un (probablement vous) a demandé à réinitialiser le mot de passe de votre compte iBuild4you.',
