@@ -207,7 +207,7 @@ export function BriefEditor({
           <div className="flex justify-end mb-1">
             <button
               onClick={enterEdit}
-              className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand-navy"
+              className="flex items-center gap-1.5 text-xs text-brand-ink-soft hover:text-brand-navy"
             >
               <Pencil className="h-3.5 w-3.5" /> Edit brief
             </button>
@@ -248,7 +248,7 @@ export function BriefEditor({
             </div>
           ) : (
             <div className="text-center py-8">
-              <p className="text-sm text-gray-500 mb-3">No brief details yet.</p>
+              <p className="text-sm text-brand-ink-soft mb-3">No brief details yet.</p>
               <LoadingButton variant="secondary" size="sm" icon={Pencil} onClick={enterEdit}>
                 Add brief details
               </LoadingButton>
@@ -264,23 +264,23 @@ export function BriefEditor({
     <Card hover={false}>
       <CardBody>
         <div className="flex items-center justify-between mb-4">
-          <div className="inline-flex rounded-md border border-gray-200 p-0.5 text-xs">
+          <div className="inline-flex rounded-md border border-brand-line p-0.5 text-xs">
             <button
               onClick={() => switchTo('structured')}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded ${editView === 'structured' ? 'bg-brand-navy text-white' : 'text-gray-600 hover:bg-gray-100'}`}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded ${editView === 'structured' ? 'bg-brand-navy text-white' : 'text-brand-ink-soft hover:bg-gray-100'}`}
             >
               <LayoutList className="h-3.5 w-3.5" /> Structured
             </button>
             <button
               onClick={() => switchTo('raw')}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded ${editView === 'raw' ? 'bg-brand-navy text-white' : 'text-gray-600 hover:bg-gray-100'}`}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded ${editView === 'raw' ? 'bg-brand-navy text-white' : 'text-brand-ink-soft hover:bg-gray-100'}`}
             >
               <Code2 className="h-3.5 w-3.5" /> Raw JSON
             </button>
           </div>
           <button
             onClick={copyRaw}
-            className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand-navy"
+            className="flex items-center gap-1.5 text-xs text-brand-ink-soft hover:text-brand-navy"
             title="Copy the brief as JSON (paste target/source for the ferry)"
           >
             {copied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
@@ -300,14 +300,14 @@ export function BriefEditor({
             }}
             rows={20}
             spellCheck={false}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm font-mono focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
+            className="w-full px-3 py-2 border border-brand-line-strong rounded-md text-sm font-mono focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
           />
         )}
 
         {error && <div className="mt-3"><StatusMessage type="error" message={error} /></div>}
 
         {pendingSave ? (
-          <div className="mt-4 flex flex-wrap items-center gap-3 pt-3 border-t border-gray-100 text-sm">
+          <div className="mt-4 flex flex-wrap items-center gap-3 pt-3 border-t border-brand-line-soft text-sm">
             <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" aria-hidden />
             <span className="text-gray-800">{copy.brief.lockLossWarning(pendingSave.lost)}</span>
             <LoadingButton
@@ -322,14 +322,14 @@ export function BriefEditor({
             <button
               onClick={() => setPendingSave(null)}
               disabled={updateBrief.isPending}
-              className="text-xs text-gray-500 hover:text-gray-800 disabled:opacity-40"
+              className="text-xs text-brand-ink-soft hover:text-gray-800 disabled:opacity-40"
             >
               {copy.brief.lockLossCancel}
             </button>
             {updateBrief.error && <span className="text-xs text-red-500">{updateBrief.error.message}</span>}
           </div>
         ) : (
-          <div className="mt-4 flex items-center gap-3 pt-3 border-t border-gray-100">
+          <div className="mt-4 flex items-center gap-3 pt-3 border-t border-brand-line-soft">
             <LoadingButton
               variant="primary"
               size="sm"
@@ -342,7 +342,7 @@ export function BriefEditor({
             <button
               onClick={cancelEdit}
               disabled={updateBrief.isPending}
-              className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-800 disabled:opacity-40"
+              className="flex items-center gap-1.5 text-xs text-brand-ink-soft hover:text-gray-800 disabled:opacity-40"
             >
               <X className="h-3.5 w-3.5" /> Cancel
             </button>
@@ -412,7 +412,7 @@ function BriefReadView({ content }: { content: BriefContent }) {
           <div className="space-y-2">
             {shipped.map((b, i) => (
               <div key={i}>
-                <p className="text-gray-600 text-xs font-medium">{b.date}</p>
+                <p className="text-brand-ink-soft text-xs font-medium">{b.date}</p>
                 <ul className="list-disc list-inside space-y-1">
                   {b.items.map((it, j) => <li key={j} className="text-gray-800 text-sm">{it}</li>)}
                 </ul>
@@ -510,7 +510,7 @@ function DecisionsSection({
                         disabled={resolving}
                         onClick={() => onResolve(d.topic, 'dismiss')}
                         aria-label={`${copy.brief.contestDismiss} — ${d.topic}`}
-                        className="text-gray-500 hover:underline disabled:opacity-40"
+                        className="text-brand-ink-soft hover:underline disabled:opacity-40"
                       >
                         {copy.brief.contestDismiss}
                       </button>
@@ -542,7 +542,7 @@ function DecisionsSection({
 function Section({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <h3 className="text-xs font-semibold text-brand-slate uppercase tracking-wide mb-1.5">{label}</h3>
+      <h3 className="font-heading text-[13px] font-semibold text-brand-charcoal mb-1.5">{label}</h3>
       {children}
     </div>
   )
@@ -591,7 +591,7 @@ function StructuredEditor({
         onChange={(queued) => set({ queued })}
         placeholder={copy.brief.queuedPlaceholder}
       />
-      <p className="text-xs text-gray-500">{copy.brief.shippedEditHint}</p>
+      <p className="text-xs text-brand-ink-soft">{copy.brief.shippedEditHint}</p>
     </div>
   )
 }
@@ -607,12 +607,12 @@ function ProseField({
 }) {
   return (
     <div>
-      <label className="text-xs font-semibold text-brand-slate uppercase tracking-wide block mb-1.5">{label}</label>
+      <label className="font-heading text-[13px] font-semibold text-brand-charcoal block mb-1.5">{label}</label>
       <textarea
         value={value}
         onChange={(e) => onChange(e.target.value)}
         rows={2}
-        className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
+        className="w-full px-3 py-2 border border-brand-line-strong rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
       />
     </div>
   )
@@ -637,7 +637,7 @@ function StringListField({
   }
   return (
     <div>
-      <label className="text-xs font-semibold text-brand-slate uppercase tracking-wide block mb-1.5">{label}</label>
+      <label className="font-heading text-[13px] font-semibold text-brand-charcoal block mb-1.5">{label}</label>
       {items.length > 0 && (
         <ul className="space-y-1.5 mb-2">
           {items.map((item, i) => (
@@ -645,7 +645,7 @@ function StringListField({
               <input
                 value={item}
                 onChange={(e) => onChange(items.map((it, idx) => (idx === i ? e.target.value : it)))}
-                className="flex-1 px-2.5 py-1.5 border border-gray-200 rounded text-sm focus:outline-none focus:ring-1 focus:ring-brand-navy"
+                className="flex-1 px-2.5 py-1.5 border border-brand-line rounded text-sm focus:outline-none focus:ring-1 focus:ring-brand-navy"
               />
               <button onClick={() => onChange(items.filter((_, idx) => idx !== i))} className="p-1 text-gray-400 hover:text-red-500 shrink-0">
                 <X className="h-3.5 w-3.5" />
@@ -660,7 +660,7 @@ function StringListField({
           onChange={(e) => setAdding(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); add() } }}
           placeholder={placeholder}
-          className="flex-1 px-2.5 py-1.5 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
+          className="flex-1 px-2.5 py-1.5 border border-brand-line-strong rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
         />
         <button onClick={add} disabled={!adding.trim()} className="p-1.5 text-gray-400 hover:text-brand-navy hover:bg-gray-100 rounded disabled:opacity-40">
           <Plus className="h-4 w-4" />
@@ -693,7 +693,7 @@ function RiskListField({
     owner ? { text, owner } : text
   return (
     <div>
-      <label className="text-xs font-semibold text-brand-slate uppercase tracking-wide block mb-1.5">{label}</label>
+      <label className="font-heading text-[13px] font-semibold text-brand-charcoal block mb-1.5">{label}</label>
       {items.length > 0 && (
         <ul className="space-y-1.5 mb-2">
           {items.map((item, i) => (
@@ -701,7 +701,7 @@ function RiskListField({
               <input
                 value={riskText(item)}
                 onChange={(e) => onChange(items.map((it, idx) => (idx === i ? build(e.target.value, riskOwner(it)) : it)))}
-                className="flex-1 px-2.5 py-1.5 border border-gray-200 rounded text-sm focus:outline-none focus:ring-1 focus:ring-brand-navy"
+                className="flex-1 px-2.5 py-1.5 border border-brand-line rounded text-sm focus:outline-none focus:ring-1 focus:ring-brand-navy"
               />
               <select
                 aria-label={copy.brief.riskOwnerLabel}
@@ -709,7 +709,7 @@ function RiskListField({
                 onChange={(e) =>
                   onChange(items.map((it, idx) => (idx === i ? build(riskText(it), (e.target.value || undefined) as BriefRiskOwner | undefined) : it)))
                 }
-                className="px-1.5 py-1.5 border border-gray-200 rounded text-sm"
+                className="px-1.5 py-1.5 border border-brand-line rounded text-sm"
               >
                 <option value="">{copy.brief.riskOwnerNone}</option>
                 <option value="maker">{copy.brief.riskOwnerMaker}</option>
@@ -728,7 +728,7 @@ function RiskListField({
           onChange={(e) => setAdding(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); add() } }}
           placeholder={placeholder}
-          className="flex-1 px-2.5 py-1.5 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
+          className="flex-1 px-2.5 py-1.5 border border-brand-line-strong rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
         />
         <button onClick={add} disabled={!adding.trim()} className="p-1.5 text-gray-400 hover:text-brand-navy hover:bg-gray-100 rounded disabled:opacity-40">
           <Plus className="h-4 w-4" />
@@ -764,7 +764,7 @@ function DecisionsField({
 
   return (
     <div>
-      <label className="text-xs font-semibold text-brand-slate uppercase tracking-wide block mb-1.5">Decisions</label>
+      <label className="font-heading text-[13px] font-semibold text-brand-charcoal block mb-1.5">Decisions</label>
       {ordered.length > 0 && (
         <ul className="space-y-2 mb-2">
           {ordered.map((d, i) => (
@@ -776,7 +776,7 @@ function DecisionsField({
                     ? 'Locked — a durable constraint the agent reconciles against instead of silently overwriting. Click to unlock.'
                     : 'Click to lock — makes this a durable constraint the agent must reconcile against (#71).'
                 }
-                className={`mt-1 p-1 rounded shrink-0 ${d.locked ? 'bg-amber-100 text-amber-700' : 'text-gray-300 hover:text-gray-500 hover:bg-gray-100'}`}
+                className={`mt-1 p-1 rounded shrink-0 ${d.locked ? 'bg-amber-100 text-amber-700' : 'text-gray-300 hover:text-brand-ink-soft hover:bg-gray-100'}`}
               >
                 <Lock className="h-3.5 w-3.5" />
               </button>
@@ -785,13 +785,13 @@ function DecisionsField({
                   value={d.topic}
                   onChange={(e) => update(i, { topic: e.target.value })}
                   placeholder="Topic (e.g. Payment)"
-                  className="w-full px-2.5 py-1 border border-gray-200 rounded text-sm font-medium focus:outline-none focus:ring-1 focus:ring-brand-navy"
+                  className="w-full px-2.5 py-1 border border-brand-line rounded text-sm font-medium focus:outline-none focus:ring-1 focus:ring-brand-navy"
                 />
                 <input
                   value={d.decision}
                   onChange={(e) => update(i, { decision: e.target.value })}
                   placeholder="Decision (e.g. Stripe only)"
-                  className="w-full px-2.5 py-1 border border-gray-200 rounded text-sm focus:outline-none focus:ring-1 focus:ring-brand-navy"
+                  className="w-full px-2.5 py-1 border border-brand-line rounded text-sm focus:outline-none focus:ring-1 focus:ring-brand-navy"
                 />
               </div>
               <button onClick={() => onChange(ordered.filter((_, idx) => idx !== i))} className="mt-1 p-1 text-gray-400 hover:text-red-500 shrink-0">

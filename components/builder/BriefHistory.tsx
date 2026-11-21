@@ -38,11 +38,11 @@ export function BriefHistory({
   }
 
   return (
-    <div className="mt-4 pt-3 border-t border-gray-100">
+    <div className="mt-4 pt-3 border-t border-brand-line-soft">
       <button
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand-navy"
+        className="flex items-center gap-1.5 text-xs text-brand-ink-soft hover:text-brand-navy"
       >
         {open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
         <History className="h-3.5 w-3.5" /> {c.history}
@@ -56,7 +56,7 @@ export function BriefHistory({
             <p className="text-xs text-gray-400">{c.historyEmpty}</p>
           )}
           {versions?.map((v) => (
-            <div key={v.version} className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-600">
+            <div key={v.version} className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-brand-ink-soft">
               <span className="font-medium text-gray-800">v{v.version}</span>
               <span>{formatPacific(v.updated_at)}</span>
               <span className="text-gray-400">{c.sourceLabel(v.source)}</span>
@@ -70,7 +70,7 @@ export function BriefHistory({
                   >
                     {c.confirmRestoreButton}
                   </button>
-                  <button onClick={() => setConfirming(null)} className="text-gray-500 hover:underline">
+                  <button onClick={() => setConfirming(null)} className="text-brand-ink-soft hover:underline">
                     {c.cancelRestore}
                   </button>
                 </span>

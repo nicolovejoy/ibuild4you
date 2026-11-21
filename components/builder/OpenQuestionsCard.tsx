@@ -26,12 +26,12 @@ export function OpenQuestionsCard({
   }
 
   return (
-    <div data-testid="open-questions" className="rounded-lg border border-gray-200 bg-white px-3 py-2">
+    <div data-testid="open-questions" className="rounded-lg border border-brand-line bg-white px-3 py-2">
       <div className="flex items-center justify-between gap-3">
-        <h3 className="text-xs font-semibold text-brand-slate uppercase tracking-wide">
+        <h3 className="font-heading text-[13px] font-semibold text-brand-charcoal">
           {copy.brief.openQuestionsTitle(makerName)}
           {' '}
-          <span className="text-gray-400 normal-case tracking-normal font-normal">
+          <span className="font-sans text-gray-400 font-normal">
             ({questions.length})
           </span>
         </h3>
@@ -39,7 +39,7 @@ export function OpenQuestionsCard({
           type="button"
           data-testid="open-questions-copy"
           onClick={handleCopy}
-          className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand-navy"
+          className="flex items-center gap-1.5 text-xs text-brand-ink-soft hover:text-brand-navy"
         >
           {copied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
           {copied ? copy.brief.openQuestionsCopied : copy.brief.openQuestionsCopy}

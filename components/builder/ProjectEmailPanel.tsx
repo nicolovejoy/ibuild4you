@@ -15,7 +15,7 @@ const dayFmt = new Intl.DateTimeFormat('en-US', {
 })
 
 const button =
-  'px-3 py-1.5 text-sm border border-gray-200 rounded text-brand-charcoal hover:border-brand-navy hover:text-brand-navy disabled:opacity-30 disabled:cursor-not-allowed transition-colors'
+  'px-3 py-1.5 text-sm border border-brand-line rounded text-brand-charcoal hover:border-brand-navy hover:text-brand-navy disabled:opacity-30 disabled:cursor-not-allowed transition-colors'
 
 // Who the GET accepts: an owner or builder on the project, or a system admin
 // (an implicit owner on every project; their viewer_role can be a membership
@@ -62,7 +62,7 @@ export function ProjectEmailPanel({ projectId }: { projectId: string }) {
     droppedLines.length > 0 && !Number.isNaN(lastDropMs) ? t.droppedLastAt(dayFmt.format(new Date(lastDropMs))) : null
 
   return (
-    <section className="bg-white rounded-lg border border-gray-200 p-4 space-y-3">
+    <section className="bg-white rounded-lg border border-brand-line p-4 space-y-3">
       <h2 className="text-sm font-medium text-brand-charcoal">{t.heading}</h2>
 
       {isLoading && <div className="text-gray-400 text-sm">{t.loading}</div>}
@@ -86,13 +86,13 @@ export function ProjectEmailPanel({ projectId }: { projectId: string }) {
               copyLabel={t.copy}
               copiedLabel={t.copied}
             />
-            <p className="text-xs text-gray-500">{t.howTo}</p>
+            <p className="text-xs text-brand-ink-soft">{t.howTo}</p>
           </div>
 
           <div className="space-y-1">
-            <h3 className="text-xs font-medium text-gray-500">{t.recentHeading}</h3>
+            <h3 className="text-xs font-medium text-brand-ink-soft">{t.recentHeading}</h3>
             {data.recent.length === 0 ? (
-              <p className="text-sm text-gray-500">{t.noneReceived}</p>
+              <p className="text-sm text-brand-ink-soft">{t.noneReceived}</p>
             ) : (
               <ul className="space-y-0.5">
                 {data.recent.map((e, i) => (
@@ -116,7 +116,7 @@ export function ProjectEmailPanel({ projectId }: { projectId: string }) {
                   {line}
                 </p>
               ))}
-              {lastDropLine && <p className="text-xs text-gray-500">{lastDropLine}</p>}
+              {lastDropLine && <p className="text-xs text-brand-ink-soft">{lastDropLine}</p>}
             </div>
           )}
         </>

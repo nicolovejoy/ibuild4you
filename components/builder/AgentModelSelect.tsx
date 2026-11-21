@@ -13,7 +13,7 @@ export function AgentModelSelect({ value, onChange }: { value: string; onChange:
         id="agent-model"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="px-3 py-2 border border-gray-300 rounded-md text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
+        className="px-3 py-2 border border-brand-line-strong rounded-md text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
       >
         <option value="">{copy.agentModel.default}</option>
         {BRIEF_MODELS.map((m) => (

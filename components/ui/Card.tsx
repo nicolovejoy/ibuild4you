@@ -9,7 +9,7 @@ interface CardProps {
 }
 
 export function Card({ children, className = '', onClick, hover = true, style }: CardProps) {
-  const baseClasses = 'bg-white rounded-lg border border-gray-200'
+  const baseClasses = 'bg-white rounded-xl border border-brand-line'
   const hoverClasses = hover ? 'hover:shadow-lg transition-shadow' : ''
   const clickableClasses = onClick ? 'cursor-pointer' : ''
 

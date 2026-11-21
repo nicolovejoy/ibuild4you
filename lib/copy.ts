@@ -564,6 +564,18 @@ export const copy = {
     help: 'Which model Sam talks with on this brief. A change applies from the next conversation. Default follows the app-wide setting.',
   },
 
+  // --- Builder console chrome: the side rail and the page heading. English only. ---
+  builderShell: {
+    back: 'All briefs',
+    renameTitle: 'Click to rename',
+    // One line under the brief's title saying what the viewer does here.
+    roleLine: {
+      originator: 'You started this brief',
+      contributor: 'You contribute to this brief',
+      reviewer: 'You review this brief',
+    },
+  },
+
   // --- Builder Settings tab: people, standing settings, archive, delete. English only. ---
   settings: {
     saving: 'Saving…',

@@ -15,6 +15,7 @@
 // The brief is deleted at the end, pass or fail.
 // Needs .ibuild4you-bypass + .test-admin-password (the test admin is an owner).
 // Usage: node scripts/e2e-settings-tab.mjs [--shot <dir>]
+// --shot also saves the Brief tab and all three tabs at a phone width.
 
 import { launchLoggedIn, BASE } from './lib/preview-login.mjs'
 
@@ -156,6 +157,20 @@ try {
   grade(panelText.includes('What does a busy morning look like?'), 'and the seed questions')
   grade((await page.locator('dl').first().locator('input, textarea, select').count()) === 0, 'with nothing to type in')
   await shot('conversations')
+
+  // Screenshots only, nothing graded: the Brief tab, then each tab at a phone width.
+  if (shotDir) {
+    await page.goto(`${BASE}/projects/${slug}`, { waitUntil: 'domcontentloaded' })
+    await page.getByRole('heading', { level: 1, name: 'Brief' }).waitFor({ timeout: 15000 })
+    await page.waitForTimeout(1500)
+    await shot('brief')
+    await page.setViewportSize({ width: 390, height: 844 })
+    for (const tab of ['brief', 'conversations', 'settings']) {
+      await page.goto(`${BASE}/projects/${slug}?tab=${tab}`, { waitUntil: 'domcontentloaded' })
+      await page.waitForTimeout(2000)
+      await shot(`phone-${tab}`)
+    }
+  }
 } catch (e) {
   grade(false, `threw: ${String(e.message).split('\n')[0]}`)
 } finally {

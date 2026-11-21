@@ -155,42 +155,85 @@ export function BuilderProjectView({ projectId }: { projectId: string }) {
     { id: 'settings', label: 'Settings', shortLabel: 'Settings', Icon: Settings, tooltip: copy.glossary.settings.short },
   ]
 
+  const viewerRole = viewerBriefRole(project?.viewer_role, project?.viewer_brief_role)
+  const activeLabel = tabs.find((tab) => tab.id === activeTab)?.label ?? ''
+
+  // The brief's title, click to rename. It sits in the rail on desktop (light
+  // on indigo) and in the top bar on a phone (dark on white).
+  const titleControl = (onDark: boolean) =>
+    editingTitle ? (
+      <input
+        type="text"
+        value={titleDraft}
+        onChange={(e) => setTitleDraft(e.target.value)}
+        onBlur={() => {
+          if (titleDraft.trim() && titleDraft.trim() !== project?.title) {
+            updateProject.mutate({ project_id: projectId, title: titleDraft.trim() })
+          }
+          setEditingTitle(false)
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+          if (e.key === 'Escape') setEditingTitle(false)
+        }}
+        className={`font-heading font-semibold bg-transparent border-b-2 outline-none px-0 py-0 min-w-0 w-full ${
+          onDark ? 'text-white border-white' : 'text-brand-charcoal border-brand-navy'
+        }`}
+        autoFocus
+      />
+    ) : (
+      <button
+        onClick={() => { setTitleDraft(project?.title || ''); setEditingTitle(true) }}
+        className={`font-heading font-semibold cursor-text text-left min-w-0 ${
+          onDark
+            ? 'text-white leading-snug break-words hover:text-brand-rail-text'
+            : 'text-brand-charcoal truncate hover:text-brand-navy'
+        }`}
+        title={copy.builderShell.renameTitle}
+      >
+        {projectLoading ? '...' : project?.title}
+      </button>
+    )
+
   return (
-    // Builder view: operator-console layout. Dark slate side rail on desktop,
-    // bottom tab bar on phone. The chrome itself is the loudest signal that
-    // this is a different surface from the maker chat view.
-    <div className="min-h-screen bg-stone-50 md:flex">
-      {/* Desktop side rail */}
-      <aside className="hidden md:flex md:flex-col w-[200px] bg-slate-900 text-slate-100 sticky top-0 h-screen shrink-0 z-10">
-        <div className="p-4 space-y-3 border-b border-slate-800">
-          <button
-            onClick={() => router.push('/dashboard')}
-            className="flex items-center gap-2 text-slate-300 hover:text-white transition-colors text-sm"
-            title="Back to dashboard"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            <span>Dashboard</span>
-          </button>
-          <span
-            className="inline-block text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded bg-brand-navy text-white"
-            title={briefRoleShort(viewerBriefRole(project?.viewer_role, project?.viewer_brief_role))}
-          >
-            {briefRoleLabel(viewerBriefRole(project?.viewer_role, project?.viewer_brief_role))}
-          </span>
+    // Builder view: operator-console layout. Indigo side rail on desktop,
+    // bottom tab bar on phone, ivory ground. The chrome itself is the loudest
+    // signal that this is a different surface from the maker chat view.
+    <div className="min-h-screen bg-background md:flex">
+      {/* Desktop side rail: back, which brief this is, then the tabs */}
+      <aside className="hidden md:flex md:flex-col gap-6 w-[208px] px-3 py-5 bg-brand-rail text-brand-rail-text sticky top-0 h-screen shrink-0 z-10">
+        <button
+          onClick={() => router.push('/dashboard')}
+          className="flex items-center gap-2 px-2 min-h-7 text-[13px] text-brand-rail-muted hover:text-white transition-colors"
+        >
+          <ArrowLeft className="h-4 w-4" aria-hidden />
+          <span>{copy.builderShell.back}</span>
+        </button>
+        <div className="px-2 space-y-1.5">
+          <div className="flex items-start gap-2 min-w-0">
+            <span className="mt-0.5 shrink-0">
+              <BriefSwitcher currentId={project?.id} currentTitle={project?.title} loading={projectLoading} compact />
+            </span>
+            {titleControl(true)}
+          </div>
+          <p className="text-xs text-brand-rail-muted" title={briefRoleShort(viewerRole)}>
+            {copy.builderShell.roleLine[viewerRole]}
+          </p>
         </div>
-        <nav className="flex-1 p-2 space-y-1">
+        <nav className="flex flex-col gap-0.5">
           {tabs.map(({ id, label, Icon, tooltip }) => (
             <button
               key={id}
               onClick={() => setTab(id)}
               title={tooltip}
-              className={`w-full flex items-center gap-3 px-3 py-2 rounded text-sm transition-colors ${
+              aria-current={activeTab === id ? 'page' : undefined}
+              className={`w-full flex items-center gap-3 px-3 h-11 rounded-lg text-sm transition-colors ${
                 activeTab === id
-                  ? 'bg-slate-700 text-white'
-                  : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                  ? 'bg-brand-cream text-brand-rail font-semibold'
+                  : 'text-brand-rail-text hover:bg-white/10 hover:text-white'
               }`}
             >
-              <Icon className="h-4 w-4 shrink-0" />
+              <Icon className="h-4 w-4 shrink-0" aria-hidden />
               <span className="truncate">{label}</span>
             </button>
           ))}
@@ -199,87 +242,59 @@ export function BuilderProjectView({ projectId }: { projectId: string }) {
 
       {/* Main column */}
       <div className="flex-1 min-w-0 pb-20 md:pb-0">
-        {/* Top sub-header (per-brief context: title, share, status) */}
-        <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
-          <div className="px-4 sm:px-6 py-3 space-y-2">
-            {/* Mobile-only: back + Builder chip on its own row */}
-            <div className="md:hidden flex items-center gap-2">
-              <button onClick={() => router.push('/dashboard')} className="p-1 hover:bg-gray-100 rounded">
-                <ArrowLeft className="h-5 w-5 text-gray-600" />
-              </button>
-              <span
-                className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded bg-brand-navy text-white"
-                title={briefRoleShort(viewerBriefRole(project?.viewer_role, project?.viewer_brief_role))}
-              >
-                {briefRoleLabel(viewerBriefRole(project?.viewer_role, project?.viewer_brief_role))}
-              </span>
-            </div>
-
-            {/* Title + turn indicator */}
-            <div className="flex items-center justify-between gap-3">
-              <div className="group relative min-w-0 flex items-center gap-2">
-                <BriefSwitcher currentId={project?.id} currentTitle={project?.title} loading={projectLoading} compact />
-                {editingTitle ? (
-                  <input
-                    type="text"
-                    value={titleDraft}
-                    onChange={(e) => setTitleDraft(e.target.value)}
-                    onBlur={() => {
-                      if (titleDraft.trim() && titleDraft.trim() !== project?.title) {
-                        updateProject.mutate({ project_id: projectId, title: titleDraft.trim() })
-                      }
-                      setEditingTitle(false)
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
-                      if (e.key === 'Escape') setEditingTitle(false)
-                    }}
-                    className="font-semibold text-brand-charcoal bg-transparent border-b-2 border-brand-navy outline-none px-0 py-0 min-w-0 flex-1"
-                    autoFocus
-                  />
-                ) : (
-                  <button
-                    onClick={() => { setTitleDraft(project?.title || ''); setEditingTitle(true) }}
-                    className="font-semibold text-brand-charcoal hover:text-brand-navy cursor-text truncate"
-                    title="Click to rename"
-                  >
-                    {projectLoading ? '...' : project?.title}
-                  </button>
-                )}
-                <BuildTimestamp />
-              </div>
-              {turn && (
-                <TurnBadge turn={turn} className={`text-xs px-2.5 py-1 rounded-full font-medium shrink-0 ${turn.className}`} />
-              )}
-            </div>
-
-            {/* Meta line: share + count */}
-            {project && (
-              <div className="flex items-center gap-3 text-sm text-gray-500">
-                {project.requester_email ? (
-                  <button
-                    onClick={() => openShare('maker')}
-                    className="flex items-center gap-1.5 hover:text-brand-navy transition-colors"
-                  >
-                    <Share2 className="h-3.5 w-3.5" />
-                    <span>{project.requester_first_name ? `${project.requester_first_name}${project.requester_last_name ? ` ${project.requester_last_name.charAt(0)}` : ''}` : project.requester_email?.split('@')[0]}</span>
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => openShare('maker')}
-                    className="flex items-center gap-1.5 text-brand-navy hover:text-brand-navy-light transition-colors font-medium"
-                  >
-                    <Share2 className="h-3.5 w-3.5" />
-                    Share
-                  </button>
-                )}
-                {sessions && <span>{sessions.length} session{sessions.length === 1 ? '' : 's'}</span>}
-              </div>
-            )}
+        {/* Phone-only top bar: back and which brief this is. On desktop the rail says it. */}
+        <header className="md:hidden bg-white border-b border-brand-line sticky top-0 z-10">
+          <div className="px-3 py-2.5 flex items-center gap-2 min-w-0">
+            <button
+              onClick={() => router.push('/dashboard')}
+              aria-label={copy.builderShell.back}
+              className="p-2 -ml-1 hover:bg-brand-bubble rounded-lg shrink-0"
+            >
+              <ArrowLeft className="h-5 w-5 text-brand-ink-soft" aria-hidden />
+            </button>
+            <BriefSwitcher currentId={project?.id} currentTitle={project?.title} loading={projectLoading} compact />
+            {titleControl(false)}
           </div>
         </header>
 
-        <main className="max-w-4xl mx-auto px-4 py-6">
+        <main className="max-w-4xl px-4 sm:px-8 py-6 md:py-10">
+          {/* Page heading: which tab, whose turn, who it is shared with */}
+          <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2 mb-5">
+            <div className="group relative min-w-0">
+              <h1 className="text-2xl md:text-[26px] font-semibold text-brand-charcoal">{activeLabel}</h1>
+              {project && (
+                <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-brand-ink-soft">
+                  <span className="md:hidden" title={briefRoleShort(viewerRole)}>
+                    {copy.builderShell.roleLine[viewerRole]}
+                  </span>
+                  {project.requester_email ? (
+                    <button
+                      onClick={() => openShare('maker')}
+                      className="flex items-center gap-1.5 hover:text-brand-navy transition-colors"
+                    >
+                      <Share2 className="h-3.5 w-3.5" aria-hidden />
+                      <span>{project.requester_first_name ? `${project.requester_first_name}${project.requester_last_name ? ` ${project.requester_last_name.charAt(0)}` : ''}` : project.requester_email?.split('@')[0]}</span>
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => openShare('maker')}
+                      className="flex items-center gap-1.5 text-brand-navy hover:text-brand-navy-light transition-colors font-semibold"
+                    >
+                      <Share2 className="h-3.5 w-3.5" aria-hidden />
+                      Share
+                    </button>
+                  )}
+                  {sessions && <span>{sessions.length} session{sessions.length === 1 ? '' : 's'}</span>}
+                  <BuildTimestamp />
+                </div>
+              )}
+            </div>
+            {/* Conversations shows whose turn it is in its own status row. */}
+            {turn && activeTab !== 'conversations' && (
+              <TurnBadge turn={turn} className={`text-xs px-2.5 py-1 rounded-full font-medium shrink-0 ${turn.className}`} />
+            )}
+          </div>
+
           {activeTab === 'brief' && (
             <BriefTab
               projectId={projectId}
@@ -311,23 +326,24 @@ export function BuilderProjectView({ projectId }: { projectId: string }) {
             project ? (
               <SettingsTab project={project} onShare={openShare} onGoToConversations={() => setTab('conversations')} />
             ) : (
-              <Skeleton className="h-64 w-full rounded-lg" />
+              <Skeleton className="h-64 w-full rounded-xl" />
             )
           )}
         </main>
       </div>
 
       {/* Mobile bottom tab bar */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-slate-900 text-slate-100 border-t border-slate-800 grid grid-cols-3 z-20">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-brand-rail text-brand-rail-text grid grid-cols-3 z-20">
         {tabs.map(({ id, shortLabel, Icon }) => (
           <button
             key={id}
             onClick={() => setTab(id)}
+            aria-current={activeTab === id ? 'page' : undefined}
             className={`flex flex-col items-center justify-center py-2 text-[11px] gap-0.5 transition-colors ${
-              activeTab === id ? 'text-white' : 'text-slate-400 hover:text-slate-200'
+              activeTab === id ? 'text-white font-semibold' : 'text-brand-rail-muted hover:text-white'
             }`}
           >
-            <Icon className={`h-5 w-5 ${activeTab === id ? 'text-white' : ''}`} />
+            <Icon className="h-5 w-5" aria-hidden />
             <span>{shortLabel}</span>
           </button>
         ))}
@@ -379,7 +395,7 @@ function TranscriptPane({ session }: { session: Session }) {
         // bottom; macOS overlay scrollbars gave no hint of the overflow).
         <div
           ref={paneRef}
-          className="scrollbar-visible max-h-[65vh] overflow-y-auto space-y-3 rounded-lg border border-gray-200 bg-gray-50/60 p-3"
+          className="scrollbar-visible max-h-[65vh] overflow-y-auto space-y-3 rounded-xl border border-brand-line bg-white p-3"
         >
           {messages.map((msg) => (
             <div
@@ -389,9 +405,9 @@ function TranscriptPane({ session }: { session: Session }) {
               <div className={`relative max-w-[80%] rounded-lg px-4 py-2.5 ${
                 msg.role === 'user'
                   ? 'bg-brand-navy text-white'
-                  : 'bg-white border border-gray-200 text-gray-800'
+                  : 'bg-brand-bubble text-brand-charcoal'
               }`}>
-                <p className={`text-[10px] mb-1 ${msg.role === 'user' ? 'text-blue-200' : 'text-gray-400'}`}>
+                <p className={`text-[10px] mb-1 ${msg.role === 'user' ? 'text-brand-rail-muted' : 'text-brand-ink-soft'}`}>
                   {msg.role === 'user' ? (msg.sender_display_name || msg.sender_email?.split('@')[0] || 'Maker') : copy.chat.agentLabel}
                   {msg.created_at ? ` · ${formatTimestamp(msg.created_at)}` : ''}
                   {/* Maker's rating (#130) — quiet signal for the builder */}
@@ -401,7 +417,7 @@ function TranscriptPane({ session }: { session: Session }) {
                 <MessageContent content={msg.content} />
                 <button
                   onClick={() => deleteMessage.mutate({ messageId: msg.id, sessionId })}
-                  className="absolute -top-2 -right-2 p-1 bg-white border border-gray-200 rounded-full text-gray-400 hover:text-red-600 hover:border-red-200 opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
+                  className="absolute -top-2 -right-2 p-1 bg-white border border-brand-line rounded-full text-gray-400 hover:text-red-600 hover:border-red-200 opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
                   title="Delete message"
                 >
                   <Trash2 className="h-3 w-3" />
@@ -428,10 +444,10 @@ function ConfigUsed({ session }: { session: Session }) {
   if (!hasConfig) return null
 
   return (
-    <div className="border-t border-gray-100 pt-3 mt-3">
+    <div className="border-t border-brand-line-soft pt-3 mt-3">
       <button
         onClick={() => setExpanded(!expanded)}
-        className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-600"
+        className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-brand-ink-soft"
       >
         <Settings className="h-3.5 w-3.5" />
         Config used
@@ -439,26 +455,26 @@ function ConfigUsed({ session }: { session: Session }) {
         {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
       </button>
       {expanded && (
-        <div className="mt-2 space-y-2 text-sm text-gray-600">
+        <div className="mt-2 space-y-2 text-sm text-brand-ink-soft">
           {session.welcome_message && (
             <div>
-              <p className="text-xs font-medium text-gray-500 uppercase mb-1">Opening message</p>
-              <p className="text-sm text-gray-700 bg-gray-50 rounded px-2.5 py-1.5 whitespace-pre-wrap">{session.welcome_message}</p>
+              <p className="text-xs font-semibold text-brand-ink-soft mb-1">Opening message</p>
+              <p className="text-sm text-gray-700 bg-brand-bubble rounded px-2.5 py-1.5 whitespace-pre-wrap">{session.welcome_message}</p>
             </div>
           )}
           {questions.length > 0 && (
             <div>
-              <p className="text-xs font-medium text-gray-500 uppercase mb-1">Seed questions{mode === 'converge' && <span className="normal-case font-normal text-gray-400"> (not sent in converge mode)</span>}</p>
+              <p className="text-xs font-semibold text-brand-ink-soft mb-1">Seed questions{mode === 'converge' && <span className="font-normal text-gray-400"> (not sent in converge mode)</span>}</p>
               <ul className="space-y-1">
-                {questions.map((q, i) => <li key={i} className="bg-gray-50 rounded px-2.5 py-1.5 text-sm">{i + 1}. {q}</li>)}
+                {questions.map((q, i) => <li key={i} className="bg-brand-bubble rounded px-2.5 py-1.5 text-sm">{i + 1}. {q}</li>)}
               </ul>
             </div>
           )}
           {dirs.length > 0 && (
             <div>
-              <p className="text-xs font-medium text-gray-500 uppercase mb-1">Builder directives{mode === 'discover' && <span className="normal-case font-normal text-gray-400"> (not sent in discover mode)</span>}</p>
+              <p className="text-xs font-semibold text-brand-ink-soft mb-1">Builder directives{mode === 'discover' && <span className="font-normal text-gray-400"> (not sent in discover mode)</span>}</p>
               <ul className="space-y-1">
-                {dirs.map((d, i) => <li key={i} className="bg-gray-50 rounded px-2.5 py-1.5 text-sm">{i + 1}. {d}</li>)}
+                {dirs.map((d, i) => <li key={i} className="bg-brand-bubble rounded px-2.5 py-1.5 text-sm">{i + 1}. {d}</li>)}
               </ul>
             </div>
           )}
@@ -931,7 +947,7 @@ function BriefTab({
                       <StatusMessage key={w} type="warning" message={w} />
                     ))}
                     <div className="flex items-center gap-3">
-                      <p className="text-xs text-gray-500">{copy.brief.importStayHint}</p>
+                      <p className="text-xs text-brand-ink-soft">{copy.brief.importStayHint}</p>
                       <Button
                         variant="secondary"
                         size="sm"
@@ -959,7 +975,7 @@ function BriefTab({
                     setBriefCopied(true)
                     setTimeout(() => setBriefCopied(false), 2000)
                   }}
-                  className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand-navy"
+                  className="flex items-center gap-1.5 text-xs text-brand-ink-soft hover:text-brand-navy"
                 >
                   {briefCopied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
                   {briefCopied ? 'Copied!' : 'Copy markdown'}
@@ -967,7 +983,7 @@ function BriefTab({
               )}
               <button
                 onClick={() => { setGenError(null); setShowGenConfirm(true) }}
-                className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand-navy"
+                className="flex items-center gap-1.5 text-xs text-brand-ink-soft hover:text-brand-navy"
               >
                 <NotebookPen className="h-3.5 w-3.5" />
                 {copy.brief.writeNoteNow}
@@ -983,7 +999,7 @@ function BriefTab({
             {/* Attachments — Files folded into the Brief (#19 Phase 2). Anything
                 uploaded to the brief that Sam can reference. */}
             <div className="pt-2">
-              <h3 className="text-sm font-semibold text-brand-slate uppercase tracking-wide mb-2 flex items-center gap-1.5">
+              <h3 className="font-heading text-[15px] font-semibold text-brand-charcoal mb-2 flex items-center gap-1.5">
                 <Upload className="h-4 w-4" />
                 Attachments{files.length ? ` (${files.length})` : ''}
               </h3>
@@ -997,10 +1013,10 @@ function BriefTab({
           new brief, so there is nothing to copy first. */}
       <Modal isOpen={showGenConfirm} onClose={() => { if (!generating) setShowGenConfirm(false) }} title={`${copy.brief.writeNoteNow}?`} size="sm">
         <div className="space-y-4">
-          <p className="text-sm text-gray-600">{copy.brief.writeNoteConfirm}</p>
+          <p className="text-sm text-brand-ink-soft">{copy.brief.writeNoteConfirm}</p>
           {genError && <StatusMessage type="error" message={genError} />}
           <div className="flex justify-end gap-2">
-            <button type="button" onClick={() => setShowGenConfirm(false)} disabled={generating} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 disabled:opacity-50">
+            <button type="button" onClick={() => setShowGenConfirm(false)} disabled={generating} className="px-4 py-2 text-sm text-brand-ink-soft hover:text-gray-800 disabled:opacity-50">
               {copy.brief.writeNoteCancel}
             </button>
             <LoadingButton variant="primary" loading={generating} loadingText={copy.brief.writeNoteWriting} icon={NotebookPen} onClick={handleGenerate}>
@@ -1101,14 +1117,14 @@ function ConversationsTab({
         <div>
           <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
             {selectedSession && (
-              <h2 className="text-sm font-semibold text-brand-slate uppercase tracking-wide flex items-center gap-2">
+              <h2 className="font-heading text-[15px] font-semibold text-brand-charcoal flex items-center gap-2">
                 {selectedSession.status === 'active' && (
                   <span className="w-2 h-2 rounded-full bg-green-500" aria-hidden />
                 )}
                 {conversationLabel(numberOf(selectedSession.id), selectedSession.status)}
                 {/* Token/cost is operator telemetry, not reading material — admin-only (#120). */}
                 {isAdmin && selectedSession.token_usage_input != null && (
-                  <span className="text-[11px] font-normal normal-case tracking-normal text-gray-400">
+                  <span className="font-sans text-[11px] font-normal text-gray-400">
                     {((selectedSession.token_usage_input + (selectedSession.token_usage_output || 0)) / 1000).toFixed(1)}k tokens
                     {selectedSession.token_cost_usd != null && <> · ~{formatCostUsd(selectedSession.token_cost_usd)}</>}
                   </span>
@@ -1125,10 +1141,10 @@ function ConversationsTab({
                       key={s.id}
                       onClick={() => handleSelect(s.id)}
                       title={`Conversation ${n} · ${new Date(s.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`}
-                      className={`min-w-7 px-2 py-1 rounded text-xs font-medium transition-colors ${
+                      className={`min-w-9 h-8 px-2 rounded-lg text-xs font-semibold transition-colors ${
                         isSelected
                           ? 'bg-brand-navy text-white'
-                          : 'bg-white border border-gray-200 text-gray-500 hover:text-brand-navy'
+                          : 'bg-white border border-brand-line text-brand-ink-soft hover:text-brand-navy'
                       }`}
                     >
                       {n}
@@ -1197,7 +1213,7 @@ function StatusStrip({
 
   return (
     <>
-    <div className="bg-white border border-gray-200 rounded-lg px-4 py-3 space-y-2">
+    <div className="bg-white border border-brand-line rounded-lg px-4 py-3 space-y-2">
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 min-w-0">
           {turn && (
@@ -1255,28 +1271,28 @@ function StatusStrip({
           or no maker yet) — confirm the paste took instead of opening the Start
           modal. Config only snapshots into the NEXT session, hence the caveat. */}
       {justImported && dispatch.kind !== 'start' && (
-        <div className="flex items-start justify-between gap-2 text-sm border-t border-gray-100 pt-2">
+        <div className="flex items-start justify-between gap-2 text-sm border-t border-brand-line-soft pt-2">
           <div className="flex items-start gap-2">
             <Check className="h-4 w-4 text-green-600 mt-0.5 shrink-0" />
             <p>
               <span className="font-medium text-green-800">Payload loaded.</span>{' '}
-              <span className="text-gray-600">
+              <span className="text-brand-ink-soft">
                 Brief updated{justImported.configUpdated ? '; agent config applies from the next conversation' : ''}.
               </span>
             </p>
           </div>
-          <button onClick={onImportedConsumed} aria-label="Dismiss" className="text-gray-400 hover:text-gray-600 shrink-0">
+          <button onClick={onImportedConsumed} aria-label="Dismiss" className="text-gray-400 hover:text-brand-ink-soft shrink-0">
             <X className="h-4 w-4" />
           </button>
         </div>
       )}
 
       {result && (
-        <div className="flex items-start gap-2 text-sm border-t border-gray-100 pt-2">
+        <div className="flex items-start gap-2 text-sm border-t border-brand-line-soft pt-2">
           <Check className="h-4 w-4 text-green-600 mt-0.5 shrink-0" />
           <p>
             <span className="font-medium text-green-800">Conversation {result.sessionNumber} created.</span>{' '}
-            <span className="text-gray-600">
+            <span className="text-brand-ink-soft">
               {result.copied
                 ? 'Nudge copied — paste it whenever you like.'
                 : result.suppressed
@@ -1391,7 +1407,7 @@ function ShareModal({ project, onClose, mode = 'maker' }: { project: Project; on
                     >
                       Save
                     </LoadingButton>
-                    <button onClick={() => setEditingEmail(false)} className="text-xs text-gray-500 hover:text-gray-700">
+                    <button onClick={() => setEditingEmail(false)} className="text-xs text-brand-ink-soft hover:text-gray-700">
                       Cancel
                     </button>
                   </div>
@@ -1453,17 +1469,17 @@ function ShareModal({ project, onClose, mode = 'maker' }: { project: Project; on
                 >
                   Save
                 </LoadingButton>
-                <button onClick={() => setEditingName(false)} className="text-xs text-gray-500 hover:text-gray-700">
+                <button onClick={() => setEditingName(false)} className="text-xs text-brand-ink-soft hover:text-gray-700">
                   Cancel
                 </button>
               </div>
             )}
           </div>
           <div>
-            <p className="text-xs text-gray-600 mb-1">Brief link</p>
+            <p className="text-xs text-brand-ink-soft mb-1">Brief link</p>
             <div className="flex items-center gap-2">
-              <input type="text" readOnly value={shareLink} className="flex-1 px-2.5 py-1.5 bg-gray-50 border border-gray-300 rounded-md text-sm text-gray-700" />
-              <button onClick={async () => { await navigator.clipboard.writeText(shareLink); setLinkCopied(true); setTimeout(() => setLinkCopied(false), 2000) }} className="p-1.5 text-gray-500 hover:text-brand-navy hover:bg-gray-100 rounded">
+              <input type="text" readOnly value={shareLink} className="flex-1 px-2.5 py-1.5 bg-brand-bubble border border-brand-line-strong rounded-md text-sm text-gray-700" />
+              <button onClick={async () => { await navigator.clipboard.writeText(shareLink); setLinkCopied(true); setTimeout(() => setLinkCopied(false), 2000) }} className="p-1.5 text-brand-ink-soft hover:text-brand-navy hover:bg-gray-100 rounded">
                 {linkCopied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
               </button>
             </div>
@@ -1473,24 +1489,24 @@ function ShareModal({ project, onClose, mode = 'maker' }: { project: Project; on
               to contact them again, use the Conversations dispatch nudge. */}
           {justInvited ? (
             <div>
-              <p className="text-xs text-gray-600 mb-1 flex items-center gap-1"><Mail className="h-3.5 w-3.5" /> Invite message</p>
-              <textarea readOnly value={inviteEmailBody} rows={8} className="w-full px-2.5 py-1.5 bg-gray-50 border border-gray-300 rounded-md text-sm text-gray-700 resize-none" />
+              <p className="text-xs text-brand-ink-soft mb-1 flex items-center gap-1"><Mail className="h-3.5 w-3.5" /> Invite message</p>
+              <textarea readOnly value={inviteEmailBody} rows={8} className="w-full px-2.5 py-1.5 bg-brand-bubble border border-brand-line-strong rounded-md text-sm text-gray-700 resize-none" />
               <div className="mt-1 flex items-center gap-4">
                 <SendToMakerButton projectId={project.id} kind="invite" makerEmail={sharedEmail} idleLabel={`Send to ${sharedEmail}`} />
-                <button onClick={async () => { await navigator.clipboard.writeText(inviteEmailBody); setEmailCopied(true); setTimeout(() => setEmailCopied(false), 2000) }} className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand-navy">
+                <button onClick={async () => { await navigator.clipboard.writeText(inviteEmailBody); setEmailCopied(true); setTimeout(() => setEmailCopied(false), 2000) }} className="flex items-center gap-1.5 text-xs text-brand-ink-soft hover:text-brand-navy">
                   {emailCopied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
                   {emailCopied ? 'Copied!' : 'Copy message'}
                 </button>
               </div>
             </div>
           ) : (
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-brand-ink-soft">
               Already on the brief. To reach {project.requester_first_name || 'them'} again, use the send action at the
-              top of <span className="font-medium text-gray-600">Conversations</span>.
+              top of <span className="font-medium text-brand-ink-soft">Conversations</span>.
             </p>
           )}
           <div className="flex justify-end">
-            <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800">Done</button>
+            <button onClick={onClose} className="px-4 py-2 text-sm text-brand-ink-soft hover:text-gray-800">Done</button>
           </div>
         </div>
       ) : (
@@ -1501,7 +1517,7 @@ function ShareModal({ project, onClose, mode = 'maker' }: { project: Project; on
               value={firstName}
               onChange={(e) => setFirstName(e.target.value)}
               placeholder="First name"
-              className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
+              className="flex-1 px-3 py-2 border border-brand-line-strong rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
               autoFocus
             />
             <input
@@ -1509,7 +1525,7 @@ function ShareModal({ project, onClose, mode = 'maker' }: { project: Project; on
               value={lastName}
               onChange={(e) => setLastName(e.target.value)}
               placeholder="Last name"
-              className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
+              className="flex-1 px-3 py-2 border border-brand-line-strong rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
             />
           </div>
           <div>
@@ -1519,15 +1535,15 @@ function ShareModal({ project, onClose, mode = 'maker' }: { project: Project; on
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="maker@email.com"
-              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
+              className="w-full px-3 py-2 border border-brand-line-strong rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
             />
           </div>
           <div>
-            <label className="block text-xs text-gray-600 mb-1">Role on this brief</label>
+            <label className="block text-xs text-brand-ink-soft mb-1">Role on this brief</label>
             <select
               value={briefRole}
               onChange={(e) => setBriefRole(e.target.value as 'originator' | 'contributor')}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
+              className="w-full px-3 py-2 border border-brand-line-strong rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy"
             >
               <option value="originator">{briefRoleLabel('originator')} — the person whose idea this is</option>
               <option value="contributor">{briefRoleLabel('contributor')} — a second person who also chats with {copy.chat.agentLabel}</option>
@@ -1535,7 +1551,7 @@ function ShareModal({ project, onClose, mode = 'maker' }: { project: Project; on
           </div>
           {shareProject.error && <StatusMessage type="error" message={shareProject.error.message} />}
           <div className="flex justify-end gap-2">
-            <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800">Cancel</button>
+            <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-brand-ink-soft hover:text-gray-800">Cancel</button>
             <LoadingButton type="submit" variant="primary" loading={shareProject.isPending} loadingText="Sharing..." disabled={!email.trim()} icon={Share2}>
               Share
             </LoadingButton>
@@ -1603,7 +1619,7 @@ function SendToMakerButton({
         size="sm"
       >
         <div className="space-y-4">
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-brand-ink-soft">
             This sends the {kindLabel} email to{' '}
             <span className="font-medium text-gray-900">{makerEmail}</span> right now. Their replies
             come back to you.
@@ -1614,7 +1630,7 @@ function SendToMakerButton({
               type="button"
               onClick={() => setOpen(false)}
               disabled={sendEmail.isPending}
-              className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 disabled:opacity-50"
+              className="px-4 py-2 text-sm text-brand-ink-soft hover:text-gray-800 disabled:opacity-50"
             >
               Cancel
             </button>
@@ -1687,18 +1703,18 @@ function NudgeDispatch({
       </LoadingButton>
       <Modal isOpen={open} onClose={() => { if (!sendEmail.isPending) setOpen(false) }} title={`Waiting on ${makerNames}`} size="sm">
         <div className="space-y-4">
-          <p className="text-sm text-gray-600">No reply yet in conversation {sessionNumber}. Send a reminder:</p>
+          <p className="text-sm text-brand-ink-soft">No reply yet in conversation {sessionNumber}. Send a reminder:</p>
           <textarea
             readOnly
             value={reminderMessage}
             rows={3}
-            className="w-full px-2.5 py-1.5 bg-gray-50 border border-gray-300 rounded-md text-sm text-gray-700 resize-none"
+            className="w-full px-2.5 py-1.5 bg-brand-bubble border border-brand-line-strong rounded-md text-sm text-gray-700 resize-none"
           />
           {sendEmail.isError && <StatusMessage type="error" message={sendEmail.error.message} />}
           <div className="flex items-center justify-end gap-4">
             <button
               onClick={() => copyNudge(reminderMessage)}
-              className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand-navy"
+              className="flex items-center gap-1.5 text-xs text-brand-ink-soft hover:text-brand-navy"
             >
               {copied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
               {copied ? 'Copied!' : 'Copy reminder'}
@@ -1888,11 +1904,11 @@ function StartDispatch({
             {openerPreview && (
               <div className="flex gap-2 min-w-0">
                 <span className="text-gray-400 w-20 shrink-0">Opens with</span>
-                <span className="text-gray-500 truncate">{openerPreview}</span>
+                <span className="text-brand-ink-soft truncate">{openerPreview}</span>
               </div>
             )}
           </div>
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-brand-ink-soft">
             This <span className="font-medium text-gray-900">closes the current conversation</span> and starts a fresh
             one (#{sessionNumber}). Everyone on the brief moves to the new conversation.
           </p>
@@ -1902,7 +1918,7 @@ function StartDispatch({
               <button
                 onClick={() => { close(); onOpenImport() }}
                 disabled={busy}
-                className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand-navy disabled:opacity-40"
+                className="flex items-center gap-1.5 text-xs text-brand-ink-soft hover:text-brand-navy disabled:opacity-40"
               >
                 <Upload className="h-3.5 w-3.5" /> Load a next-convo payload first
               </button>
@@ -1910,7 +1926,7 @@ function StartDispatch({
             <button
               onClick={() => { close(); onShare('add') }}
               disabled={busy}
-              className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand-navy disabled:opacity-40"
+              className="flex items-center gap-1.5 text-xs text-brand-ink-soft hover:text-brand-navy disabled:opacity-40"
             >
               <UserPlus className="h-3.5 w-3.5" /> Invite someone to this conversation instead
             </button>
@@ -1919,7 +1935,7 @@ function StartDispatch({
             <button
               onClick={handleCopy}
               disabled={busy}
-              className="px-3 py-2 text-sm text-gray-600 hover:text-gray-800 disabled:opacity-50 flex items-center gap-1.5"
+              className="px-3 py-2 text-sm text-brand-ink-soft hover:text-gray-800 disabled:opacity-50 flex items-center gap-1.5"
             >
               <Copy className="h-3.5 w-3.5" /> Start &amp; copy nudge
             </button>

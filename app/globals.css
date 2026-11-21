@@ -12,6 +12,16 @@
   --brand-cream: #fbf8f1;
   --brand-slate: #414f7f;
   --brand-charcoal: #24211d;
+  /* Builder console (2026-11-21): the side rail is a deeper indigo than the
+     buttons, lines and quiet text are warm so they sit on the ivory ground. */
+  --brand-rail: #1f2a5c;
+  --brand-rail-text: #dfe3f3;
+  --brand-rail-muted: #c9cfe6;
+  --brand-line: #e7e2d6;
+  --brand-line-soft: #efebe1;
+  --brand-line-strong: #cfc9bb;
+  --brand-ink-soft: #5c574f;
+  --brand-bubble: #f4efe4;
 }
 
 @theme inline {
@@ -22,6 +32,14 @@
   --color-brand-cream: var(--brand-cream);
   --color-brand-slate: var(--brand-slate);
   --color-brand-charcoal: var(--brand-charcoal);
+  --color-brand-rail: var(--brand-rail);
+  --color-brand-rail-text: var(--brand-rail-text);
+  --color-brand-rail-muted: var(--brand-rail-muted);
+  --color-brand-line: var(--brand-line);
+  --color-brand-line-soft: var(--brand-line-soft);
+  --color-brand-line-strong: var(--brand-line-strong);
+  --color-brand-ink-soft: var(--brand-ink-soft);
+  --color-brand-bubble: var(--brand-bubble);
   --font-sans: var(--font-open-sans);
   --font-heading: var(--font-montserrat);
 }

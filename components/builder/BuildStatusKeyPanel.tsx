@@ -15,7 +15,7 @@ const t = copy.buildStatusKey
 const dateFmt = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Los_Angeles' })
 
 const button =
-  'px-3 py-1.5 text-sm border border-gray-200 rounded text-brand-charcoal hover:border-brand-navy hover:text-brand-navy disabled:opacity-30 disabled:cursor-not-allowed transition-colors'
+  'px-3 py-1.5 text-sm border border-brand-line rounded text-brand-charcoal hover:border-brand-navy hover:text-brand-navy disabled:opacity-30 disabled:cursor-not-allowed transition-colors'
 
 // The build status key for a brief's repo: lets Claude Code in the build repo
 // post status reports and nothing else. System admin only. The key is shown
@@ -74,10 +74,10 @@ export function BuildStatusKeyPanel({
   }
 
   return (
-    <section className="bg-white rounded-lg border border-gray-200 p-4 space-y-3">
+    <section className="bg-white rounded-lg border border-brand-line p-4 space-y-3">
       <h2 className="text-sm font-medium text-brand-charcoal">{t.heading(repo)}</h2>
 
-      {!hasFullRepo && <p className="text-sm text-gray-500">{t.needsFullRepo}</p>}
+      {!hasFullRepo && <p className="text-sm text-brand-ink-soft">{t.needsFullRepo}</p>}
 
       {hasFullRepo && isLoading && <div className="text-gray-400 text-sm">{t.loading}</div>}
       {hasFullRepo && status && (
@@ -122,7 +122,7 @@ export function BuildStatusKeyPanel({
               copyLabel={t.copy}
               copiedLabel={t.copied}
             />
-            <p className="text-xs text-gray-500">{t.shownOnce}</p>
+            <p className="text-xs text-brand-ink-soft">{t.shownOnce}</p>
           </div>
           <div className="space-y-1">
             <CopyField
@@ -132,7 +132,7 @@ export function BuildStatusKeyPanel({
               copyLabel={t.copy}
               copiedLabel={t.copied}
             />
-            <p className="text-xs text-gray-500">{t.opNote}</p>
+            <p className="text-xs text-brand-ink-soft">{t.opNote}</p>
           </div>
         </div>
       )}

@@ -31,19 +31,19 @@ export function NextRoundPanel({
 
   return (
     <CollapsibleSection title={t.heading} summary={summary} defaultOpen={false}>
-      <dl className="divide-y divide-gray-100 text-sm">
+      <dl className="divide-y divide-brand-line-soft text-sm">
         <Row label={t.opening}>
           {round.opening.kind === 'welcome' ? (
             <p className="whitespace-pre-wrap text-gray-800">{round.opening.text}</p>
           ) : (
-            <p className="text-gray-500">
+            <p className="text-brand-ink-soft">
               {round.opening.kind === 'default' ? t.openingDefault : t.openingKickoff}
             </p>
           )}
         </Row>
         <Row label={t.mode}>
           <p className="text-gray-800">
-            {t.modes[round.mode]} <span className="text-gray-500">· {t.modeHelp[round.mode]}</span>
+            {t.modes[round.mode]} <span className="text-brand-ink-soft">· {t.modeHelp[round.mode]}</span>
           </p>
         </Row>
         <Row label={t.points[round.mode]}>
@@ -54,18 +54,18 @@ export function NextRoundPanel({
               ))}
             </ol>
           ) : (
-            <p className="text-gray-500">{t.noPoints}</p>
+            <p className="text-brand-ink-soft">{t.noPoints}</p>
           )}
         </Row>
         <Row label={t.nudge}>
           {round.nudge ? (
             <p className="whitespace-pre-wrap text-gray-800">{round.nudge}</p>
           ) : (
-            <p className="text-gray-500">{t.nudgeDrafted}</p>
+            <p className="text-brand-ink-soft">{t.nudgeDrafted}</p>
           )}
         </Row>
       </dl>
-      <p className="mt-3 text-xs text-gray-500">
+      <p className="mt-3 text-xs text-brand-ink-soft">
         {t.readOnly}{' '}
         {onOpenImport && (
           <button

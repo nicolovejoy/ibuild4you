@@ -54,6 +54,26 @@ describe('signed-in app contrast (WCAG AA body text, 4.5:1)', () => {
   })
 })
 
+// The builder console's own tokens (2026-11-21). They are not in the home
+// palette, so the pairings are read straight from globals.css.
+describe('builder console contrast (WCAG AA body text, 4.5:1)', () => {
+  const pairs: [string, string, string][] = [
+    ['rail text on the rail', 'brand-rail-text', 'brand-rail'],
+    ['quiet rail text on the rail', 'brand-rail-muted', 'brand-rail'],
+    ['rail colour on cream (the active tab)', 'brand-rail', 'brand-cream'],
+    ['soft ink on cream', 'brand-ink-soft', 'brand-cream'],
+    ['soft ink on a Sam bubble', 'brand-ink-soft', 'brand-bubble'],
+    ['charcoal on a Sam bubble', 'brand-charcoal', 'brand-bubble'],
+  ]
+  it.each(pairs)('%s', (_label, fg, bg) => {
+    expect(contrastRatio(token(fg), token(bg))).toBeGreaterThanOrEqual(4.5)
+  })
+
+  it('soft ink on white cards', () => {
+    expect(contrastRatio(token('brand-ink-soft'), WHITE)).toBeGreaterThanOrEqual(4.5)
+  })
+})
+
 describe('brand assets use the palette', () => {
   const files = ['app/icon.svg', 'app/apple-icon.svg', 'lib/og/cards.tsx']
   it.each(files)('%s has no old brand hex', (file) => {

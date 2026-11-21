@@ -119,14 +119,14 @@ export function SettingsTab({
   }
   const reminders = reminderDetail(live, Date.now())
 
-  const checkbox = 'mt-0.5 h-4 w-4 rounded border-gray-300 text-brand-navy focus:ring-brand-navy'
+  const checkbox = 'mt-0.5 h-4 w-4 rounded border-brand-line-strong text-brand-navy focus:ring-brand-navy'
   const field =
-    'px-3 py-2 border border-gray-300 rounded-md text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy'
+    'px-3 py-2 border border-brand-line-strong rounded-md text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-brand-navy'
 
   return (
     <div className="space-y-4">
       {/* One status line for every save on the page. */}
-      <p role="status" className="h-4 text-xs text-gray-500 text-right">
+      <p role="status" className="h-4 text-xs text-brand-ink-soft text-right">
         {updateProject.isPending
           ? t.saving
           : updateProject.isError
@@ -144,7 +144,7 @@ export function SettingsTab({
           <PeoplePanel project={project} onInvite={() => onShare('add')} />
         ) : (
           <div>
-            <p className="text-sm text-gray-600 mb-4">{t.people.empty}</p>
+            <p className="text-sm text-brand-ink-soft mb-4">{t.people.empty}</p>
             <LoadingButton variant="primary" icon={Share2} onClick={() => onShare('maker')}>
               {t.people.invite}
             </LoadingButton>
@@ -205,9 +205,9 @@ export function SettingsTab({
               </span>
             </label>
             {reminders && (
-              <div className="ml-6 mt-2 rounded-md bg-gray-50 border border-gray-100 px-3 py-2 text-xs text-gray-600 space-y-0.5">
+              <div className="ml-6 mt-2 rounded-md bg-brand-bubble border border-brand-line-soft px-3 py-2 text-xs text-brand-ink-soft space-y-0.5">
                 <div>{reminders.sent}</div>
-                <div className="text-gray-500">{reminders.next}</div>
+                <div className="text-brand-ink-soft">{reminders.next}</div>
               </div>
             )}
           </div>
@@ -228,7 +228,7 @@ export function SettingsTab({
             </span>
           </label>
 
-          <p className="text-xs text-gray-500 pt-3 border-t border-gray-100">
+          <p className="text-xs text-brand-ink-soft pt-3 border-t border-brand-line-soft">
             {t.sam.nextRound}{' '}
             <button
               type="button"
@@ -279,12 +279,12 @@ export function SettingsTab({
 
       {/* Archive is per viewer: it hides the brief from this person's dashboard only. */}
       <Card hover={false}>
-        <CardBody className="flex flex-wrap items-center justify-between gap-3">
+        <CardBody className="px-5 sm:pl-12 flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
-            <h2 className="text-sm font-semibold text-brand-slate uppercase tracking-wide">
+            <h2 className="font-heading text-[15px] font-semibold text-brand-charcoal">
               {t.archive.heading}
             </h2>
-            <p className="text-xs text-gray-500 mt-1">
+            <p className="text-xs text-brand-ink-soft mt-1">
               {archived ? t.archive.archivedHelp : t.archive.help}
             </p>
             {archiveProject.error && (
@@ -295,7 +295,7 @@ export function SettingsTab({
             type="button"
             onClick={toggleArchive}
             disabled={archiveProject.isPending}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-700 border border-brand-line-strong rounded-md hover:bg-brand-bubble disabled:opacity-50"
           >
             {archived ? <ArchiveRestore className="h-4 w-4" /> : <Archive className="h-4 w-4" />}
             {archived ? t.archive.undo : t.archive.action}
@@ -305,12 +305,12 @@ export function SettingsTab({
 
       {isAdmin && (
         <Card hover={false}>
-          <CardBody className="flex flex-wrap items-center justify-between gap-3">
+          <CardBody className="px-5 sm:pl-12 flex flex-wrap items-center justify-between gap-3">
             <div className="min-w-0">
-              <h2 className="text-sm font-semibold text-red-700 uppercase tracking-wide">
+              <h2 className="font-heading text-[15px] font-semibold text-red-700">
                 {t.delete.heading}
               </h2>
-              <p className="text-xs text-gray-500 mt-1">{copy.deleteProject.warning}</p>
+              <p className="text-xs text-brand-ink-soft mt-1">{copy.deleteProject.warning}</p>
             </div>
             <button
               type="button"

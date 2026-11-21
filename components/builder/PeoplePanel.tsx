@@ -58,10 +58,10 @@ export function PeoplePanel({ project, onInvite }: { project: Project; onInvite:
       {isLoading && <Skeleton className="h-12 w-full" />}
       {error && <StatusMessage type="error" message={(error as Error).message} />}
       {members && members.length === 0 && (
-        <p className="text-sm text-gray-500">No one yet. Invite someone to start the brief.</p>
+        <p className="text-sm text-brand-ink-soft">No one yet. Invite someone to start the brief.</p>
       )}
 
-      <ul className="divide-y divide-gray-100">
+      <ul className="divide-y divide-brand-line-soft">
         {active.map((m) => {
           const isConsole = m.role === 'owner' || m.role === 'builder'
           const confirming = confirmRemoveId === m.id
@@ -79,12 +79,12 @@ export function PeoplePanel({ project, onInvite }: { project: Project; onInvite:
                       </span>
                     )}
                   </p>
-                  <p className="text-xs text-gray-500 truncate">{m.email}</p>
+                  <p className="text-xs text-brand-ink-soft truncate">{m.email}</p>
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0">
                   {/* Access tier (permission level) — editable for every member but you. */}
                   {isSelf ? (
-                    <span className="text-xs text-gray-600 px-1">
+                    <span className="text-xs text-brand-ink-soft px-1">
                       {memberRoleLabel(m.role ?? 'maker')}
                     </span>
                   ) : (
@@ -101,7 +101,7 @@ export function PeoplePanel({ project, onInvite }: { project: Project; onInvite:
                           setPendingTierId(null)
                         }
                       }}
-                      className="px-2 py-1 border border-gray-300 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-brand-navy"
+                      className="px-2 py-1 border border-brand-line-strong rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-brand-navy"
                     >
                       {MEMBER_ROLES.map((r) => (
                         <option key={r} value={r}>
@@ -116,7 +116,7 @@ export function PeoplePanel({ project, onInvite }: { project: Project; onInvite:
                       {briefRoleLabel('reviewer')}
                     </span>
                   ) : isSelf ? (
-                    <span className="text-xs text-gray-600 px-1">
+                    <span className="text-xs text-brand-ink-soft px-1">
                       {briefRoleLabel(m.brief_role ?? 'originator')}
                     </span>
                   ) : (
@@ -133,7 +133,7 @@ export function PeoplePanel({ project, onInvite }: { project: Project; onInvite:
                           setPendingEmail(null)
                         }
                       }}
-                      className="px-2 py-1 border border-gray-300 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-brand-navy"
+                      className="px-2 py-1 border border-brand-line-strong rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-brand-navy"
                     >
                       <option value="originator">{briefRoleLabel('originator')}</option>
                       <option value="contributor">{briefRoleLabel('contributor')}</option>
@@ -163,7 +163,7 @@ export function PeoplePanel({ project, onInvite }: { project: Project; onInvite:
                   <div className="flex items-center gap-1.5 shrink-0">
                     <button
                       onClick={() => setConfirmRemoveId(null)}
-                      className="text-xs text-gray-600 hover:underline px-1"
+                      className="text-xs text-brand-ink-soft hover:underline px-1"
                     >
                       Cancel
                     </button>
@@ -190,14 +190,14 @@ export function PeoplePanel({ project, onInvite }: { project: Project; onInvite:
 
       {removed.length > 0 && (
         <div className="mt-4">
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">
+          <p className="font-heading text-[13px] font-semibold text-brand-ink-soft mb-1">
             Removed
           </p>
-          <ul className="divide-y divide-gray-100">
+          <ul className="divide-y divide-brand-line-soft">
             {removed.map((m) => (
               <li key={m.id} className="py-2 flex items-center justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="text-sm text-gray-500 truncate line-through">{m.display_name}</p>
+                  <p className="text-sm text-brand-ink-soft truncate line-through">{m.display_name}</p>
                   <p className="text-xs text-gray-400 truncate">
                     {m.email}
                     {m.removed_at && ` · removed ${new Date(m.removed_at).toLocaleDateString()}`}
@@ -246,15 +246,15 @@ function ProjectLinkCopy({ project }: { project: Project }) {
   }
 
   return (
-    <div className="mb-3 rounded-md bg-gray-50 border border-gray-200 p-2.5">
-      <p className="text-[11px] text-gray-500 mb-0.5">Sign-in link</p>
+    <div className="mb-3 rounded-md bg-brand-bubble border border-brand-line p-2.5">
+      <p className="text-[11px] text-brand-ink-soft mb-0.5">Sign-in link</p>
       <div className="flex items-center gap-1.5">
-        <code className="flex-1 min-w-0 truncate px-2 py-1 bg-white border border-gray-300 rounded text-xs text-gray-700">
+        <code className="flex-1 min-w-0 truncate px-2 py-1 bg-white border border-brand-line-strong rounded text-xs text-gray-700">
           {link}
         </code>
         <button
           onClick={handleCopy}
-          className="p-1 text-gray-500 hover:text-brand-navy hover:bg-gray-100 rounded shrink-0"
+          className="p-1 text-brand-ink-soft hover:text-brand-navy hover:bg-gray-100 rounded shrink-0"
           title="Copy link"
         >
           {copied ? (
