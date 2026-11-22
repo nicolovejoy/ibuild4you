@@ -684,6 +684,12 @@ export const copy = {
     confirmDelete: (n: number) =>
       `Delete ${n} feedback item${n === 1 ? '' : 's'} for good? This cannot be undone. Linked GitHub issues are left alone.`,
     bulkFailed: (failed: number, total: number) => `${failed} of ${total} could not be changed.`,
+    // #278. Shown on the row when Save is refused.
+    inProgressNeedsIssue: 'In progress needs a GitHub issue. Convert this item to an issue first.',
+    // The first line of the "Update on your feedback" email to the submitter.
+    // Acknowledged promises nothing: no status tracks a follow-up.
+    submitterEmailAcknowledged: "Thanks for the feedback. We've read it.",
+    submitterEmailDone: 'Quick update: your feedback has been marked as done.',
   },
 
   // --- Admin: Loop apps (/admin/apps). Admin screens are English only; the

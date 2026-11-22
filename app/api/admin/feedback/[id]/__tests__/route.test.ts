@@ -75,6 +75,19 @@ beforeEach(() => {
   })
 })
 
+// The default row, with a linked GitHub issue.
+const withIssue = () => ({
+  exists: true,
+  data: () => ({
+    project_id: 'sample-cafe',
+    type: 'bug',
+    body: 'Footer link broken',
+    status: 'new',
+    submitter_email: 'sam@example.com',
+    github_issue_url: 'https://github.com/x/y/issues/1',
+  }),
+})
+
 describe('PATCH /api/admin/feedback/[id]', () => {
   it('returns 401 when unauthenticated', async () => {
     mockGetAuthenticatedUser.mockResolvedValueOnce({
@@ -95,6 +108,7 @@ describe('PATCH /api/admin/feedback/[id]', () => {
 
   it('lets a non-admin collaborator on the row\'s app update it', async () => {
     mockHasSystemRole.mockReturnValue(false)
+    mockDocGet.mockResolvedValueOnce(withIssue())
     const res = await PATCH(makeReq({ status: 'in_progress' }), { params })
     expect(res.status).toBe(200)
     expect(mockUpdate).toHaveBeenCalledOnce()
@@ -124,6 +138,58 @@ describe('PATCH /api/admin/feedback/[id]', () => {
     expect((email.to as string[])[0]).toBe('sam@example.com')
   })
 
+  // #278: the acknowledged email promises nothing, since nothing tracks a promise.
+  it('the acknowledged email says the feedback was read and makes no promise to follow up', async () => {
+    await PATCH(makeReq({ status: 'acknowledged' }), { params })
+    const text = mockResendSend.mock.calls[0][0].text as string
+    expect(text).toContain("Thanks for the feedback. We've read it.")
+    expect(text).not.toMatch(/follow up/i)
+    expect(text).not.toMatch(/added it to the list/i)
+  })
+
+  // #278: in_progress is the status backed by a GitHub issue.
+  it('refuses a move into in_progress when the item has no GitHub issue, and writes nothing', async () => {
+    const res = await PATCH(makeReq({ status: 'in_progress' }), { params })
+    expect(res.status).toBe(400)
+    expect(await res.json()).toEqual({
+      error: 'In progress needs a GitHub issue. Convert this item to an issue first.',
+      code: 'in_progress_needs_issue',
+    })
+    expect(mockUpdate).not.toHaveBeenCalled()
+    expect(mockResendSend).not.toHaveBeenCalled()
+  })
+
+  it('allows in_progress when the item has a GitHub issue', async () => {
+    mockDocGet.mockResolvedValueOnce(withIssue())
+    const res = await PATCH(makeReq({ status: 'in_progress' }), { params })
+    expect(res.status).toBe(200)
+    expect(mockUpdate.mock.calls[0][0].status).toBe('in_progress')
+  })
+
+  it('allows in_progress when the same request links the issue', async () => {
+    const res = await PATCH(
+      makeReq({ status: 'in_progress', github_issue_url: 'https://github.com/x/y/issues/1' }),
+      { params }
+    )
+    expect(res.status).toBe(200)
+  })
+
+  it('refuses in_progress when the same request clears the issue', async () => {
+    mockDocGet.mockResolvedValueOnce(withIssue())
+    const res = await PATCH(makeReq({ status: 'in_progress', github_issue_url: null }), { params })
+    expect(res.status).toBe(400)
+    expect(mockUpdate).not.toHaveBeenCalled()
+  })
+
+  it('an item already in_progress without an issue can still have its notes saved', async () => {
+    mockDocGet.mockResolvedValueOnce({
+      exists: true,
+      data: () => ({ project_id: 'sample-cafe', status: 'in_progress', body: 'x', submitter_email: null }),
+    })
+    const res = await PATCH(makeReq({ status: 'in_progress', internal_notes: 'still on it' }), { params })
+    expect(res.status).toBe(200)
+  })
+
   it('does not re-notify when status does not change', async () => {
     mockDocGet.mockResolvedValueOnce({
       exists: true,
@@ -135,6 +201,7 @@ describe('PATCH /api/admin/feedback/[id]', () => {
   })
 
   it('does not notify on intermediate statuses like in_progress', async () => {
+    mockDocGet.mockResolvedValueOnce(withIssue())
     const res = await PATCH(makeReq({ status: 'in_progress' }), { params })
     expect(res.status).toBe(200)
     expect(mockResendSend).not.toHaveBeenCalled()

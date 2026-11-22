@@ -3,12 +3,14 @@ import { Resend } from 'resend'
 import { getAuthenticatedUser, getAdminDb, hasSystemRole } from '@/lib/api/firebase-server-helpers'
 import { requireFeedbackAccess } from '@/lib/api/feedback-access'
 import { feedbackReplyAddress } from '@/lib/feedback/inbound'
+import { copy } from '@/lib/copy'
 import type { FeedbackStatus } from '@/lib/types'
 
 const ALLOWED_STATUSES: FeedbackStatus[] = ['new', 'acknowledged', 'in_progress', 'done', 'wontfix', 'spam']
 
 // Statuses that trigger an outbound email to the submitter (if they left one).
-// "acknowledged" tells them we heard them; "done" closes the loop.
+// "acknowledged" tells them we read it and promises nothing (#278: nothing
+// tracks a promise made there); "done" closes the loop.
 const NOTIFY_ON: FeedbackStatus[] = ['acknowledged', 'done']
 
 // PATCH /api/admin/feedback/[id] — admins and collaborators+ on the row's app: update status / internal_notes /
@@ -79,6 +81,18 @@ export async function PATCH(
     patch.archived_at = body.archived ? new Date().toISOString() : null
   }
 
+  // #278: in_progress is the one status that stands for tracked work, so a
+  // move into it needs a GitHub issue (already linked, or linked by this same
+  // request). An item already in_progress is left alone.
+  const movingIntoInProgress = patch.status === 'in_progress' && existing.status !== 'in_progress'
+  const issueAfter = 'github_issue_url' in patch ? patch.github_issue_url : existing.github_issue_url
+  if (movingIntoInProgress && !issueAfter) {
+    return NextResponse.json(
+      { error: copy.adminFeedback.inProgressNeedsIssue, code: 'in_progress_needs_issue' },
+      { status: 400 }
+    )
+  }
+
   await ref.update(patch)
 
   // Notify submitter on first transition into acknowledged/done.
@@ -97,8 +111,8 @@ export async function PATCH(
         subject: `Update on your feedback`,
         text: [
           newStatus === 'acknowledged'
-            ? `Thanks for the feedback. We've seen it and added it to the list — we'll follow up when there's progress.`
-            : `Quick update: your feedback has been marked as done.`,
+            ? copy.adminFeedback.submitterEmailAcknowledged
+            : copy.adminFeedback.submitterEmailDone,
           '',
           `> ${(existing.body as string).slice(0, 400)}`,
           '',
