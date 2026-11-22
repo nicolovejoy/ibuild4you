@@ -11,10 +11,12 @@
 // else the very beginning.
 //
 // Email-in: emails members sent to the project's address (project_emails) join
-// the chat messages as one stream ordered by time. Each email is first cut to
-// what the app has not already seen (lib/email-in/new-text.ts): quoted lines
-// the app holds are dropped, typed lines are kept, and an email that repeats
-// an earlier one from the same sender is left out whole.
+// the chat messages as one stream ordered by time. Each email is first read
+// (lib/email-in/reading.ts): typed lines are kept, each quoted message with
+// something new in it is kept and credited by code to its author (held lines
+// around the new ones come back as context), a message the app already holds
+// in full is dropped, and an email that repeats an earlier one from the same
+// sender is left out whole.
 
 import Anthropic from '@anthropic-ai/sdk'
 import type {
@@ -41,7 +43,14 @@ import { normalizeResolvedRisks, normalizeRisks } from '@/lib/brief/risks'
 import { isArchivedSession } from '@/lib/sessions/active'
 import { isBuilderSideRole } from '@/lib/roles/member-role'
 import { listProjectEmails } from '@/lib/email-in/store'
-import { isRepeatOf, seenLines, splitNewText } from '@/lib/email-in/new-text'
+import { emailProjectOf, loadSenderMembers } from '@/lib/email-in/members'
+import {
+  readProjectEmails,
+  readingSize,
+  type EmailReading,
+  type ReadingLine,
+  type ReadingQuote,
+} from '@/lib/email-in/reading'
 
 // How many messages before the first new one go in as continuity context.
 const EARLIER_CONTEXT_COUNT = 6
@@ -140,31 +149,28 @@ function thumbsDownEntries(messages: Msg[]): BriefNoteThumbsDown[] {
 
 // The stream the note writer reads: chat messages and emails, oldest first.
 // `at` is a message's created_at or an email's received_at, as stored.
-type EmailItem = { kind: 'email'; at: string; email: ProjectEmail; typed: string; quotedUnseen: string }
+type EmailItem = {
+  kind: 'email'
+  at: string
+  email: ProjectEmail
+  typed: string
+  quotes: ReadingQuote[]
+}
 type StreamItem = { kind: 'message'; at: string; msg: Msg } | EmailItem
 
 // Marks where an email too long for one note was cut.
 const CUT_MARK = '[cut here]'
 
-// Each email's new text. Its seen set is the stored text of every email on the
-// project before it (in the window or not), so a line someone quoted again is
-// dropped and a quote of mail the app never received is kept. What the sender
-// typed is always kept, unless the whole email repeats an earlier one from the
-// same sender (sent twice, say): then it has no text left and is covered
-// without being shown, like an email whose every line was already seen.
-function splitEmails(emails: ProjectEmail[]): EmailItem[] {
-  const seen = new Set<string>()
-  return emails.map((email, i) => {
-    const text = email.text ?? ''
-    const repeat = emails
-      .slice(0, i)
-      .some((earlier) => earlier.from_email === email.from_email && isRepeatOf(text, earlier.text ?? ''))
-    const { typed, quotedUnseen } = repeat ? { typed: '', quotedUnseen: '' } : splitNewText(text, seen)
-    // Added after the split: an email is never evidence against itself.
-    for (const line of seenLines([text])) seen.add(line)
-    return { kind: 'email', at: email.received_at, email, typed, quotedUnseen }
-  })
-}
+// A reading as a stream item. A repeat, or an email whose every quoted line
+// the app already holds and that typed nothing, has no text left: it is
+// covered without being shown.
+const toEmailItem = (reading: EmailReading): EmailItem => ({
+  kind: 'email',
+  at: reading.email.received_at,
+  email: reading.email,
+  typed: reading.typed,
+  quotes: reading.quotes,
+})
 
 // Merge the two time-ordered lists. Each keeps its own order; on equal
 // timestamps the chat message comes first.
@@ -180,7 +186,7 @@ function mergeStream(messages: Msg[], emails: EmailItem[]): StreamItem[] {
 }
 
 const hasText = (item: StreamItem) =>
-  item.kind === 'message' || item.typed !== '' || item.quotedUnseen !== ''
+  item.kind === 'message' || item.typed !== '' || item.quotes.length > 0
 
 // Cut to at most n UTF-16 units without splitting an emoji's surrogate pair.
 function cutTo(s: string, n: number): string {
@@ -189,24 +195,47 @@ function cutTo(s: string, n: number): string {
   return last >= 0xd800 && last <= 0xdbff ? cut.slice(0, -1) : cut
 }
 
-// An email cut to `limit` characters: typed text is kept first, the quoted
-// part gets whatever room is left, and CUT_MARK ends the part cut. Used for a
-// window email longer than the window limit alone, and for every email shown
-// as earlier context. An email within the limit is returned as it is.
+// The characters an email carries: typed text plus every quote line's text,
+// context lines included. Tags, labels and headers are not counted.
+const emailSize = (item: EmailItem) => readingSize(item)
+
+// An email cut to `limit` characters, counted as emailSize counts them. Typed
+// text is kept first; when it alone passes the limit it is cut and ends with
+// CUT_MARK, and no quote is kept. Otherwise quote lines are kept in order while
+// they fit, the line that passes the limit is cut (dropped when nothing of it
+// fits), a CUT_MARK line ends that quote, and later quotes are dropped. Used
+// for a window email longer than the window limit alone, and for every email
+// shown as earlier context. An email within the limit is returned as it is.
 function cutEmail(item: EmailItem, limit: number): EmailItem {
-  if (item.typed.length + item.quotedUnseen.length <= limit) return item
-  const typed = cutTo(item.typed, limit)
-  const quotedUnseen = cutTo(item.quotedUnseen, limit - typed.length)
-  return quotedUnseen
-    ? { ...item, typed, quotedUnseen: `${quotedUnseen}\n${CUT_MARK}` }
-    : { ...item, typed: `${typed}\n${CUT_MARK}`, quotedUnseen: '' }
+  if (emailSize(item) <= limit) return item
+  if (item.typed.length > limit) {
+    return { ...item, typed: `${cutTo(item.typed, limit)}\n${CUT_MARK}`, quotes: [] }
+  }
+  let room = limit - item.typed.length
+  const quotes: ReadingQuote[] = []
+  for (const quote of item.quotes) {
+    const lines: ReadingLine[] = []
+    for (const line of quote.lines) {
+      if (line.text.length <= room) {
+        lines.push(line)
+        room -= line.text.length
+        continue
+      }
+      const kept = cutTo(line.text, room)
+      if (kept) lines.push({ ...line, text: kept })
+      lines.push({ text: CUT_MARK, kind: 'new', by: null })
+      quotes.push({ ...quote, lines })
+      return { ...item, quotes }
+    }
+    quotes.push(quote)
+  }
+  // Not reached: an email over the limit passes it on some line.
+  return { ...item, quotes }
 }
 
-const emailSize = (item: EmailItem) => item.typed.length + item.quotedUnseen.length
-
 // This note's window: the longest prefix of the new items whose emails hold at
-// most EMAIL_WINDOW_CHAR_LIMIT characters of new text (chat adds nothing to
-// the sum). It stops before the email that would pass the limit, and the rest
+// most EMAIL_WINDOW_CHAR_LIMIT characters, counted by emailSize (chat adds
+// nothing to the sum). It stops before the email that would pass the limit, and the rest
 // waits for the next run. An email that passes the limit alone is cut instead,
 // so it cannot hold the stream back. Never empty when `items` is not.
 //
@@ -267,7 +296,7 @@ function toTurn(item: StreamItem): NoteTurn {
       name: item.email.from_name,
       day: PACIFIC_DAY.format(new Date(item.email.received_at)),
       typed: item.typed,
-      quotedUnseen: item.quotedUnseen,
+      quotes: item.quotes,
     },
   }
 }
@@ -362,6 +391,9 @@ export async function writeNoteForProject(
   const builderEmails = new Set(
     membersSnap.docs.filter((d) => isBuilderSideRole(d.data().role)).map((d) => d.data().email as string)
   )
+  // The same members as the inbound sender check reads them, names resolved:
+  // code credits each quoted message in an email to one of them, or to no one.
+  const senderMembers = await loadSenderMembers(db, emailProjectOf(projectId, projectSnap.data()))
 
   // Every message on the project, across all sessions, oldest first.
   const sessionsSnap = await db
@@ -400,7 +432,8 @@ export async function writeNoteForProject(
 
   // Chat and email as one stream. `start` compares the same way for both, so
   // an item stamped exactly at notes_through_at is never read twice.
-  const stream = mergeStream(all, splitEmails(await listProjectEmails(db, projectId)))
+  const readings = readProjectEmails(await listProjectEmails(db, projectId), senderMembers)
+  const stream = mergeStream(all, readings.map(toEmailItem))
   const firstNew = start === null ? 0 : stream.findIndex((item) => item.at > start)
   if (firstNew === -1 || stream.length === 0) throw new Error('write_note_no_messages')
   const earlierContext = stream.slice(Math.max(0, firstNew - EARLIER_CONTEXT_COUNT), firstNew)

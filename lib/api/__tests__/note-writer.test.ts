@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { EMAIL_CONTEXT_CHAR_LIMIT, EMAIL_WINDOW_CHAR_LIMIT } from '@/lib/agent/constants'
 import { writeNoteForProject } from '../note-writer'
 
 // =============================================================================
@@ -745,6 +746,24 @@ describe('writeNoteForProject', () => {
     const newMessagesBlock = () =>
       userText(lastCall()).split('<new_messages>')[1].split('</new_messages>')[0]
     const block = (text: string, tag: string) => text.split(`<${tag}>\n`)[1].split(`\n</${tag}>`)[0]
+    // The first quote in `text`: its written_by and what is between its tags.
+    const quoted = (text: string) => {
+      const m = text.match(/<quoted written_by="([^"]*)">\n([\s\S]*?)\n<\/quoted>/)
+      return m ? { by: m[1], body: m[2] } : null
+    }
+    // The line text a turn carries: typed plus every quote line, without the
+    // header lines, the run tags or the cut mark (what the cut limits).
+    const carriedText = (turn: string, headers: string[]) => {
+      let size = turn.includes('<typed>\n') ? block(turn, 'typed').length : 0
+      for (const m of turn.matchAll(/<quoted written_by="[^"]*">\n([\s\S]*?)\n<\/quoted>/g)) {
+        for (const line of m[1].split('\n')) {
+          if (headers.includes(line) || line === '[cut here]') continue
+          if (/^<\/?(already_recorded|written_inside)/.test(line)) continue
+          size += line.length
+        }
+      }
+      return size
+    }
 
     it('writes one note from two emails and no chat, with email_ids and email_sources stamped', async () => {
       seedProject()
@@ -950,9 +969,9 @@ describe('writeNoteForProject', () => {
 
       const first = newMessagesBlock()
       expect(block(first, 'typed')).toBe('Thanks Bill, I will look into it.')
-      const quoted = block(first, 'quoted_not_seen_before')
-      expect(quoted).toContain('I want the gallery page to load fast on phones')
-      expect(quoted).toContain('and show prices in euros please')
+      const quote = quoted(first)!
+      expect(quote.body).toContain('I want the gallery page to load fast on phones')
+      expect(quote.body).toContain('and show prices in euros please')
 
       // The maker's own copy arrives later (a Reply All they sent afterwards).
       // What a sender typed is never filtered line by line, and the earlier
@@ -965,7 +984,7 @@ describe('writeNoteForProject', () => {
       expect(res.covered).toBe(2)
       const second = newMessagesBlock()
       expect(block(second, 'typed')).toBe('I want the gallery page to load fast on phones\nand show prices in euros please')
-      expect(second).not.toContain('quoted_not_seen_before')
+      expect(second).not.toContain('<quoted')
       expect(second).toContain('User: hello again')
       expect(notes()[1]).toMatchObject({ email_ids: ['e2_p1'] })
     })
@@ -991,7 +1010,7 @@ describe('writeNoteForProject', () => {
       expect(res.covered).toBe(1)
       const nm = newMessagesBlock()
       expect(block(nm, 'typed')).toBe('Yes, go ahead with that.')
-      expect(nm).not.toContain('quoted_not_seen_before')
+      expect(nm).not.toContain('<quoted')
       expect(notes()[0]).toMatchObject({ email_ids: ['e3_p1'] })
     })
 
@@ -1029,7 +1048,7 @@ describe('writeNoteForProject', () => {
       expect(res).toMatchObject({ covered: 1, through: '2026-11-19T13:00:00.000Z' })
       const nm = newMessagesBlock()
       expect(block(nm, 'typed')).toBe('Actually no')
-      expect(nm).not.toContain('quoted_not_seen_before')
+      expect(nm).not.toContain('<quoted')
     })
 
     it('the same text from a different sender is not a repeat', async () => {
@@ -1166,8 +1185,9 @@ describe('writeNoteForProject', () => {
     it('an oversized email keeps its typed text whole and cuts the quoted part to the room left', async () => {
       seedProject()
       const typed = bigText('alpha', 30_000)
-      const quoted = bigText('bravo', 30_000)
-      const text = `${typed}\n\nOn Wed, Nov 19, 2026 at 9:00 AM Bill Duris <bill@example.com> wrote:\n${quoted
+      const quotedText = bigText('bravo', 30_000)
+      const header = 'On Wed, Nov 19, 2026 at 9:00 AM Bill Duris <bill@example.com> wrote:'
+      const text = `${typed}\n\n${header}\n${quotedText
         .split('\n')
         .map((l) => `> ${l}`)
         .join('\n')}`
@@ -1178,10 +1198,135 @@ describe('writeNoteForProject', () => {
 
       const nm = newMessagesBlock()
       expect(block(nm, 'typed')).toBe(typed)
-      const keptQuote = block(nm, 'quoted_not_seen_before')
+      const keptQuote = quoted(nm)!.body
       expect(keptQuote.endsWith('\n[cut here]')).toBe(true)
-      expect(keptQuote.length - '\n[cut here]'.length).toBe(10_000)
+      // The quote's lines get the 10,000 characters left (line text only).
+      expect(carriedText(nm, [header]) - typed.length).toBe(10_000)
       expect(notes()[0].email_truncated).toBe(true)
+    })
+
+    // #282: who wrote a quote is decided by code (lib/email-in/reading.ts) and
+    // reaches the model as written_by, never as a header for it to read.
+    describe('credited quotes', () => {
+      const NICO = { from_email: 'nico@example.com', from_name: 'Nico L', from_role: 'builder' as const }
+      const TEST_M = { from_email: 'tm@yahoo.com', from_name: 'Test M', from_role: 'maker' as const }
+      const TM_HEADER = 'On Nov 22, 2026, at 10:40 AM, Test M <tm@yahoo.com> wrote:'
+      const NICO_HEADER = 'On Nov 22, 2026, at 10:40 AM, Nico L <nico@example.com> wrote:'
+      const quoteLines = (text: string) => text.split('\n').map((l) => `> ${l}`)
+      // The maker has never signed in: their name comes from the project's
+      // requester fields, as the inbound check reads it.
+      function seedMembers() {
+        coll('project_members').set('mem1', { project_id: 'p1', email: 'tm@yahoo.com', role: 'maker' })
+        coll('project_members').set('mem2', { project_id: 'p1', email: 'nico@example.com', role: 'owner' })
+      }
+      const requester = { requester_email: 'TM@Yahoo.com', requester_first_name: 'Test', requester_last_name: 'Mason' }
+
+      it("credits the maker's words quoted in a builder's email to the maker (smoke step 4)", async () => {
+        seedProject(requester)
+        seedMembers()
+        seedEmail(
+          'e1_p1',
+          '2026-11-22T18:45:00.000Z',
+          [
+            'Thanks, adding the project address.',
+            '',
+            TM_HEADER,
+            '> I would like the start button to be green.',
+            '> Payment should be by card only, please.',
+          ].join('\n'),
+          NICO
+        )
+        mockMessagesCreate.mockResolvedValue(noteResponse(someNote))
+
+        await writeNoteForProject(db, 'p1')
+
+        expect(newMessagesBlock()).toContain(
+          [
+            'Email from Builder (Nico L), received 2026-11-22:',
+            '<typed>',
+            'Thanks, adding the project address.',
+            '</typed>',
+            '<quoted written_by="Maker (Test M)">',
+            TM_HEADER,
+            'I would like the start button to be green.',
+            'Payment should be by card only, please.',
+            '</quoted>',
+          ].join('\n')
+        )
+      })
+
+      it('covers with no model call an email that typed nothing and quotes only lines the app holds', async () => {
+        const questions = 'What colour should the start button be?\nShould payment be by card or by invoice?'
+        seedProject({ ...requester, notes_through_at: '2026-11-22T18:00:00.000Z' })
+        seedMembers()
+        seedEmail('e1_p1', '2026-11-22T18:00:00.000Z', questions, NICO)
+        seedEmail('e2_p1', '2026-11-22T18:30:00.000Z', [NICO_HEADER, ...quoteLines(questions)].join('\n'), TEST_M)
+
+        const res = await writeNoteForProject(db, 'p1')
+
+        expect(mockMessagesCreate).not.toHaveBeenCalled()
+        expect(res).toEqual({ note_id: null, covered: 1, through: '2026-11-22T18:30:00.000Z' })
+        expect(coll('projects').get('p1')!.notes_through_at).toBe('2026-11-22T18:30:00.000Z')
+      })
+
+      // Review Focus 4: a quote's context lines count toward the limit like its
+      // new lines, and the cut falls inside the line that passes it.
+      it('cuts an over-long quote at the line that passes the window limit, context counted, and marks the note truncated', async () => {
+        const held = bigText('alpha', 20_000)
+        const fresh = bigText('bravo', 30_000)
+        seedProject({ notes_through_at: '2026-11-19T10:00:00.000Z' })
+        seedEmail('e1_p1', '2026-11-19T10:00:00.000Z', held, NICO)
+        seedEmail(
+          'e2_p1',
+          '2026-11-19T11:00:00.000Z',
+          ['Short reply.', '', NICO_HEADER, ...quoteLines(held), ...quoteLines(fresh)].join('\n'),
+          TEST_M
+        )
+        mockMessagesCreate.mockResolvedValue(noteResponse(someNote))
+
+        const res = await writeNoteForProject(db, 'p1')
+
+        const nm = newMessagesBlock()
+        expect(block(nm, 'typed')).toBe('Short reply.')
+        const quote = quoted(nm)!
+        expect(quote.body.startsWith(`${NICO_HEADER}\n<already_recorded>\nalpha line 0 `)).toBe(true)
+        expect(quote.body.endsWith('\n[cut here]')).toBe(true)
+        expect(carriedText(nm, [NICO_HEADER])).toBe(EMAIL_WINDOW_CHAR_LIMIT)
+        // The bravo lines after the cut are gone.
+        expect(nm).not.toContain(fresh.split('\n').at(-1))
+        expect(res).toMatchObject({ covered: 1, through: '2026-11-19T11:00:00.000Z' })
+        expect(notes()[0]).toMatchObject({ email_ids: ['e2_p1'], email_truncated: true })
+      })
+
+      it('cuts an earlier-context email with a long quote to the context limit the same way', async () => {
+        const fresh = bigText('bravo', 10_000)
+        seedProject({ notes_through_at: '2026-11-19T11:00:00.000Z' })
+        seedEmail('e1_p1', '2026-11-19T11:00:00.000Z', ['Short reply.', '', NICO_HEADER, ...quoteLines(fresh)].join('\n'), TEST_M)
+        seedEmail('e2_p1', '2026-11-19T12:00:00.000Z', 'a brand new email here')
+        mockMessagesCreate.mockResolvedValue(noteResponse(someNote))
+
+        await writeNoteForProject(db, 'p1')
+
+        const earlier = earlierBlock()
+        expect(block(earlier, 'typed')).toBe('Short reply.')
+        expect(quoted(earlier)!.body.endsWith('\n[cut here]')).toBe(true)
+        expect(carriedText(earlier, [NICO_HEADER])).toBe(EMAIL_CONTEXT_CHAR_LIMIT)
+        expect(notes()[0]).not.toHaveProperty('email_truncated')
+      })
+
+      it('drops the quotes of an email whose typed text alone passes the limit', async () => {
+        const typed = bigText('alpha', 3_000)
+        seedProject({ notes_through_at: '2026-11-19T11:00:00.000Z' })
+        seedEmail('e1_p1', '2026-11-19T11:00:00.000Z', [typed, '', NICO_HEADER, '> A quoted line nobody has seen yet'].join('\n'), TEST_M)
+        seedEmail('e2_p1', '2026-11-19T12:00:00.000Z', 'a brand new email here')
+        mockMessagesCreate.mockResolvedValue(noteResponse(someNote))
+
+        await writeNoteForProject(db, 'p1')
+
+        const earlier = earlierBlock()
+        expect(block(earlier, 'typed')).toBe(`${typed.slice(0, EMAIL_CONTEXT_CHAR_LIMIT)}\n[cut here]`)
+        expect(earlier).not.toContain('<quoted')
+      })
     })
 
     it('an email-only window drops the lock_reversals the model returned', async () => {

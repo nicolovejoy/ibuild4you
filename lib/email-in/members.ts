@@ -1,5 +1,6 @@
 import type { Firestore } from 'firebase-admin/firestore'
 import { getUserDisplayName } from '@/lib/api/firebase-server-helpers'
+import { formatDisplayName } from '@/lib/copy'
 import { normalizeEmail } from '@/lib/email/normalize'
 import type { SenderMember } from './sender'
 
@@ -13,6 +14,18 @@ export interface EmailProject {
   id: string
   requester_email: string // normalized, '' when absent
   requester_name: string | null // formatted as getUserDisplayName does
+}
+
+// A project doc as an EmailProject. The inbound webhook and the note writer
+// both build it here, so a member's name is the same at the sender check and
+// in the reading the note writer is given.
+export function emailProjectOf(id: string, d: Record<string, unknown> | undefined): EmailProject {
+  const str = (v: unknown) => (typeof v === 'string' ? v : undefined)
+  return {
+    id,
+    requester_email: normalizeEmail(str(d?.requester_email) ?? ''),
+    requester_name: formatDisplayName(str(d?.requester_first_name), str(d?.requester_last_name)),
+  }
 }
 
 // The name of an active member, resolved the way the members route builds

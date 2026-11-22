@@ -4,11 +4,10 @@ import type { DocumentReference, Firestore } from 'firebase-admin/firestore'
 import { getAdminDb } from '@/lib/firebase/admin'
 import { buildInboundReply, findFeedbackIdInRecipients } from '@/lib/feedback/inbound'
 import { normalizeEmail } from '@/lib/email/normalize'
-import { formatDisplayName } from '@/lib/copy'
 import { fetchReceivedEmail, type ReceivedEmail } from '@/lib/email/resend-received'
 import { projectAddressesIn } from '@/lib/email-in/address'
 import { checkSender, type SenderCheck, type SenderMember } from '@/lib/email-in/sender'
-import { loadSenderMembers, type EmailProject } from '@/lib/email-in/members'
+import { emailProjectOf, loadSenderMembers, type EmailProject } from '@/lib/email-in/members'
 import { EMAIL_TEXT_MAX, recordDrop, storeProjectEmail } from '@/lib/email-in/store'
 
 // =============================================================================
@@ -235,15 +234,7 @@ async function findProjects(db: Firestore, addresses: string[]): Promise<Matched
       .where('email_in_address', '==', address)
       .limit(1)
       .get()
-    for (const doc of snap.docs) {
-      const d = doc.data()
-      const str = (v: unknown) => (typeof v === 'string' ? v : undefined)
-      found.set(doc.id, {
-        id: doc.id,
-        requester_email: normalizeEmail(str(d.requester_email) ?? ''),
-        requester_name: formatDisplayName(str(d.requester_first_name), str(d.requester_last_name)),
-      })
-    }
+    for (const doc of snap.docs) found.set(doc.id, emailProjectOf(doc.id, doc.data()))
   }
   return [...found.values()]
 }
