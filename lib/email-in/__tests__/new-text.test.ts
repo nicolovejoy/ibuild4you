@@ -34,7 +34,7 @@ describe('splitNewText', () => {
         'Sounds good, I will build the week view first.\n\nOn Tue, Nov 17, 2026, Bill Duris wrote:\n> Hi Nico,\n> The lesson planner should show the whole week at once.\n> Bill',
         seen
       )
-    ).toMatchObject({ typed: 'Sounds good, I will build the week view first.', quotedUnseen: '' })
+    ).toMatchObject({ typed: 'Sounds good, I will build the week view first.', quotedUnseen: '', quotes: [] })
   })
 
   it('a reply quoting an email we never received recovers the quote, with its header', () => {
@@ -70,7 +70,7 @@ describe('splitNewText', () => {
           original,
         seen
       )
-    ).toMatchObject({ typed: 'Yes, will do.', quotedUnseen: '' })
+    ).toMatchObject({ typed: 'Yes, will do.', quotedUnseen: '', quotes: [] })
   })
 
   it('a Gmail forward of an email we hold leaks no header lines', () => {
@@ -80,7 +80,7 @@ describe('splitNewText', () => {
           original,
         seen
       )
-    ).toMatchObject({ typed: 'FYI', quotedUnseen: '' })
+    ).toMatchObject({ typed: 'FYI', quotedUnseen: '', quotes: [] })
   })
 
   describe('an Apple Mail forward with quoted header fields', () => {
@@ -93,7 +93,7 @@ describe('splitNewText', () => {
       quotedOriginal
 
     it('leaks nothing when the body is held', () => {
-      expect(splitNewText(forward, seen)).toMatchObject({ typed: 'FYI', quotedUnseen: '' })
+      expect(splitNewText(forward, seen)).toMatchObject({ typed: 'FYI', quotedUnseen: '', quotes: [] })
     })
 
     it('keeps the divider, the fields and the body when the body is unseen', () => {
@@ -126,7 +126,7 @@ describe('splitNewText', () => {
         'Sounds good.\n\nOn Tue, Nov 17, 2026, Bill Duris wrote:\n\n> Hi Nico,\n> The lesson planner should show the whole week at once.\n> Bill',
         seen
       )
-    ).toMatchObject({ typed: 'Sounds good.', quotedUnseen: '' })
+    ).toMatchObject({ typed: 'Sounds good.', quotedUnseen: '', quotes: [] })
   })
 
   it('an "On ..." typed line does not join a date-less "wrote:" line into a header', () => {
@@ -135,7 +135,7 @@ describe('splitNewText', () => {
         'On reflection, I agree.\nHere is what Danny wrote:\n> The lesson planner should show the whole week at once.',
         seen
       )
-    ).toMatchObject({ typed: 'On reflection, I agree.\nHere is what Danny wrote:', quotedUnseen: '' })
+    ).toMatchObject({ typed: 'On reflection, I agree.\nHere is what Danny wrote:', quotedUnseen: '', quotes: [] })
   })
 
   it('an "On ..." typed line does not join a quoted line into a header', () => {
@@ -152,7 +152,7 @@ describe('splitNewText', () => {
         'On reflection, this is what Danny wrote:\n> The lesson planner should show the whole week at once.',
         seen
       )
-    ).toMatchObject({ typed: 'On reflection, this is what Danny wrote:', quotedUnseen: '' })
+    ).toMatchObject({ typed: 'On reflection, this is what Danny wrote:', quotedUnseen: '', quotes: [] })
   })
 
   it('handles CRLF and an Outlook header block', () => {
@@ -172,7 +172,7 @@ describe('splitNewText', () => {
   // short answer twice. Only a whole repeat of an earlier email (isRepeatOf)
   // has nothing new.
   it('a fully seen email keeps its typed lines; only quoted lines are filtered', () => {
-    expect(splitNewText(original, seen)).toMatchObject({ typed: original, quotedUnseen: '' })
+    expect(splitNewText(original, seen)).toMatchObject({ typed: original, quotedUnseen: '', quotes: [] })
   })
 
   it('a typed answer seen in an earlier email is kept above a quote the app holds', () => {
@@ -180,7 +180,7 @@ describe('splitNewText', () => {
     const held = seenLines(['Yes, go ahead with that.', question])
     expect(
       splitNewText(`Yes, go ahead with that.\n\nOn Wed, Nov 18, 2026, Nico wrote:\n> ${question}`, held)
-    ).toMatchObject({ typed: 'Yes, go ahead with that.', quotedUnseen: '' })
+    ).toMatchObject({ typed: 'Yes, go ahead with that.', quotedUnseen: '', quotes: [] })
   })
 
   it('a re-quoted line with extra markers and spacing still matches', () => {
@@ -189,13 +189,14 @@ describe('splitNewText', () => {
     ).toMatchObject({
       typed: '',
       quotedUnseen: '',
+      quotes: [],
     })
   })
 
   it('a short typed line after a seen quoted line is kept', () => {
     expect(
       splitNewText('> The lesson planner should show the whole week at once.\nYes agreed', seen)
-    ).toMatchObject({ typed: 'Yes agreed', quotedUnseen: '' })
+    ).toMatchObject({ typed: 'Yes agreed', quotedUnseen: '', quotes: [] })
   })
 
   it('recognises an "On ... wrote:" header wrapped over two lines', () => {
@@ -218,6 +219,7 @@ describe('splitNewText', () => {
       expect(splitNewText(receivedEmail.text, seenLines([quotedLine]))).toMatchObject({
         typed: 'Sounds good, the week view first please.',
         quotedUnseen: '',
+        quotes: [],
       })
     })
 
@@ -236,6 +238,7 @@ describe('splitNewText', () => {
       expect(splitNewText(wrapped, seenLines([quotedLine]))).toMatchObject({
         typed: 'Sounds good.',
         quotedUnseen: '',
+        quotes: [],
       })
       expect(splitNewText(wrapped, new Set())).toMatchObject({
         typed: 'Sounds good.',
@@ -271,6 +274,7 @@ describe('splitNewText', () => {
     expect(splitNewText('> Hi Nico,\n> Please add a metronome to the practice page.', held)).toMatchObject({
       typed: '',
       quotedUnseen: '',
+      quotes: [],
     })
     expect(
       splitNewText('> Hi Nico,\n> Please add a metronome to the practice page.', new Set())
@@ -285,6 +289,7 @@ describe('splitNewText', () => {
     expect(splitNewText('Hi Nico,\nPlease add a metronome to the practice page.', held)).toMatchObject({
       typed: 'Hi Nico,\nPlease add a metronome to the practice page.',
       quotedUnseen: '',
+      quotes: [],
     })
   })
 })
@@ -488,6 +493,92 @@ describe('splitNewText quotes', () => {
         quoterHeader: null,
         lines: [kept(newLines[0]), { text: '', context: false, own: false }, kept(newLines[1])],
       },
+    ])
+  })
+
+  // A line belongs to the deepest open quote no deeper than itself, so a line
+  // typed under a nested quote goes back to the outer message.
+  it('a bottom-posted reply under a nested thread goes back to the outer message', () => {
+    const text = [
+      testMHeader,
+      '> Green is fine by me, see below.',
+      `> ${nicoHeader}`,
+      `>> ${colour}`,
+      '> Green.',
+      'I agree with Test M on all of it.',
+    ].join('\n')
+    expect(splitNewText(text, new Set(), new Set()).quotes).toEqual([
+      {
+        header: testMHeader,
+        quoterHeader: null,
+        lines: [kept('Green is fine by me, see below.'), own('I agree with Test M on all of it.')],
+      },
+      { header: nicoHeader, quoterHeader: testMHeader, lines: [kept(colour), own('Green.')] },
+    ])
+  })
+
+  it('triple nesting: each answer lands in the message it answers', () => {
+    const aHeader = 'On Nov 20, 2026, at 9:00 AM, Ann A <ann@example.com> wrote:'
+    const bHeader = 'On Nov 21, 2026, at 9:00 AM, Ben B <ben@example.com> wrote:'
+    const cHeader = 'On Nov 22, 2026, at 9:00 AM, Cat C <cat@example.com> wrote:'
+    const text = [
+      aHeader,
+      `> ${bHeader}`,
+      `>> ${cHeader}`,
+      '>>> C wrote this long line here.',
+      '>> B answered at level two.',
+      '> A answered at level one.',
+      '>>> C wrote one more long line.',
+    ].join('\n')
+    const { quotes } = splitNewText(text, new Set(), new Set())
+    // A's block has no line of its own, so it is not listed (rule 5). Whether
+    // "A answered" is own is left open: B's block has no line deeper than B,
+    // so the own rule as written says no (see the task 2 fix report).
+    expect(quotes.map((quote) => quote.header)).toEqual([bHeader, cHeader])
+    expect(quotes[0]).toMatchObject({ quoterHeader: aHeader, lines: [{ text: 'A answered at level one.' }] })
+    expect(quotes[1]).toEqual({
+      header: cHeader,
+      quoterHeader: bHeader,
+      lines: [
+        kept('C wrote this long line here.'),
+        own('B answered at level two.'),
+        kept('C wrote one more long line.'),
+      ],
+    })
+  })
+
+  it('a forward whose body holds a quote has no own lines', () => {
+    const fields = [
+      'From: Bill Duris <bill@example.com>',
+      'Date: Sun, Nov 22, 2026 at 9:00 AM',
+      'Subject: Re: start button',
+      'To: Test M <tm@yahoo.com>',
+    ]
+    const divider = '---------- Forwarded message ---------'
+    const text = [divider, ...fields, '', 'Sure, that sounds right to me.', `> ${colour}`, 'Green would be best.'].join(
+      '\n'
+    )
+    expect(splitNewText(text, new Set(), new Set()).quotes).toEqual([
+      {
+        header: [divider, ...fields].join('\n'),
+        quoterHeader: null,
+        lines: [kept('Sure, that sounds right to me.'), kept(colour), kept('Green would be best.')],
+      },
+    ])
+  })
+
+  it('a quote header at the top of the text has no quoter', () => {
+    const text = `> ${nicoHeader}\n>> ${colour}`
+    expect(splitNewText(text, new Set(), new Set()).quotes).toEqual([
+      { header: nicoHeader, quoterHeader: null, lines: [kept(colour)] },
+    ])
+  })
+
+  it('a quote header under header-less quoted text has no quoter either', () => {
+    const text = `> Some earlier words with no header.\n> ${nicoHeader}\n>> ${colour}`
+    expect(splitNewText(text, new Set(), new Set()).quotes).toEqual([
+      { header: '', quoterHeader: null, lines: [kept('Some earlier words with no header.')] },
+      { header: nicoHeader, quoterHeader: null, lines: [kept(colour)] },
     ])
   })
 })

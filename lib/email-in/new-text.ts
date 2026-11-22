@@ -64,7 +64,9 @@ export function allLines(texts: string[]): Set<string> {
 //   it (an inline answer), not by the quote's author. Never both.
 export type QuoteLine = { text: string; context: boolean; own: boolean }
 
-// One quoted message: the lines under one quote header.
+// One quoted message: a quote header and the quoted lines placed under it
+// (step 3), in their original order. They need not be next to each other: a
+// line typed under a nested quote goes back to the outer message.
 // header: the header's lines, markers stripped, joined with '\n'; '' for `>`
 //   lines that come before any header.
 // quoterHeader: the header of the quote this one sits inside (the person who
@@ -81,6 +83,8 @@ type Line = {
   // line. A header spans several lines (a wrapped "On ... wrote:", a divider
   // with its From/Date block); they all share one id and one fate.
   headerId: number | null
+  // For a header line, the kind of header it belongs to.
+  headerKind: HeaderKind | null
   // Written into a quote by the person who quoted it (step 3).
   own: boolean
   kept: boolean
@@ -88,12 +92,20 @@ type Line = {
   context: boolean
 }
 
-// A quote header and the quoted lines after it, up to the next header. The `>`
-// lines before the first header form one block with no header lines, depth 0.
+// An "On ... wrote:" attribution, or a divider and/or a From:/Sent: field block.
+type HeaderKind = 'attribution' | 'fields'
+
+// A quote header and the quoted lines placed under it (step 3). The `>` lines
+// before the first header form one block with no header lines, depth 0.
 type Block = {
   headerLines: Line[]
+  // null for the block of `>` lines before the first header.
+  kind: HeaderKind | null
   // The depth of the header's first line.
   depth: number
+  // The block this one's header sits inside: the nearest earlier header block
+  // at a shallower depth. null when the email's sender quoted it.
+  quoter: Block | null
   lines: Line[]
 }
 
@@ -138,17 +150,20 @@ function fieldRunLength(lines: string[], index: number): number {
   return end - index
 }
 
-// How many lines the quote header starting at `index` spans: 0 when there is none.
-// The span is the header line plus the header fields directly under it, so a
-// quote we already hold does not leak its Sent:/To:/Subject: lines as unseen text.
-function quoteHeaderLength(lines: string[], index: number): number {
+// The quote header starting at `index`: how many lines it spans, and its kind.
+// null when there is none. The span is the header line plus the header fields
+// directly under it, so a quote we already hold does not leak its
+// Sent:/To:/Subject: lines as unseen text.
+function quoteHeaderAt(lines: string[], index: number): { span: number; kind: HeaderKind } | null {
   const line = lines[index].trim()
 
   // "On ... wrote:" is checked with its `>` markers stripped, since Apple Mail
   // quotes the attribution along with the text under it.
   const marked = /^\s*>/.test(lines[index])
   const attribution = removeQuoteMarkers(lines[index]).trim()
-  if (isAttribution(attribution)) return 1 + fieldRunLength(lines, index + 1)
+  if (isAttribution(attribution)) {
+    return { span: 1 + fieldRunLength(lines, index + 1), kind: 'attribution' }
+  }
   // "On ... wrote:" wrapped over two lines by the sender's mail client. It never
   // joins a blank line or a line that is a whole attribution itself, and both
   // lines carry a `>` marker or neither does.
@@ -156,7 +171,7 @@ function quoteHeaderLength(lines: string[], index: number): number {
   const next = removeQuoteMarkers(rawNext).trim()
   const nextCanJoin = next !== '' && /^\s*>/.test(rawNext) === marked && !isAttribution(next)
   if (attribution.startsWith('On ') && nextCanJoin && isAttribution(`${attribution} ${next}`)) {
-    return 2 + fieldRunLength(lines, index + 2)
+    return { span: 2 + fieldRunLength(lines, index + 2), kind: 'attribution' }
   }
 
   // A divider, any blank lines directly under it (a bare `>` counts as blank),
@@ -164,17 +179,17 @@ function quoteHeaderLength(lines: string[], index: number): number {
   if (DIVIDERS.some((divider) => divider.test(line))) {
     let end = index + 1
     while (end < lines.length && removeQuoteMarkers(lines[end]).trim() === '') end++
-    return end - index + fieldRunLength(lines, end)
+    return { span: end - index + fieldRunLength(lines, end), kind: 'fields' }
   }
 
   // Outlook: "From:" with "Sent:" or "Date:" within the next 4 lines.
   if (line.startsWith('From:')) {
     const following = lines.slice(index + 1, index + 5).map((l) => l.trim())
     if (following.some((l) => l.startsWith('Sent:') || l.startsWith('Date:'))) {
-      return 1 + fieldRunLength(lines, index + 1)
+      return { span: 1 + fieldRunLength(lines, index + 1), kind: 'fields' }
     }
   }
-  return 0
+  return null
 }
 
 // Step 2: mark quote headers and quoted lines. A line is quoted when it starts
@@ -186,6 +201,7 @@ function markLines(rawLines: string[]): Line[] {
     quoted: /^\s*>/.test(raw),
     depth: quoteDepth(raw),
     headerId: null,
+    headerKind: null,
     own: false,
     kept: true,
     context: false,
@@ -195,10 +211,12 @@ function markLines(rawLines: string[]): Line[] {
   let insideQuote = false
   let i = 0
   while (i < lines.length) {
-    const span = quoteHeaderLength(rawLines, i)
-    if (span > 0) {
+    const header = quoteHeaderAt(rawLines, i)
+    if (header) {
+      const span = header.span
       for (let j = i; j < i + span; j++) {
         lines[j].headerId = headerCount
+        lines[j].headerKind = header.kind
         lines[j].quoted = true
       }
       headerCount++
@@ -212,46 +230,77 @@ function markLines(rawLines: string[]): Line[] {
   return lines
 }
 
-// Step 3: group the quoted lines into blocks, one per quote header, and mark
-// the own lines in each. Typed lines (unmarked, before the first header) are in
-// no block.
+// Step 3: place every quoted line in a block, then mark the own lines in each.
+// Typed lines (unmarked, before the first header) are in no block, and the `>`
+// lines before the first header form the header-less block.
+//
+// The open header blocks are kept on a stack, shallowest at the bottom. A
+// header at depth d closes every open block at depth d or deeper, then opens
+// its own, so depths strictly increase up the stack and the block left below
+// it is its quoter. A quoted line at depth k goes to the deepest open block no
+// deeper than k, or to the shallowest one when all are deeper (an unmarked
+// line under an Apple Mail quote whose header is at depth 1). Lines never close
+// a block, so a line typed under a nested quote goes back to the outer message.
 function findBlocks(lines: Line[]): Block[] {
   const blocks: Block[] = []
-  let current: Block | null = null
+  const open: Block[] = []
+  let headerless: Block | null = null
   let currentHeaderId: number | null = null
   for (const line of lines) {
     if (line.headerId !== null) {
-      // The first line of a new header starts a new block; the rest of its span joins it.
-      if (current === null || line.headerId !== currentHeaderId) {
-        current = { headerLines: [], depth: line.depth, lines: [] }
+      // The first line of a new header opens a new block; the rest of its span joins it.
+      if (line.headerId !== currentHeaderId) {
         currentHeaderId = line.headerId
-        blocks.push(current)
+        while (open.length > 0 && open[open.length - 1].depth >= line.depth) open.pop()
+        const quoter = open.length > 0 ? open[open.length - 1] : null
+        const block: Block = { headerLines: [], kind: line.headerKind, depth: line.depth, quoter, lines: [] }
+        open.push(block)
+        blocks.push(block)
       }
-      current.headerLines.push(line)
+      open[open.length - 1].headerLines.push(line)
     } else if (line.quoted) {
-      // `>` lines before the first header.
-      if (current === null) {
-        current = { headerLines: [], depth: 0, lines: [] }
-        blocks.push(current)
+      if (open.length > 0) {
+        openBlockFor(open, line.depth).lines.push(line)
+      } else {
+        // `>` lines before the first header.
+        if (headerless === null) {
+          headerless = { headerLines: [], kind: null, depth: 0, quoter: null, lines: [] }
+          blocks.push(headerless)
+        }
+        headerless.lines.push(line)
       }
-      current.lines.push(line)
     }
   }
   return blocks
 }
 
-// A non-blank line is own when it sits at a shallower depth than its header,
-// or at the header's depth while the block has a non-blank line deeper than
-// the header. Gmail and Apple Mail put the quoted text one level deeper than
-// its header, so a line at the header's level was written by the quoter. A
-// block with no deeper line (Outlook, or a mail program that does not mark
-// quotes) has no own lines: the quoter's lines cannot be told apart there.
+// The deepest open block no deeper than `depth`, else the shallowest. The scan
+// is short: a stack of h blocks needs headers at depths 0 to h - 1, so even a
+// 50,000-character email holds no more than about 300.
+function openBlockFor(open: Block[], depth: number): Block {
+  for (let i = open.length - 1; i >= 0; i--) {
+    if (open[i].depth <= depth) return open[i]
+  }
+  return open[0]
+}
+
+// A non-blank line is own when its block has an "On ... wrote:" header, the
+// line sits at the header's depth or shallower, and the block has a non-blank
+// line deeper than the header. Gmail and Apple Mail put the quoted text one
+// level deeper than its attribution, so a line at the attribution's level was
+// written by the quoter. A block with no deeper line (Outlook, or a mail
+// program that does not mark quotes), a forward or Outlook block (its body
+// is the forwarded message, quotes inside it included) and the header-less
+// block have no own lines: the quoter's lines cannot be told apart there. Own
+// is a best reading, not a certainty: a quoted line that a mail program
+// re-wrapped without its `>` reads as own.
 function markOwnLines(blocks: Block[]): void {
   for (const block of blocks) {
+    if (block.kind !== 'attribution') continue
     const hasDeeper = block.lines.some((line) => line.normalized !== '' && line.depth > block.depth)
+    if (!hasDeeper) continue
     for (const line of block.lines) {
-      if (line.normalized === '') continue
-      line.own = line.depth < block.depth || (hasDeeper && line.depth === block.depth)
+      if (line.normalized !== '' && line.depth <= block.depth) line.own = true
     }
   }
 }
@@ -266,60 +315,60 @@ function isEvidence(line: Line): boolean {
   return line.headerId === null && !line.own && isLong(line)
 }
 
-// Step 4: a long quoted line is dropped when the app has seen it; a long typed
-// line, and an own line of any length, is always kept. A short line takes the
-// fate of the nearest long line with the same quoted status, looking before it
-// first and then after it, so a short typed "Yes agreed" never follows a seen
-// quoted line out (and a short typed line is therefore always kept too). Header
-// lines and own lines are never that neighbour (step 5 decides headers), and
-// the search stays between the header spans around the line, so a greeting
+// Step 4: a typed line is always kept, and so is an own line. A long quoted
+// line is dropped when the app has seen it. A short quoted line takes the fate
+// of the nearest long line of its block, looking before it first and then
+// after it. Header lines and own lines are never that neighbour (step 5
+// decides headers), and the search stays in the line's block, so a greeting
 // under one header never follows a line quoted under another. With no such
 // neighbour, a short line is kept.
 //
 // When `seenAny` is given, a short non-blank line whose neighbour was dropped
 // is dropped only if the app has seen it too: a "Green." answered inline beside
 // a held question is new words. A blank line follows its neighbour regardless.
-function decideFates(lines: Line[], seen: Set<string>, seenAny?: Set<string>): void {
-  for (const line of lines) {
-    if (isEvidence(line)) line.kept = !line.quoted || !seen.has(line.normalized)
-  }
+function decideFates(blocks: Block[], seen: Set<string>, seenAny?: Set<string>): void {
+  for (const block of blocks) {
+    const lines = block.lines
+    for (const line of lines) {
+      if (isEvidence(line)) line.kept = !seen.has(line.normalized)
+    }
 
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]
-    if (line.headerId !== null || line.own || isLong(line)) continue
+    // The nearest evidence line before each line, then after it, in one pass each.
+    const before: (Line | null)[] = []
+    let last: Line | null = null
+    for (const line of lines) {
+      before.push(last)
+      if (isEvidence(line)) last = line
+    }
+    const after: (Line | null)[] = new Array(lines.length).fill(null)
+    let next: Line | null = null
+    for (let i = lines.length - 1; i >= 0; i--) {
+      after[i] = next
+      if (isEvidence(lines[i])) next = lines[i]
+    }
 
-    // The stretch from the header span before this line (or the start) to the
-    // header span after it (or the end).
-    let start = i
-    while (start > 0 && lines[start - 1].headerId === null) start--
-    let end = i
-    while (end + 1 < lines.length && lines[end + 1].headerId === null) end++
-
-    const sameStatus = (other: Line) => isEvidence(other) && other.quoted === line.quoted
-    const before = lines.slice(start, i).reverse().find(sameStatus)
-    const after = lines.slice(i + 1, end + 1).find(sameStatus)
-    const neighbour = before ?? after
-    if (!neighbour || neighbour.kept) line.kept = true
-    else if (seenAny && line.normalized !== '') line.kept = !seenAny.has(line.normalized)
-    else line.kept = false
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i]
+      if (line.own || isLong(line)) continue
+      const neighbour = before[i] ?? after[i]
+      if (!neighbour || neighbour.kept) line.kept = true
+      else if (seenAny && line.normalized !== '') line.kept = !seenAny.has(line.normalized)
+      else line.kept = false
+    }
   }
 }
 
-// Step 5: a quote header is kept only when a kept, non-blank quoted line follows
-// it before the next header. Every line of a header's span shares that fate.
-function decideHeaders(lines: Line[]): void {
-  const headersWithKeptQuote = new Set<number>()
-  let currentHeader: number | null = null
-  for (const line of lines) {
-    if (line.headerId !== null) {
-      currentHeader = line.headerId
-    } else if (currentHeader !== null && line.quoted && line.kept && line.normalized !== '') {
-      headersWithKeptQuote.add(currentHeader)
-    }
+// Step 5: a quote header is kept only when its block has a kept, non-blank
+// line. Every line of a header's span shares that fate.
+function decideHeaders(blocks: Block[]): void {
+  for (const block of blocks) {
+    const hasKept = block.lines.some((line) => line.kept && line.normalized !== '')
+    for (const line of block.headerLines) line.kept = hasKept
   }
-  for (const line of lines) {
-    if (line.headerId !== null) line.kept = headersWithKeptQuote.has(line.headerId)
-  }
+}
+
+function headerText(block: Block): string {
+  return block.headerLines.map((line) => removeQuoteMarkers(line.raw)).join('\n')
 }
 
 // Step 6: the quoted messages with something new in them, as `quotes`.
@@ -328,23 +377,17 @@ function decideHeaders(lines: Line[]): void {
 // thread that the app already holds. A block that has new lines and dropped
 // lines brings every dropped line back as context, so an inline answer arrives
 // with the question it answers. Every drop is a drop as seen (step 4), so a
-// listed block shows all its lines.
-//
-// A block's quoter is the nearest earlier block at a shallower depth. A stack
-// of earlier blocks, shallowest first, finds it without rescanning: a block at
-// the same depth or deeper can never be the quoter of anything after this one.
+// listed block shows all its lines. Its quoter was found in step 3.
 function collectQuotes(blocks: Block[]): QuoteBlock[] {
   const quotes: QuoteBlock[] = []
-  const shallower: { depth: number; header: string }[] = []
   for (const block of blocks) {
-    const header = block.headerLines.map((line) => removeQuoteMarkers(line.raw)).join('\n')
-    while (shallower.length > 0 && shallower[shallower.length - 1].depth >= block.depth) shallower.pop()
-    const quoterHeader = shallower.length > 0 ? shallower[shallower.length - 1].header : null
-    shallower.push({ depth: block.depth, header })
-
     if (!block.lines.some((line) => line.kept && line.normalized !== '')) continue
     for (const line of block.lines) line.context = !line.kept && line.normalized !== ''
-    quotes.push({ header, quoterHeader, lines: trimBlankRuns(block.lines.map(toQuoteLine)) })
+    quotes.push({
+      header: headerText(block),
+      quoterHeader: block.quoter ? headerText(block.quoter) : null,
+      lines: trimBlankRuns(block.lines.map(toQuoteLine)),
+    })
   }
   return quotes
 }
@@ -388,8 +431,8 @@ export function splitNewText(
   const lines = markLines(splitLines(text))
   const blocks = findBlocks(lines)
   markOwnLines(blocks)
-  decideFates(lines, seen, seenAny)
-  decideHeaders(lines)
+  decideFates(blocks, seen, seenAny)
+  decideHeaders(blocks)
   const quotes = collectQuotes(blocks)
 
   // Context lines are not kept, so they stay out of `typed` and `quotedUnseen`.
