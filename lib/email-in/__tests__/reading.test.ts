@@ -520,6 +520,19 @@ describe('readProjectEmails', () => {
         expect(creditsOf(fromNico(text))).toEqual([credit('outsider', DANA, [[APPROVE, 'unknown author']])])
       })
 
+      it('under a header in another language never credits a member or the sender', () => {
+        const german = 'Am 22.11.2026 um 11:00 schrieb Dana <dana@books.example>:'
+        for (const header of [[`> ${TM_HEADER}`], ['> From: Test M <tm@yahoo.com>', '> Date: Sun']]) {
+          expect(creditsOf(fromNico(['FYI', german, ...header, `> ${APPROVE}`].join('\n')))).toEqual([
+            credit('outsider', 'Maker (Test M), as quoted by unknown author'),
+          ])
+        }
+        const deep = ['FYI', german, '> > On 1 e@x.co wrote:', '> > an old line by e, quoted', `> ${APPROVE}`]
+        expect(creditsOf(fromNico(deep.join('\n')))).toEqual([
+          credit('outsider', 'e, not a project member', [[APPROVE, 'unknown author']]),
+        ])
+      })
+
       it('a member header in that position is unconfirmed', () => {
         const text = ['FYI', `> ${TM_HEADER}`, '> > Shall I pay Dana this week?'].join('\n')
         expect(creditsOf(fromNico(text))).toEqual([

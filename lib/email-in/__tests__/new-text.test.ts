@@ -590,6 +590,37 @@ describe('splitNewText quotes', () => {
     ])
   })
 
+  describe('a marked header that is the first quoted line', () => {
+    const german = 'Am 22.11.2026 um 11:00 schrieb Dana <dana@books.example>:'
+    const attribution = [`> ${testMHeader}`, `> ${newLines[0]}`]
+    const fieldBlock = ['> From: Test M <tm@yahoo.com>', '> Date: Sun, Nov 22, 2026', `> ${newLines[0]}`]
+    const quotersOf = (lines: string[]) =>
+      splitNewText(lines.join('\n'), new Set()).quotes.map((quote) => [quote.quoterHeader, quote.possibleQuoters])
+
+    it('has an unknown quoter under a typed line that may be an attribution the app cannot read', () => {
+      for (const block of [attribution, fieldBlock]) {
+        expect(quotersOf(['FYI', german, ...block])).toEqual([['', ['']]])
+        expect(quotersOf(['FYI', `${german}  `, '', '> ', ...block])).toEqual([['', ['']]])
+        expect(quotersOf(['2026年11月22日 Dana：', ...block])).toEqual([['', ['']]])
+      }
+    })
+
+    it('is the sender’s quote under any other typed line', () => {
+      for (const block of [attribution, fieldBlock]) {
+        expect(quotersOf(['Sounds good, see below.', '', ...block])).toEqual([[null, []]])
+        expect(quotersOf([german, 'Sounds good, see below.', '', ...block])).toEqual([[null, []]])
+        expect(quotersOf(block)).toEqual([[null, []]])
+      }
+    })
+
+    it('has an unknown quoter two or more levels deep, whatever its shape', () => {
+      for (const block of [attribution, fieldBlock]) {
+        expect(quotersOf(['FYI', ...block.map((line) => `> ${line}`)])).toEqual([['', ['']]])
+        expect(quotersOf(['FYI', ...block.map((line) => `>> ${line}`)])).toEqual([['', ['']]])
+      }
+    })
+  })
+
   it('an unknown quoter lasts until a header shallower than its quote', () => {
     const text = [
       `> ${nicoHeader}`,

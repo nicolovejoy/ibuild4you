@@ -355,12 +355,15 @@ function newBlock(kind: HeaderKind | null, depth: number): Block {
 // a quoted message, one whose own header the app did not recognise (one in
 // another language, say). Whoever wrote that message quoted this one, and the
 // app cannot tell who: the quoter is unknown, never the email's sender. It is
-// so in two cases. The header-less text holds a non-blank line at the header's
-// depth or shallower: that text is the message. Or the header's own body is
-// deeper than it, Gmail's shape: a header at depth 1 in that shape is itself
-// quoted text. An Apple Mail header at depth 1, with its body at depth 1, is
-// the sender's own quote. An unknown quoter is a block with no header lines:
-// the header-less block, or an empty one that stands for the message.
+// so in four cases. The header-less text holds a non-blank line at the header's
+// depth or shallower: that text is the message. The header's own body is deeper
+// than it, Gmail's shape: a header at depth 1 in that shape is itself quoted
+// text. The header is at depth 2 or more: the sender's own quotes are at depth
+// 1 at most. Or it is the first header, right under a typed line that ends in a
+// colon, which may be the message's attribution. Any other header at depth 1 in
+// Apple Mail's shape, with its body at depth 1, is the sender's own quote. An
+// unknown quoter is a block with no header lines: the header-less block, or an
+// empty one that stands for the message.
 //
 // That quoter is a best reading, and a message can be shaped to be read wrong:
 // body depths come from its own lines. So who could have written a header is
@@ -376,6 +379,8 @@ function findBlocks(lines: Line[]): Block[] {
   const open: Block[] = []
   const possible: Block[] = []
   let headerless: Block | null = null
+  // The nearest non-blank line before the first header.
+  let lastLine: Line | null = null
   for (const line of lines) {
     if (line.headerId !== null) {
       const block = headerBlocks[line.headerId]
@@ -387,12 +392,15 @@ function findBlocks(lines: Line[]): Block[] {
 
       if (open.length > 0) {
         block.quoter = open[open.length - 1]
-      } else if (block.depth >= 1 && (possible.length > 0 || block.bodyDepth > block.depth)) {
+      } else if (block.depth >= 1) {
         // With no block open, every header still in `possible` is at this depth
         // and Gmail-shaped, so it got an unknown quoter here: the bottom of
         // `possible`, when there is one, is always a block with no header.
-        if (possible.length === 0) possible.push(newBlock(null, block.depth))
-        block.quoter = possible[0]
+        const underColon = line.headerId === 0 && lastLine !== null && endsInColon(lastLine)
+        if (possible.length === 0 && (block.bodyDepth > block.depth || block.depth >= 2 || underColon)) {
+          possible.push(newBlock(null, block.depth))
+        }
+        if (possible.length > 0) block.quoter = possible[0]
       }
       open.push(block)
 
@@ -400,7 +408,11 @@ function findBlocks(lines: Line[]): Block[] {
       possible.push(block)
 
       blocks.push(block)
-    } else if (line.quoted) {
+      continue
+    }
+
+    if (open.length === 0 && line.normalized !== '') lastLine = line
+    if (line.quoted) {
       if (open.length > 0) {
         placeLine(open, line)
       } else {
@@ -416,6 +428,12 @@ function findBlocks(lines: Line[]): Block[] {
     }
   }
   return blocks
+}
+
+// A typed line that ends in a colon may be an attribution in a language the app
+// does not read.
+function endsInColon(line: Line): boolean {
+  return !line.quoted && /[:：]$/.test(line.normalized)
 }
 
 // One block per quote header, in text order (a header's id is its index), with
