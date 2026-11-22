@@ -295,10 +295,14 @@ describe('splitNewText', () => {
 })
 
 describe('allLines', () => {
-  it('holds every non-blank normalized line, of any length', () => {
+  it('holds every non-blank normalized line, of any length, and every pair of consecutive ones', () => {
     expect(allLines(['Yes\n\n> Thanks, \nA longer line here'])).toEqual(
-      new Set(['yes', 'thanks,', 'a longer line here'])
+      new Set(['yes', 'thanks,', 'a longer line here', 'yes\nthanks,', 'thanks,\na longer line here'])
     )
+  })
+
+  it('makes no pair across two texts', () => {
+    expect(allLines(['Yes', 'Thanks,'])).toEqual(new Set(['yes', 'thanks,']))
   })
 })
 
@@ -960,6 +964,73 @@ describe('splitNewText quotes', () => {
         'Green.',
         card,
       ])
+    })
+  })
+
+  // The maker answered the builder alone, and the app first sees the answer
+  // quoted in the builder's reply. Its words may be held from anywhere else;
+  // only the same line after the same line shows that the answer is held.
+  describe('an inline answer whose words the app has seen somewhere else', () => {
+    const reply = (...answer: string[]) =>
+      ['Noted.', '', testMHeader, `> ${nicoHeader}`, `> > ${colour}`, ...answer.map((line) => `> ${line}`)].join('\n')
+    const linesOf = (text: string, held: string[]) =>
+      splitNewText(text, seenLines(held), allLines(held)).quotes.map((quote) => quote.lines)
+
+    it('is kept, short or long', () => {
+      for (const answer of ['Yes.', 'Sounds good to me, thanks.']) {
+        const held = [`Can we start Monday?\n${answer}`, earlier]
+        expect(linesOf(reply(answer), held)).toEqual([[context(colour), own(answer)]])
+      }
+    })
+
+    it('is kept without seenAny', () => {
+      const held = seenLines([reply(card)])
+      expect(splitNewText(reply(card), held).quotes[0].lines).toEqual([context(colour), own(card)])
+    })
+
+    it('is dropped when it is held after the same line, blank lines and markers aside', () => {
+      for (const answer of ['Yes.', 'Sounds good to me, thanks.']) {
+        const held = [earlier, `${nicoHeader}\n> ${colour}\n\n${answer}`]
+        expect(linesOf(reply('', answer), held)).toEqual([])
+      }
+    })
+
+    it('is kept after a kept answer, though the two together were seen somewhere else', () => {
+      const second = 'Go ahead with that one.'
+      expect(linesOf(reply('Yes.', second), [`Can we start Monday?\nYes.\n${second}`, earlier])).toEqual([
+        [context(colour), own('Yes.'), own(second)],
+      ])
+    })
+
+    it('is kept under a line that is itself kept, or under a header', () => {
+      // The question is new too, so a pair seen before was not this one.
+      const question = 'Is the second colour fine too?'
+      const text = reply('Yes.').replace(colour, question)
+      const pairElsewhere = allLines([`${question}\nYes.`])
+      expect(splitNewText(text, new Set(), pairElsewhere).quotes[0].lines).toEqual([kept(question), own('Yes.')])
+
+      const underHeader = ['Noted.', '', testMHeader, `> ${nicoHeader}`, '> Yes.', `> > ${colour}`].join('\n')
+      const held = [earlier, `${nicoHeader}\nYes.`]
+      expect(linesOf(underHeader, held)).toEqual([[own('Yes.'), context(colour)]])
+    })
+
+    it('is kept in a message an unknown quoter quoted', () => {
+      const text = ['Noted.', '> Answers below.', `> ${nicoHeader}`, `>> ${colour}`, '> Yes.'].join('\n')
+      const held = ['Can we start Monday?\nYes.', earlier, 'Answers below.']
+      expect(linesOf(text, held)).toEqual([[context(colour), own('Yes.')]])
+      expect(linesOf(text, [...held, `${nicoHeader}\n> ${colour}\nYes.`])).toEqual([])
+    })
+
+    it('is no evidence for the lines of the message it answers', () => {
+      const text = reply('Yes, go ahead with that.').replace(`> > ${colour}`, `> > ${colour}\n> > Nico`)
+      expect(linesOf(text, [earlier])).toEqual([[context(colour), context('Nico'), own('Yes, go ahead with that.')]])
+    })
+
+    it('reads 50,000 characters of short answers quickly', () => {
+      const text = [testMHeader, `> ${nicoHeader}`, `> > ${colour}`].join('\n') + '\n> a\n> > b'.repeat(5000)
+      const started = Date.now()
+      splitNewText(text, seenLines([text]), allLines([text]))
+      expect(Date.now() - started).toBeLessThan(500)
     })
   })
 

@@ -192,6 +192,42 @@ describe('readProjectEmails', () => {
     expect(readings[3]).toMatchObject({ typed: 'Thank you!', quotes: [] })
   })
 
+  // The maker's email with the answer never reached the app: it went to the
+  // builder alone, and the builder's reply (e3) quotes it.
+  it('keeps a private inline answer whose words were seen elsewhere, and only once', () => {
+    const question = 'Should the start button be green?'
+    for (const answer of ['Yes.', 'Sounds good to me, thanks.']) {
+      const e1 = fromTestM(`Can we start Monday?\n${answer}`)
+      const e2 = fromNico(question)
+      const e3Text = [
+        'Great, building it now.',
+        '',
+        TM_HEADER,
+        `> ${NICO_HEADER}`,
+        `> > ${question}`,
+        `> ${answer}`,
+      ].join('\n')
+      const e4 = fromTestM(
+        ['Thank you so much!', '', NICO_HEADER, ...e3Text.split('\n').map((line) => `> ${line}`)].join('\n')
+      )
+
+      const readings = readProjectEmails([e1, e2, fromNico(e3Text), e4], members)
+
+      expect(readings[2].quotes).toEqual([
+        {
+          header: NICO_HEADER,
+          author: 'member',
+          label: 'Builder (Nico L)',
+          lines: [
+            { text: question, kind: 'context', by: null },
+            { text: answer, kind: 'inside', by: 'Maker (Test M)' },
+          ],
+        },
+      ])
+      expect(readings[3]).toMatchObject({ typed: 'Thank you so much!', quotes: [] })
+    }
+  })
+
   it('credits an answer under a French attribution to its author, not to the sender', () => {
     const text = [
       "D'accord, merci.",

@@ -21,12 +21,14 @@
 // A line written into a quote by the person who quoted it (an inline answer
 // under a question) is an `own` line. When the email's sender wrote it, it is
 // their words in this email and, like a typed line, it is never dropped. When
-// someone further up the thread wrote it, it came in an earlier email and is
-// filtered like any quoted line, so an answer the app holds does not come back
-// as new words in every later reply. When a quoted message the app already
-// holds gets a new answer, the held lines come back marked `context`, so the
-// answer arrives with its question. Context lines are only in `quotes`, never
-// in `quotedUnseen`.
+// someone further up the thread wrote it, the app may hold it or not: the
+// answer may have gone to the email's sender alone. Its words prove nothing,
+// since "Yes." or "Sounds good to me, thanks." answers many questions. So it is
+// dropped only when the app has seen it in its place, right after the same
+// held line: then an answer the app holds does not come back as new words in
+// every later reply. When a quoted message the app already holds gets a new
+// answer, the held lines come back marked `context`, so the answer arrives with
+// its question. Context lines are only in `quotes`, never in `quotedUnseen`.
 
 // Lines shorter than this ("Thanks", "Hi Nico,", "Bill") appear in many emails,
 // so they are never evidence that the app has already seen an email.
@@ -54,18 +56,30 @@ export function seenLines(texts: string[]): Set<string> {
   return seen
 }
 
-// Every non-blank normalized line of every text, of any length. A short quoted
-// line ("Thanks,", "Green.") is dropped beside a held line only when it is in
-// this set (decideFates), so an inline answer the app never saw is kept.
+// Every non-blank normalized line of every text, of any length, and every pair
+// of consecutive ones in a text (linePair). A short quoted line ("Thanks,",
+// "Green.") is dropped beside a held line only when it is in this set, and an
+// inline answer from further up the thread only when its pair with the line
+// before it is (decideFates), so an answer the app never saw is kept.
 export function allLines(texts: string[]): Set<string> {
   const all = new Set<string>()
   for (const text of texts) {
+    let previous: string | null = null
     for (const line of splitLines(text)) {
       const normalized = normalizeLine(line)
-      if (normalized !== '') all.add(normalized)
+      if (normalized === '') continue
+      all.add(normalized)
+      if (previous !== null) all.add(linePair(previous, normalized))
+      previous = normalized
     }
   }
   return all
+}
+
+// Two consecutive normalized lines as one entry of allLines. A normalized line
+// never holds a newline, so a pair is never mistaken for a line.
+function linePair(previous: string, line: string): string {
+  return `${previous}\n${line}`
 }
 
 // One line of a quoted message, `>` markers stripped.
@@ -558,38 +572,53 @@ function nearestBeforeAndAfter(
 // An own line in a block the email's sender quoted (no quoter) is the sender's
 // own words in this email, and like a typed line it is never dropped. An own
 // line in a block someone else quoted was written in an earlier email, which
-// the app may hold: a reply that quotes the maker's inline answers in full must
-// not bring them back as new words. So it is filtered like a body line: a long
-// one against `seen`, a short one by its neighbour, which for such a line may
-// be any long line of the block, own or not.
+// the app may hold or not: decideAnswers.
 //
 // When `seenAny` is given, a short non-blank line whose neighbour was dropped
 // is dropped only if the app has seen it too: a "Green." answered inline beside
 // a held question is new words. A blank line follows its neighbour regardless.
-function decideFates(blocks: Block[], seen: Set<string>, seenAny?: Set<string>): void {
+function decideFates(lines: Line[], blocks: Block[], seen: Set<string>, seenAny?: Set<string>): void {
   for (const block of blocks) {
-    const lines = block.lines
-    const senderQuoted = block.quoter === null
-    for (const line of lines) {
-      if (line.own && senderQuoted) continue
-      if (isLong(line)) line.kept = !seen.has(line.normalized)
+    for (const line of block.lines) {
+      if (!line.own && isLong(line)) line.kept = !seen.has(line.normalized)
     }
 
-    const evidence = nearestBeforeAndAfter(lines, isEvidence)
-    // Only short own lines in a block someone else quoted read this one.
-    const anyLong = senderQuoted ? null : nearestBeforeAndAfter(lines, isLong)
-
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i]
-      if (isLong(line)) continue
-      let neighbour: Line | null
-      if (!line.own) neighbour = evidence.before[i] ?? evidence.after[i]
-      else if (anyLong) neighbour = anyLong.before[i] ?? anyLong.after[i]
-      else continue // the sender's own words
+    const evidence = nearestBeforeAndAfter(block.lines, isEvidence)
+    block.lines.forEach((line, i) => {
+      if (line.own || isLong(line)) return
+      const neighbour = evidence.before[i] ?? evidence.after[i]
       if (!neighbour || neighbour.kept) line.kept = true
       else if (seenAny && line.normalized !== '') line.kept = !seenAny.has(line.normalized)
       else line.kept = false
+    })
+  }
+  if (seenAny) decideAnswers(lines, blocks, seenAny)
+}
+
+// Step 4, last part: the own lines of the blocks that someone other than the
+// email's sender quoted. Such a line, short or long, is dropped only when the
+// app has seen it in its place: `seenAny` has its pair with the non-blank line
+// before it in the email, and that line is not kept here, and no header line (a
+// header is in every reply, and its fate is not known yet). Its words alone, or
+// after a line that is itself new, may be another answer. With no `seenAny` it
+// is kept.
+//
+// In text order and after every other line, so the fate of the line before is
+// known, and an answer of several lines is dropped line by line.
+function decideAnswers(lines: Line[], blocks: Block[], seenAny: Set<string>): void {
+  const answers = new Set<Line>()
+  for (const block of blocks) {
+    if (block.quoter === null) continue
+    for (const line of block.lines) if (line.own) answers.add(line)
+  }
+
+  let previous: Line | null = null
+  for (const line of lines) {
+    if (line.normalized === '') continue
+    if (answers.has(line) && previous !== null && previous.headerId === null && !previous.kept) {
+      line.kept = !seenAny.has(linePair(previous.normalized, line.normalized))
     }
+    previous = line
   }
 }
 
@@ -673,8 +702,9 @@ function joinLines(lines: string[]): string {
 }
 
 // `seen` holds the long lines the app already has (seenLines); `seenAny`, when
-// given, every line of any length (allLines), so a short quoted line is dropped
-// beside a held line only when the app has seen it too (step 4).
+// given, every line of any length and every pair of lines (allLines), so a
+// short quoted line, or an inline answer from further up the thread, is dropped
+// only when the app has seen it too (step 4).
 export function splitNewText(
   text: string,
   seen: Set<string>,
@@ -682,7 +712,7 @@ export function splitNewText(
 ): { typed: string; quotedUnseen: string; quotes: QuoteBlock[] } {
   const lines = markLines(splitLines(text))
   const blocks = findBlocks(lines)
-  decideFates(blocks, seen, seenAny)
+  decideFates(lines, blocks, seen, seenAny)
   decideHeaders(blocks)
   const quotes = collectQuotes(blocks)
 
