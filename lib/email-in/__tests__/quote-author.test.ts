@@ -84,6 +84,38 @@ describe('parseQuoteHeader', () => {
     expect(parseQuoteHeader(header)).toEqual({ name, email })
   })
 
+  it('takes the address in the angle group, never one inside the display name', () => {
+    expect(parseQuoteHeader('From: "nico@example.com" <evil@x.com>\nSent: x')).toEqual({
+      name: 'nico@example.com',
+      email: 'evil@x.com',
+    })
+    expect(
+      parseQuoteHeader('On Nov 22, 2026, at 10:40 AM, nico@example.com <evil@x.com> wrote:')
+    ).toEqual({ name: 'nico@example.com', email: 'evil@x.com' })
+    expect(parseQuoteHeader('From: nico@example.com [mailto:evil@x.com]\nSent: x')).toEqual({
+      name: 'nico@example.com',
+      email: 'evil@x.com',
+    })
+  })
+
+  it('gives no address when the last angle group holds none, and does not fall back', () => {
+    expect(parseQuoteHeader('From: "nico@example.com" <not an address>\nSent: x')).toEqual({
+      name: 'nico@example.com',
+      email: null,
+    })
+  })
+
+  it('takes a bare address only when it is the only one in the text', () => {
+    expect(parseQuoteHeader('From: a@b.example c@d.example\nSent: x').email).toBeNull()
+  })
+
+  it('keeps a name that starts with capitals after a comma', () => {
+    expect(parseQuoteHeader('On Nov 22, 2026, at 10:40 AM, DJ Khaled <dj@x.com> wrote:')).toEqual({
+      name: 'DJ Khaled',
+      email: 'dj@x.com',
+    })
+  })
+
   it('lets a field block win over an attribution above it', () => {
     const header =
       'On Nov 22, 2026, at 10:40 AM, Someone Else <se@example.com> wrote:\nFrom: Test M <tm@yahoo.com>\nSent: x'
@@ -158,6 +190,23 @@ describe('resolveQuoteAuthor and labels', () => {
     expect(resolveQuoteAuthor(on('odd@example.com'), members)).toEqual({
       kind: 'outsider',
       name: 'odd',
+    })
+  })
+
+  it('does not let a member address inside a display name make the author a member', () => {
+    for (const header of [
+      'From: "nico@example.com" <evil@x.com>\nSent: x',
+      on('nico@example.com <evil@x.com>'),
+    ]) {
+      const author = resolveQuoteAuthor(header, members)
+      expect(author).toEqual({ kind: 'outsider', name: 'evil' })
+      expect(authorLabel(author)).toBe('evil, not a project member')
+    }
+  })
+
+  it('never carries an address-shaped name into an outsider, even with no real address', () => {
+    expect(resolveQuoteAuthor('From: "nico@example.com" <nothing>\nSent: x', members)).toEqual({
+      kind: 'unknown',
     })
   })
 
