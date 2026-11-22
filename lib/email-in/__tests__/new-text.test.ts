@@ -1339,10 +1339,10 @@ describe('splitNewText quotes', () => {
       }
     })
 
-    it('a From: block with other text in it, or with nothing after it, stays body text', () => {
+    it('a From: block with nothing after it, or with its date too far down, stays body text', () => {
       const intro = 'These are the fields of it:'
       for (const body of [
-        [intro, 'From: a@b.co', 'some other text', 'Date: x', newLines[0]],
+        [intro, 'From: a@b.co', 'one', 'two', 'three', 'four', 'Date: x', newLines[0]],
         [intro, 'From: a@b.co', 'Date: x'],
         [intro, '-----Original Message-----', 'From: a@b.co', 'Date: x'],
         [intro, 'Begin forwarded message:'],
@@ -1351,6 +1351,13 @@ describe('splitNewText quotes', () => {
         expect(linesOf(marked)).toEqual([body.map(kept)])
         expect(linesOf(`${marked}\n\nMy answer is down here.`)[0].slice(0, body.length)).toEqual(body.map(kept))
       }
+    })
+
+    it('text after the sender’s answer still makes it a header; a shallower header ends the search', () => {
+      const block = [testMHeader, `> ${newLines[0]}`, '> From: a@b.co', '> Date: x']
+      expect(splitNewText([...block, 'My answer.', `> ${newLines[1]}`].join('\n'), new Set()).quotes).toHaveLength(2)
+      const ended = [...block, 'My answer.', nicoHeader, `> ${newLines[1]}`].join('\n')
+      expect(splitNewText(ended, new Set()).quotes.map((quote) => quote.header)).toEqual([testMHeader, nicoHeader])
     })
 
     it('reads 50,000 characters of marked From: and divider lines quickly', () => {
@@ -1363,6 +1370,8 @@ describe('splitNewText quotes', () => {
         '> From: a@b.co\n',
         '> From: a@b.co\n> Sent: b\n',
         '> From: a@b.co\n> Sent: b\n> \n',
+        '> From: a@b.co\n> Sent: b\nx\n',
+        '>> From: a@b.co\n> x\n>> From: a\n>> b@c.co\n>> Sent: b\n',
         '> Begin forwarded message:\n> > From: a@b.co\n',
         `> ${'-'.repeat(1000)}\n`,
         `> On 1 a wrote:\n> b wrote:\n`,

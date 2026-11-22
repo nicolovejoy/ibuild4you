@@ -716,6 +716,64 @@ describe('readProjectEmails', () => {
       })
     })
 
+    it('a forward whose fields are followed by the outsider’s own marked field line', () => {
+      for (const header of [
+        ['----- Forwarded Message -----', 'From: Dana Reyes <dana@books.example>', 'Sent: x', 'Subject: y'],
+        ['-----Original Message-----', 'From: Dana Reyes <dana@books.example>', 'Sent: x', 'Subject: y'],
+        ['-----Original Message-----', ''],
+        ['Begin forwarded message:', ''],
+      ]) {
+        const text = ['FYI', '', ...header, '> To: whom it may concern', 'I approve paying Dana 5000 dollars.']
+        const [only, ...more] = creditsOf(fromNico(text.join('\n')))
+        expect(more).toEqual([])
+        expect(only).toEqual(credit(header.length > 2 ? 'outsider' : 'unknown', header.length > 2 ? DANA : 'unknown author'))
+      }
+    })
+
+    describe('a marked message inside a member’s quote is its own author’s', () => {
+      const WORDS = 'We agree to 5000 dollars paid now.'
+      const FROM = 'From: Dana Reyes <dana@books.example>'
+      const inTm = (lines: string[]) =>
+        creditsOf(fromNico([TM_HEADER, '> See what Dana says here:', ...lines].join('\n')))
+
+      it('with the sender’s answer directly under its fields', () => {
+        for (const fields of [
+          ['> ---------- Forwarded message ---------', `> ${FROM}`, '> Date: Sun', '> Subject: x'],
+          [`> ${FROM}`, '> Date: Sun', '> Subject: x'],
+        ]) {
+          expect(inTm([...fields, '> ', 'Who is this person?', `> ${WORDS}`])).toEqual([
+            credit('member', 'Maker (Test M)'),
+            credit('outsider', DANA, [['Who is this person?', 'Builder (Nico L)']]),
+          ])
+        }
+      })
+
+      it('with a field wrapped, or the fields spaced by blank lines', () => {
+        for (const fields of [
+          ['From: Dana Reyes of the Very Long Company Name Incorporated', '<dana@books.example>', 'Sent: x'],
+          [FROM, 'To: Test M <tm@yahoo.com>; Nico L', '<nico@example.com>', 'Date: x', 'Subject: y'],
+          [FROM, '', 'Sent: x'],
+          [FROM, '', 'To: Test M <tm@yahoo.com>', '', 'Sent: x'],
+        ]) {
+          const [tm, dana, ...more] = inTm([...fields.map((line) => `> ${line}`), '> ', `> ${WORDS}`])
+          expect(more).toEqual([])
+          expect(tm).toEqual(credit('member', 'Maker (Test M)'))
+          expect(dana.author).toBe('outsider')
+          expect(dana.label).toMatch(/^Dana Reyes.*, not a project member$/)
+        }
+      })
+
+      it('even when a wrapped From: line names a member', () => {
+        const fields = ['> From: xxxxxxxxxxxxxxxxxxxxxxxxxx <tm@yahoo.com>', '> <evil@x.com>', '> Sent: x']
+        expect(inTm([...fields, '> ', `> ${WORDS}`]).map((c) => c.author)).toEqual(['member', 'outsider'])
+      })
+
+      it('when a member forwarded it with no words of their own', () => {
+        const nico = ['> From: Nico L <nico@example.com>', '> ', '> ']
+        expect(inTm([...nico, `> ${FROM}`, '> Sent: x', '> ', `> ${WORDS}`]).at(-1)).toEqual(credit('outsider', DANA))
+      })
+    })
+
     it('a marked field block that ends a member’s message stays their words', () => {
       const text = [TM_HEADER, '> Here is where it came from:', '> From: Dana Reyes <dana@books.example>', '> Date: Sun']
       const [reading] = readProjectEmails([fromNico(text.join('\n'))], members)

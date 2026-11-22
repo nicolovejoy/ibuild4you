@@ -232,6 +232,8 @@ const DIVIDERS = [
   /^-{2,}\s*Forwarded message\s*-{2,}$/i,
   /^Begin forwarded message:$/,
 ]
+// Apple Mail's divider, whose fields and text it puts one level deeper.
+const APPLE_DIVIDER = DIVIDERS[2]
 
 export const HEADER_FIELD = /^(From|Sent|Date|To|Cc|Subject):/i
 
@@ -246,6 +248,9 @@ function quoteDepth(line: string): number {
   return run ? run[0].split('>').length - 1 : 0
 }
 
+// A quote header: how many lines it spans, and its kind.
+type HeaderSpan = { span: number; kind: HeaderKind }
+
 // What finding headers needs to know of each line.
 type HeaderLine = {
   // Without its `>` markers, trimmed; '' when blank.
@@ -254,12 +259,16 @@ type HeaderLine = {
   // The end (exclusive) of the run of field lines at one depth that starts
   // here; the line's own index when it is not a field line.
   fieldsEnd: number
-  // The first non-blank line from here on; lines.length when there is none.
-  nextText: number
+  // The quote header that starts here, if any.
+  header: HeaderSpan | null
+  // Reading on from here, the deepest depth that has text: text at depth d
+  // counts until a header shallower than d. -1 when there is no text.
+  textDepth: number
 }
 
-// Worked out once for the whole text, from the last line back, so that no
-// header search reads the same run of lines again and again.
+// Worked out once for the whole text, from the last line back, since whether
+// some lines are a header depends on the text after them (markedDividerAt). So
+// no search reads the same run of lines again and again.
 function readHeaderLines(rawLines: string[]): HeaderLine[] {
   const lines: HeaderLine[] = new Array(rawLines.length)
   for (let i = rawLines.length - 1; i >= 0; i--) {
@@ -268,10 +277,18 @@ function readHeaderLines(rawLines: string[]): HeaderLine[] {
     const next = i + 1 < lines.length ? lines[i + 1] : null
     let fieldsEnd = i
     if (HEADER_FIELD.test(text)) fieldsEnd = next !== null && next.depth === depth ? next.fieldsEnd : i + 1
-    const nextText = text !== '' ? i : next !== null ? next.nextText : lines.length
-    lines[i] = { text, depth, fieldsEnd, nextText }
+    const line: HeaderLine = { text, depth, fieldsEnd, header: null, textDepth: -1 }
+    lines[i] = line
+
+    line.header = quoteHeaderAt(lines, i)
+    if (line.header !== null) line.textDepth = Math.min(textDepthFrom(lines, i + line.header.span), depth)
+    else line.textDepth = Math.max(textDepthFrom(lines, i + 1), text === '' ? -1 : depth)
   }
   return lines
+}
+
+function textDepthFrom(lines: HeaderLine[], index: number): number {
+  return index < lines.length ? lines[index].textDepth : -1
 }
 
 // How many header-field lines (From:, Sent:, Date:, To:, Cc:, Subject:) run
@@ -309,14 +326,14 @@ function attributionLength(lines: HeaderLine[], index: number): number {
   return isEnd ? end + 1 - index : end - index
 }
 
-// An address inside a From: value. Only its presence is asked here.
+// An address in a field block. Only its presence is asked here.
 const HOLDS_ADDRESS = /[^\s@]@[^\s@]+\.[^\s@]/
 
-// The quote header starting at `index`: how many lines it spans, and its kind.
-// null when there is none. The span is the header line plus the header fields
-// directly under it, so a quote we already hold does not leak its
-// Sent:/To:/Subject: lines as unseen text.
-function quoteHeaderAt(lines: HeaderLine[], index: number): { span: number; kind: HeaderKind } | null {
+// The quote header starting at `index`, or null. It reads only the lines from
+// `index` on, and of the first one only its text, depth and fields. The span is
+// the header line plus the header fields directly under it, so a quote we
+// already hold does not leak its Sent:/To:/Subject: lines as unseen text.
+function quoteHeaderAt(lines: HeaderLine[], index: number): HeaderSpan | null {
   const attribution = attributionLength(lines, index)
   if (attribution > 0) {
     return { span: attribution + fieldRunLength(lines, index + attribution), kind: 'attribution' }
@@ -335,7 +352,7 @@ function quoteHeaderAt(lines: HeaderLine[], index: number): { span: number; kind
 // A divider, any blank lines directly under it (a bare `>` counts as blank),
 // then its header fields, which may be marked (Apple Mail's "Begin forwarded
 // message:").
-function dividerAt(lines: HeaderLine[], index: number): { span: number; kind: HeaderKind } {
+function dividerAt(lines: HeaderLine[], index: number): HeaderSpan {
   let end = index + 1
   while (end < lines.length && lines[end].text === '') end++
   return { span: end - index + fieldRunLength(lines, end), kind: 'fields' }
@@ -343,7 +360,7 @@ function dividerAt(lines: HeaderLine[], index: number): { span: number; kind: He
 
 // Outlook: "From:" with "Sent:" or "Date:" within the next 4 lines, none of
 // them marked.
-function fieldBlockAt(lines: HeaderLine[], index: number): { span: number; kind: HeaderKind } | null {
+function fieldBlockAt(lines: HeaderLine[], index: number): HeaderSpan | null {
   for (let i = index + 1; i < lines.length && i <= index + 4 && lines[i].depth === 0; i++) {
     if (isDateField(lines[i].text)) return { span: lines[index].fieldsEnd - index, kind: 'fields' }
   }
@@ -357,38 +374,36 @@ function isDateField(text: string): boolean {
 // A marked divider or field block heads a message that someone quoted. Inside a
 // quote the same lines can also be a member's own words ("The form needs these
 // fields: From: departure city"), which must not be lost, so a header there
-// needs more: its lines at one depth, and text of its own under them. A divider
-// may also have its fields one level deeper, as in a quoted Apple Mail forward.
-function markedDividerAt(lines: HeaderLine[], index: number): { span: number; kind: HeaderKind } | null {
+// needs more: its lines at one depth, and text at that depth or deeper after
+// them (an answer may come first). A divider may also have its fields one level
+// deeper, as in a quoted Apple Mail forward.
+function markedDividerAt(lines: HeaderLine[], index: number): HeaderSpan | null {
   const { depth } = lines[index]
   let end = index + 1
   while (end < lines.length && lines[end].text === '' && lines[end].depth === depth) end++
   const fields = end < lines.length && lines[end].fieldsEnd > end ? lines[end] : null
   const hasFields = fields !== null && (fields.depth === depth || fields.depth === depth + 1)
   if (hasFields) end = fields.fieldsEnd
-  if (!hasTextAt(lines, end, hasFields ? fields.depth : depth)) return null
+  if (textDepthFrom(lines, end) < (hasFields ? fields.depth : depth)) return null
   return { span: end - index, kind: 'fields' }
 }
 
-// For a field block the fields from From: to Sent: or Date: are also unbroken,
-// and the From: value holds an address. One that shows only names stays part of
+// For a field block, Sent: or Date: is within the next 4 lines, as when it is
+// not marked, and an address is in the lines up to it. They may hold the end of
+// a wrapped From: or To:, or be spaced by blank lines, but not a second From:,
+// which heads a message of its own. A block that shows only names stays part of
 // the message around it.
-function markedFieldBlockAt(lines: HeaderLine[], index: number): { span: number; kind: HeaderKind } | null {
-  const { text, depth, fieldsEnd } = lines[index]
-  if (!HOLDS_ADDRESS.test(text)) return null
-  const lastDateAt = Math.min(index + 4, fieldsEnd - 1)
-  for (let i = index + 1; i <= lastDateAt; i++) {
+function markedFieldBlockAt(lines: HeaderLine[], index: number): HeaderSpan | null {
+  const { text, depth } = lines[index]
+  let hasAddress = HOLDS_ADDRESS.test(text)
+  for (let i = index + 1; i < lines.length && i <= index + 4 && lines[i].depth === depth; i++) {
+    if (lines[i].text.startsWith('From:')) return null
+    hasAddress = hasAddress || HOLDS_ADDRESS.test(lines[i].text)
     if (!isDateField(lines[i].text)) continue
-    return hasTextAt(lines, fieldsEnd, depth) ? { span: fieldsEnd - index, kind: 'fields' } : null
+    const end = lines[i].fieldsEnd
+    return hasAddress && textDepthFrom(lines, end) >= depth ? { span: end - index, kind: 'fields' } : null
   }
   return null
-}
-
-// Whether the next non-blank line from `index` on is at this depth or deeper.
-function hasTextAt(lines: HeaderLine[], index: number, depth: number): boolean {
-  if (index >= lines.length) return false
-  const next = lines[index].nextText
-  return next < lines.length && lines[next].depth >= depth
 }
 
 // Step 2: mark quote headers and quoted lines. A line is quoted when it starts
@@ -412,7 +427,7 @@ function markLines(rawLines: string[]): Line[] {
   let insideQuote = false
   let i = 0
   while (i < lines.length) {
-    const header = quoteHeaderAt(headerLines, i)
+    const { header } = headerLines[i]
     if (header) {
       const span = header.span
       for (let j = i; j < i + span; j++) {
@@ -560,8 +575,8 @@ function mayBeAttribution(line: Line): boolean {
 }
 
 // One block per quote header, in text order (a header's id is its index), with
-// its body depth. A field block's body is at its fields' depth, which under an
-// Apple Mail divider is one level deeper than the header's first line. For an
+// its body depth. A field block's body is at its own depth, or one level deeper
+// under Apple Mail's divider (fieldBodyDepth). For an
 // "On ... wrote:" header at depth h, the non-blank lines between it and the
 // next header decide: the shallowest depth among those deeper than h, if any.
 // With no line there at all and the next header nested deeper (depth n > h),
@@ -605,7 +620,7 @@ function headerBlocksWithBodyDepths(lines: Line[]): Block[] {
     const next = i + 1 < headerBlocks.length ? headerBlocks[i + 1] : null
     const deeper = shallowestDeeper[i]
     if (block.kind === 'fields') {
-      block.bodyDepth = Math.max(block.depth, block.headerLines[block.headerLines.length - 1].depth)
+      block.bodyDepth = fieldBodyDepth(block)
     } else if (deeper !== null) {
       block.bodyDepth = deeper
     } else if (!hasContent[i] && next !== null && next.depth > block.depth) {
@@ -617,6 +632,16 @@ function headerBlocksWithBodyDepths(lines: Line[]): Block[] {
     block.bodyDepth = Math.min(block.bodyDepth, block.depth + 1)
   }
   return headerBlocks
+}
+
+// The depth of a field block's body: the header's, but under Apple Mail's
+// divider that of its From: line. Under another divider a marked field line may
+// be the message's own first line, so it says nothing.
+function fieldBodyDepth(block: Block): number {
+  const [first, ...rest] = block.headerLines
+  if (!APPLE_DIVIDER.test(removeQuoteMarkers(first.raw).trim())) return block.depth
+  const field = rest.find((line) => line.normalized !== '')
+  return field !== undefined && field.normalized.startsWith('from:') ? field.depth : block.depth
 }
 
 // Put a quoted line in its open block (see step 3), mark it own when the
