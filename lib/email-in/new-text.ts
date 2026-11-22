@@ -106,6 +106,9 @@ type Block = {
   // The block this one's header sits inside: the nearest earlier header block
   // at a shallower depth. null when the email's sender quoted it.
   quoter: Block | null
+  // Another quote header sits inside this block (deeper, so it is this block's
+  // quotee): the mail program marks quotes here.
+  hasNestedHeader: boolean
   lines: Line[]
 }
 
@@ -253,7 +256,16 @@ function findBlocks(lines: Line[]): Block[] {
         currentHeaderId = line.headerId
         while (open.length > 0 && open[open.length - 1].depth >= line.depth) open.pop()
         const quoter = open.length > 0 ? open[open.length - 1] : null
-        const block: Block = { headerLines: [], kind: line.headerKind, depth: line.depth, quoter, lines: [] }
+        // The quoter is shallower than this header, so the header is nested in it.
+        if (quoter) quoter.hasNestedHeader = true
+        const block: Block = {
+          headerLines: [],
+          kind: line.headerKind,
+          depth: line.depth,
+          quoter,
+          hasNestedHeader: false,
+          lines: [],
+        }
         open.push(block)
         blocks.push(block)
       }
@@ -264,7 +276,7 @@ function findBlocks(lines: Line[]): Block[] {
       } else {
         // `>` lines before the first header.
         if (headerless === null) {
-          headerless = { headerLines: [], kind: null, depth: 0, quoter: null, lines: [] }
+          headerless = { headerLines: [], kind: null, depth: 0, quoter: null, hasNestedHeader: false, lines: [] }
           blocks.push(headerless)
         }
         headerless.lines.push(line)
@@ -285,19 +297,22 @@ function openBlockFor(open: Block[], depth: number): Block {
 }
 
 // A non-blank line is own when its block has an "On ... wrote:" header, the
-// line sits at the header's depth or shallower, and the block has a non-blank
-// line deeper than the header. Gmail and Apple Mail put the quoted text one
-// level deeper than its attribution, so a line at the attribution's level was
-// written by the quoter. A block with no deeper line (Outlook, or a mail
-// program that does not mark quotes), a forward or Outlook block (its body
-// is the forwarded message, quotes inside it included) and the header-less
-// block have no own lines: the quoter's lines cannot be told apart there. Own
-// is a best reading, not a certainty: a quoted line that a mail program
-// re-wrapped without its `>` reads as own.
+// line sits at the header's depth or shallower, and the block has something
+// deeper than the header: a non-blank line, or another quote header nested in
+// it. Either shows the mail program marks quotes. Gmail and Apple Mail put the
+// quoted text one level deeper than its attribution, so a line at the
+// attribution's level was written by the quoter. A block with nothing deeper
+// (Outlook, or a mail program that does not mark quotes), a forward or Outlook
+// block (its body is the forwarded message, quotes inside it included) and the
+// header-less block have no own lines: the quoter's lines cannot be told apart
+// there. Own is a best reading, not a certainty: a quoted line that a mail
+// program re-wrapped without its `>` reads as own.
 function markOwnLines(blocks: Block[]): void {
   for (const block of blocks) {
     if (block.kind !== 'attribution') continue
-    const hasDeeper = block.lines.some((line) => line.normalized !== '' && line.depth > block.depth)
+    const hasDeeper =
+      block.hasNestedHeader ||
+      block.lines.some((line) => line.normalized !== '' && line.depth > block.depth)
     if (!hasDeeper) continue
     for (const line of block.lines) {
       if (line.normalized !== '' && line.depth <= block.depth) line.own = true

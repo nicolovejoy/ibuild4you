@@ -530,21 +530,20 @@ describe('splitNewText quotes', () => {
       '> A answered at level one.',
       '>>> C wrote one more long line.',
     ].join('\n')
-    const { quotes } = splitNewText(text, new Set(), new Set())
-    // A's block has no line of its own, so it is not listed (rule 5). Whether
-    // "A answered" is own is left open: B's block has no line deeper than B,
-    // so the own rule as written says no (see the task 2 fix report).
-    expect(quotes.map((quote) => quote.header)).toEqual([bHeader, cHeader])
-    expect(quotes[0]).toMatchObject({ quoterHeader: aHeader, lines: [{ text: 'A answered at level one.' }] })
-    expect(quotes[1]).toEqual({
-      header: cHeader,
-      quoterHeader: bHeader,
-      lines: [
-        kept('C wrote this long line here.'),
-        own('B answered at level two.'),
-        kept('C wrote one more long line.'),
-      ],
-    })
+    // A's block has no line of its own, so it is not listed. B's block has no
+    // line deeper than B, but C's header is nested in it, so "A answered" is own.
+    expect(splitNewText(text, new Set(), new Set()).quotes).toEqual([
+      { header: bHeader, quoterHeader: aHeader, lines: [own('A answered at level one.')] },
+      {
+        header: cHeader,
+        quoterHeader: bHeader,
+        lines: [
+          kept('C wrote this long line here.'),
+          own('B answered at level two.'),
+          kept('C wrote one more long line.'),
+        ],
+      },
+    ])
   })
 
   it('a forward whose body holds a quote has no own lines', () => {
