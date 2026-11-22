@@ -682,12 +682,15 @@ describe('splitNewText quotes', () => {
       '> Which colour do you want for the start button?',
       'Green, please.',
     ].join('\n')
-    const { quotes } = splitNewText(text, new Set(), new Set())
-    // Only the lines are pinned. Header detection makes Test M's attribution
-    // take in the `>` field lines under it, so the header and quoter are open
-    // (see the task 2 fix report 3).
-    expect(quotes).toHaveLength(1)
-    expect(quotes[0].lines).toEqual([kept('Which colour do you want for the start button?'), own('Green, please.')])
+    // An attribution takes in the field lines under it, marked or not. The From: field wins when the
+    // author is parsed, so the question goes to Bill, and the depth-0 answer to the email's sender.
+    expect(splitNewText(text, new Set(), new Set()).quotes).toEqual([
+      {
+        header: [testMHeader, ...fields].join('\n'),
+        quoterHeader: null,
+        lines: [kept('Which colour do you want for the start button?'), own('Green, please.')],
+      },
+    ])
   })
 
   it('two Gmail quotes side by side: an answer under the first is own there', () => {
