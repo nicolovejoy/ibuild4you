@@ -149,6 +149,7 @@ try {
   const block = /<build_status>\n([\s\S]*?)\n<\/build_status>/.exec(prep)?.[1] ?? ''
   grade(block.includes(`<report id="${reportId}"`), 'copied prep has a <build_status> block with the report')
   grade(block.includes('Smoke test report') && block.includes('Questions for the maker:'), 'the block carries the report\'s live item and question')
+  grade(/\[checked: [^\]]+\] \[maker can try: Smoke test steps /.test(block), 'the live item carries what the maker can try')
   const stampJson = /<prep_stamp>\n([\s\S]*?)\n<\/prep_stamp>/.exec(prep)?.[1]
   const prepStamp = stampJson ? JSON.parse(stampJson) : null
   grade(

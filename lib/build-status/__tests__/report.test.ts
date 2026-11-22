@@ -85,7 +85,74 @@ describe('validateReport', () => {
   })
 })
 
+// try_it: optional on a live item, what the maker can do to try it.
+describe('validateReport, try_it on a live item', () => {
+  const withTry = (try_it: unknown) => ({
+    live: [{ what: 'Bar ranges', checked: 'page loads on prod', try_it }],
+  })
+
+  it('keeps a try_it, trimmed', () => {
+    const result = validateReport(withTry('  Open Practice and tap Bars.  '))
+    expect(result).toEqual({
+      ok: true,
+      report: {
+        live: [{ what: 'Bar ranges', checked: 'page loads on prod', try_it: 'Open Practice and tap Bars.' }],
+        merged: [],
+        proposed: [],
+        questions: [],
+      },
+    })
+  })
+
+  it('leaves the key out when try_it is missing, null or only spaces', () => {
+    for (const value of [undefined, null, '   ']) {
+      const result = validateReport(withTry(value))
+      expect(result.ok && 'try_it' in result.report.live[0]).toBe(false)
+    }
+  })
+
+  it('rejects a try_it that is not a string', () => {
+    expect(validateReport(withTry(['step 1']))).toEqual({
+      ok: false,
+      error: 'live[0].try_it must be a string: what the maker can do to try it.',
+    })
+  })
+
+  it('holds try_it to the per-string limit and names the item', () => {
+    const report = {
+      live: [
+        { what: 'A', checked: 'ok' },
+        { what: 'B', checked: 'ok', try_it: 'x'.repeat(501) },
+      ],
+    }
+    expect(validateReport(report)).toEqual({
+      ok: false,
+      error: 'live[1] is 501 characters; the limit is 500.',
+    })
+  })
+
+  it('counts try_it toward the total', () => {
+    const live = Array.from({ length: 9 }, () => ({ what: 'A', checked: 'ok', try_it: 'x'.repeat(450) }))
+    const result = validateReport({ live })
+    expect(result.ok).toBe(false)
+    expect(!result.ok && result.error).toMatch(/^The report is \d+ characters; the limit is 4000\.$/)
+  })
+})
+
 describe('reportBodyHash', () => {
+  it('is the same as before for a report with no try_it', () => {
+    // Pinned so reports stored before try_it existed still match a retry.
+    expect(reportBodyHash(good)).toBe(reportBodyHash({ ...good, live: good.live.map((l) => ({ ...l })) }))
+    expect(JSON.stringify(good.live[0])).not.toContain('try_it')
+  })
+
+  it('changes when a try_it is added or changed', () => {
+    const a = { ...good, live: [{ ...good.live[0], try_it: 'Tap Bars.' }] }
+    const b = { ...good, live: [{ ...good.live[0], try_it: 'Tap Ranges.' }] }
+    expect(reportBodyHash(a)).not.toBe(reportBodyHash(good))
+    expect(reportBodyHash(a)).not.toBe(reportBodyHash(b))
+  })
+
   it('is stable for the same body', () => {
     expect(reportBodyHash(good)).toBe(reportBodyHash({ ...good }))
   })

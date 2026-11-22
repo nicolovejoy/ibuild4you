@@ -73,6 +73,19 @@ describe('renderBuildStatusBlock', () => {
     expect(block([report({ posted_at: '2026-11-15T08:05:00Z' })])).toContain('posted="2026-11-15 00:05 PT"')
   })
 
+  it('adds what the maker can try to a live item that has it', () => {
+    const b = block([
+      report({
+        live: [
+          { what: 'Lesson calendar', checked: 'opened it on prod', try_it: 'Open Lessons\nand tap <Week>.' },
+          { what: 'Invoices', checked: 'made one on prod' },
+        ],
+      }),
+    ])
+    expect(b).toContain('- Lesson calendar [checked: opened it on prod] [maker can try: Open Lessons and tap ‹Week›.]')
+    expect(b).toContain('- Invoices [checked: made one on prod]\n')
+  })
+
   it('renders each non-empty list under its heading', () => {
     const b = block([
       report({

@@ -60,7 +60,13 @@ function renderReport(report: BuildReport, liveBriefVersion: number): string {
   if (report.live.length > 0) {
     lines.push(
       'Live (checked in production):',
-      ...report.live.map((l) => `- ${neutralize(l.what)} [checked: ${neutralize(l.checked)}]`)
+      // "maker can try" is Code's own words for how to try the item; the prep's
+      // rules tell the comms agent to base its test steps on it.
+      ...report.live.map(
+        (l) =>
+          `- ${neutralize(l.what)} [checked: ${neutralize(l.checked)}]` +
+          (l.try_it ? ` [maker can try: ${neutralize(l.try_it)}]` : '')
+      )
     )
   }
   if (report.merged.length > 0) {
