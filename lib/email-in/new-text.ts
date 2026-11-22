@@ -2,9 +2,15 @@
 //
 // A maker who hits Reply instead of Reply All writes to the builder alone, so
 // their words first reach the app quoted inside the builder's next reply. Those
-// quoted words must not be lost: a quoted line the app has never seen is
-// returned as `quotedUnseen`, apart from what the sender typed. When in doubt a
-// line is kept: keeping costs a few tokens, dropping can lose someone's words.
+// quoted words must not be lost: a quoted line the app has never seen is kept,
+// apart from what the sender typed. When in doubt a line is kept: keeping costs
+// a few tokens, dropping can lose someone's words.
+//
+// splitNewText returns `typed` and `quotes`, which the note writer and the
+// builder's panel read (through lib/email-in/reading.ts): one block per quoted
+// message with something new in it, each line marked new, context or own. It
+// also returns `quotedUnseen`, the flat view of the same kept quoted lines and
+// their headers, kept for the tests that pin which lines survive.
 //
 // What the sender typed is never dropped line by line: "Yes, go ahead with
 // that." typed under a new question is a new answer, even when the same words
@@ -13,10 +19,14 @@
 // the note writer instead.
 //
 // A line written into a quote by the person who quoted it (an inline answer
-// under a question) is an `own` line, and like a typed line it is never
-// dropped. When a quoted message the app already holds gets such an answer,
-// the held lines come back marked `context`, so the answers arrive with their
-// questions. Context lines are only in `quotes`, never in `quotedUnseen`.
+// under a question) is an `own` line. When the email's sender wrote it, it is
+// their words in this email and, like a typed line, it is never dropped. When
+// someone further up the thread wrote it, it came in an earlier email and is
+// filtered like any quoted line, so an answer the app holds does not come back
+// as new words in every later reply. When a quoted message the app already
+// holds gets a new answer, the held lines come back marked `context`, so the
+// answer arrives with its question. Context lines are only in `quotes`, never
+// in `quotedUnseen`.
 
 // Lines shorter than this ("Thanks", "Hi Nico,", "Bill") appear in many emails,
 // so they are never evidence that the app has already seen an email.
@@ -374,18 +384,47 @@ function isLong(line: Line): boolean {
 }
 
 // A line that can show the app has seen an email: long, not a header line, and
-// not an own line (the quoter's new words, never dropped).
+// not an own line. A short quoted line takes its fate from one of these (step 4).
 function isEvidence(line: Line): boolean {
   return line.headerId === null && !line.own && isLong(line)
 }
 
-// Step 4: a typed line is always kept, and so is an own line. A long quoted
-// line is dropped when the app has seen it. A short quoted line takes the fate
-// of the nearest long line of its block, looking before it first and then
-// after it. Header lines and own lines are never that neighbour (step 5
-// decides headers), and the search stays in the line's block, so a greeting
-// under one header never follows a line quoted under another. With no such
-// neighbour, a short line is kept.
+// For each line of `lines`, the nearest line before it, then after it, that
+// passes `test`; null where there is none. One pass each way.
+function nearestBeforeAndAfter(
+  lines: Line[],
+  test: (line: Line) => boolean
+): { before: (Line | null)[]; after: (Line | null)[] } {
+  const before: (Line | null)[] = []
+  let last: Line | null = null
+  for (const line of lines) {
+    before.push(last)
+    if (test(line)) last = line
+  }
+  const after: (Line | null)[] = new Array(lines.length).fill(null)
+  let next: Line | null = null
+  for (let i = lines.length - 1; i >= 0; i--) {
+    after[i] = next
+    if (test(lines[i])) next = lines[i]
+  }
+  return { before, after }
+}
+
+// Step 4: a typed line is always kept. A long quoted line is dropped when the
+// app has seen it. A short quoted line takes the fate of the nearest evidence
+// line of its block, looking before it first and then after it. Header lines
+// and own lines are never that neighbour (step 5 decides headers), and the
+// search stays in the line's block, so a greeting under one header never
+// follows a line quoted under another. With no such neighbour, a short line is
+// kept.
+//
+// An own line in a block the email's sender quoted (no quoter) is the sender's
+// own words in this email, and like a typed line it is never dropped. An own
+// line in a block someone else quoted was written in an earlier email, which
+// the app may hold: a reply that quotes the maker's inline answers in full must
+// not bring them back as new words. So it is filtered like a body line: a long
+// one against `seen`, a short one by its neighbour, which for such a line may
+// be any long line of the block, own or not.
 //
 // When `seenAny` is given, a short non-blank line whose neighbour was dropped
 // is dropped only if the app has seen it too: a "Green." answered inline beside
@@ -393,28 +432,23 @@ function isEvidence(line: Line): boolean {
 function decideFates(blocks: Block[], seen: Set<string>, seenAny?: Set<string>): void {
   for (const block of blocks) {
     const lines = block.lines
+    const senderQuoted = block.quoter === null
     for (const line of lines) {
-      if (isEvidence(line)) line.kept = !seen.has(line.normalized)
+      if (line.own && senderQuoted) continue
+      if (isLong(line)) line.kept = !seen.has(line.normalized)
     }
 
-    // The nearest evidence line before each line, then after it, in one pass each.
-    const before: (Line | null)[] = []
-    let last: Line | null = null
-    for (const line of lines) {
-      before.push(last)
-      if (isEvidence(line)) last = line
-    }
-    const after: (Line | null)[] = new Array(lines.length).fill(null)
-    let next: Line | null = null
-    for (let i = lines.length - 1; i >= 0; i--) {
-      after[i] = next
-      if (isEvidence(lines[i])) next = lines[i]
-    }
+    const evidence = nearestBeforeAndAfter(lines, isEvidence)
+    // Only short own lines in a block someone else quoted read this one.
+    const anyLong = senderQuoted ? null : nearestBeforeAndAfter(lines, isLong)
 
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i]
-      if (line.own || isLong(line)) continue
-      const neighbour = before[i] ?? after[i]
+      if (isLong(line)) continue
+      let neighbour: Line | null
+      if (!line.own) neighbour = evidence.before[i] ?? evidence.after[i]
+      else if (anyLong) neighbour = anyLong.before[i] ?? anyLong.after[i]
+      else continue // the sender's own words
       if (!neighbour || neighbour.kept) line.kept = true
       else if (seenAny && line.normalized !== '') line.kept = !seenAny.has(line.normalized)
       else line.kept = false
@@ -458,7 +492,8 @@ function collectQuotes(blocks: Block[]): QuoteBlock[] {
 
 function toQuoteLine(line: Line): QuoteLine {
   if (line.normalized === '') return { text: '', context: false, own: false }
-  return { text: removeQuoteMarkers(line.raw), context: line.context, own: line.own }
+  // A held own line (step 4) comes back as context only: never both.
+  return { text: removeQuoteMarkers(line.raw), context: line.context, own: line.own && !line.context }
 }
 
 // Runs of blank quote lines collapsed to one, and none at either end (as joinLines does).

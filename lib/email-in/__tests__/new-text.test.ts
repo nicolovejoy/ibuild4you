@@ -693,6 +693,70 @@ describe('splitNewText quotes', () => {
     ])
   })
 
+  // e1 Nico asks, e2 the maker answers inline (Gmail), e3 Nico replies quoting
+  // e2 in full, e4 the maker replies quoting e3. The answers are held from e2,
+  // so they never come back as new words in e3 or e4.
+  describe('inline answers the app already holds', () => {
+    const quoteAll = (text: string) =>
+      text
+        .split('\n')
+        .map((line) => `> ${line}`)
+        .join('\n')
+    const e1 = earlier
+    const e2 = gmailInline
+    const e3 = `Great, thanks. Building it this week.\n\n${testMHeader}\n${quoteAll(e2)}`
+    const nicoReplyHeader = 'On Sun, Nov 22, 2026 at 11:30 AM Nico L <nico@example.com> wrote:'
+    const e4 = `Thank you!\n\n${nicoReplyHeader}\n${quoteAll(e3)}`
+
+    it('a reply quoting them in full has no quote left', () => {
+      expect(splitNewText(e3, seenLines([e1, e2]), allLines([e1, e2]))).toEqual({
+        typed: 'Great, thanks. Building it this week.',
+        quotedUnseen: '',
+        quotes: [],
+      })
+    })
+
+    it('a reply to that reply has no quote left either', () => {
+      expect(splitNewText(e4, seenLines([e1, e2, e3]), allLines([e1, e2, e3]))).toEqual({
+        typed: 'Thank you!',
+        quotedUnseen: '',
+        quotes: [],
+      })
+    })
+
+    it('a held answer beside a new one comes back as context, not as written inside', () => {
+      const withNew = e3.replace(`> ${card}`, `> ${card}\n> Also a dark mode for the evening, please.`)
+      const result = splitNewText(withNew, seenLines([e1, e2]), allLines([e1, e2]))
+      expect(result.quotes).toEqual([
+        {
+          header: nicoHeader,
+          quoterHeader: testMHeader,
+          lines: [
+            context('Hi Test,'),
+            context(colour),
+            context('Green.'),
+            context(payment),
+            context(card),
+            own('Also a dark mode for the evening, please.'),
+            context('Thanks,'),
+            context('Nico'),
+          ],
+        },
+      ])
+      expect(result.quotedUnseen).toBe(`${nicoHeader}\nAlso a dark mode for the evening, please.`)
+    })
+
+    it("the sender's own inline answers are kept even when the same words are held", () => {
+      // e2 sent again with nothing changed is a repeat (isRepeatOf), but its
+      // inline answers, split alone, are the sender's words and stay.
+      const result = splitNewText(e2, seenLines([e1, e2]), allLines([e1, e2]))
+      expect(result.quotes[0].lines.filter((line) => line.own).map((line) => line.text)).toEqual([
+        'Green.',
+        card,
+      ])
+    })
+  })
+
   it('two Gmail quotes side by side: an answer under the first is own there', () => {
     const aHeader = 'On Nov 20, 2026, at 9:00 AM, Ann A <ann@example.com> wrote:'
     const bHeader = 'On Nov 21, 2026, at 9:00 AM, Ben B <ben@example.com> wrote:'

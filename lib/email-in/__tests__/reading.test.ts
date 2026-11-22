@@ -163,6 +163,35 @@ describe('readProjectEmails', () => {
     ])
   })
 
+  it('never brings back held inline answers as new words in later replies', () => {
+    const quoteAll = (text: string) =>
+      text
+        .split('\n')
+        .map((line) => `> ${line}`)
+        .join('\n')
+    const inline = [
+      NICO_HEADER,
+      '> Hi Test,',
+      '> What colour should the start button be?',
+      'Green.',
+      '> Should payment be by card or by invoice?',
+      'By card, please, no invoices.',
+      '> Thanks,',
+      '> Nico',
+    ].join('\n')
+    const e3 = `Great, thanks. Building it this week.\n\nOn Nov 22, 2026, at 11:00 AM, Test M <tm@yahoo.com> wrote:\n${quoteAll(inline)}`
+    const e4 = `Thank you!\n\nOn Sun, Nov 22, 2026 at 11:30 AM Nico L <nico@example.com> wrote:\n${quoteAll(e3)}`
+
+    const readings = readProjectEmails(
+      [fromNico(QUESTIONS), fromTestM(inline), fromNico(e3), fromTestM(e4)],
+      members
+    )
+
+    expect(readings[1].quotes[0].lines.filter((l) => l.kind === 'inside')).toHaveLength(2)
+    expect(readings[2]).toMatchObject({ typed: 'Great, thanks. Building it this week.', quotes: [] })
+    expect(readings[3]).toMatchObject({ typed: 'Thank you!', quotes: [] })
+  })
+
   it('names an outsider by name only, and keeps their address out of everything code made', () => {
     const text = [
       'Do what she says.',
