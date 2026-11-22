@@ -3,7 +3,7 @@ import { getAuthenticatedUser, getAdminDb, getProjectRole, requireRole } from '@
 import { upsertBrief } from '@/lib/api/briefs'
 import { contestFor, dismissedFor, restoreLocksOnPaste, stampDecisionProvenance, topicKey } from '@/lib/api/brief-merge'
 import { carryRiskOwners, normalizeRisks } from '@/lib/brief/risks'
-import { applyBriefPatch, normalizeBriefPatch } from '@/lib/brief/patch'
+import { applyBriefPatch, normalizeBriefPatch, type ApplyBriefPatchResult } from '@/lib/brief/patch'
 import { hasBriefContent } from '@/lib/brief/has-content'
 import { normalizeShipped, normalizeQueued, isShippedArrayShape } from '@/lib/brief/shipped'
 import { foldNotes, listUnfoldedNotes, parsePrepStamp } from '@/lib/api/brief-notes'
@@ -120,15 +120,13 @@ export async function PUT(request: Request) {
   let patchSummary: BriefPatchSummary | null = null
   let locksKept: string[] = []
   let patchChanged = true
+  let patchUnmatched: ApplyBriefPatchResult['unmatched'] | null = null
   if (patch) {
     if (!prevContent || !hasBriefContent(prevContent)) {
       return NextResponse.json({ error: 'patch_no_brief' }, { status: 400 })
     }
     const applied = applyBriefPatch(prevContent, patch)
-    const { unmatched } = applied
-    if (unmatched.decisions.length + unmatched.features.length + unmatched.open_risks.length + unmatched.queued.length > 0) {
-      return NextResponse.json({ error: 'patch_drop_unmatched', unmatched }, { status: 400 })
-    }
+    patchUnmatched = applied.unmatched
     briefContent = applied.content
     patchSummary = applied.summary
     locksKept = applied.locksTouched
@@ -157,6 +155,16 @@ export async function PUT(request: Request) {
         },
         { status: 409 }
       )
+    }
+  }
+
+  // A drop that matches nothing refuses the whole paste. This comes after the
+  // stale check on purpose: when the brief moved since the prep, a failed drop
+  // is a symptom of that, and the builder should be told the brief moved.
+  if (patchUnmatched) {
+    const u = patchUnmatched
+    if (u.decisions.length + u.features.length + u.open_risks.length + u.queued.length > 0) {
+      return NextResponse.json({ error: 'patch_drop_unmatched', unmatched: u }, { status: 400 })
     }
   }
 

@@ -289,6 +289,9 @@ export const copy = {
     // A whole "brief" drops a decision by leaving it out, so the preview names them.
     wholeRewriteRemoves: (topics: string[]) =>
       `Whole rewrite: removes ${topics.length} decision${topics.length === 1 ? '' : 's'}: ${topics.map((t) => `"${t}"`).join(', ')}`,
+    // A patch prepped from an older brief version is not compared with the live
+    // brief: its drops and additions would read as failures or as "none".
+    patchNotEvaluated: 'Changes: not evaluated, because the brief moved.',
     patchNoBrief: 'This project has no brief yet. The first one must be a whole "brief".',
     configSaveFailedBriefSaved:
       'The brief is saved, but the rest of the payload was not. Click Import again to retry the rest.',
@@ -403,7 +406,7 @@ export const copy = {
     // The stale case matches what the server's paste guard then does (stalePrepNote).
     pasteVersionMatches: (v: number) => `Prepped from v${v} · matches the brief`,
     pasteVersionStale: (prepV: number, liveV: number) =>
-      `Prepped from v${prepV} · the brief is now v${liveV}. Import will stop and ask before saving.`,
+      `Brief moved from v${prepV} to v${liveV} since this prep. Re-copy the prep and regenerate. Import will stop and ask before saving.`,
   },
 
   // --- Chat ---

@@ -235,7 +235,7 @@ describe('FerryDesk', () => {
     renderDesk({ pasteValue: pasteWithStamp(3) })
     const line = screen.getByTestId('paste-version')
     expect(line.textContent).toBe(
-      'Prepped from v3 · the brief is now v4. Import will stop and ask before saving.'
+      'Brief moved from v3 to v4 since this prep. Re-copy the prep and regenerate. Import will stop and ask before saving.'
     )
   })
 
@@ -276,6 +276,35 @@ const liveBrief = (over: Partial<BriefContent> = {}): BriefContent => ({
 const patchPaste = (patch: Record<string, unknown>) => JSON.stringify({ brief_patch: patch })
 
 describe('FerryDesk paste preview', () => {
+  // The desk in these tests is at brief v4 (renderDesk's default).
+  const stampedPatch = (prepVersion: number, patch: Record<string, unknown>) =>
+    JSON.stringify({ _prep_stamp: { brief_version: prepVersion, note_ids: [] }, brief_patch: patch })
+
+  it('a patch prepped from an older version is not evaluated: no Changes line and no failed drops', () => {
+    renderDesk({
+      briefContent: liveBrief(),
+      pasteValue: stampedPatch(3, { features: ['f1'], drop: { features: ['Gone already'] } }),
+    })
+    expect(screen.getByTestId('paste-not-evaluated').textContent).toBe(
+      'Changes: not evaluated, because the brief moved.'
+    )
+    expect(screen.queryByTestId('paste-changes')).toBeNull()
+    expect(screen.queryByTestId('paste-unmatched')).toBeNull()
+  })
+
+  it('the stale version line comes before the not-evaluated line', () => {
+    renderDesk({ briefContent: liveBrief(), pasteValue: stampedPatch(3, { features: ['x'] }) })
+    const version = screen.getByTestId('paste-version')
+    const notEvaluated = screen.getByTestId('paste-not-evaluated')
+    expect(version.compareDocumentPosition(notEvaluated) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('a patch prepped from the live version is evaluated as before', () => {
+    renderDesk({ briefContent: liveBrief(), pasteValue: stampedPatch(4, { features: ['x'] }) })
+    expect(screen.getByTestId('paste-changes').textContent).toBe('Changes: 1 feature added')
+    expect(screen.queryByTestId('paste-not-evaluated')).toBeNull()
+  })
+
   it('shows nothing for an empty box', () => {
     renderDesk({ briefContent: liveBrief(), pasteValue: '' })
     expect(screen.queryByTestId('paste-changes')).toBeNull()

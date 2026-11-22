@@ -134,7 +134,10 @@ export function FerryDesk({
   }, [pasteValue, briefVersion])
 
   // What the pasted payload will change, shown before Import.
-  const previewLines = useMemo(() => pastePreviewLines(pasteValue, briefContent), [pasteValue, briefContent])
+  const previewLines = useMemo(
+    () => pastePreviewLines(pasteValue, briefContent, briefVersion),
+    [pasteValue, briefContent, briefVersion]
+  )
 
   // The page-level useEscapeBack ignores keydowns inside a textarea, so the
   // paste box handles Escape itself: empty box → leave, filled box → blur
