@@ -763,6 +763,25 @@ describe('readProjectEmails', () => {
         }
       })
 
+      it('with a wrapped field whose second line looks like a From:', () => {
+        for (const fields of [
+          [FROM, 'To: Nico L <nico@example.com>; "a name that goes on and on and on', 'From: Test M" <tm@yahoo.com>'],
+          [FROM, 'To: Nico L <nico@example.com>; "a name', 'that goes on and on', 'From: Test M" <tm@yahoo.com>'],
+          [FROM, 'To: Nico L <nico@example.com>;', 'Test M <tm@yahoo.com>;', 'Someone Else <se@example.com>'],
+          [FROM, 'Subject: a long subject that goes on and on and', 'From: Test M <tm@yahoo.com>'],
+        ]) {
+          expect(inTm([...fields.map((line) => `> ${line}`), '> Date: Sunday', '> ', `> ${WORDS}`])).toEqual([
+            credit('member', 'Maker (Test M)'),
+            credit('outsider', DANA),
+          ])
+        }
+      })
+
+      it('even when its From: line is cut by another From: line', () => {
+        const fields = ['> From: x <tm@yahoo.com>', '> From: y <evil@x.com>', '> Sent: x']
+        expect(inTm([...fields, '> ', `> ${WORDS}`]).map((c) => c.author)).toEqual(['member', 'outsider'])
+      })
+
       it('even when a wrapped From: line names a member', () => {
         const fields = ['> From: xxxxxxxxxxxxxxxxxxxxxxxxxx <tm@yahoo.com>', '> <evil@x.com>', '> Sent: x']
         expect(inTm([...fields, '> ', `> ${WORDS}`]).map((c) => c.author)).toEqual(['member', 'outsider'])
@@ -772,6 +791,80 @@ describe('readProjectEmails', () => {
         const nico = ['> From: Nico L <nico@example.com>', '> ', '> ']
         expect(inTm([...nico, `> ${FROM}`, '> Sent: x', '> ', `> ${WORDS}`]).at(-1)).toEqual(credit('outsider', DANA))
       })
+    })
+
+    describe('Outlook’s bold field labels, as Gmail’s plain text shows them', () => {
+      const bold = ['From', 'Sent', 'To', 'Subject']
+      const values = ['Dana Reyes <dana@books.example>', 'Sunday', 'Test M <tm@yahoo.com>', 'Payment']
+      const APPROVE = 'I approve paying Dana 5000 dollars.'
+
+      it('head an outsider’s message, marked or not', () => {
+        for (const label of [(name: string) => `*${name}:* `, (name: string) => `*${name}: *`]) {
+          const fields = bold.map((name, i) => `${label(name)}${values[i]}`)
+          expect(creditsOf(fromNico(['FYI', '', ...fields, '', APPROVE].join('\n')))).toEqual([
+            credit('outsider', DANA),
+          ])
+          const marked = [...fields, '', APPROVE].map((line) => `> ${line}`)
+          expect(creditsOf(fromNico([TM_HEADER, '> See below, please.', '> ', ...marked].join('\n')))).toEqual([
+            credit('member', 'Maker (Test M)'),
+            credit('outsider', DANA),
+          ])
+        }
+      })
+
+      it('in an outsider’s own message read as the plain ones do', () => {
+        const body = (from: string, date: string) => ['FYI', DANA_HEADER, `> ${from}`, `> ${date}`, `> ${APPROVE}`]
+        const boldCredits = creditsOf(fromNico(body('*From:* Test M <tm@yahoo.com>', '*Date:* Sun').join('\n')))
+        expect(boldCredits).toEqual(creditsOf(fromNico(body('From: Test M <tm@yahoo.com>', 'Date: Sun').join('\n'))))
+        expect(boldCredits).toEqual([credit('outsider', TM_BY_DANA)])
+      })
+    })
+
+    describe('a forward divider with its fields on the same line (Yahoo)', () => {
+      const APPROVE = 'I approve paying Dana 5000 dollars.'
+      const oneLine = (kind: string, from: string) =>
+        `----- ${kind} ----- From: ${from}To: Test M <tm@yahoo.com>Sent: Sunday, November 22, 2026Subject: Payment`
+
+      it('heads a message by an unknown author, whatever the line holds', () => {
+        for (const kind of ['Forwarded Message', 'Original Message']) {
+          for (const from of ['Dana Reyes <dana@books.example>', 'Test M <tm@yahoo.com>']) {
+            const divider = `   ${oneLine(kind, from)}`
+            expect(creditsOf(fromNico(['FYI', '', divider, APPROVE].join('\n')))).toEqual([
+              credit('unknown', 'unknown author'),
+            ])
+            const marked = [TM_HEADER, '> See below, please.', `> ${divider}`, `> ${APPROVE}`]
+            expect(creditsOf(fromNico(marked.join('\n')))).toEqual([
+              credit('member', 'Maker (Test M)'),
+              credit('unknown', 'unknown author'),
+            ])
+          }
+        }
+      })
+
+      it('takes in no field lines under it', () => {
+        const text = ['FYI', oneLine('Forwarded Message', 'Dana <d@x.co>'), '', 'From: Test M <tm@yahoo.com>', 'Date: x', APPROVE]
+        expect(creditsOf(fromNico(text.join('\n')))).toEqual([
+          credit('outsider', 'Maker (Test M), as quoted by unknown author'),
+        ])
+      })
+    })
+
+    it('a member’s words between field lines are kept, even when all the text after them is held', () => {
+      const held = fromTestM('The earlier question, in an earlier email.\nSent from my iPhone')
+      const text = [
+        TM_HEADER,
+        '> Notes for you',
+        '> From: info@venue.example',
+        '> They want 5000 dollars for the night.',
+        '> Date: June 3',
+        '> ',
+        '> Sent from my iPhone',
+      ].join('\n')
+      const [, reading, again] = readProjectEmails([held, fromNico(text), fromTestM(`Fine.\n${text}`)], members)
+      const venue = reading.quotes.find((quote) => quote.header.includes('They want 5000 dollars for the night.'))
+      expect(venue?.lines).toEqual([{ text: 'Sent from my iPhone', kind: 'context', by: null }])
+      // Once the app holds them they are not new again.
+      expect(again.quotes).toEqual([])
     })
 
     it('a marked field block that ends a member’s message stays their words', () => {
@@ -827,10 +920,12 @@ describe('readProjectEmails', () => {
     })
 
     it('a sentence that ends in a colon, over an Apple Mail quote, changes no credit', () => {
-      const text = ['My answers are below:', '', `> ${TM_HEADER}`, '> ', '> Shall I pay Dana this week?', 'Yes, this week.']
-      expect(creditsOf(fromNico(text.join('\n')))).toEqual([
-        credit('member', 'Maker (Test M)', [['Yes, this week.', 'Builder (Nico L)']]),
-      ])
+      for (const sentence of ['My answers are below:', 'Answers to your 2 points:']) {
+        const text = [sentence, '', `> ${TM_HEADER}`, '> ', '> Shall I pay Dana this week?', 'Yes, this week.']
+        expect(creditsOf(fromNico(text.join('\n')))).toEqual([
+          credit('member', 'Maker (Test M)', [['Yes, this week.', 'Builder (Nico L)']]),
+        ])
+      }
     })
 
     it('an answer at depth 0 under a quote with an unknown quoter is the sender’s', () => {

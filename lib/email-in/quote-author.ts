@@ -5,6 +5,7 @@ import {
   FRENCH_ATTRIBUTION,
   HEADER_FIELD,
   isAttribution,
+  plainFieldLabel,
   startsAttribution,
 } from './new-text'
 import { memberForAddress, type SenderMember } from './sender'
@@ -150,7 +151,7 @@ const NOBODY: HeaderAuthor = { name: null, email: null, bare: false }
 // recipients, and a Subject: can hold any text. Lines end at "\n" only, as in
 // new-text.ts.
 function headerParts(header: string): { attribution: HeaderAuthor | null; from: HeaderAuthor | null } {
-  const lines = header.split('\n').map((line) => line.trim())
+  const lines = header.split('\n').map((line) => plainFieldLabel(line.trim()))
   const firstField = lines.findIndex((line) => HEADER_FIELD.test(line))
   const fieldsAt = firstField < 0 ? lines.length : firstField
   const fromAt = lines.findIndex((line) => /^From:/i.test(line))
@@ -164,14 +165,17 @@ function headerParts(header: string): { attribution: HeaderAuthor | null; from: 
 
 // Whoever a From: line names. Its address proves nothing (it is as good as a
 // bare one) when the line may have been wrapped and lost its end, which is
-// when the line under it is not a field; when it was sent on behalf of someone,
+// when the line under it is not a field, or is another From:; when it was sent on behalf of someone,
 // whose display name then comes last; and when it holds several addresses.
 function parseFrom(line: string, next: string): HeaderAuthor {
   if (line.length > MAX_HEADER_LENGTH) return NOBODY
   const value = line.slice('From:'.length).trim()
   const { email, bare } = headerAddress(value)
   const unproven =
-    !HEADER_FIELD.test(next) || /\bon\s+behalf\s+of\b/i.test(value) || hasSeveralAddresses(value)
+    !HEADER_FIELD.test(next) ||
+    /^From:/i.test(next) ||
+    /\bon\s+behalf\s+of\b/i.test(value) ||
+    hasSeveralAddresses(value)
   return {
     name: cleanName(stripOpener(beforeAddress(value))),
     email,

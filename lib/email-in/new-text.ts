@@ -194,6 +194,8 @@ type Block = {
   // from block to block, it gives possibleQuoters.
   possibleQuoter: Block | null
   lines: Line[]
+  // Something in it is new, so it is shown (step 5).
+  hasNew: boolean
 }
 
 // Step 1: `\r\n` is treated as `\n`.
@@ -234,8 +236,20 @@ const DIVIDERS = [
 ]
 // Apple Mail's divider, whose fields and text it puts one level deeper.
 const APPLE_DIVIDER = DIVIDERS[2]
+// Yahoo puts the fields on the divider's own line, run together.
+const ONE_LINE_DIVIDER = /^-{2,}\s*(?:Original|Forwarded) Message\s*-{2,}\s*From:/i
+function isDivider(text: string): boolean {
+  return ONE_LINE_DIVIDER.test(text) || DIVIDERS.some((divider) => divider.test(text))
+}
 
 export const HEADER_FIELD = /^(From|Sent|Date|To|Cc|Subject):/i
+
+// A trimmed line with a bold field label ("*From:* Dana", "*From: *Dana", how
+// Gmail's plain text shows Outlook's) as the plain one. Field lines are only
+// ever tested and read through this, here and in quote-author.ts.
+export function plainFieldLabel(text: string): string {
+  return text.replace(/^\*(From|Sent|Date|To|Cc|Subject):\s*\*\s*/i, '$1: ')
+}
 
 // A line without its leading `>` markers and the whitespace after them.
 function removeQuoteMarkers(line: string): string {
@@ -253,7 +267,7 @@ type HeaderSpan = { span: number; kind: HeaderKind }
 
 // What finding headers needs to know of each line.
 type HeaderLine = {
-  // Without its `>` markers, trimmed; '' when blank.
+  // Without its `>` markers, trimmed, its field label plain; '' when blank.
   text: string
   depth: number
   // The end (exclusive) of the run of field lines at one depth that starts
@@ -272,7 +286,7 @@ type HeaderLine = {
 function readHeaderLines(rawLines: string[]): HeaderLine[] {
   const lines: HeaderLine[] = new Array(rawLines.length)
   for (let i = rawLines.length - 1; i >= 0; i--) {
-    const text = removeQuoteMarkers(rawLines[i]).trim()
+    const text = headerLineText(rawLines[i])
     const depth = quoteDepth(rawLines[i])
     const next = i + 1 < lines.length ? lines[i + 1] : null
     let fieldsEnd = i
@@ -285,6 +299,10 @@ function readHeaderLines(rawLines: string[]): HeaderLine[] {
     else line.textDepth = Math.max(textDepthFrom(lines, i + 1), text === '' ? -1 : depth)
   }
   return lines
+}
+
+function headerLineText(raw: string): string {
+  return plainFieldLabel(removeQuoteMarkers(raw).trim())
 }
 
 function textDepthFrom(lines: HeaderLine[], index: number): number {
@@ -340,7 +358,12 @@ function quoteHeaderAt(lines: HeaderLine[], index: number): HeaderSpan | null {
   }
 
   const { text, depth } = lines[index]
-  if (DIVIDERS.some((divider) => divider.test(text))) {
+  if (ONE_LINE_DIVIDER.test(text)) {
+    // No field lines of its own: one under it is the message's first line.
+    const hasText = depth === 0 || textDepthFrom(lines, index + 1) >= depth
+    return hasText ? { span: 1, kind: 'fields' } : null
+  }
+  if (isDivider(text)) {
     return depth === 0 ? dividerAt(lines, index) : markedDividerAt(lines, index)
   }
   if (text.startsWith('From:')) {
@@ -390,14 +413,14 @@ function markedDividerAt(lines: HeaderLine[], index: number): HeaderSpan | null 
 
 // For a field block, Sent: or Date: is within the next 4 lines, as when it is
 // not marked, and an address is in the lines up to it. They may hold the end of
-// a wrapped From: or To:, or be spaced by blank lines, but not a second From:,
-// which heads a message of its own. A block that shows only names stays part of
-// the message around it.
+// a wrapped field, whatever it looks like, or be spaced by blank lines. A second
+// From: after a blank line heads a message of its own. A block that shows only
+// names stays part of the message around it.
 function markedFieldBlockAt(lines: HeaderLine[], index: number): HeaderSpan | null {
   const { text, depth } = lines[index]
   let hasAddress = HOLDS_ADDRESS.test(text)
   for (let i = index + 1; i < lines.length && i <= index + 4 && lines[i].depth === depth; i++) {
-    if (lines[i].text.startsWith('From:')) return null
+    if (lines[i].text.startsWith('From:') && lines[i - 1].text === '') return null
     hasAddress = hasAddress || HOLDS_ADDRESS.test(lines[i].text)
     if (!isDateField(lines[i].text)) continue
     const end = lines[i].fieldsEnd
@@ -447,7 +470,22 @@ function markLines(rawLines: string[]): Line[] {
 }
 
 function newBlock(kind: HeaderKind | null, depth: number): Block {
-  return { headerLines: [], kind, depth, bodyDepth: depth, quoter: null, possibleQuoter: null, lines: [] }
+  return {
+    headerLines: [],
+    kind,
+    depth,
+    bodyDepth: depth,
+    quoter: null,
+    possibleQuoter: null,
+    lines: [],
+    hasNew: false,
+  }
+}
+
+// The block of `>` lines before the first header, or the empty one that stands
+// for the unknown message (step 3).
+function hasNoHeader(block: Block): boolean {
+  return block.kind === null
 }
 
 // Step 3: place every quoted line in a block and mark the own lines. Typed
@@ -493,6 +531,15 @@ function newBlock(kind: HeaderKind | null, depth: number): Block {
 // earlier message whose header is at h or shallower, until a still shallower
 // header ends that message. The second stack holds those messages, with the
 // unknown message, if any, at its bottom.
+//
+// For example, in an email by S (Gmail's shape throughout):
+//   On ... A wrote:      quoter S;  no possible quoter
+//   > On ... B wrote:    quoter A;  possible quoters: A
+//   > > B's words        B's
+//   > an answer          own, in B's block, by A
+//   > On ... C wrote:    quoter A;  possible quoters: B (same depth), A
+//   > > C's words        C's
+//   another answer       own, in A's block, by S
 function findBlocks(lines: Line[]): Block[] {
   const headerBlocks = headerBlocksWithBodyDepths(lines)
 
@@ -568,10 +615,12 @@ function unknownMessage(first: Block, headerless: Block | null, lastTyped: Line 
 }
 
 // A typed line that ends in a colon may be an attribution in a language the app
-// does not read. A real one holds a date or an address ("My answers are below:"
-// does not).
+// does not read. A real one holds an address, or a date or time: four digits or
+// more ("Answers to your 2 points:" has fewer).
 function mayBeAttribution(line: Line): boolean {
-  return /[:：]$/.test(line.normalized) && /[\d@]/.test(line.normalized)
+  const { normalized } = line
+  if (!/[:：]$/.test(normalized)) return false
+  return normalized.includes('@') || normalized.replace(/\D/g, '').length >= 4
 }
 
 // One block per quote header, in text order (a header's id is its index), with
@@ -639,9 +688,9 @@ function headerBlocksWithBodyDepths(lines: Line[]): Block[] {
 // be the message's own first line, so it says nothing.
 function fieldBodyDepth(block: Block): number {
   const [first, ...rest] = block.headerLines
-  if (!APPLE_DIVIDER.test(removeQuoteMarkers(first.raw).trim())) return block.depth
+  if (!APPLE_DIVIDER.test(headerLineText(first.raw))) return block.depth
   const field = rest.find((line) => line.normalized !== '')
-  return field !== undefined && field.normalized.startsWith('from:') ? field.depth : block.depth
+  return field !== undefined && headerLineText(field.raw).startsWith('From:') ? field.depth : block.depth
 }
 
 // Put a quoted line in its open block (see step 3), mark it own when the
@@ -659,8 +708,7 @@ function placeLine(open: Block[], line: Line): void {
   if (!line.own) return
   const { quoter } = open[firstDeeperThan(open, line.depth)]
   // The unknown message's author wrote no line shallower than it (step 3).
-  const isUnknown = quoter !== null && quoter.headerLines.length === 0
-  line.quoter = isUnknown && quoter.depth > line.depth ? null : quoter
+  line.quoter = quoter !== null && hasNoHeader(quoter) && quoter.depth > line.depth ? null : quoter
 }
 
 // The index of the lowest open block whose body is deeper than `depth`;
@@ -767,13 +815,27 @@ function decideAnswers(lines: Line[], seenAny: Set<string>): void {
   }
 }
 
-// Step 5: a quote header is kept only when its block has a kept, non-blank
-// line. Every line of a header's span shares that fate.
-function decideHeaders(blocks: Block[]): void {
+// Step 5: a block has something new when it has a kept, non-blank line, or when
+// its header holds new words. Its header is kept only then. Every line of a
+// header's span shares that fate.
+function decideHeaders(blocks: Block[], seen: Set<string>, seenAny?: Set<string>): void {
   for (const block of blocks) {
-    const hasKept = block.lines.some((line) => line.kept && line.normalized !== '')
-    for (const line of block.headerLines) line.kept = hasKept
+    block.hasNew =
+      block.lines.some((line) => line.kept && line.normalized !== '') || headerHasNewWords(block, seen, seenAny)
+    for (const line of block.headerLines) line.kept = block.hasNew
   }
+}
+
+// Whether a marked field block's header holds a line that is no field and that
+// the app has not seen: the end of a wrapped field, or a member's own words in
+// what only looked like a header (markedFieldBlockAt). Words are never lost.
+function headerHasNewWords(block: Block, seen: Set<string>, seenAny?: Set<string>): boolean {
+  if (block.kind !== 'fields' || block.depth === 0) return false
+  return block.headerLines.some((line) => {
+    const text = headerLineText(line.raw)
+    if (text === '' || HEADER_FIELD.test(text) || isDivider(text)) return false
+    return !seen.has(line.normalized) && !seenAny?.has(line.normalized)
+  })
 }
 
 function headerText(block: Block): string {
@@ -782,7 +844,7 @@ function headerText(block: Block): string {
 
 // Step 6: the quoted messages with something new in them, as `quotes`.
 //
-// A block with no kept non-blank line stays out: it is an older level of the
+// A block with nothing new (step 5) stays out: it is an older level of the
 // thread that the app already holds. A block that has new lines and dropped
 // lines brings every dropped line back as context, so an inline answer arrives
 // with the question it answers. Every drop is a drop as seen (step 4), so a
@@ -801,7 +863,7 @@ function collectQuotes(blocks: Block[]): QuoteBlock[] {
 
   const quotes: QuoteBlock[] = []
   for (const block of blocks) {
-    if (!block.lines.some((line) => line.kept && line.normalized !== '')) continue
+    if (!block.hasNew) continue
     for (const line of block.lines) line.context = !line.kept && line.normalized !== ''
     const possible: Block[] = []
     for (let quoter = block.possibleQuoter; quoter !== null; quoter = quoter.possibleQuoter) {
@@ -879,7 +941,7 @@ export function splitNewText(
   const lines = markLines(splitLines(text))
   const blocks = findBlocks(lines)
   decideFates(lines, blocks, seen, seenAny)
-  decideHeaders(blocks)
+  decideHeaders(blocks, seen, seenAny)
   const quotes = collectQuotes(blocks)
 
   // Context lines are not kept, so they stay out of `typed` and `quotedUnseen`.
