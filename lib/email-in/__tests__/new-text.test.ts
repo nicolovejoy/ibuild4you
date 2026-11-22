@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest'
-import { isRepeatOf, normalizeLine, seenLines, splitNewText, MIN_EVIDENCE_LENGTH } from '../new-text'
+import {
+  allLines,
+  isRepeatOf,
+  normalizeLine,
+  seenLines,
+  splitNewText,
+  MIN_EVIDENCE_LENGTH,
+} from '../new-text'
 // A real Apple Mail reply recorded from Resend: its attribution sits behind a `>` marker.
 import receivedEmail from '../../../app/api/webhooks/resend/inbound/__tests__/fixtures/received-email.json'
 
@@ -27,7 +34,7 @@ describe('splitNewText', () => {
         'Sounds good, I will build the week view first.\n\nOn Tue, Nov 17, 2026, Bill Duris wrote:\n> Hi Nico,\n> The lesson planner should show the whole week at once.\n> Bill',
         seen
       )
-    ).toEqual({ typed: 'Sounds good, I will build the week view first.', quotedUnseen: '' })
+    ).toMatchObject({ typed: 'Sounds good, I will build the week view first.', quotedUnseen: '' })
   })
 
   it('a reply quoting an email we never received recovers the quote, with its header', () => {
@@ -36,7 +43,7 @@ describe('splitNewText', () => {
         'Agreed on both.\n\nOn Wed, Nov 18, 2026, Bill Duris wrote:\n> Students also need a printable version of the plan.',
         seen
       )
-    ).toEqual({
+    ).toMatchObject({
       typed: 'Agreed on both.',
       quotedUnseen:
         'On Wed, Nov 18, 2026, Bill Duris wrote:\nStudents also need a printable version of the plan.',
@@ -63,7 +70,7 @@ describe('splitNewText', () => {
           original,
         seen
       )
-    ).toEqual({ typed: 'Yes, will do.', quotedUnseen: '' })
+    ).toMatchObject({ typed: 'Yes, will do.', quotedUnseen: '' })
   })
 
   it('a Gmail forward of an email we hold leaks no header lines', () => {
@@ -73,7 +80,7 @@ describe('splitNewText', () => {
           original,
         seen
       )
-    ).toEqual({ typed: 'FYI', quotedUnseen: '' })
+    ).toMatchObject({ typed: 'FYI', quotedUnseen: '' })
   })
 
   describe('an Apple Mail forward with quoted header fields', () => {
@@ -86,11 +93,11 @@ describe('splitNewText', () => {
       quotedOriginal
 
     it('leaks nothing when the body is held', () => {
-      expect(splitNewText(forward, seen)).toEqual({ typed: 'FYI', quotedUnseen: '' })
+      expect(splitNewText(forward, seen)).toMatchObject({ typed: 'FYI', quotedUnseen: '' })
     })
 
     it('keeps the divider, the fields and the body when the body is unseen', () => {
-      expect(splitNewText(forward, new Set())).toEqual({
+      expect(splitNewText(forward, new Set())).toMatchObject({
         typed: 'FYI',
         quotedUnseen:
           'Begin forwarded message:\n\nFrom: Bill Duris <b@aol.com>\nSubject: Planner\nDate: Wed, Nov 18, 2026\nTo: Nico\n\n' +
@@ -106,7 +113,7 @@ describe('splitNewText', () => {
           original,
         seen
       )
-    ).toEqual({
+    ).toMatchObject({
       typed: 'Ok.',
       quotedUnseen:
         'From: Bill Duris\nSent: Wednesday, November 18, 2026\nTo: Nico\n\nCan it export to PDF as well?',
@@ -119,7 +126,7 @@ describe('splitNewText', () => {
         'Sounds good.\n\nOn Tue, Nov 17, 2026, Bill Duris wrote:\n\n> Hi Nico,\n> The lesson planner should show the whole week at once.\n> Bill',
         seen
       )
-    ).toEqual({ typed: 'Sounds good.', quotedUnseen: '' })
+    ).toMatchObject({ typed: 'Sounds good.', quotedUnseen: '' })
   })
 
   it('an "On ..." typed line does not join a date-less "wrote:" line into a header', () => {
@@ -128,7 +135,7 @@ describe('splitNewText', () => {
         'On reflection, I agree.\nHere is what Danny wrote:\n> The lesson planner should show the whole week at once.',
         seen
       )
-    ).toEqual({ typed: 'On reflection, I agree.\nHere is what Danny wrote:', quotedUnseen: '' })
+    ).toMatchObject({ typed: 'On reflection, I agree.\nHere is what Danny wrote:', quotedUnseen: '' })
   })
 
   it('an "On ..." typed line does not join a quoted line into a header', () => {
@@ -145,7 +152,7 @@ describe('splitNewText', () => {
         'On reflection, this is what Danny wrote:\n> The lesson planner should show the whole week at once.',
         seen
       )
-    ).toEqual({ typed: 'On reflection, this is what Danny wrote:', quotedUnseen: '' })
+    ).toMatchObject({ typed: 'On reflection, this is what Danny wrote:', quotedUnseen: '' })
   })
 
   it('handles CRLF and an Outlook header block', () => {
@@ -165,7 +172,7 @@ describe('splitNewText', () => {
   // short answer twice. Only a whole repeat of an earlier email (isRepeatOf)
   // has nothing new.
   it('a fully seen email keeps its typed lines; only quoted lines are filtered', () => {
-    expect(splitNewText(original, seen)).toEqual({ typed: original, quotedUnseen: '' })
+    expect(splitNewText(original, seen)).toMatchObject({ typed: original, quotedUnseen: '' })
   })
 
   it('a typed answer seen in an earlier email is kept above a quote the app holds', () => {
@@ -173,13 +180,13 @@ describe('splitNewText', () => {
     const held = seenLines(['Yes, go ahead with that.', question])
     expect(
       splitNewText(`Yes, go ahead with that.\n\nOn Wed, Nov 18, 2026, Nico wrote:\n> ${question}`, held)
-    ).toEqual({ typed: 'Yes, go ahead with that.', quotedUnseen: '' })
+    ).toMatchObject({ typed: 'Yes, go ahead with that.', quotedUnseen: '' })
   })
 
   it('a re-quoted line with extra markers and spacing still matches', () => {
     expect(
       splitNewText('> >   The lesson planner should show   the whole week at once.', seen)
-    ).toEqual({
+    ).toMatchObject({
       typed: '',
       quotedUnseen: '',
     })
@@ -188,7 +195,7 @@ describe('splitNewText', () => {
   it('a short typed line after a seen quoted line is kept', () => {
     expect(
       splitNewText('> The lesson planner should show the whole week at once.\nYes agreed', seen)
-    ).toEqual({ typed: 'Yes agreed', quotedUnseen: '' })
+    ).toMatchObject({ typed: 'Yes agreed', quotedUnseen: '' })
   })
 
   it('recognises an "On ... wrote:" header wrapped over two lines', () => {
@@ -197,7 +204,7 @@ describe('splitNewText', () => {
         'Agreed.\n\nOn Wed, Nov 18, 2026 at 3:04 PM Bill Duris <\nb@aol.com> wrote:\n> Students also need a printable version of the plan.',
         seen
       )
-    ).toEqual({
+    ).toMatchObject({
       typed: 'Agreed.',
       quotedUnseen:
         'On Wed, Nov 18, 2026 at 3:04 PM Bill Duris <\nb@aol.com> wrote:\nStudents also need a printable version of the plan.',
@@ -208,14 +215,14 @@ describe('splitNewText', () => {
     const quotedLine = 'I will build the week view of the lesson planner first.'
 
     it('leaks no attribution when the quote is held', () => {
-      expect(splitNewText(receivedEmail.text, seenLines([quotedLine]))).toEqual({
+      expect(splitNewText(receivedEmail.text, seenLines([quotedLine]))).toMatchObject({
         typed: 'Sounds good, the week view first please.',
         quotedUnseen: '',
       })
     })
 
     it('keeps the attribution and the quoted line when the quote is unseen', () => {
-      expect(splitNewText(receivedEmail.text, new Set())).toEqual({
+      expect(splitNewText(receivedEmail.text, new Set())).toMatchObject({
         typed: 'Sounds good, the week view first please.',
         quotedUnseen: `On Nov 20, 2026, at 9:31 AM, Nico Builder <nico@example.org> wrote:\n\n${quotedLine}`,
       })
@@ -226,11 +233,11 @@ describe('splitNewText', () => {
       quotedLine
 
     it('recognises it wrapped over two marked lines', () => {
-      expect(splitNewText(wrapped, seenLines([quotedLine]))).toEqual({
+      expect(splitNewText(wrapped, seenLines([quotedLine]))).toMatchObject({
         typed: 'Sounds good.',
         quotedUnseen: '',
       })
-      expect(splitNewText(wrapped, new Set())).toEqual({
+      expect(splitNewText(wrapped, new Set())).toMatchObject({
         typed: 'Sounds good.',
         quotedUnseen: `On Nov 20, 2026, at 9:31 AM, Nico Builder\n<nico@example.org> wrote:\n\n${quotedLine}`,
       })
@@ -242,7 +249,7 @@ describe('splitNewText', () => {
           '> On Nov 20, 2026, at 9:31 AM, Nico Builder\n<nico@example.org> wrote:\n> ' + quotedLine,
           seenLines([quotedLine])
         )
-      ).toEqual({
+      ).toMatchObject({
         typed: '<nico@example.org> wrote:',
         quotedUnseen: 'On Nov 20, 2026, at 9:31 AM, Nico Builder',
       })
@@ -252,7 +259,7 @@ describe('splitNewText', () => {
             quotedLine,
           seenLines([quotedLine])
         )
-      ).toEqual({
+      ).toMatchObject({
         typed: '',
         quotedUnseen: 'On Nov 20, 2026, at 9:31 AM, Nico Builder\n\n<nico@example.org> wrote:',
       })
@@ -261,13 +268,13 @@ describe('splitNewText', () => {
 
   it('a short quoted line whose only long neighbour comes after it takes that line’s fate', () => {
     const held = seenLines(['Please add a metronome to the practice page.'])
-    expect(splitNewText('> Hi Nico,\n> Please add a metronome to the practice page.', held)).toEqual({
+    expect(splitNewText('> Hi Nico,\n> Please add a metronome to the practice page.', held)).toMatchObject({
       typed: '',
       quotedUnseen: '',
     })
     expect(
       splitNewText('> Hi Nico,\n> Please add a metronome to the practice page.', new Set())
-    ).toEqual({
+    ).toMatchObject({
       typed: '',
       quotedUnseen: 'Hi Nico,\nPlease add a metronome to the practice page.',
     })
@@ -275,10 +282,213 @@ describe('splitNewText', () => {
 
   it('a short typed line is kept whatever its long typed neighbour', () => {
     const held = seenLines(['Please add a metronome to the practice page.'])
-    expect(splitNewText('Hi Nico,\nPlease add a metronome to the practice page.', held)).toEqual({
+    expect(splitNewText('Hi Nico,\nPlease add a metronome to the practice page.', held)).toMatchObject({
       typed: 'Hi Nico,\nPlease add a metronome to the practice page.',
       quotedUnseen: '',
     })
+  })
+})
+
+describe('allLines', () => {
+  it('holds every non-blank normalized line, of any length', () => {
+    expect(allLines(['Yes\n\n> Thanks, \nA longer line here'])).toEqual(
+      new Set(['yes', 'thanks,', 'a longer line here'])
+    )
+  })
+})
+
+describe('splitNewText quotes', () => {
+  const earlier =
+    'Hi Test,\nWhat colour should the start button be?\nShould payment be by card or by invoice?\nThanks,\nNico'
+  const seenEarlier = seenLines([earlier])
+  const anyEarlier = allLines([earlier])
+
+  const nicoHeader = 'On Nov 22, 2026, at 10:40 AM, Nico L <nico@example.com> wrote:'
+  const testMHeader = 'On Nov 22, 2026, at 11:00 AM, Test M <tm@yahoo.com> wrote:'
+  const colour = 'What colour should the start button be?'
+  const payment = 'Should payment be by card or by invoice?'
+  const card = 'By card, please, no invoices.'
+  const newLines = [
+    'The start page needs a big green button.',
+    'Payments go through the card reader.',
+    'Invoices are not needed at all.',
+  ]
+
+  const context = (text: string) => ({ text, context: true, own: false })
+  const own = (text: string) => ({ text, context: false, own: true })
+  const kept = (text: string) => ({ text, context: false, own: false })
+
+  // Gmail puts the quote one level deeper than its header, so the answers typed
+  // at the header's level are the quoter's own.
+  const gmailInline = [
+    nicoHeader,
+    '> Hi Test,',
+    `> ${colour}`,
+    'Green.',
+    `> ${payment}`,
+    card,
+    '> Thanks,',
+    '> Nico',
+  ].join('\n')
+
+  it('a Gmail inline reply keeps the answers as own lines and brings the held message back as context', () => {
+    expect(splitNewText(gmailInline, seenEarlier, anyEarlier)).toEqual({
+      typed: '',
+      quotedUnseen: `${nicoHeader}\nGreen.\n${card}`,
+      quotes: [
+        {
+          header: nicoHeader,
+          quoterHeader: null,
+          lines: [
+            context('Hi Test,'),
+            context(colour),
+            own('Green.'),
+            context(payment),
+            own(card),
+            context('Thanks,'),
+            context('Nico'),
+          ],
+        },
+      ],
+    })
+  })
+
+  it('a short own answer is kept without seenAny too', () => {
+    const result = splitNewText(gmailInline, seenEarlier)
+    expect(result.quotedUnseen).toBe(`${nicoHeader}\nGreen.\n${card}`)
+    expect(result.quotes[0].lines[2]).toEqual(own('Green.'))
+  })
+
+  const unmarkedInline = gmailInline.replace(/^> /gm, '')
+
+  it('an unmarked inline reply has no own lines; a short answer the app never saw is kept', () => {
+    expect(splitNewText(unmarkedInline, seenEarlier, anyEarlier)).toEqual({
+      typed: '',
+      quotedUnseen: `${nicoHeader}\nGreen.\n${card}\nThanks,\nNico`,
+      quotes: [
+        {
+          header: nicoHeader,
+          quoterHeader: null,
+          lines: [
+            context('Hi Test,'),
+            context(colour),
+            kept('Green.'),
+            context(payment),
+            kept(card),
+            kept('Thanks,'),
+            kept('Nico'),
+          ],
+        },
+      ],
+    })
+  })
+
+  it('an unmarked short answer the app has seen elsewhere comes back only as context', () => {
+    const text = unmarkedInline.replace('Green.', 'Thanks,')
+    expect(splitNewText(text, seenEarlier, anyEarlier)).toEqual({
+      typed: '',
+      quotedUnseen: `${nicoHeader}\n${card}\nThanks,\nNico`,
+      quotes: [
+        {
+          header: nicoHeader,
+          quoterHeader: null,
+          lines: [
+            context('Hi Test,'),
+            context(colour),
+            context('Thanks,'),
+            context(payment),
+            kept(card),
+            kept('Thanks,'),
+            kept('Nico'),
+          ],
+        },
+      ],
+    })
+  })
+
+  it('a fully held quote stays out', () => {
+    const quotedEarlier = earlier
+      .split('\n')
+      .map((line) => `> ${line}`)
+      .join('\n')
+    expect(
+      splitNewText(`Sounds good, see you Monday.\n\n${nicoHeader}\n${quotedEarlier}`, seenEarlier, anyEarlier)
+    ).toEqual({ typed: 'Sounds good, see you Monday.', quotedUnseen: '', quotes: [] })
+  })
+
+  it('a fully new quote has no context lines', () => {
+    const text = [testMHeader, ...newLines.map((line) => `> ${line}`)].join('\n')
+    expect(splitNewText(text, seenEarlier, anyEarlier).quotes).toEqual([
+      { header: testMHeader, quoterHeader: null, lines: newLines.map(kept) },
+    ])
+  })
+
+  it('two levels: the inner quote names the outer header as its quoter', () => {
+    const text = [
+      'Looping in the project.',
+      '',
+      testMHeader,
+      `> ${nicoHeader}`,
+      `>> ${colour}`,
+      '> Green.',
+      `>> ${payment}`,
+      `> ${card}`,
+    ].join('\n')
+    expect(splitNewText(text, seenEarlier, anyEarlier)).toEqual({
+      typed: 'Looping in the project.',
+      quotedUnseen: `${nicoHeader}\nGreen.\n${card}`,
+      quotes: [
+        {
+          header: nicoHeader,
+          quoterHeader: testMHeader,
+          lines: [context(colour), own('Green.'), context(payment), own(card)],
+        },
+      ],
+    })
+  })
+
+  it('two levels: a held older level stays out under a new newer level', () => {
+    const text = [
+      testMHeader,
+      ...newLines.map((line) => `> ${line}`),
+      `> ${nicoHeader}`,
+      ...earlier.split('\n').map((line) => `>> ${line}`),
+    ].join('\n')
+    const result = splitNewText(text, seenEarlier, anyEarlier)
+    expect(result.quotes).toEqual([{ header: testMHeader, quoterHeader: null, lines: newLines.map(kept) }])
+    expect(result.quotedUnseen).toBe([testMHeader, ...newLines].join('\n'))
+  })
+
+  it('a held `>` line with no header gives no quote', () => {
+    expect(
+      splitNewText(`> ${colour}\nGreen, I think it should be green.`, seenEarlier, anyEarlier)
+    ).toEqual({ typed: 'Green, I think it should be green.', quotedUnseen: '', quotes: [] })
+  })
+
+  it('an Outlook chain: the header is the field lines, with no own lines', () => {
+    const fields = [
+      'From: Test M <tm@yahoo.com>',
+      'Sent: Sunday, November 22, 2026 11:00 AM',
+      'To: Nico L',
+      'Subject: Start page',
+    ]
+    const text = ['Yes, all three.', '', ...fields, '', ...newLines].join('\n')
+    expect(splitNewText(text, seenEarlier, anyEarlier)).toEqual({
+      typed: 'Yes, all three.',
+      quotedUnseen: [...fields, '', ...newLines].join('\n'),
+      quotes: [{ header: fields.join('\n'), quoterHeader: null, lines: newLines.map(kept) }],
+    })
+  })
+
+  it('collapses runs of blank lines to one and trims them from both ends', () => {
+    const text = [testMHeader, '>', `> ${newLines[0]}`, '>', '>', '>', `> ${newLines[1]}`, '>'].join('\n')
+    expect(splitNewText(text, seenEarlier, anyEarlier).quotes).toEqual([
+      {
+        header: testMHeader,
+        quoterHeader: null,
+        lines: [kept(newLines[0]), { text: '', context: false, own: false }, kept(newLines[1])],
+      },
+    ])
   })
 })
 
