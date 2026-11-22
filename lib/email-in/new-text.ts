@@ -64,9 +64,9 @@ export function allLines(texts: string[]): Set<string> {
 //   it (an inline answer), not by the quote's author. Never both.
 export type QuoteLine = { text: string; context: boolean; own: boolean }
 
-// One quoted message: a quote header and the quoted lines placed under it
-// (step 3), in their original order. They need not be next to each other: a
-// line typed under a nested quote goes back to the outer message.
+// One quoted message: a quote header and the quoted lines placed under it by
+// depth (step 3), in their original order. They need not be next to each
+// other: a line typed under a nested quote goes back to the outer message.
 // header: the header's lines, markers stripped, joined with '\n'; '' for `>`
 //   lines that come before any header.
 // quoterHeader: the header of the quote this one sits inside (the person who
@@ -103,12 +103,12 @@ type Block = {
   kind: HeaderKind | null
   // The depth of the header's first line.
   depth: number
-  // The block this one's header sits inside: the nearest earlier header block
-  // at a shallower depth. null when the email's sender quoted it.
+  // The depth the quoted message's own text sits at (step 3). A line one level
+  // shallower was written by the quoter.
+  bodyDepth: number
+  // The block whose body this one's header sits in; null when the email's
+  // sender quoted it.
   quoter: Block | null
-  // Another quote header sits inside this block (deeper, so it is this block's
-  // quotee): the mail program marks quotes here.
-  hasNestedHeader: boolean
   lines: Line[]
 }
 
@@ -233,50 +233,49 @@ function markLines(rawLines: string[]): Line[] {
   return lines
 }
 
-// Step 3: place every quoted line in a block, then mark the own lines in each.
-// Typed lines (unmarked, before the first header) are in no block, and the `>`
-// lines before the first header form the header-less block.
+// Step 3: place every quoted line in a block and mark the own lines. Typed
+// lines (unmarked, before the first header) are in no block, and the `>` lines
+// before the first header form the header-less block, which has no own lines.
 //
-// The open header blocks are kept on a stack, shallowest at the bottom. A
-// header at depth d closes every open block at depth d or deeper, then opens
-// its own, so depths strictly increase up the stack and the block left below
-// it is its quoter. A quoted line at depth k goes to the deepest open block no
-// deeper than k, or to the shallowest one when all are deeper (an unmarked
-// line under an Apple Mail quote whose header is at depth 1). Lines never close
-// a block, so a line typed under a nested quote goes back to the outer message.
+// Each header block has a body depth: the depth its message's own text sits
+// at. Mail programs differ. Gmail puts the body one level deeper than its
+// "On ... wrote:" line. Apple Mail puts the "On ... wrote:" line inside the
+// blockquote, at the same depth as the body. Outlook uses a From:/Sent: field
+// block and no markers. So the header's depth alone does not say where the
+// quoter's lines are; the body depth does: a line one level shallower than a
+// body was written by the person who quoted that message. Own is a best
+// reading, not a certainty: a quoted line that a mail program re-wrapped
+// without its `>` reads as own.
+//
+// The open header blocks are kept on a stack. A header at depth h closes every
+// open block whose body is deeper than h; the block left on top is the one
+// whose body the header sits in, its quoter. A quoted line at depth k goes to
+// the nearest open block, from the top, whose body depth is at most k + 1: own
+// when the body is exactly one level deeper, not own otherwise. When none
+// qualifies, it goes to the shallowest open block, own. Lines never close a
+// block, so a line typed under a nested quote goes back to the outer message.
 function findBlocks(lines: Line[]): Block[] {
+  const headerBlocks = headerBlocksWithBodyDepths(lines)
+
   const blocks: Block[] = []
   const open: Block[] = []
   let headerless: Block | null = null
-  let currentHeaderId: number | null = null
   for (const line of lines) {
     if (line.headerId !== null) {
-      // The first line of a new header opens a new block; the rest of its span joins it.
-      if (line.headerId !== currentHeaderId) {
-        currentHeaderId = line.headerId
-        while (open.length > 0 && open[open.length - 1].depth >= line.depth) open.pop()
-        const quoter = open.length > 0 ? open[open.length - 1] : null
-        // The quoter is shallower than this header, so the header is nested in it.
-        if (quoter) quoter.hasNestedHeader = true
-        const block: Block = {
-          headerLines: [],
-          kind: line.headerKind,
-          depth: line.depth,
-          quoter,
-          hasNestedHeader: false,
-          lines: [],
-        }
-        open.push(block)
-        blocks.push(block)
-      }
-      open[open.length - 1].headerLines.push(line)
+      const block = headerBlocks[line.headerId]
+      // The first line of a header opens its block; the rest of its span is already in it.
+      if (block.headerLines[0] !== line) continue
+      while (open.length > 0 && open[open.length - 1].bodyDepth > block.depth) open.pop()
+      block.quoter = open.length > 0 ? open[open.length - 1] : null
+      open.push(block)
+      blocks.push(block)
     } else if (line.quoted) {
       if (open.length > 0) {
-        openBlockFor(open, line.depth).lines.push(line)
+        placeLine(open, line)
       } else {
         // `>` lines before the first header.
         if (headerless === null) {
-          headerless = { headerLines: [], kind: null, depth: 0, quoter: null, hasNestedHeader: false, lines: [] }
+          headerless = { headerLines: [], kind: null, depth: 0, bodyDepth: 0, quoter: null, lines: [] }
           blocks.push(headerless)
         }
         headerless.lines.push(line)
@@ -286,38 +285,88 @@ function findBlocks(lines: Line[]): Block[] {
   return blocks
 }
 
-// The deepest open block no deeper than `depth`, else the shallowest. The scan
-// is short: a stack of h blocks needs headers at depths 0 to h - 1, so even a
-// 50,000-character email holds no more than about 300.
-function openBlockFor(open: Block[], depth: number): Block {
-  for (let i = open.length - 1; i >= 0; i--) {
-    if (open[i].depth <= depth) return open[i]
-  }
-  return open[0]
-}
-
-// A non-blank line is own when its block has an "On ... wrote:" header, the
-// line sits at the header's depth or shallower, and the block has something
-// deeper than the header: a non-blank line, or another quote header nested in
-// it. Either shows the mail program marks quotes. Gmail and Apple Mail put the
-// quoted text one level deeper than its attribution, so a line at the
-// attribution's level was written by the quoter. A block with nothing deeper
-// (Outlook, or a mail program that does not mark quotes), a forward or Outlook
-// block (its body is the forwarded message, quotes inside it included) and the
-// header-less block have no own lines: the quoter's lines cannot be told apart
-// there. Own is a best reading, not a certainty: a quoted line that a mail
-// program re-wrapped without its `>` reads as own.
-function markOwnLines(blocks: Block[]): void {
-  for (const block of blocks) {
-    if (block.kind !== 'attribution') continue
-    const hasDeeper =
-      block.hasNestedHeader ||
-      block.lines.some((line) => line.normalized !== '' && line.depth > block.depth)
-    if (!hasDeeper) continue
-    for (const line of block.lines) {
-      if (line.normalized !== '' && line.depth <= block.depth) line.own = true
+// One block per quote header, in text order (a header's id is its index), with
+// its body depth. A field block's body is at its own depth. For an
+// "On ... wrote:" header at depth h, the non-blank lines between it and the
+// next header decide: the shallowest depth among those deeper than h, if any.
+// With no line there at all and the next header nested deeper (depth n > h),
+// that header is the first line of the body: the body is at n when the next
+// header is itself Gmail-style or a field block (it sits at its quoter's body
+// depth), otherwise at n - 1 (an Apple Mail header sits one level inside its
+// quoter's body), but never shallower than h. Otherwise the body is at h.
+// The last rule needs the next block's body depth, so blocks are resolved from
+// the last one back.
+function headerBlocksWithBodyDepths(lines: Line[]): Block[] {
+  const headerBlocks: Block[] = []
+  // Per header block: the shallowest depth deeper than its header among the
+  // non-blank lines up to the next header, and whether there is any such line.
+  const shallowestDeeper: (number | null)[] = []
+  const hasContent: boolean[] = []
+  for (const line of lines) {
+    if (line.headerId !== null) {
+      if (line.headerId === headerBlocks.length) {
+        headerBlocks.push({
+          headerLines: [],
+          kind: line.headerKind,
+          depth: line.depth,
+          bodyDepth: line.depth,
+          quoter: null,
+          lines: [],
+        })
+        shallowestDeeper.push(null)
+        hasContent.push(false)
+      }
+      headerBlocks[line.headerId].headerLines.push(line)
+    } else if (headerBlocks.length > 0 && line.normalized !== '') {
+      const i = headerBlocks.length - 1
+      hasContent[i] = true
+      const deeper = shallowestDeeper[i]
+      if (line.depth > headerBlocks[i].depth && (deeper === null || line.depth < deeper)) {
+        shallowestDeeper[i] = line.depth
+      }
     }
   }
+
+  for (let i = headerBlocks.length - 1; i >= 0; i--) {
+    const block = headerBlocks[i]
+    const next = i + 1 < headerBlocks.length ? headerBlocks[i + 1] : null
+    const deeper = shallowestDeeper[i]
+    if (block.kind === 'fields') {
+      block.bodyDepth = block.depth
+    } else if (deeper !== null) {
+      block.bodyDepth = deeper
+    } else if (!hasContent[i] && next !== null && next.depth > block.depth) {
+      const n = next.depth
+      block.bodyDepth = next.kind === 'fields' || next.bodyDepth > n ? n : Math.max(block.depth, n - 1)
+    } else {
+      block.bodyDepth = block.depth
+    }
+  }
+  return headerBlocks
+}
+
+// Put a quoted line in its open block (see step 3) and mark it own when the
+// block's body is one level deeper. A blank line is never own. Body depths
+// never decrease up the stack (a header closes every body deeper than itself,
+// and its own body is at least as deep as it), so a binary search finds the
+// nearest block from the top whose body depth is at most `depth + 1`.
+function placeLine(open: Block[], line: Line): void {
+  let found = -1
+  let low = 0
+  let high = open.length - 1
+  while (low <= high) {
+    const middle = (low + high) >> 1
+    if (open[middle].bodyDepth <= line.depth + 1) {
+      found = middle
+      low = middle + 1
+    } else {
+      high = middle - 1
+    }
+  }
+  const block = found >= 0 ? open[found] : open[0]
+  block.lines.push(line)
+  const own = found < 0 || block.bodyDepth === line.depth + 1
+  line.own = own && line.normalized !== ''
 }
 
 function isLong(line: Line): boolean {
@@ -445,7 +494,6 @@ export function splitNewText(
 ): { typed: string; quotedUnseen: string; quotes: QuoteBlock[] } {
   const lines = markLines(splitLines(text))
   const blocks = findBlocks(lines)
-  markOwnLines(blocks)
   decideFates(blocks, seen, seenAny)
   decideHeaders(blocks)
   const quotes = collectQuotes(blocks)

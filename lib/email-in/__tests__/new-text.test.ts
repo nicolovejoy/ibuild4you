@@ -580,6 +580,135 @@ describe('splitNewText quotes', () => {
       { header: nicoHeader, quoterHeader: null, lines: [kept(colour)] },
     ])
   })
+
+  // Apple Mail puts the "On ... wrote:" line inside the blockquote, at the
+  // same depth as the body, so an answer one level up is the quoter's.
+  it('an Apple Mail inline reply: the answers are own', () => {
+    const text = [`> ${nicoHeader}`, '> ', `> ${colour}`, 'Green.', `> ${payment}`, card].join('\n')
+    expect(splitNewText(text, new Set(), new Set()).quotes).toEqual([
+      {
+        header: nicoHeader,
+        quoterHeader: null,
+        lines: [kept(colour), own('Green.'), kept(payment), own(card)],
+      },
+    ])
+  })
+
+  const appleThread = [
+    'Looping in the project.',
+    '',
+    `> ${testMHeader}`,
+    '> ',
+    '> Green is fine by me, I think it works well.',
+    '> ',
+    `>> ${nicoHeader}`,
+    '>> ',
+    `>> ${colour}`,
+  ]
+
+  it('an Apple Mail nested thread: the outer body is not own', () => {
+    expect(splitNewText(appleThread.join('\n'), new Set(), new Set())).toEqual({
+      typed: 'Looping in the project.',
+      quotedUnseen: [testMHeader, '', 'Green is fine by me, I think it works well.', '', nicoHeader, '', colour].join(
+        '\n'
+      ),
+      quotes: [
+        {
+          header: testMHeader,
+          quoterHeader: null,
+          lines: [kept('Green is fine by me, I think it works well.')],
+        },
+        { header: nicoHeader, quoterHeader: testMHeader, lines: [kept(colour)] },
+      ],
+    })
+  })
+
+  it('an Apple Mail nested thread with an inline answer: the answer is own in the inner quote', () => {
+    const text = [...appleThread, '> Green, as I said.', `>> ${payment}`].join('\n')
+    expect(splitNewText(text, new Set(), new Set()).quotes).toEqual([
+      {
+        header: testMHeader,
+        quoterHeader: null,
+        lines: [kept('Green is fine by me, I think it works well.')],
+      },
+      {
+        header: nicoHeader,
+        quoterHeader: testMHeader,
+        lines: [kept(colour), own('Green, as I said.'), kept(payment)],
+      },
+    ])
+  })
+
+  it('a Gmail forward of an inline reply: the answers are own in the forwarded quote', () => {
+    const forwardHeader = [
+      '---------- Forwarded message ---------',
+      'From: Bill Duris <bill@example.com>',
+      'Date: Sun, Nov 22, 2026 at 9:00 AM',
+      'Subject: Re: start button',
+      'To: Test M <tm@yahoo.com>',
+    ]
+    const innerHeader = 'On Sat, Nov 21, 2026 at 4:00 PM Nico L <nico@example.com> wrote:'
+    const text = [
+      ...forwardHeader,
+      '',
+      'See my answers below.',
+      '',
+      innerHeader,
+      `> ${colour}`,
+      'Green would be best.',
+      `> ${payment}`,
+      card,
+    ].join('\n')
+    expect(splitNewText(text, new Set(), new Set()).quotes).toEqual([
+      { header: forwardHeader.join('\n'), quoterHeader: null, lines: [kept('See my answers below.')] },
+      {
+        header: innerHeader,
+        quoterHeader: forwardHeader.join('\n'),
+        lines: [kept(colour), own('Green would be best.'), kept(payment), own(card)],
+      },
+    ])
+  })
+
+  it('an Outlook-style quote inside a Gmail quote, answered inline', () => {
+    const fields = [
+      'From: Bill Duris <bill@example.com>',
+      'Sent: Sunday, November 22, 2026 9:00 AM',
+      'Subject: start button',
+    ]
+    const text = [
+      testMHeader,
+      ...fields.map((field) => `> ${field}`),
+      '>',
+      '> Which colour do you want for the start button?',
+      'Green, please.',
+    ].join('\n')
+    const { quotes } = splitNewText(text, new Set(), new Set())
+    // Only the lines are pinned. Header detection makes Test M's attribution
+    // take in the `>` field lines under it, so the header and quoter are open
+    // (see the task 2 fix report 3).
+    expect(quotes).toHaveLength(1)
+    expect(quotes[0].lines).toEqual([kept('Which colour do you want for the start button?'), own('Green, please.')])
+  })
+
+  it('two Gmail quotes side by side: an answer under the first is own there', () => {
+    const aHeader = 'On Nov 20, 2026, at 9:00 AM, Ann A <ann@example.com> wrote:'
+    const bHeader = 'On Nov 21, 2026, at 9:00 AM, Ben B <ben@example.com> wrote:'
+    const text = [
+      aHeader,
+      '> A said this long line here.',
+      'My answer to A goes here.',
+      bHeader,
+      '> B said this long line here.',
+    ].join('\n')
+    expect(splitNewText(text, new Set(), new Set()).quotes).toEqual([
+      {
+        header: aHeader,
+        quoterHeader: null,
+        lines: [kept('A said this long line here.'), own('My answer to A goes here.')],
+      },
+      { header: bHeader, quoterHeader: null, lines: [kept('B said this long line here.')] },
+    ])
+  })
 })
 
 describe('isRepeatOf', () => {
