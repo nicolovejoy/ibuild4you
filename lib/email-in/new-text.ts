@@ -57,30 +57,54 @@ export function seenLines(texts: string[]): Set<string> {
   return seen
 }
 
-// Every non-blank normalized line of every text, of any length, and every pair
-// of consecutive ones in a text (linePair). A short quoted line ("Thanks,",
-// "Green.") is dropped beside a held line only when it is in this set, and an
-// inline answer from further up the thread only when its pair with the line
-// before it is (decideFates), so an answer the app never saw is kept.
+// Every non-blank normalized line of every text, of any length, and every
+// non-blank line paired with the one before it in its text (pairKeys). A short
+// quoted line ("Thanks,", "Green.") is dropped beside a held line only when it
+// is in this set, and an inline answer from further up the thread only when its
+// pair is (decideFates), so an answer the app never saw is kept.
 export function allLines(texts: string[]): Set<string> {
   const all = new Set<string>()
   for (const text of texts) {
-    let previous: string | null = null
-    for (const line of splitLines(text)) {
-      const normalized = normalizeLine(line)
-      if (normalized === '') continue
-      all.add(normalized)
-      if (previous !== null) all.add(linePair(previous, normalized))
-      previous = normalized
-    }
+    const lines = markLines(splitLines(text))
+    const pairs = pairKeys(lines)
+    lines.forEach((line, i) => {
+      if (line.normalized !== '') all.add(line.normalized)
+      const pair = pairs[i]
+      if (pair !== null) all.add(pair)
+    })
   }
   return all
 }
 
-// Two consecutive normalized lines as one entry of allLines. A normalized line
+// For each line, the non-blank line before it and the line itself as one entry
+// of allLines; null for a blank line and for the first one. A normalized line
 // never holds a newline, so a pair is never mistaken for a line.
-function linePair(previous: string, line: string): string {
-  return `${previous}\n${line}`
+//
+// For a line under a quote header, what comes before it is the whole header: its
+// last line may be "wrote:" or "Subject: ...", the same in many headers. Its
+// lines are joined with a space, and without the one after a "<", where Gmail
+// wraps, so a header makes the same pair however it is wrapped. Between the
+// lines of one header the line before counts alone: the cost stays linear.
+function pairKeys(lines: Line[]): (string | null)[] {
+  const headers: string[][] = []
+  for (const line of lines) {
+    if (line.headerId === null || line.normalized === '') continue
+    if (line.headerId === headers.length) headers.push([])
+    headers[line.headerId].push(line.normalized)
+  }
+
+  let previous: Line | null = null
+  return lines.map((line) => {
+    if (line.normalized === '') return null
+    const before = previous
+    previous = line
+    if (before === null) return null
+    const place =
+      before.headerId !== null && before.headerId !== line.headerId
+        ? headers[before.headerId].join(' ').replace(/< /g, '<')
+        : before.normalized
+    return `${place}\n${line.normalized}`
+  })
 }
 
 // One line of a quoted message, `>` markers stripped.
@@ -637,23 +661,20 @@ function isEvidence(line: Line): boolean {
   return line.headerId === null && !line.own && isLong(line)
 }
 
-// For each line of `lines`, the nearest line before it, then after it, that
-// passes `test`; null where there is none. One pass each way.
-function nearestBeforeAndAfter(
-  lines: Line[],
-  test: (line: Line) => boolean
-): { before: (Line | null)[]; after: (Line | null)[] } {
+// For each line of `lines`, the nearest evidence line before it, then after it;
+// null where there is none. One pass each way.
+function nearestEvidence(lines: Line[]): { before: (Line | null)[]; after: (Line | null)[] } {
   const before: (Line | null)[] = []
   let last: Line | null = null
   for (const line of lines) {
     before.push(last)
-    if (test(line)) last = line
+    if (isEvidence(line)) last = line
   }
   const after: (Line | null)[] = new Array(lines.length).fill(null)
   let next: Line | null = null
   for (let i = lines.length - 1; i >= 0; i--) {
     after[i] = next
-    if (test(lines[i])) next = lines[i]
+    if (isEvidence(lines[i])) next = lines[i]
   }
   return { before, after }
 }
@@ -679,7 +700,7 @@ function decideFates(lines: Line[], blocks: Block[], seen: Set<string>, seenAny?
       if (!line.own && isLong(line)) line.kept = !seen.has(line.normalized)
     }
 
-    const evidence = nearestBeforeAndAfter(block.lines, isEvidence)
+    const evidence = nearestEvidence(block.lines)
     block.lines.forEach((line, i) => {
       if (line.own || isLong(line)) return
       const neighbour = evidence.before[i] ?? evidence.after[i]
@@ -691,24 +712,31 @@ function decideFates(lines: Line[], blocks: Block[], seen: Set<string>, seenAny?
   if (seenAny) decideAnswers(lines, seenAny)
 }
 
-// Step 4, last part: the own lines by someone other than the email's sender. Such a line, short or long, is dropped only when the
-// app has seen it in its place: `seenAny` has its pair with the non-blank line
-// before it in the email, and that line is a header line or is not kept here.
-// Its words alone, or after a line that is itself new, may be another answer. A
-// header line carries its date and author, so it shows the place whatever its
-// own fate (not known yet). With no `seenAny` it is kept. A pair is not always
-// one place, so a private answer is still lost when the same words are held
-// under the same signature line, or under the same question asked before.
+// Step 4, last part: the own lines by someone other than the email's sender.
+// Such a line, short or long, is dropped only when the app has seen it in its
+// place: `seenAny` has its pair with the non-blank line before it in the email
+// (pairKeys), and that line is a header line or is not kept here. Its words
+// alone, or after a line that is itself new, may be another answer. A whole
+// header holds its date and author, so it shows the place whatever its own fate
+// (not known yet). With no `seenAny` it is kept.
+//
+// A pair is not always one place: when the same words are held under the same
+// signature line, or under the same question asked before (a short one
+// included), a private answer shows as context only, or is missing when its
+// block has nothing new.
 //
 // In text order and after every other line, so the fate of the line before is
 // known, and an answer of several lines is dropped line by line.
 function decideAnswers(lines: Line[], seenAny: Set<string>): void {
+  const pairs = pairKeys(lines)
   let previous: Line | null = null
-  for (const line of lines) {
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
     if (line.normalized === '') continue
+    const pair = pairs[i]
     const isAnswer = line.own && line.quoter !== null
-    if (isAnswer && previous !== null && (previous.headerId !== null || !previous.kept)) {
-      line.kept = !seenAny.has(linePair(previous.normalized, line.normalized))
+    if (isAnswer && pair !== null && previous !== null && (previous.headerId !== null || !previous.kept)) {
+      line.kept = !seenAny.has(pair)
     }
     previous = line
   }

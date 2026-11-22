@@ -210,6 +210,37 @@ describe('readProjectEmails', () => {
     expect(readings.slice(2).map((r) => r.quotes)).toEqual([[], [], []])
   })
 
+  // "wrote:" ends every attribution wrapped there, so it is no place on its own.
+  it('keeps a private answer directly under a wrapped header like one the app holds', () => {
+    const wrapped = (day: string, who: string) => [`On Sat, Nov ${day}, 2026 at 10:40 AM ${who}`, 'wrote:']
+    const nico = 'Nico L <nico@example.com>'
+    const question = 'Should I delete the old accounts?'
+    const e1 = fromNico('Should the start button be green?')
+    const e2 = fromTestM([...wrapped('20', nico), '', 'Yes.', '', '> Should the start button be green?'].join('\n'))
+    const e3 = fromNico(question)
+    const e4 = fromNico(
+      [
+        'Done.',
+        ...wrapped('21', 'Test M <tm@yahoo.com>'),
+        ...wrapped('21', nico).map((line) => `> ${line}`),
+        '> Yes.',
+        '> ',
+        `> > ${question}`,
+      ].join('\n')
+    )
+    for (const [emails, kind] of [
+      [[e1, e2, e3, e4], 'context'],
+      [[e1, e2, e4], 'new'],
+    ] as const) {
+      const quotes = readProjectEmails([...emails], members).at(-1)!.quotes
+      expect(quotes).toHaveLength(1)
+      expect(quotes[0].lines.filter((line) => line.text !== '')).toEqual([
+        { text: 'Yes.', kind: 'inside', by: 'Maker (Test M)' },
+        { text: question, kind, by: null },
+      ])
+    }
+  })
+
   // Apple Mail's quote of a message that holds an attribution the app cannot
   // read: the message's own text reads as answers, under a header not held yet.
   it('brings back a held message read as answers once at most', () => {

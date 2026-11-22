@@ -301,6 +301,12 @@ describe('allLines', () => {
     )
   })
 
+  it('pairs the line under a header with the whole header, on one line', () => {
+    const held = allLines(['> On Nov 22, 2026, Nico L <\n> n@example.com> wrote:\n> Subject: Start page\n> \n> Yes.'])
+    expect(held.has('on nov 22, 2026, nico l <n@example.com> wrote: subject: start page\nyes.')).toBe(true)
+    expect(held.has('subject: start page\nyes.')).toBe(false)
+  })
+
   it('makes no pair across two texts', () => {
     expect(allLines(['Yes', 'Thanks,'])).toEqual(new Set(['yes', 'thanks,']))
   })
@@ -1040,6 +1046,57 @@ describe('splitNewText quotes', () => {
       expect(linesOf(underHeader, [earlier, `${otherHeader}\nYes.\n> ${colour}`])).toEqual([
         [own('Yes.'), context(colour)],
       ])
+    })
+
+    // Directly under a header, the place is the whole header, however wrapped:
+    // its last line may be "wrote:" or "Subject: ...", the same in many.
+    describe('directly under a header of several lines', () => {
+      const wrappedLate = 'On Nov 22, 2026, at 10:40 AM, Nico L <nico@example.com>\nwrote:'
+      const wrappedInside = 'On Nov 22, 2026, at 10:40 AM, Nico L <\nnico@example.com> wrote:'
+      const withField = (header: string) => `${header}\nSubject: Start page`
+      const mark = (text: string) => text.replace(/^/gm, '> ')
+      const underHeader = (header: string, answer: string) =>
+        ['Noted.', '', testMHeader, mark(header), `> ${answer}`, `> > ${colour}`].join('\n')
+      const heldUnder = (header: string, answer: string) => [earlier, `${header}\n${answer}\n> ${colour}`]
+
+      it('is kept when it is held under another header', () => {
+        for (const answer of ['Yes.', 'Sounds good to me, thanks.']) {
+          for (const header of [wrappedLate, wrappedInside, withField(nicoHeader), withField(wrappedLate)]) {
+            const other = header.replace('Nov 22', 'Nov 20')
+            expect(linesOf(underHeader(header, answer), heldUnder(other, answer))).toEqual([
+              [own(answer), context(colour)],
+            ])
+          }
+        }
+      })
+
+      it('is dropped when it is held under the same header, wrapped or not', () => {
+        for (const answer of ['Yes.', 'Sounds good to me, thanks.']) {
+          const wraps = [nicoHeader, wrappedLate, wrappedInside]
+          for (const header of wraps) {
+            for (const same of wraps) {
+              expect(linesOf(underHeader(header, answer), heldUnder(same, answer))).toEqual([])
+              expect(linesOf(underHeader(withField(header), answer), heldUnder(withField(same), answer))).toEqual([])
+            }
+          }
+        }
+      })
+
+      it('reads 50,000 characters of long headers quickly', () => {
+        for (const unit of [
+          'To: a\n',
+          '> To: a\n',
+          `${nicoHeader}\n`,
+          `${nicoHeader}\nTo: a\nYes.\n> b\n`,
+          `> ${wrappedLate.replace('\n', '\n> ')}\n> Yes.\n`,
+          '-----Original Message-----\n\n',
+        ]) {
+          const text = `${testMHeader}\n${unit.repeat(Math.ceil(50000 / unit.length))}`
+          const started = Date.now()
+          splitNewText(text, seenLines([text]), allLines([text]))
+          expect(Date.now() - started).toBeLessThan(500)
+        }
+      })
     })
 
     it('is kept in a message an unknown quoter quoted', () => {
