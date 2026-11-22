@@ -213,7 +213,7 @@ describe('ProjectEmailPanel opening an email', () => {
     renderPanel()
     fireEvent.click(await screen.findByRole('button', { name: row }))
   }
-    const messageCalls = () => apiFetchMock.mock.calls.filter(([url]) => url.startsWith('/api/projects/email-in/message'))
+  const messageCalls = () => apiFetchMock.mock.calls.filter(([url]) => url.startsWith('/api/projects/email-in/message'))
 
   it('asks for that row\'s email with both ids encoded, and titles the dialog with the subject', async () => {
     await open(NO_SUBJECT_ROW)

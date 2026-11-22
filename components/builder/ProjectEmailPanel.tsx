@@ -70,20 +70,20 @@ function EmailMessage({ message }: { message: ProjectEmailMessage }) {
       {message.typed !== '' && (
         <div className="space-y-1">
           <h4 className="text-xs font-medium text-brand-ink-soft">{t.openTyped}</h4>
-          <p className="whitespace-pre-wrap">{message.typed}</p>
+          <p className="whitespace-pre-wrap break-words">{message.typed}</p>
         </div>
       )}
 
       {message.quotes.map((quote, qi) => (
         <div key={qi} className="space-y-1">
           <h4 className="text-xs font-medium text-brand-ink-soft">{t.openQuoted(quote.label)}</h4>
-          {quote.header && <p className="text-xs text-brand-ink-soft">{quote.header}</p>}
+          {quote.header && <p className="text-xs text-brand-ink-soft whitespace-pre-wrap break-words">{quote.header}</p>}
           {groupLines(quote.lines).map((group, gi) => (
             <div
               key={gi}
               className={
                 group.kind === 'context'
-                  ? 'text-gray-400'
+                  ? 'text-brand-ink-soft'
                   : group.kind === 'inside'
                     ? 'border-l-2 border-brand-line pl-3'
                     : ''
@@ -93,7 +93,7 @@ function EmailMessage({ message }: { message: ProjectEmailMessage }) {
               {group.kind === 'inside' && <p className="text-xs text-brand-ink-soft">{t.openInside(group.by ?? '')}</p>}
               {group.lines.map((line, li) => (
                 // An empty div would collapse, so a blank line keeps a line's height.
-                <div key={li} className="min-h-5">
+                <div key={li} className="min-h-5 break-words">
                   {line.text}
                 </div>
               ))}
@@ -175,13 +175,13 @@ export function ProjectEmailPanel({ projectId }: { projectId: string }) {
               <p className="text-sm text-brand-ink-soft">{t.noneReceived}</p>
             ) : (
               <ul className="space-y-0.5">
-                {data.recent.map((e, i) => (
-                  <li key={`${e.received_at}-${i}`} className="text-sm text-brand-charcoal">
+                {data.recent.map((e) => (
+                  <li key={e.id} className="text-sm text-brand-charcoal">
                     {/* Looks like the plain row it was; the text is the button's name. */}
                     <button
                       type="button"
                       onClick={() => setOpened({ id: e.id, subject: e.subject })}
-                      className="text-left hover:underline focus-visible:outline-2 focus-visible:outline-brand-navy rounded-sm"
+                      className="text-left break-words hover:underline focus-visible:outline-2 focus-visible:outline-brand-navy rounded-sm"
                     >
                       {t.recentRow(
                         dayFmt.format(new Date(e.received_at)),

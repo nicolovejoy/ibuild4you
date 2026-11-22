@@ -128,9 +128,9 @@ export interface RecentEmailRow {
 }
 
 // The newest `limit` emails of a project as panel rows, newest first. The query
-// reads only four fields besides the id, so a stored text of up to 50,000 characters is never
-// pulled for a ten-row list. Single equality filter and no orderBy (no
-// composite index, as with the flood count); the sort is in memory.
+// reads only four fields besides the id, so a stored text of up to 50,000
+// characters is never pulled for a ten-row list. Single equality filter and no
+// orderBy (no composite index, as with the flood count); the sort is in memory.
 export async function listRecentProjectEmailRows(
   db: Firestore,
   projectId: string,
