@@ -192,6 +192,44 @@ describe('readProjectEmails', () => {
     expect(readings[3]).toMatchObject({ typed: 'Thank you!', quotes: [] })
   })
 
+  it('never brings back a held answer written directly under the quote header', () => {
+    const question = 'What colour should the start button be?'
+    const quoting = (typed: string, header: string, text: string) =>
+      [typed, '', header, ...text.split('\n').map((line) => `> ${line}`)].join('\n')
+    const e2 = [NICO_HEADER, 'Hi Nico, answers below.', '', `> ${question}`, 'Green.'].join('\n')
+    const e3 = quoting('Great, building it this week.', TM_HEADER, e2)
+    const e4 = quoting('Thank you so much!', 'On Nov 23, 2026, at 9:00 AM, Nico L <nico@example.com> wrote:', e3)
+    const e5 = quoting('See you on Monday.', 'On Nov 23, 2026, at 9:30 AM, Test M <tm@yahoo.com> wrote:', e4)
+
+    const readings = readProjectEmails(
+      [fromNico(question), fromTestM(e2), fromNico(e3), fromTestM(e4), fromNico(e5)],
+      members
+    )
+
+    expect(readings[1].quotes[0].lines.filter((l) => l.kind === 'inside')).toHaveLength(2)
+    expect(readings.slice(2).map((r) => r.quotes)).toEqual([[], [], []])
+  })
+
+  // Apple Mail's quote of a message that holds an attribution the app cannot
+  // read: the message's own text reads as answers, under a header not held yet.
+  it('brings back a held message read as answers once at most', () => {
+    const request = 'Please do the first thing today.'
+    const e2 = [
+      'Sounds good to me, I will do it.',
+      'The second thing is fine too.',
+      '',
+      'Am 22.11.2026 um 11:00 schrieb Test M <tm@yahoo.com>:',
+      `> ${request}`,
+    ].join('\n')
+    const e3 = ['Great, thank you so much.', '', `> ${NICO_HEADER}`, '> ', ...e2.split('\n').map((l) => `> ${l}`)].join('\n')
+    const e4 = ['You are welcome.', '', TM_HEADER, ...e3.split('\n').map((l) => `> ${l}`)].join('\n')
+
+    const readings = readProjectEmails([fromTestM(request), fromNico(e2), fromTestM(e3), fromNico(e4)], members)
+
+    expect(readings[2].quotes).toHaveLength(1)
+    expect(readings[3].quotes).toEqual([])
+  })
+
   // The maker's email with the answer never reached the app: it went to the
   // builder alone, and the builder's reply (e3) quotes it.
   it('keeps a private inline answer whose words were seen elsewhere, and only once', () => {

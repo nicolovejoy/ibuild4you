@@ -1002,16 +1002,22 @@ describe('splitNewText quotes', () => {
       ])
     })
 
-    it('is kept under a line that is itself kept, or under a header', () => {
+    it('is kept under a line that is itself kept', () => {
       // The question is new too, so a pair seen before was not this one.
       const question = 'Is the second colour fine too?'
       const text = reply('Yes.').replace(colour, question)
       const pairElsewhere = allLines([`${question}\nYes.`])
       expect(splitNewText(text, new Set(), pairElsewhere).quotes[0].lines).toEqual([kept(question), own('Yes.')])
+    })
 
+    // A header line carries the date and the author, so it shows the place too.
+    it('is dropped directly under a header only when it is held under that header', () => {
       const underHeader = ['Noted.', '', testMHeader, `> ${nicoHeader}`, '> Yes.', `> > ${colour}`].join('\n')
-      const held = [earlier, `${nicoHeader}\nYes.`]
-      expect(linesOf(underHeader, held)).toEqual([[own('Yes.'), context(colour)]])
+      expect(linesOf(underHeader, [earlier, `${nicoHeader}\nYes.\n> ${colour}`])).toEqual([])
+      const otherHeader = nicoHeader.replace('Nov 22', 'Nov 20')
+      expect(linesOf(underHeader, [earlier, `${otherHeader}\nYes.\n> ${colour}`])).toEqual([
+        [own('Yes.'), context(colour)],
+      ])
     })
 
     it('is kept in a message an unknown quoter quoted', () => {

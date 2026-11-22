@@ -25,10 +25,11 @@
 // answer may have gone to the email's sender alone. Its words prove nothing,
 // since "Yes." or "Sounds good to me, thanks." answers many questions. So it is
 // dropped only when the app has seen it in its place, right after the same
-// held line: then an answer the app holds does not come back as new words in
-// every later reply. When a quoted message the app already holds gets a new
-// answer, the held lines come back marked `context`, so the answer arrives with
-// its question. Context lines are only in `quotes`, never in `quotedUnseen`.
+// held line or the same header: then an answer the app holds does not come back
+// as new words in every later reply. When a quoted message the app already
+// holds gets a new answer, the held lines come back marked `context`, so the
+// answer arrives with its question. Context lines are only in `quotes`, never
+// in `quotedUnseen`.
 
 // Lines shorter than this ("Thanks", "Hi Nico,", "Bill") appear in many emails,
 // so they are never evidence that the app has already seen an email.
@@ -598,10 +599,12 @@ function decideFates(lines: Line[], blocks: Block[], seen: Set<string>, seenAny?
 // Step 4, last part: the own lines of the blocks that someone other than the
 // email's sender quoted. Such a line, short or long, is dropped only when the
 // app has seen it in its place: `seenAny` has its pair with the non-blank line
-// before it in the email, and that line is not kept here, and no header line (a
-// header is in every reply, and its fate is not known yet). Its words alone, or
-// after a line that is itself new, may be another answer. With no `seenAny` it
-// is kept.
+// before it in the email, and that line is a header line or is not kept here.
+// Its words alone, or after a line that is itself new, may be another answer. A
+// header line carries its date and author, so it shows the place whatever its
+// own fate (not known yet). With no `seenAny` it is kept. A pair is not always
+// one place, so a private answer is still lost when the same words are held
+// under the same signature line, or under the same question asked before.
 //
 // In text order and after every other line, so the fate of the line before is
 // known, and an answer of several lines is dropped line by line.
@@ -615,7 +618,7 @@ function decideAnswers(lines: Line[], blocks: Block[], seenAny: Set<string>): vo
   let previous: Line | null = null
   for (const line of lines) {
     if (line.normalized === '') continue
-    if (answers.has(line) && previous !== null && previous.headerId === null && !previous.kept) {
+    if (answers.has(line) && previous !== null && (previous.headerId !== null || !previous.kept)) {
       line.kept = !seenAny.has(linePair(previous.normalized, line.normalized))
     }
     previous = line
