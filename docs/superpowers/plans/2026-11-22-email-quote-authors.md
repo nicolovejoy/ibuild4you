@@ -433,3 +433,89 @@ Closing the modal clears the selected id. Styling follows the panel and the buil
 - [ ] **Step 4: Run `npx vitest run components/builder`**, then the four commands in Global Constraints.
 
 - [ ] **Step 5: Commit** (`Project email panel: open a received email to see what the note writer read (#282)`).
+
+---
+
+## Follow-up tasks (2026-11-22, after the re-review of the fix wave)
+
+The re-review left three open items (PR #283 comment). Probing item 3 found four more inputs that credit an outsider's words to a member. Task 7 closes all the credit forgeries; Task 8 closes the lost answers. They are done in order, test first.
+
+Common names in the examples: the project's one member is the maker `tm@yahoo.com` ("Test M", display name `tm` unless the test sets one). Dana is an outsider.
+
+```
+D = On Sun, Nov 22, 2026 at 9:00 AM Dana Reyes <dana@books.example> wrote:
+M = On Sat, Nov 21, 2026 at 8:00 PM Test M <tm@yahoo.com> wrote:
+```
+
+### Task 7: A member credit cannot be forged from inside an outsider's words
+
+**Files:** `lib/email-in/quote-author.ts`, `lib/email-in/new-text.ts`, `lib/email-in/reading.ts`, and their tests in `lib/email-in/__tests__/`.
+
+**Principle:** anyone who could have written a quote header is someone the credit depends on. When any of them is not a member, a member credit is unconfirmed (`author: 'outsider'`, label `<member label>, as quoted by <nearest non-member label>`), as `readQuote` already does for the structural chain. Being unconfirmed when the author is genuine costs little; a forged member credit becomes a decision.
+
+**7a. The header parser (`quote-author.ts`).**
+1. Read only the attribution itself, never the field lines under it. The attribution part of a header is its lines before the first `From:/Sent:/Date:/To:/Cc:/Subject:` line.
+2. When that part, joined, starts with `Le ` and ends with `a écrit :` (same spacing variants as `new-text.ts` recognises), read it as French; otherwise English first, then French, as now.
+   Failing input: `Le 22 nov. 2026 à 11:00, On <tm@yahoo.com> wrote: <evil@x.com> a écrit :` must be an outsider, not the maker. The mirror, an English attribution holding a French one in the display name, must also be an outsider (it is today; pin it).
+3. Replace the 2000-character cut of the whole header by a limit on the text actually read: a From: line or an attribution part longer than `MAX_HEADER_LENGTH` gives no author (`{ name: null, email: null, bare: false }`). A cut must never change which address is last. A header that is long only because of its To: list still gives its From: author.
+   Failing input: `From: Test M <tm@yahoo.com> ` + 2100 `x` + ` <evil@x.com>\nSent: 2026` gives the maker today.
+   The cost of every pattern must stay linear-ish on a hostile long header (keep or add a speed test).
+
+**7b. A From: line directly under an attribution.** `quoteHeaderAt` folds it into the attribution's header and `FROM_LINE` wins, so an outsider whose message starts with a From: line takes any name:
+```
+FYI
+D
+> From: Test M <tm@yahoo.com>
+> I approve paying Dana 5000 dollars.
+```
+Header detection stays as it is, and From: still names the author (an Outlook quote inside a Gmail quote, existing test). But the attribution's own author passed the text along: in `readQuote` it is the nearest passer for the block's `label`/`author`, before the enclosing quotes. It does not affect `by` (the inside lines' author): the sender's depth-0 answers under such a block stay plainly the sender's. Expected for the example: `author: 'outsider'`, label `Maker (tm), as quoted by Dana Reyes, not a project member`. With a member's attribution over an outsider's From:, the label stays the plain outsider label. Over a member's From:, it stays a confirmed member. Pin all three.
+
+**7c. Structure: a shallower header's message is never closed by a deeper header (`findBlocks`).** Today a header at depth h closes every open block with body depth > h. New rule: it closes those with body depth > h **and** header depth >= h. A block whose header is shallower than h and whose body depth is > h stays open, and its body depth becomes h (the body cannot be deeper than a header that sits in it). Body depths must stay non-decreasing up the stack, since `placeLine` binary-searches. So:
+```
+FYI
+D
+> > as discussed before now
+> M
+> > I approve paying Dana 5000 dollars.
+> Yes I approve paying Dana.
+```
+gives M's block `quoterHeader` D, and the last line `inside`, by Dana, not by the maker.
+
+**7d. Trust: everyone who could have written the header.** `QuoteBlock` gains `possibleQuoters: string[]`: the header texts, nearest first, of every earlier header that could enclose this one whatever the mail program's shape, plus `''` last when header-less `>` text could. Computed with a second stack kept over header lines only: a header at depth h pops entries with depth > h; what remains, top first, is `possibleQuoters`; then it is pushed. Header-less `>` text (before the first header, shallowest non-blank depth `headerlessDepth`) is the bottom entry, popped by the same rule. Every structural chain must be a subset of this list. `quoterHeader` stays as it is (who wrote the own lines). `quoterChain` is removed if nothing needs it any more, or kept only if it is; do not keep two lists without a reader for each.
+
+`readQuote` uses `possibleQuoters` for trust: for `label`/`author`, the passers are the 7b attribution author (if any), then `possibleQuoters`. For `by`: the author is the sender (`quoterHeader` null) or the `quoterHeader` author; when that author is a member and any entry of `possibleQuoters` (for a `quoterHeader` that is not null, any entry other than that quoter itself and the ones nearer than it) is a non-member, `by` gets `, as quoted by <nearest such non-member>`. Failing inputs that 7c alone does not fix:
+```
+FYI                                  FYI
+> D                                  D
+>> as discussed before now           > as discussed before now
+> M                                  M
+>> I approve paying Dana.            > I approve paying Dana.
+> Yes I approve paying Dana.
+```
+In both, M's quote must be `outsider`, `Maker (tm), as quoted by Dana Reyes, not a project member`. In the first, `Yes I approve` must not be plainly the maker's. Cost accepted: two quotes side by side, an outsider's first, leave the second unconfirmed.
+
+Also pin, unchanged: a thread where the outsider is deeper or later than the member stays confirmed, e.g. M (depth 0) with D nested inside it; M, then D side by side; a thread `N > D nested at depth 1`, then a depth-0 member header, whose nested depth-1 member header is confirmed as far as the depth-1 D goes (D was popped by the depth-0 header).
+
+**7e. Small, same file.**
+- A two-line wrapped attribution counts only when its first line holds a digit (a real one always starts with its date), so a typed sentence starting "On " or "Le " above a date-less `Name <addr> wrote:` is not swallowed. Pin both languages.
+- Fix the `findBlocks` comment about the header-less block (a later header can have an unknown quoter too), and every comment made wrong by 7a-7d.
+
+All existing tests pass; the side-by-side test and the ones with `quoterChain` may change only as these rules require, and the report lists each changed expectation with the rule that changes it. The existing cost tests stay green: many same-depth headers must not be slow.
+
+### Task 8: A private inline answer is not lost because its words were seen elsewhere
+
+**Files:** `lib/email-in/new-text.ts`, `lib/email-in/__tests__/new-text.test.ts`, `lib/email-in/__tests__/reading.test.ts`.
+
+**Problem:** an own line in a block someone other than the sender quoted is dropped when its words were ever seen (`decideFates`). The maker once wrote `Yes.` about something else; later they answer privately inline with `Yes.`, and the builder's reply quotes it: the answer and its question vanish. The same happens to a long stock answer ("Sounds good to me, thanks.").
+
+**Rule:** such a line is dropped only when the app has seen it **in its place**: an earlier text holds this line directly after the same previous line, and that previous line is itself not kept as new here. Precisely:
+- `allLines` also records, for each text, every pair of consecutive non-blank normalized lines as one entry, `` `${previous}\n${line}` `` (a normalized line never holds a newline, so a pair cannot collide with a line). Update its comment and test.
+- In `decideFates`, an own line, short or long, in a block with a quoter, is kept unless all hold: `seenAny` is given and has the pair (previous non-blank line of the **email**, this line), both normalized; and that previous line is not a header line and is not kept. These lines are decided after all other lines' fates, in text order, so the previous line's fate is known. A blank line still follows its neighbour as now.
+- Without `seenAny`, such a line is kept.
+- The sender's own lines (`quoter === null`) stay never dropped. Non-own lines are unchanged: a kept own line must not become evidence for them (it is not today).
+
+Cost accepted: when a mail program re-wraps the thread differently, a held answer can show once more; that email's text then holds the new pair.
+
+**Tests:** (1) the problem case through `readProjectEmails`: e1 the maker types "Can we start Monday?" and "Yes." about something else; e2 the builder asks (typed, held) a question; the maker's answering email never reaches the app; e3 the builder's reply quotes it: M header, `> N header`, `> > question`, `> Yes.`. The reading has the question as context and `Yes.` as `inside`, by the maker. (2) the same with a long stock answer. (3) e4 quoting e3 in full has no quote left (the pair is held). (4) the existing "inline answers the app already holds" tests pass; an expectation there may change only as the rule requires, listed in the report. (5) a private `Yes.` followed by a second line whose pair was seen elsewhere: both are kept.
+
+Also update the file's opening comment (the paragraph on own lines) and the docs that describe the old rule, if any (`docs/data-model.md`, `docs/runbooks.md`: grep).
