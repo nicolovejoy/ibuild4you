@@ -165,8 +165,9 @@ function headerParts(header: string): { attribution: HeaderAuthor | null; from: 
 
 // Whoever a From: line names. Its address proves nothing (it is as good as a
 // bare one) when the line may have been wrapped and lost its end, which is
-// when the line under it is not a field, or is another From:; when it was sent on behalf of someone,
-// whose display name then comes last; and when it holds several addresses.
+// when the line under it is not a field, or is another From:; when it was sent
+// on behalf of someone, whose display name then comes last; and when it holds
+// several addresses.
 function parseFrom(line: string, next: string): HeaderAuthor {
   if (line.length > MAX_HEADER_LENGTH) return NOBODY
   const value = line.slice('From:'.length).trim()
