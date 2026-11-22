@@ -79,8 +79,10 @@ export type QuoteLine = { text: string; context: boolean; own: boolean }
 // other: a line typed under a nested quote goes back to the outer message.
 // header: the header's lines, markers stripped, joined with '\n'; '' for `>`
 //   lines that come before any header.
-// quoterHeader: the header of the quote this one sits inside (the person who
-//   quoted it wrote that message); null when the email's sender quoted it.
+// quoterHeader: who quoted this message (and so wrote its own lines). null:
+//   the email's sender. '': someone the app could not identify (the header
+//   sits inside `>` text whose header was not recognised, step 3). Otherwise
+//   the header of the quote this one sits inside: its author wrote that message.
 export type QuoteBlock = { header: string; quoterHeader: string | null; lines: QuoteLine[] }
 
 type Line = {
@@ -102,7 +104,8 @@ type Line = {
   context: boolean
 }
 
-// An "On ... wrote:" attribution, or a divider and/or a From:/Sent: field block.
+// An "On ... wrote:" attribution (English or French, see isAttribution), or a
+// divider and/or a From:/Sent: field block.
 type HeaderKind = 'attribution' | 'fields'
 
 // A quote header and the quoted lines placed under it (step 3). The `>` lines
@@ -117,7 +120,8 @@ type Block = {
   // shallower was written by the quoter.
   bodyDepth: number
   // The block whose body this one's header sits in; null when the email's
-  // sender quoted it.
+  // sender quoted it. The header-less block when the quoter is unknown (step
+  // 3): it has no header lines, so its header text is ''.
   quoter: Block | null
   lines: Line[]
 }
@@ -127,11 +131,22 @@ function splitLines(text: string): string[] {
   return text.replace(/\r\n/g, '\n').split('\n')
 }
 
-// "On <date>, <name> wrote:". Real attributions carry a date or an address, so
-// a typed "On reflection, this is what Danny wrote:" is not one. Missing a
-// date-less attribution is the safe direction: its lines stay typed.
+// "On <date>, <name> wrote:", or its French form "Le <date>, <name> a écrit :"
+// (the space before the colon may be a no-break space, or missing). Real
+// attributions carry a date or an address, so a typed "On reflection, this is
+// what Danny wrote:" is not one. Missing a date-less attribution is the safe
+// direction: its lines stay typed. No other language is recognised. Both
+// patterns are anchored at the start and have one open-ended run, so a long
+// line is checked in linear time.
+const ENGLISH_ATTRIBUTION = /^On .+ wrote:$/
+const FRENCH_ATTRIBUTION = /^Le .+ a écrit\s?:$/
 function isAttribution(text: string): boolean {
-  return /^On .+ wrote:$/.test(text) && /[\d@]/.test(text)
+  return (ENGLISH_ATTRIBUTION.test(text) || FRENCH_ATTRIBUTION.test(text)) && /[\d@]/.test(text)
+}
+
+// The start of an attribution that a mail client may have wrapped onto the next line.
+function startsAttribution(text: string): boolean {
+  return text.startsWith('On ') || text.startsWith('Le ')
 }
 
 const DIVIDERS = [
@@ -177,13 +192,13 @@ function quoteHeaderAt(lines: string[], index: number): { span: number; kind: He
   if (isAttribution(attribution)) {
     return { span: 1 + fieldRunLength(lines, index + 1), kind: 'attribution' }
   }
-  // "On ... wrote:" wrapped over two lines by the sender's mail client. It never
-  // joins a blank line or a line that is a whole attribution itself, and both
-  // lines carry a `>` marker or neither does.
+  // "On ... wrote:" (or "Le ... a écrit :") wrapped over two lines by the
+  // sender's mail client. It never joins a blank line or a line that is a whole
+  // attribution itself, and both lines carry a `>` marker or neither does.
   const rawNext = index + 1 < lines.length ? lines[index + 1] : ''
   const next = removeQuoteMarkers(rawNext).trim()
   const nextCanJoin = next !== '' && /^\s*>/.test(rawNext) === marked && !isAttribution(next)
-  if (attribution.startsWith('On ') && nextCanJoin && isAttribution(`${attribution} ${next}`)) {
+  if (startsAttribution(attribution) && nextCanJoin && isAttribution(`${attribution} ${next}`)) {
     return { span: 2 + fieldRunLength(lines, index + 2), kind: 'attribution' }
   }
 
@@ -264,19 +279,32 @@ function markLines(rawLines: string[]): Line[] {
 // when the body is exactly one level deeper, not own otherwise. When none
 // qualifies, it goes to the shallowest open block, own. Lines never close a
 // block, so a line typed under a nested quote goes back to the outer message.
+//
+// The header-less block is never on the stack, but it can be a quoter. When
+// the first header opens at depth 1 or more and the `>` text above it already
+// holds a non-blank line at that depth or shallower, the header sits inside a
+// quoted message whose own header the app did not recognise (one in another
+// language, say). Whoever wrote that message quoted this one, and the app
+// cannot tell who: the quoter is unknown, never the email's sender. A header
+// that is the first quoted line (Apple Mail's marked attribution) has no such
+// text above it and keeps the sender as its quoter.
 function findBlocks(lines: Line[]): Block[] {
   const headerBlocks = headerBlocksWithBodyDepths(lines)
 
   const blocks: Block[] = []
   const open: Block[] = []
   let headerless: Block | null = null
+  // The shallowest depth of a non-blank line in the header-less block.
+  let headerlessDepth = Infinity
   for (const line of lines) {
     if (line.headerId !== null) {
       const block = headerBlocks[line.headerId]
       // The first line of a header opens its block; the rest of its span is already in it.
       if (block.headerLines[0] !== line) continue
       while (open.length > 0 && open[open.length - 1].bodyDepth > block.depth) open.pop()
-      block.quoter = open.length > 0 ? open[open.length - 1] : null
+      if (open.length > 0) block.quoter = open[open.length - 1]
+      else if (block.depth >= 1 && headerlessDepth <= block.depth) block.quoter = headerless
+      else block.quoter = null
       open.push(block)
       blocks.push(block)
     } else if (line.quoted) {
@@ -289,6 +317,7 @@ function findBlocks(lines: Line[]): Block[] {
           blocks.push(headerless)
         }
         headerless.lines.push(line)
+        if (line.normalized !== '') headerlessDepth = Math.min(headerlessDepth, line.depth)
       }
     }
   }

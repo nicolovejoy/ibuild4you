@@ -573,12 +573,117 @@ describe('splitNewText quotes', () => {
     ])
   })
 
-  it('a quote header under header-less quoted text has no quoter either', () => {
+  // The header-less text holds a line at the header's depth, so the header sits
+  // in a message whose header the app did not recognise: its quoter is unknown.
+  it('a quote header under header-less quoted text has an unknown quoter', () => {
     const text = `> Some earlier words with no header.\n> ${nicoHeader}\n>> ${colour}`
     expect(splitNewText(text, new Set(), new Set()).quotes).toEqual([
       { header: '', quoterHeader: null, lines: [kept('Some earlier words with no header.')] },
-      { header: nicoHeader, quoterHeader: null, lines: [kept(colour)] },
+      { header: nicoHeader, quoterHeader: '', lines: [kept(colour)] },
     ])
+  })
+
+  it('header-less text only deeper than the header leaves the sender as the quoter', () => {
+    const text = `>> Some earlier words, quoted twice over.\n> ${nicoHeader}\n>> ${colour}`
+    expect(splitNewText(text, new Set(), new Set()).quotes[1]).toEqual({
+      header: nicoHeader,
+      quoterHeader: null,
+      lines: [kept(colour)],
+    })
+  })
+
+  // A header the app cannot read (here German) above a quote: the answers under
+  // that quote were written by someone the app could not identify, never by the
+  // email's sender.
+  it('an inline answer under an unrecognised outer header is not the sender’s', () => {
+    const text = [
+      'Danke.',
+      'Am 22.11.2026 um 11:00 schrieb Nico L <nico@me.com>:',
+      '> Answers below.',
+      `> ${testMHeader}`,
+      '>> Should the app send reminders every day?',
+      '> No, weekly reminders are enough for this kind of app.',
+    ].join('\n')
+    expect(splitNewText(text, new Set(), new Set()).quotes[1]).toEqual({
+      header: testMHeader,
+      quoterHeader: '',
+      lines: [
+        kept('Should the app send reminders every day?'),
+        own('No, weekly reminders are enough for this kind of app.'),
+      ],
+    })
+  })
+
+  describe('a French attribution', () => {
+    const frenchHeader = 'Le dim. 22 nov. 2026 à 11:00, Nico L <nico@me.com> a écrit :'
+    const inner = 'On Nov 21, 2026, at 9:00 AM, Test M <tm@yahoo.com> wrote:'
+    const probe = [
+      "D'accord, merci.",
+      frenchHeader,
+      '> Answers below.',
+      `> ${inner}`,
+      '>> Should the app send reminders every day?',
+      '> No, weekly reminders are enough for this kind of app.',
+    ].join('\n')
+
+    it('is a quote header, and the answer under the quote inside it is its author’s', () => {
+      expect(splitNewText(probe, new Set(), new Set())).toEqual({
+        typed: "D'accord, merci.",
+        quotedUnseen: [
+          frenchHeader,
+          'Answers below.',
+          inner,
+          'Should the app send reminders every day?',
+          'No, weekly reminders are enough for this kind of app.',
+        ].join('\n'),
+        quotes: [
+          { header: frenchHeader, quoterHeader: null, lines: [kept('Answers below.')] },
+          {
+            header: inner,
+            quoterHeader: frenchHeader,
+            lines: [
+              kept('Should the app send reminders every day?'),
+              own('No, weekly reminders are enough for this kind of app.'),
+            ],
+          },
+        ],
+      })
+    })
+
+    it('is recognised without the space before the colon, with a no-break space, and marked', () => {
+      for (const header of [
+        frenchHeader.replace(' :', ':'),
+        frenchHeader.replace(' :', ' :'),
+        frenchHeader.replace(' :', ' :'),
+      ]) {
+        expect(splitNewText(`Merci.\n${header}\n> Une ligne jamais vue avant.`, new Set()).quotes).toEqual([
+          { header, quoterHeader: null, lines: [kept('Une ligne jamais vue avant.')] },
+        ])
+      }
+      expect(splitNewText(`Merci.\n> ${frenchHeader}\n> Une ligne jamais vue avant.`, new Set()).quotes).toEqual([
+        { header: frenchHeader, quoterHeader: null, lines: [kept('Une ligne jamais vue avant.')] },
+      ])
+    })
+
+    it('is recognised wrapped over two lines', () => {
+      const wrapped = 'Le dim. 22 nov. 2026 à 11:00, Nico L <\nnico@me.com> a écrit :'
+      expect(splitNewText(`Merci.\n\n${wrapped}\n> Une ligne jamais vue avant.`, new Set()).quotes).toEqual([
+        { header: wrapped, quoterHeader: null, lines: [kept('Une ligne jamais vue avant.')] },
+      ])
+    })
+
+    it('needs a digit or an address, so a typed sentence stays typed', () => {
+      expect(
+        splitNewText('Le client a écrit :\n> Une ligne jamais vue avant.', new Set())
+      ).toMatchObject({ typed: 'Le client a écrit :' })
+    })
+
+    it('is checked quickly on a long run of spaces', () => {
+      const hostile = `Le 1${' '.repeat(50000)}x\n${'Le 1 '.repeat(10000)}\n> a`
+      const started = Date.now()
+      splitNewText(hostile, new Set(), new Set())
+      expect(Date.now() - started).toBeLessThan(200)
+    })
   })
 
   // Apple Mail puts the "On ... wrote:" line inside the blockquote, at the

@@ -192,6 +192,54 @@ describe('readProjectEmails', () => {
     expect(readings[3]).toMatchObject({ typed: 'Thank you!', quotes: [] })
   })
 
+  it('credits an answer under a French attribution to its author, not to the sender', () => {
+    const text = [
+      "D'accord, merci.",
+      'Le dim. 22 nov. 2026 à 11:00, Nico L <nico@example.com> a écrit :',
+      '> Answers below.',
+      '> On Nov 21, 2026, at 9:00 AM, Test M <tm@yahoo.com> wrote:',
+      '>> Should the app send reminders every day?',
+      '> No, weekly reminders are enough for this kind of app.',
+    ].join('\n')
+
+    const [reading] = readProjectEmails([fromTestM(text)], members)
+
+    expect(reading.quotes.map(({ author, label, lines }) => ({ author, label, lines }))).toEqual([
+      {
+        author: 'member',
+        label: 'Builder (Nico L)',
+        lines: [{ text: 'Answers below.', kind: 'new', by: null }],
+      },
+      {
+        author: 'member',
+        label: 'Maker (Test M)',
+        lines: [
+          { text: 'Should the app send reminders every day?', kind: 'new', by: null },
+          { text: 'No, weekly reminders are enough for this kind of app.', kind: 'inside', by: 'Builder (Nico L)' },
+        ],
+      },
+    ])
+  })
+
+  it('credits an answer under a header the app cannot read to an unknown author', () => {
+    const text = [
+      'Danke.',
+      'Am 22.11.2026 um 11:00 schrieb Nico L <nico@example.com>:',
+      '> Answers below.',
+      '> On Nov 21, 2026, at 9:00 AM, Test M <tm@yahoo.com> wrote:',
+      '>> Should the app send reminders every day?',
+      '> No, weekly reminders are enough for this kind of app.',
+    ].join('\n')
+
+    const [reading] = readProjectEmails([fromTestM(text)], members)
+
+    expect(reading.quotes[1].lines[1]).toEqual({
+      text: 'No, weekly reminders are enough for this kind of app.',
+      kind: 'inside',
+      by: 'unknown author',
+    })
+  })
+
   it('names an outsider by name only, and keeps their address out of everything code made', () => {
     const text = [
       'Do what she says.',

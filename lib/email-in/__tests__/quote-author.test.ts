@@ -154,6 +154,34 @@ describe('parseQuoteHeader', () => {
     }
   })
 
+  it('reads a French attribution as it reads "On ... wrote:"', () => {
+    expect(parseQuoteHeader('Le dim. 22 nov. 2026 à 11:00, Nico L <nico@me.com> a écrit :')).toEqual({
+      name: 'Nico L',
+      email: 'nico@me.com',
+      bare: false,
+    })
+    // No space before the colon, a no-break space, and wrapped over two lines.
+    for (const header of [
+      'Le 22 nov. 2026 à 11:00, Nico L <nico@me.com> a écrit:',
+      'Le 22 nov. 2026 à 11:00, Nico L <nico@me.com> a écrit :',
+      'Le dim. 22 nov. 2026 à 11:00, Nico L <\nnico@me.com> a écrit :',
+    ]) {
+      expect(parseQuoteHeader(header)).toEqual({ name: 'Nico L', email: 'nico@me.com', bare: false })
+    }
+    expect(parseQuoteHeader('Le 22 nov. 2026 à 11:00, Bill Duris a écrit :')).toEqual({
+      name: 'Bill Duris',
+      email: null,
+      bare: false,
+    })
+  })
+
+  it('reads a long French attribution quickly', () => {
+    const start = performance.now()
+    parseQuoteHeader('Le 1, a' + ' '.repeat(1970) + 'b a écrit :')
+    parseQuoteHeader('Le ' + ' '.repeat(1980) + 'a écrit :')
+    expect(performance.now() - start).toBeLessThan(50)
+  })
+
   it('lets a field block win over an attribution above it', () => {
     const header =
       'On Nov 22, 2026, at 10:40 AM, Someone Else <se@example.com> wrote:\nFrom: Test M <tm@yahoo.com>\nSent: x'

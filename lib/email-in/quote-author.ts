@@ -7,9 +7,10 @@ import { memberForAddress, type SenderMember } from './sender'
 // display name to "Nico").
 //
 // `header` is the quote header as new-text.ts finds it: `>` markers already
-// stripped, lines joined with "\n". It is either an attribution ("On ... wrote:",
-// possibly wrapped over two lines) or a divider and/or a field block (From:,
-// Sent: or Date:, To:, Subject:). '' means the quote has no header.
+// stripped, lines joined with "\n". It is either an attribution ("On ... wrote:"
+// or the French "Le ... a écrit :", possibly wrapped over two lines) or a
+// divider and/or a field block (From:, Sent: or Date:, To:, Subject:). '' means
+// the quote has no header, or a quoter the app could not identify.
 
 // `bare` is true when the address is a loose token in the text, not one the mail
 // program put in an angle group or a mailto form. false when there is no address.
@@ -125,17 +126,25 @@ export function parseQuoteHeader(header: string): HeaderAuthor {
     return { name: cleanName(stripOpener(beforeAddress(value))), ...headerAddress(value) }
   }
 
-  // Otherwise "On ... wrote:", which a mail client may have wrapped over two
-  // lines. Its address is read the same way, from the text between On and wrote:.
-  const joined = text.split('\n').join(' ')
-  const on = /\bOn\s/.exec(joined)
-  const end = joined.lastIndexOf('wrote:')
-  if (on && end > on.index) {
-    const inner = joined.slice(on.index + on[0].length, end)
-    return { name: attributionName(inner), ...headerAddress(inner) }
-  }
+  // Otherwise "On ... wrote:" or its French form "Le ... a écrit :", which a
+  // mail client may have wrapped over two lines. Its address is read the same
+  // way, from the text between On and wrote: (or Le and a écrit).
+  const inner = attributionInner(text.split('\n').join(' '))
+  if (inner !== null) return { name: attributionName(inner), ...headerAddress(inner) }
 
   return { name: null, email: null, bare: false }
+}
+
+// The text between an attribution's opening word and its closing words, or
+// null when the header is not an attribution. English first, then French.
+function attributionInner(joined: string): string | null {
+  const on = /\bOn\s/.exec(joined)
+  const wrote = joined.lastIndexOf('wrote:')
+  if (on && wrote > on.index) return joined.slice(on.index + on[0].length, wrote)
+  const le = /\bLe\s/.exec(joined)
+  const ecrit = joined.lastIndexOf(' a écrit')
+  if (le && ecrit >= le.index + le[0].length) return joined.slice(le.index + le[0].length, ecrit)
+  return null
 }
 
 export type QuoteAuthor =
