@@ -98,6 +98,7 @@ const mockListRecent = vi.fn(async (_db: unknown, _projectId: string, limit: num
     .sort((a, b) => String(b.received_at).localeCompare(String(a.received_at)))
     .slice(0, limit)
     .map((e) => ({
+      id: e.id,
       from_name: e.from_name,
       from_role: e.from_role,
       received_at: e.received_at,
@@ -315,6 +316,7 @@ describe('GET /api/projects/email-in', () => {
     expect(body.address).toBe('musicforge-abcd@inbox.ibuild4you.com')
     expect(body.recent).toHaveLength(10)
     expect(body.recent[0]).toEqual({
+      id: 'e11_p1',
       from_name: 'Bill 11',
       from_role: 'builder',
       received_at: '2026-11-12T10:00:00.000Z',
@@ -324,7 +326,7 @@ describe('GET /api/projects/email-in', () => {
     expect(mockListRecent).toHaveBeenCalledWith(expect.anything(), 'p1', 10)
     expect(mockListAll).not.toHaveBeenCalled()
     for (const row of body.recent) {
-      expect(Object.keys(row).sort()).toEqual(['from_name', 'from_role', 'received_at', 'subject'])
+      expect(Object.keys(row).sort()).toEqual(['from_name', 'from_role', 'id', 'received_at', 'subject'])
     }
     const raw = JSON.stringify(body)
     expect(raw).not.toContain('SECRET BODY')
