@@ -819,6 +819,17 @@ export const copy = {
     loading: 'Loading…',
     error: 'Could not create the project email address.',
     loadError: 'Could not load the project email address.',
+    // A row opens the email as the note writer read it (builder only).
+    openFrom: (day: string, name: string, role: string) => `${day} · ${name} (${role})`,
+    openIntro: 'This is the email as the note writer read it. Its text never goes into the brief word for word.',
+    openRepeat: 'This email repeats an earlier one from the same sender, so the note writer skipped it.',
+    openNothingNew: 'Nothing in this email was new: every line was already held.',
+    openTruncated: 'This email was longer than the app keeps. The end of it was cut.',
+    openTyped: 'Typed',
+    openQuoted: (label: string) => `Quoted, written by ${label}`,
+    openContext: 'Already recorded, shown for context',
+    openInside: (by: string) => `Written inside the quote by ${by}`,
+    openError: 'Could not load this email.',
   },
 
   // --- General ---

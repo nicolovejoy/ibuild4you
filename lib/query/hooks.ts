@@ -1241,7 +1241,7 @@ export function useRevokeBuildStatusKey() {
 export interface ProjectEmailIn {
   address: string | null
   // The newest 10, newest first. Who and when only; the server never sends email text.
-  recent: { from_name: string; from_role: 'maker' | 'builder'; received_at: string; subject: string }[]
+  recent: { id: string; from_name: string; from_role: 'maker' | 'builder'; received_at: string; subject: string }[]
   dropped: {
     not_member: number
     auth_failed: number
@@ -1260,6 +1260,42 @@ export function useProjectEmailIn(projectId: string | undefined) {
       return res.json()
     },
     enabled: !!projectId,
+    retry: false,
+  })
+}
+
+// One received email as the note writer read it (GET /api/projects/email-in/message).
+// Lines of kind 'new' were not held before, 'context' were already held, 'inside'
+// were written into a quote by `by`; a '' text is a blank line.
+export interface ProjectEmailMessage {
+  id: string
+  from_name: string
+  from_role: 'maker' | 'builder'
+  received_at: string
+  subject: string
+  truncated: boolean
+  repeat: boolean
+  typed: string
+  quotes: {
+    header: string
+    author: 'member' | 'outsider' | 'unknown'
+    label: string
+    lines: { text: string; kind: 'new' | 'context' | 'inside'; by: string | null }[]
+  }[]
+}
+
+// Fetches only once a row is chosen (emailId set).
+export function useProjectEmailMessage(projectId: string, emailId: string | null) {
+  return useQuery<ProjectEmailMessage>({
+    queryKey: queryKeys.projectEmailMessage(projectId, emailId),
+    queryFn: async () => {
+      const res = await apiFetch(
+        `/api/projects/email-in/message?project_id=${encodeURIComponent(projectId)}&email_id=${encodeURIComponent(emailId ?? '')}`
+      )
+      if (!res.ok) throw new HttpError('Failed to load project email', res.status)
+      return res.json()
+    },
+    enabled: !!emailId,
     retry: false,
   })
 }

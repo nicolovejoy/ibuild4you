@@ -10,7 +10,7 @@ import React from 'react'
 const ADDRESS = 'musicforge-7k2q@inbox.ibuild4you.com'
 type Status = {
   address: string | null
-  recent: { from_name: string; from_role: 'maker' | 'builder'; received_at: string; subject: string }[]
+  recent: { id: string; from_name: string; from_role: 'maker' | 'builder'; received_at: string; subject: string }[]
   dropped: {
     not_member: number
     auth_failed: number
@@ -21,7 +21,12 @@ type Status = {
 }
 const noDrops = { not_member: 0, auth_failed: 0, over_limit: 0, last_at: null, last_auth_failed_from: null }
 let status: Status
-const apiFetchMock = vi.fn(async (_url: string, init?: { method?: string }) => {
+// What GET /api/projects/email-in/message answers: a body and a status.
+let message: { body: unknown; status: number }
+const apiFetchMock = vi.fn(async (url: string, init?: { method?: string }) => {
+  if (url.startsWith('/api/projects/email-in/message')) {
+    return new Response(JSON.stringify(message.body), { status: message.status })
+  }
   if (init?.method === 'POST') {
     status = { ...status, address: ADDRESS }
     return new Response(JSON.stringify({ address: ADDRESS }), { status: 200 })
@@ -33,6 +38,18 @@ vi.mock('@/lib/firebase/api-fetch', () => ({
 }))
 
 import { ProjectEmailPanel, canSeeProjectEmail } from '../ProjectEmailPanel'
+
+const baseMessage = {
+  id: 'e1',
+  from_name: 'Bill Duris',
+  from_role: 'maker',
+  received_at: '2026-11-20T02:00:00.000Z',
+  subject: 'Re: the menu',
+  truncated: false,
+  repeat: false,
+  typed: '',
+  quotes: [] as unknown[],
+}
 
 const writeText = vi.fn().mockResolvedValue(undefined)
 
@@ -47,6 +64,7 @@ function renderPanel() {
 
 beforeEach(() => {
   status = { address: null, recent: [], dropped: noDrops }
+  message = { body: baseMessage, status: 200 }
   apiFetchMock.mockClear()
   writeText.mockClear()
   Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
@@ -80,8 +98,8 @@ describe('ProjectEmailPanel with an address', () => {
       address: ADDRESS,
       recent: [
         // 02:00 UTC on Nov 20 is still Nov 19 in Pacific.
-        { from_name: 'Bill Duris', from_role: 'maker', received_at: '2026-11-20T02:00:00.000Z', subject: 'Re: the menu' },
-        { from_name: 'Nico', from_role: 'builder', received_at: '2026-11-18T18:00:00.000Z', subject: '' },
+        { id: 'e1', from_name: 'Bill Duris', from_role: 'maker', received_at: '2026-11-20T02:00:00.000Z', subject: 'Re: the menu' },
+        { id: 'e2', from_name: 'Nico', from_role: 'builder', received_at: '2026-11-18T18:00:00.000Z', subject: '' },
       ],
       dropped: noDrops,
     }
@@ -101,8 +119,9 @@ describe('ProjectEmailPanel with an address', () => {
   it('lists one row per received email with a Pacific day', async () => {
     renderPanel()
     expect(await screen.findByText('Received')).toBeTruthy()
-    expect(screen.getByText('November 19 · Bill Duris (maker) · Re: the menu')).toBeTruthy()
-    expect(screen.getByText('November 18 · Nico (builder) · (no subject)')).toBeTruthy()
+    // Each row is a button that opens the email; its name is the row text.
+    expect(screen.getByRole('button', { name: 'November 19 · Bill Duris (maker) · Re: the menu' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'November 18 · Nico (builder) · (no subject)' })).toBeTruthy()
     expect(screen.queryByText('Nothing received yet.')).toBeNull()
   })
 
@@ -171,6 +190,130 @@ describe('ProjectEmailPanel with an address', () => {
     await screen.findByLabelText('Project email address')
     expect(screen.queryByText(/ignored|not read/)).toBeNull()
     expect(screen.queryByText(/Last one/)).toBeNull()
+  })
+})
+
+// A row opens the stored email as the note writer read it, in a modal.
+describe('ProjectEmailPanel opening an email', () => {
+  const MENU_ROW = 'November 19 · Bill Duris (maker) · Re: the menu'
+  const NO_SUBJECT_ROW = 'November 18 · Nico (builder) · (no subject)'
+
+  beforeEach(() => {
+    status = {
+      address: ADDRESS,
+      recent: [
+        { id: 'e1', from_name: 'Bill Duris', from_role: 'maker', received_at: '2026-11-20T02:00:00.000Z', subject: 'Re: the menu' },
+        { id: 'e/2', from_name: 'Nico', from_role: 'builder', received_at: '2026-11-18T18:00:00.000Z', subject: '' },
+      ],
+      dropped: noDrops,
+    }
+  })
+
+  const open = async (row = MENU_ROW) => {
+    renderPanel()
+    fireEvent.click(await screen.findByRole('button', { name: row }))
+  }
+    const messageCalls = () => apiFetchMock.mock.calls.filter(([url]) => url.startsWith('/api/projects/email-in/message'))
+
+  it('asks for that row\'s email with both ids encoded, and titles the dialog with the subject', async () => {
+    await open(NO_SUBJECT_ROW)
+    // The row with no subject titles the dialog (no subject).
+    expect(await screen.findByRole('heading', { name: '(no subject)' })).toBeTruthy()
+    await waitFor(() => expect(messageCalls().length).toBe(1))
+    expect(messageCalls()[0][0]).toBe('/api/projects/email-in/message?project_id=p1&email_id=e%2F2')
+  })
+
+  it('does not ask for any email until a row is clicked', async () => {
+    renderPanel()
+    await screen.findByRole('button', { name: MENU_ROW })
+    expect(messageCalls()).toHaveLength(0)
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('shows the from line, the intro and the subject as the title while it loads', async () => {
+    await open()
+    expect(screen.getByRole('heading', { name: 'Re: the menu' })).toBeTruthy()
+    expect(screen.getByRole('dialog').textContent).toContain('Loading…')
+    expect(
+      await screen.findByText('This is the email as the note writer read it. Its text never goes into the brief word for word.')
+    ).toBeTruthy()
+    expect(screen.getByText('November 19 · Bill Duris (maker)')).toBeTruthy()
+  })
+
+  it('shows typed text, a quote with context, inside and new lines, each caption once', async () => {
+    message = {
+      status: 200,
+      body: {
+        ...baseMessage,
+        typed: 'Sounds good.\nSee you Friday.',
+        quotes: [
+          {
+            header: 'On Nov 18, Bill wrote:',
+            author: 'member',
+            label: 'Bill Duris',
+            lines: [
+              { text: 'Old line one', kind: 'context', by: null },
+              { text: 'Old line two', kind: 'context', by: null },
+              { text: '', kind: 'context', by: null },
+              { text: 'Old line three', kind: 'context', by: null },
+              { text: 'My answer inline', kind: 'inside', by: 'Nico' },
+              { text: 'A brand new line', kind: 'new', by: null },
+            ],
+          },
+        ],
+      },
+    }
+    await open()
+    expect(await screen.findByText('Typed')).toBeTruthy()
+    const typed = screen.getByText(/Sounds good\./)
+    expect(typed.textContent).toBe('Sounds good.\nSee you Friday.')
+    expect(typed.className).toContain('whitespace-pre-wrap')
+    expect(screen.getByText('Quoted, written by Bill Duris')).toBeTruthy()
+    expect(screen.getByText('On Nov 18, Bill wrote:')).toBeTruthy()
+    // One caption per group: the blank line did not split the context group.
+    expect(screen.getAllByText('Already recorded, shown for context')).toHaveLength(1)
+    expect(screen.getAllByText('Written inside the quote by Nico')).toHaveLength(1)
+    for (const text of ['Old line one', 'Old line two', 'Old line three', 'My answer inline', 'A brand new line']) {
+      expect(screen.getByText(text)).toBeTruthy()
+    }
+    expect(screen.queryByText('Nothing in this email was new: every line was already held.')).toBeNull()
+  })
+
+  it('says a repeat was skipped', async () => {
+    message = { status: 200, body: { ...baseMessage, repeat: true } }
+    await open()
+    expect(
+      await screen.findByText('This email repeats an earlier one from the same sender, so the note writer skipped it.')
+    ).toBeTruthy()
+    // A repeat has nothing new by definition; it is not also called "nothing new".
+    expect(screen.queryByText(/Nothing in this email was new/)).toBeNull()
+  })
+
+  it('says when nothing in the email was new', async () => {
+    await open()
+    expect(await screen.findByText('Nothing in this email was new: every line was already held.')).toBeTruthy()
+    expect(screen.queryByText('Typed')).toBeNull()
+  })
+
+  it('says when the end of the email was cut', async () => {
+    message = { status: 200, body: { ...baseMessage, typed: 'Hello', truncated: true } }
+    await open()
+    expect(await screen.findByText('This email was longer than the app keeps. The end of it was cut.')).toBeTruthy()
+  })
+
+  it('shows an error when the email cannot be loaded', async () => {
+    message = { status: 500, body: {} }
+    await open()
+    const alert = await screen.findByRole('alert')
+    expect(alert.textContent).toBe('Could not load this email.')
+  })
+
+  it('closing the dialog removes it', async () => {
+    await open()
+    await screen.findByText('Nothing in this email was new: every line was already held.')
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(screen.queryByRole('heading', { name: 'Re: the menu' })).toBeNull()
   })
 })
 
