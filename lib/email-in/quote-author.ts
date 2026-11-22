@@ -11,7 +11,9 @@ import { memberForAddress, type SenderMember } from './sender'
 // possibly wrapped over two lines) or a divider and/or a field block (From:,
 // Sent: or Date:, To:, Subject:). '' means the quote has no header.
 
-export type HeaderAuthor = { name: string | null; email: string | null }
+// `bare` is true when the address is a loose token in the text, not one the mail
+// program put in an angle group or a mailto form. false when there is no address.
+export type HeaderAuthor = { name: string | null; email: string | null; bare: boolean }
 
 // A quote header is a few lines. Cutting here keeps every pattern below cheap
 // whatever the sender put in the email.
@@ -22,8 +24,6 @@ const MAX_HEADER_LENGTH = 2000
 // after it is left out.
 const ADDRESS = /[A-Za-z0-9][A-Za-z0-9._%+'-]*@[A-Za-z0-9.-]+\.[A-Za-z0-9-]+/g
 const FROM_LINE = /^\s*From:(.*)$/im
-// What leads into an address after the name: "Name <", "Name [mailto:".
-const ADDRESS_OPENER = /[\s<[(]*(?:mailto:)?\s*$/i
 // Where the address part starts: an angle group or a [mailto:...] form.
 const GROUP_START = /<|\[mailto:/i
 // An innermost angle group, and an Outlook [mailto:...] form. In
@@ -33,7 +33,7 @@ const MAILTO_GROUP = /\[mailto:([^\]]*)\]/gi
 // Pieces between an attribution's date and its name. A time zone counts only
 // when it follows the time or AM/PM directly: with a comma between, the capitals
 // are the start of the name ("10:40 AM, DJ Khaled").
-const AM_PM = /^(?:AM|PM)\b/
+const AM_PM = /^ *(?:AM|PM)\b/
 const TIME_ZONE = /^ *[A-Z]{2,5}\b/
 
 // The first address-shaped token that is a valid address, normalized.
@@ -42,20 +42,35 @@ function firstAddress(text: string): string | null {
   return token && isValidEmail(token) ? normalizeEmail(token) : null
 }
 
+// What leads into an address after the name ("Name <", "Name [mailto:") is cut
+// off the end of the name. Done by index, with no regex, so that a long run of
+// spaces or brackets cannot make it slow.
+function isOpenerChar(c: string): boolean {
+  return c === '<' || c === '[' || c === '(' || /\s/.test(c)
+}
+function stripOpener(text: string): string {
+  let end = text.length
+  while (end > 0 && isOpenerChar(text[end - 1])) end--
+  if (text.slice(0, end).toLowerCase().endsWith('mailto:')) end -= 'mailto:'.length
+  while (end > 0 && isOpenerChar(text[end - 1])) end--
+  return text.slice(0, end)
+}
+
 // The author's address in a From: value or an attribution's middle.
 // Display names are written by whoever sent the original mail, so an address
 // inside one proves nothing. The real address is the one in the LAST angle
 // group or [mailto:] form; if that group holds no valid address there is none,
 // and no other token is tried. Only when the text has no group at all is a bare
 // address taken, and then only if it is the one address-shaped token in it.
-function headerAddress(text: string): string | null {
+function headerAddress(text: string): { email: string | null; bare: boolean } {
   const groups = [...text.matchAll(ANGLE_GROUP), ...text.matchAll(MAILTO_GROUP)]
   if (groups.length > 0) {
     groups.sort((a, b) => a.index - b.index)
-    return firstAddress(groups[groups.length - 1][1])
+    return { email: firstAddress(groups[groups.length - 1][1]), bare: false }
   }
   const tokens = text.match(ADDRESS)
-  return tokens?.length === 1 ? firstAddress(tokens[0]) : null
+  const email = tokens?.length === 1 ? firstAddress(tokens[0]) : null
+  return { email, bare: email !== null }
 }
 
 // The text before the address part: up to the first group, or else up to the
@@ -81,13 +96,16 @@ function cleanName(raw: string): string | null {
 // the last token that holds a digit (a date or a time), then an AM or PM and
 // a time zone such as PST. With no digit there is no date to drop.
 function attributionName(inner: string): string | null {
-  const tokens = beforeAddress(inner).replace(ADDRESS_OPENER, '').split(/\s+/)
+  const tokens = stripOpener(beforeAddress(inner)).split(/\s+/)
   let lastDigit = -1
   tokens.forEach((token, i) => {
     if (/\d/.test(token)) lastDigit = i
   })
-  const afterDate = tokens.slice(lastDigit + 1).join(' ')
-  if (lastDigit < 0) return cleanName(afterDate)
+  if (lastDigit < 0) return cleanName(tokens.join(' '))
+  // A comma that ended the date token ("at 18:40, DJ Khaled") stays in front of
+  // the rest, so the time zone check sees it and leaves the name alone.
+  const comma = tokens[lastDigit].endsWith(',') ? ',' : ''
+  const afterDate = `${comma} ${tokens.slice(lastDigit + 1).join(' ')}`
   return cleanName(
     afterDate
       .replace(AM_PM, '')
@@ -104,10 +122,7 @@ export function parseQuoteHeader(header: string): HeaderAuthor {
   const from = FROM_LINE.exec(text)
   if (from) {
     const value = from[1].trim()
-    return {
-      name: cleanName(beforeAddress(value).replace(ADDRESS_OPENER, '')),
-      email: headerAddress(value),
-    }
+    return { name: cleanName(stripOpener(beforeAddress(value))), ...headerAddress(value) }
   }
 
   // Otherwise "On ... wrote:", which a mail client may have wrapped over two
@@ -117,10 +132,10 @@ export function parseQuoteHeader(header: string): HeaderAuthor {
   const end = joined.lastIndexOf('wrote:')
   if (on && end > on.index) {
     const inner = joined.slice(on.index + on[0].length, end)
-    return { name: attributionName(inner), email: headerAddress(inner) }
+    return { name: attributionName(inner), ...headerAddress(inner) }
   }
 
-  return { name: null, email: null }
+  return { name: null, email: null, bare: false }
 }
 
 export type QuoteAuthor =
@@ -130,12 +145,15 @@ export type QuoteAuthor =
 
 export function resolveQuoteAuthor(header: string, members: SenderMember[]): QuoteAuthor {
   const parsed = parseQuoteHeader(header)
-  const { email } = parsed
+  const { email, bare } = parsed
   // A header name that is itself address-shaped (a display name set to
   // someone's address) is never kept: no full address goes into a label.
   const name = parsed.name?.includes('@') ? null : parsed.name
   if (email) {
-    const member = memberForAddress(email, members)
+    // A bare address never identifies a member: one the mail program wrote sits
+    // in an angle or mailto group, but a loose one may be a display name that an
+    // outsider chose to look like a member.
+    const member = bare ? null : memberForAddress(email, members)
     // The member's own display name, not the one the header shows.
     if (member) return { kind: 'member', role: member.role, name: member.name }
     // Not a member: the header's name, else the address's local part.
@@ -150,7 +168,8 @@ export function resolveQuoteAuthor(header: string, members: SenderMember[]): Quo
 // Control characters and line separators become spaces, then " < > go,
 // whitespace collapses, and it is cut to 80 characters.
 function cleanForLabel(name: string): string {
-  const spaced = name.replace(/[\p{Cc}\p{Zl}\p{Zp}]/gu, ' ')
+  // Format characters (bidi overrides, zero-width spaces) go without a trace.
+  const spaced = name.replace(/\p{Cf}/gu, '').replace(/[\p{Cc}\p{Zl}\p{Zp}]/gu, ' ')
   const collapsed = spaced.replace(/["<>]/g, '').replace(/\s+/g, ' ').trim()
   return Array.from(collapsed).slice(0, 80).join('').trim()
 }

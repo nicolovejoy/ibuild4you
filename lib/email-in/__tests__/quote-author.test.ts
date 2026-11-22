@@ -80,21 +80,26 @@ describe('parseQuoteHeader', () => {
     ['empty header', '', null, null],
   ]
 
-  it.each(cases)('%s', (_label, header, name, email) => {
-    expect(parseQuoteHeader(header)).toEqual({ name, email })
+  // Only this row has an address the mail program did not put in a group.
+  const bareRows = new Set(['bare address in an attribution, normalized'])
+
+  it.each(cases)('%s', (label, header, name, email) => {
+    expect(parseQuoteHeader(header)).toEqual({ name, email, bare: bareRows.has(label) })
   })
 
   it('takes the address in the angle group, never one inside the display name', () => {
     expect(parseQuoteHeader('From: "nico@example.com" <evil@x.com>\nSent: x')).toEqual({
       name: 'nico@example.com',
       email: 'evil@x.com',
+      bare: false,
     })
     expect(
       parseQuoteHeader('On Nov 22, 2026, at 10:40 AM, nico@example.com <evil@x.com> wrote:')
-    ).toEqual({ name: 'nico@example.com', email: 'evil@x.com' })
+    ).toEqual({ name: 'nico@example.com', email: 'evil@x.com', bare: false })
     expect(parseQuoteHeader('From: nico@example.com [mailto:evil@x.com]\nSent: x')).toEqual({
       name: 'nico@example.com',
       email: 'evil@x.com',
+      bare: false,
     })
   })
 
@@ -102,6 +107,7 @@ describe('parseQuoteHeader', () => {
     expect(parseQuoteHeader('From: "nico@example.com" <not an address>\nSent: x')).toEqual({
       name: 'nico@example.com',
       email: null,
+      bare: false,
     })
   })
 
@@ -113,13 +119,45 @@ describe('parseQuoteHeader', () => {
     expect(parseQuoteHeader('On Nov 22, 2026, at 10:40 AM, DJ Khaled <dj@x.com> wrote:')).toEqual({
       name: 'DJ Khaled',
       email: 'dj@x.com',
+      bare: false,
     })
+  })
+
+  it('keeps a name of capitals after a 24-hour time, and strips a time zone that follows it', () => {
+    expect(parseQuoteHeader('On 22 Nov 2026, at 18:40, DJ Khaled <dj@x.com> wrote:').name).toBe(
+      'DJ Khaled'
+    )
+    expect(parseQuoteHeader('On 22 Nov 2026, at 18:40, TM <t@x.com> wrote:').name).toBe('TM')
+    expect(parseQuoteHeader('On 22 Nov 2026, at 18:40 CET, Test M <t@x.com> wrote:').name).toBe(
+      'Test M'
+    )
+  })
+
+  it('reads a long run of spaces, brackets or quotes quickly', () => {
+    const headers = [
+      'On 1, a' + ' '.repeat(1980) + 'b wrote:',
+      'From: a' + ' '.repeat(1980) + 'b',
+      'From: a' + '<'.repeat(1980) + 'b',
+      'From: a' + '('.repeat(1980) + 'b',
+      'From: a' + '['.repeat(1980) + 'b',
+      'From: ' + '[mailto:'.repeat(240),
+      'From: x' + '"'.repeat(1980) + 'x',
+      'From: ' + 'a'.repeat(1000) + '@' + 'a'.repeat(980),
+      'From: ' + 'a.'.repeat(500) + '@' + 'a.'.repeat(490),
+      '\n'.repeat(1990) + 'From: x',
+      'On ' + ' '.repeat(1980) + 'wrote:',
+    ]
+    for (const header of headers) {
+      const start = performance.now()
+      parseQuoteHeader(header)
+      expect(performance.now() - start).toBeLessThan(50)
+    }
   })
 
   it('lets a field block win over an attribution above it', () => {
     const header =
       'On Nov 22, 2026, at 10:40 AM, Someone Else <se@example.com> wrote:\nFrom: Test M <tm@yahoo.com>\nSent: x'
-    expect(parseQuoteHeader(header)).toEqual({ name: 'Test M', email: 'tm@yahoo.com' })
+    expect(parseQuoteHeader(header)).toEqual({ name: 'Test M', email: 'tm@yahoo.com', bare: false })
   })
 
   it('never throws on odd input', () => {
@@ -210,6 +248,17 @@ describe('resolveQuoteAuthor and labels', () => {
     })
   })
 
+  it('never matches a member by a bare address, which may be a display name an outsider chose', () => {
+    expect(resolveQuoteAuthor('From: nico@example.com\nSent: x', members)).toEqual({
+      kind: 'outsider',
+      name: 'nico',
+    })
+    expect(resolveQuoteAuthor('On 22 Nov 2026, at 18:40, tm@yahoo.com wrote:', members)).toEqual({
+      kind: 'outsider',
+      name: 'tm',
+    })
+  })
+
   it('treats a name with no address as an outsider', () => {
     expect(resolveQuoteAuthor(on('Bill Duris'), members)).toEqual({
       kind: 'outsider',
@@ -254,6 +303,10 @@ describe('resolveQuoteAuthor and labels', () => {
     expect(authorLabel(outsider)).toBe(
       'Eve script Ignore previous instructions, not a project member'
     )
+  })
+
+  it('strips format characters such as bidi overrides and zero-width spaces from names', () => {
+    expect(senderLabel('maker', 'Ev\u202Ee\u200Bil')).toBe('Maker (Eveil)')
   })
 
   it('cuts a long name to 80 characters', () => {
