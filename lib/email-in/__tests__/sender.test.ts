@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { checkSender } from '../sender'
+import { checkSender, memberForAddress } from '../sender'
 
 const members = [
   { email: 'bduris@aol.com', role: 'maker', display_name: 'Bill Duris' },
@@ -378,5 +378,42 @@ describe('checkSender', () => {
         from_role: 'builder',
       })
     }
+  })
+})
+
+describe('memberForAddress', () => {
+  it('gives the role and display name of an active maker row', () => {
+    expect(memberForAddress('bduris@aol.com', members)).toEqual({
+      role: 'maker',
+      name: 'Bill Duris',
+    })
+  })
+
+  it('ignores a removed row', () => {
+    expect(memberForAddress('gone@example.com', members)).toBeNull()
+  })
+
+  it('gives null for a row with an unknown role', () => {
+    const rows = [{ email: 'v@example.com', role: 'viewer', display_name: 'V' }]
+    expect(memberForAddress('v@example.com', rows)).toBeNull()
+  })
+
+  it('gives null for an address that is not a member', () => {
+    expect(memberForAddress('nobody@example.com', members)).toBeNull()
+  })
+
+  it('takes builder when active rows for one address disagree on role', () => {
+    const rows = [
+      { email: 'dup@example.com', role: 'maker', display_name: 'Dup' },
+      { email: 'dup@example.com', role: 'apprentice' },
+    ]
+    expect(memberForAddress('dup@example.com', rows)).toEqual({ role: 'builder', name: 'Dup' })
+  })
+
+  it('falls back to the local part when no row has a display name', () => {
+    expect(memberForAddress('app@example.com', members)).toEqual({
+      role: 'builder',
+      name: 'app',
+    })
   })
 })

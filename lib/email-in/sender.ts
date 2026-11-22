@@ -88,6 +88,26 @@ function emailRole(role: unknown): 'maker' | 'builder' | null {
   return null
 }
 
+// The active member rows for this normalized address, as one member, or null.
+// Every active row for the address must have a known role. If two rows
+// disagree, builder side wins, so an ambiguous row never reads as the maker's
+// words. Shared by checkSender (who sent this) and quote-author (who wrote a
+// quoted block), so both read a member the same way.
+export function memberForAddress(
+  address: string,
+  members: SenderMember[]
+): { role: 'maker' | 'builder'; name: string } | null {
+  const rows = members.filter((m) => !m.removed_at && normalizeEmail(m.email) === address)
+  if (rows.length === 0) return null
+  const roles = rows.map((m) => emailRole(m.role))
+  if (roles.includes(null)) return null
+  const role: 'maker' | 'builder' = roles.includes('builder') ? 'builder' : 'maker'
+  const member = rows.find((m) => m.display_name?.trim()) ?? rows[0]
+  // Same fallback as getUserDisplayName: the address's local part.
+  const name = member.display_name?.trim() || address.split('@')[0]
+  return { role, name }
+}
+
 export function checkSender(args: {
   from: string
   dmarc: string | null
@@ -96,21 +116,12 @@ export function checkSender(args: {
   const address = fromAddress(args.from)
   if (!address) return { ok: false, reason: 'not_member' }
 
-  // Every active row for this address must have a known role. If two rows
-  // disagree, builder side wins, so an ambiguous row never reads as the
-  // maker's words.
-  const rows = args.members.filter((m) => !m.removed_at && normalizeEmail(m.email) === address)
-  if (rows.length === 0) return { ok: false, reason: 'not_member' }
-  const roles = rows.map((m) => emailRole(m.role))
-  if (roles.includes(null)) return { ok: false, reason: 'not_member' }
-  const role: 'maker' | 'builder' = roles.includes('builder') ? 'builder' : 'maker'
-  const member = rows.find((m) => m.display_name?.trim()) ?? rows[0]
+  const member = memberForAddress(address, args.members)
+  if (!member) return { ok: false, reason: 'not_member' }
 
   // The claimed sender is a member, so keeping the address is fine: it is what
   // tells the builder that this member's mail is being refused.
   if (args.dmarc !== 'pass') return { ok: false, reason: 'auth_failed', from_email: address }
 
-  // Same fallback as getUserDisplayName: the address's local part.
-  const from_name = member.display_name?.trim() || address.split('@')[0]
-  return { ok: true, from_email: address, from_name, from_role: role }
+  return { ok: true, from_email: address, from_name: member.name, from_role: member.role }
 }
