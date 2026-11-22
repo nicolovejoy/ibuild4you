@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   parseQuoteHeader,
+  resolveAttributionAuthor,
   resolveQuoteAuthor,
   senderLabel,
   authorLabel,
@@ -188,6 +189,91 @@ describe('parseQuoteHeader', () => {
     expect(parseQuoteHeader(header)).toEqual({ name: 'Test M', email: 'tm@yahoo.com', bare: false })
   })
 
+  it('reads the From: line, or else the attribution alone, never the field lines under it', () => {
+    // A field line under an attribution is the quoted message's first text as
+    // often as a field: it never names the author.
+    expect(
+      parseQuoteHeader(
+        'On Nov 22, 2026, at 10:40 AM, Dana Reyes <dana@books.example> wrote:\nSubject: On 1, <tm@yahoo.com> wrote:'
+      )
+    ).toEqual({ name: 'Dana Reyes', email: 'dana@books.example', bare: false })
+    expect(parseQuoteHeader('Begin forwarded message:\n\nSubject: On 1, T <tm@yahoo.com> wrote:')).toEqual({
+      name: null,
+      email: null,
+      bare: false,
+    })
+  })
+
+  it('reads an attribution in its own language, whatever the display name holds', () => {
+    expect(
+      parseQuoteHeader('Le 22 nov. 2026 à 11:00, On <tm@yahoo.com> wrote: <evil@x.com> a écrit :').email
+    ).toBe('evil@x.com')
+    expect(
+      parseQuoteHeader('Le 22 nov. 2026 à 11:00, On <tm@yahoo.com> wrote: <\nevil@x.com> a écrit:').email
+    ).toBe('evil@x.com')
+    expect(
+      parseQuoteHeader('On 22 Nov 2026, at 11:00, Le <tm@yahoo.com> a écrit : <evil@x.com> wrote:').email
+    ).toBe('evil@x.com')
+  })
+
+  // A wrapped attribution whose second line looks like a field ends at its first
+  // line here: it is no whole attribution, so the address left in it is not read.
+  it('reads nobody from an attribution cut short by a line that looks like a field', () => {
+    expect(
+      parseQuoteHeader('On Nov 22, 2026, x <tm@yahoo.com> wrote: y\nSubject: <evil@x.com> wrote:')
+    ).toEqual({ name: null, email: null, bare: false })
+  })
+
+  // A cut could move which address is last, so nothing is cut: a line too long
+  // to read gives no author.
+  it('gives no author for a From: line or an attribution too long to read', () => {
+    const nobody = { name: null, email: null, bare: false }
+    const long = 'x'.repeat(2100)
+    expect(parseQuoteHeader(`From: Test M <tm@yahoo.com> ${long} <evil@x.com>\nSent: 2026`)).toEqual(nobody)
+    expect(parseQuoteHeader(`On 1, Test M <tm@yahoo.com> ${long} <evil@x.com> wrote:`)).toEqual(nobody)
+    // It does not fall back to the attribution above it either.
+    expect(
+      parseQuoteHeader(`On 1, Test M <tm@yahoo.com> wrote:\nFrom: T <tm@yahoo.com> ${long}`)
+    ).toEqual(nobody)
+  })
+
+  it('reads the From: line of a header that is long only because of its To: list', () => {
+    const header = (fields: string[]) => parseQuoteHeader(fields.join('\n'))
+    const to = `To: ${'someone@example.com, '.repeat(2000)}`
+    const author = { name: 'Test M', email: 'tm@yahoo.com', bare: false }
+    expect(header(['From: Test M <tm@yahoo.com>', 'Sent: x', to])).toEqual(author)
+    expect(header([to, 'From: Test M <tm@yahoo.com>', 'Sent: x'])).toEqual(author)
+    expect(header(['On Nov 22, 2026, at 10:40 AM, Test M <tm@yahoo.com> wrote:', to])).toEqual(author)
+  })
+
+  // Only "\n" ends a line here, as in new-text.ts: a line separator inside a
+  // display name does not cut the From: line short.
+  it('reads the whole From: line past a carriage return or a Unicode line separator', () => {
+    for (const separator of ['\r', ' ', ' ']) {
+      expect(parseQuoteHeader(`From: Test M <tm@yahoo.com>${separator} <evil@x.com>\nSent: x`).email).toBe(
+        'evil@x.com'
+      )
+    }
+  })
+
+  it('reads a hostile 50,000-character header quickly', () => {
+    const headers = [
+      'From: ' + 'a'.repeat(25000) + '@' + 'a.'.repeat(12500),
+      'On 1, ' + '<'.repeat(50000) + ' wrote:',
+      'Le 1 ' + ' a écrit'.repeat(6000) + ' a écrit :',
+      'Le ' + ' '.repeat(50000) + 'a écrit :',
+      'To: x\n'.repeat(8000) + 'From: x',
+      '\n'.repeat(50000) + 'From: x',
+      'On 1 wrote:' + '\nFrom: x <a@b.co>'.repeat(3000),
+      ' '.repeat(50000) + 'From: x',
+    ]
+    for (const header of headers) {
+      const start = performance.now()
+      parseQuoteHeader(header)
+      expect(performance.now() - start).toBeLessThan(100)
+    }
+  })
+
   it('never throws on odd input', () => {
     for (const header of [
       ' ',
@@ -298,6 +384,47 @@ describe('resolveQuoteAuthor and labels', () => {
     expect(resolveQuoteAuthor(on('dana@books.example'), members)).toEqual({
       kind: 'outsider',
       name: 'dana',
+    })
+  })
+
+  it('credits an outsider whose display name holds an attribution in the other language', () => {
+    for (const header of [
+      'Le 22 nov. 2026 à 11:00, On <tm@yahoo.com> wrote: <evil@x.com> a écrit :',
+      'On 22 Nov 2026, at 11:00, Le <tm@yahoo.com> a écrit : <evil@x.com> wrote:',
+    ]) {
+      expect(resolveQuoteAuthor(header, members).kind).toBe('outsider')
+    }
+  })
+
+  describe('resolveAttributionAuthor', () => {
+    const dana = on('Dana Reyes <dana@books.example>')
+    const from = 'From: Test M <tm@yahoo.com>\nSent: x'
+
+    it('names the attribution above a From: line', () => {
+      expect(resolveAttributionAuthor(`${dana}\n${from}`, members)).toEqual({
+        kind: 'outsider',
+        name: 'Dana Reyes',
+      })
+      expect(resolveAttributionAuthor(`${on('N <nico@example.com>')}\n${from}`, members)).toEqual({
+        kind: 'member',
+        role: 'builder',
+        name: 'Nico L',
+      })
+    })
+
+    it('is unknown when that attribution cannot be read', () => {
+      const long = on(`${'x'.repeat(2100)} <tm@yahoo.com>`)
+      expect(resolveAttributionAuthor(`${long}\n${from}`, members)).toEqual({ kind: 'unknown' })
+      // A wrapped attribution whose second line looks like a From: field.
+      expect(
+        resolveAttributionAuthor('On Nov 22, 2026, Dana\nFrom: Test M <tm@yahoo.com> wrote:', members)
+      ).toEqual({ kind: 'unknown' })
+    })
+
+    it('is null without both an attribution and a From: line', () => {
+      for (const header of [dana, from, `${dana}\nSubject: x`, `Begin forwarded message:\n\n${from}`, '']) {
+        expect(resolveAttributionAuthor(header, members)).toBeNull()
+      }
     })
   })
 

@@ -7,7 +7,13 @@ import {
   splitNewText,
   type QuoteBlock,
 } from './new-text'
-import { authorLabel, resolveQuoteAuthor, senderLabel, type QuoteAuthor } from './quote-author'
+import {
+  authorLabel,
+  resolveAttributionAuthor,
+  resolveQuoteAuthor,
+  senderLabel,
+  type QuoteAuthor,
+} from './quote-author'
 import type { SenderMember } from './sender'
 
 // One reading of each project email: what its sender typed, and each quoted
@@ -37,14 +43,38 @@ export type EmailReading = {
   quotes: ReadingQuote[]
 }
 
-// Resolves a header to its author, each distinct header once per email: the
-// same header sits in the chain of every quote nested under it.
-type Resolve = (header: string) => QuoteAuthor
+// What a quote header says about who a credit depends on.
+// author: who wrote the message under it (resolveQuoteAuthor).
+// attribution: the author of the attribution above its From: line, who could
+//   have written that name; null when there is none (resolveAttributionAuthor).
+// nonMember: the one of these who is not a member (an outsider or unknown), the
+//   author first; null when there is none.
+type HeaderCredit = {
+  author: QuoteAuthor
+  attribution: QuoteAuthor | null
+  nonMember: QuoteAuthor | null
+}
 
-// The nearest author in `chain` from `from` on that is not a member (an
-// outsider or unknown), or null when they are all members.
-function nearestNonMember(chain: QuoteAuthor[], from: number): QuoteAuthor | null {
-  for (let i = from; i < chain.length; i++) if (chain[i].kind !== 'member') return chain[i]
+function creditHeader(header: string, members: SenderMember[]): HeaderCredit {
+  const author = resolveQuoteAuthor(header, members)
+  const attribution = resolveAttributionAuthor(header, members)
+  let nonMember: QuoteAuthor | null = null
+  if (author.kind !== 'member') nonMember = author
+  else if (attribution !== null && attribution.kind !== 'member') nonMember = attribution
+  return { author, attribution, nonMember }
+}
+
+// creditHeader, each distinct header once per email: the same header is a
+// possible quoter of every quote after it.
+type Resolve = (header: string) => HeaderCredit
+
+// The nearest of `headers` (nearest first) with a non-member in it, as that
+// non-member, or null.
+function nearestNonMember(headers: string[], resolve: Resolve): QuoteAuthor | null {
+  for (const header of headers) {
+    const { nonMember } = resolve(header)
+    if (nonMember !== null) return nonMember
+  }
   return null
 }
 
@@ -58,34 +88,36 @@ function asQuotedBy(label: string, passer: QuoteAuthor): string {
 // whoever quoted the block: the email's sender when nothing encloses it, else
 // the author of the quote around it.
 //
-// A credit is only as good as everyone who passed the text along: anyone a
-// member forwards can write "On ..., Test M <tm@yahoo.com> wrote:" into their
-// own message. So when a member's quote, or a member's inside lines, reached
-// the sender through someone who is not a member (an outsider, or a quoter the
-// app could not identify), the credit is unconfirmed: the quote counts as an
-// outsider's, and both labels say who passed it along. An author who is
+// A credit is only as good as everyone who could have written the header it
+// rests on: anyone a member forwards can write "On ..., Test M <tm@yahoo.com>
+// wrote:" into their own message, or open it with "From: Test M
+// <tm@yahoo.com>", which then sits directly under their attribution. So when a
+// member's quote, or a member's inside lines, could have reached the sender
+// through someone who is not a member (an outsider, or a quoter the app could
+// not identify), the credit is unconfirmed: the quote counts as an outsider's,
+// and both labels say who passed it along. Not being sure of a genuine author
+// costs little; a forged member credit becomes a decision. An author who is
 // already an outsider or unknown keeps their plain label.
 function readQuote(block: QuoteBlock, email: ProjectEmail, resolve: Resolve): ReadingQuote {
-  const author = resolve(block.header)
-  const chain = block.quoterChain.map(resolve)
+  const { author, attribution } = resolve(block.header)
+  // Who passed this whole block along. Its own attribution is nearer than any
+  // quote around it, but it passed along only the message under the From: line,
+  // not the inside lines, which its quoter wrote.
+  const outside = nearestNonMember(block.possibleQuoters, resolve)
+  const passer = attribution !== null && attribution.kind !== 'member' ? attribution : outside
 
   let kind = author.kind
   let label = authorLabel(author)
-  const passer = nearestNonMember(chain, 0)
-  if (author.kind === 'member' && passer) {
+  if (author.kind === 'member' && passer !== null) {
     kind = 'outsider'
     label = asQuotedBy(label, passer)
   }
 
-  // `by` names the quoter, chain[0]; what passed it along is the chain above it.
-  let by: string
-  if (chain.length === 0) {
-    by = senderLabel(email.from_role, email.from_name)
-  } else {
-    by = authorLabel(chain[0])
-    const above = nearestNonMember(chain, 1)
-    if (chain[0].kind === 'member' && above) by = asQuotedBy(by, above)
-  }
+  // The inside lines' author. A quoter who is a member never counts as their
+  // own passer, but the attribution above their From: line does.
+  const quoter = block.quoterHeader === null ? null : resolve(block.quoterHeader).author
+  let by = quoter === null ? senderLabel(email.from_role, email.from_name) : authorLabel(quoter)
+  if ((quoter === null || quoter.kind === 'member') && outside !== null) by = asQuotedBy(by, outside)
 
   return {
     header: block.header,
@@ -126,14 +158,14 @@ export function readProjectEmails(emails: ProjectEmail[], members: SenderMember[
     if (!repeat) {
       const split = splitNewText(text, seen, seenAny)
       typed = split.typed
-      const authors = new Map<string, QuoteAuthor>()
+      const credits = new Map<string, HeaderCredit>()
       const resolve: Resolve = (header) => {
-        let author = authors.get(header)
-        if (author === undefined) {
-          author = resolveQuoteAuthor(header, members)
-          authors.set(header, author)
+        let credit = credits.get(header)
+        if (credit === undefined) {
+          credit = creditHeader(header, members)
+          credits.set(header, credit)
         }
-        return author
+        return credit
       }
       quotes = split.quotes.map((block) => readQuote(block, email, resolve))
     }

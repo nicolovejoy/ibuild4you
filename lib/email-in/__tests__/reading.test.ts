@@ -358,6 +358,180 @@ describe('readProjectEmails', () => {
         },
       ])
     })
+
+    const DANA_HEADER = 'On Nov 22, 2026, at 9:00 AM, Dana Reyes <dana@books.example> wrote:'
+    const DANA = 'Dana Reyes, not a project member'
+    const TM_BY_DANA = `Maker (Test M), as quoted by ${DANA}`
+    const NICO_BY_DANA = `Builder (Nico L), as quoted by ${DANA}`
+    const NICO_IN_TM = `> ${NICO_HEADER}`
+
+    // Each quote's author and label, and each inside line with its `by`.
+    const creditsOf = (sent: ProjectEmail) => {
+      const [reading] = readProjectEmails([sent], members)
+      return reading.quotes.map((quote) => ({
+        author: quote.author,
+        label: quote.label,
+        inside: quote.lines.filter((line) => line.kind === 'inside').map((line) => [line.text, line.by]),
+      }))
+    }
+    const credit = (author: string, label: string, inside: string[][] = []) => ({ author, label, inside })
+
+    describe('a From: line directly under an attribution', () => {
+      const FAKE_FROM = '> From: Test M <tm@yahoo.com>'
+      const APPROVE = '> I approve paying Dana 5000 dollars.'
+
+      it('is passed along by an outsider’s attribution', () => {
+        expect(creditsOf(fromNico(['FYI', DANA_HEADER, FAKE_FROM, APPROVE].join('\n')))).toEqual([
+          credit('outsider', TM_BY_DANA),
+        ])
+      })
+
+      it('leaves the sender’s own answers under it plainly the sender’s', () => {
+        expect(creditsOf(fromNico([DANA_HEADER, FAKE_FROM, APPROVE, 'I did not agree to that.'].join('\n')))).toEqual([
+          credit('outsider', TM_BY_DANA, [['I did not agree to that.', 'Builder (Nico L)']]),
+        ])
+      })
+
+      it('stays a plain outsider under a member’s attribution', () => {
+        const text = ['FYI', NICO_HEADER, '> From: Dana Reyes <dana@books.example>', APPROVE].join('\n')
+        expect(creditsOf(fromNico(text))).toEqual([credit('outsider', DANA)])
+      })
+
+      it('stays a confirmed member when both are members', () => {
+        expect(creditsOf(fromNico(['FYI', NICO_HEADER, FAKE_FROM, APPROVE].join('\n')))).toEqual([
+          credit('member', 'Maker (Test M)'),
+        ])
+      })
+
+      it('makes a member quoted inside it, and inside lines credited to it, unconfirmed too', () => {
+        const text = [
+          'FYI',
+          DANA_HEADER,
+          FAKE_FROM,
+          APPROVE,
+          NICO_IN_TM,
+          '>> Shall we pay Dana in full now?',
+          '> Yes, pay Dana in full now.',
+        ].join('\n')
+        expect(creditsOf(fromNico(text))).toEqual([
+          credit('outsider', TM_BY_DANA),
+          credit('outsider', NICO_BY_DANA, [['Yes, pay Dana in full now.', TM_BY_DANA]]),
+        ])
+      })
+
+      it('a header too long to read above it is an unknown author who passed it along', () => {
+        const long = `On Nov 22, 2026, ${'x'.repeat(2100)} <nico@example.com> wrote:`
+        expect(creditsOf(fromNico(['FYI', long, FAKE_FROM, APPROVE].join('\n')))).toEqual([
+          credit('outsider', 'Maker (Test M), as quoted by unknown author'),
+        ])
+      })
+    })
+
+    it('credits a line below a member header inside an outsider’s message to the outsider', () => {
+      const text = [
+        'FYI',
+        DANA_HEADER,
+        '> > as discussed before now',
+        `> ${TM_HEADER}`,
+        '> > I approve paying Dana 5000 dollars.',
+        '> Yes I approve paying Dana.',
+      ].join('\n')
+      expect(creditsOf(fromNico(text))).toEqual([
+        credit('outsider', DANA),
+        credit('outsider', TM_BY_DANA, [['Yes I approve paying Dana.', DANA]]),
+      ])
+    })
+
+    describe('a member header that an earlier outsider could have written', () => {
+      it('is unconfirmed, and so is an inside line under it (marked headers)', () => {
+        const text = [
+          'FYI',
+          `> ${DANA_HEADER}`,
+          '>> as discussed before now',
+          `> ${TM_HEADER}`,
+          '>> I approve paying Dana.',
+          '> Yes I approve paying Dana.',
+        ].join('\n')
+        expect(creditsOf(fromTestM(text))).toEqual([
+          credit('outsider', DANA),
+          credit('outsider', TM_BY_DANA, [['Yes I approve paying Dana.', TM_BY_DANA]]),
+        ])
+      })
+
+      it('is unconfirmed when the two headers are side by side', () => {
+        const text = [
+          'FYI',
+          DANA_HEADER,
+          '> as discussed before now',
+          TM_HEADER,
+          '> I approve paying Dana.',
+          '> Yes I approve paying Dana.',
+        ].join('\n')
+        expect(creditsOf(fromNico(text))).toEqual([credit('outsider', DANA), credit('outsider', TM_BY_DANA)])
+      })
+
+      it('names the nearest non-member, not the quoter itself', () => {
+        const text = [
+          DANA_HEADER,
+          '> Dana said this long line here.',
+          TM_HEADER,
+          '> Test said this long line here.',
+          NICO_IN_TM,
+          '>> Nico said this long line here.',
+          '> Test answered Nico right here.',
+        ].join('\n')
+        expect(creditsOf(fromNico(text))).toEqual([
+          credit('outsider', DANA),
+          credit('outsider', TM_BY_DANA),
+          credit('outsider', NICO_BY_DANA, [['Test answered Nico right here.', TM_BY_DANA]]),
+        ])
+      })
+    })
+
+    describe('a member header that no earlier outsider could have written', () => {
+      it('stays confirmed with an outsider nested inside it', () => {
+        const text = [
+          TM_HEADER,
+          '> Test said this long line here.',
+          `> ${DANA_HEADER}`,
+          '>> Dana said this long line here.',
+          '> Test answered Dana right here.',
+        ].join('\n')
+        expect(creditsOf(fromNico(text))).toEqual([
+          credit('member', 'Maker (Test M)'),
+          credit('outsider', DANA, [['Test answered Dana right here.', 'Maker (Test M)']]),
+        ])
+      })
+
+      it('stays confirmed with an outsider side by side after it', () => {
+        const text = [
+          TM_HEADER,
+          '> Test said this long line here.',
+          DANA_HEADER,
+          '> Dana said this long line here.',
+        ].join('\n')
+        expect(creditsOf(fromNico(text))).toEqual([credit('member', 'Maker (Test M)'), credit('outsider', DANA)])
+      })
+
+      it('stays confirmed after a shallower header closed the outsider’s thread', () => {
+        const text = [
+          NICO_HEADER,
+          '> Nico said this long line here.',
+          `> ${DANA_HEADER}`,
+          '>> Dana said this long line here.',
+          TM_HEADER,
+          '> Test said this long line here.',
+          NICO_IN_TM,
+          '>> Nico said another long line here.',
+        ].join('\n')
+        expect(creditsOf(fromNico(text))).toEqual([
+          credit('member', 'Builder (Nico L)'),
+          credit('outsider', DANA),
+          credit('member', 'Maker (Test M)'),
+          credit('member', 'Builder (Nico L)'),
+        ])
+      })
+    })
   })
 
   it('names an outsider by name only, and keeps their address out of everything code made', () => {
@@ -436,8 +610,8 @@ describe('readProjectEmails cost', () => {
   })
 
   // Outlook field blocks at one depth nest each inside the one before, so each
-  // quote's chain names every block above it: about 1,200 blocks and 700,000
-  // chain entries in 50,000 characters. Each header is resolved once.
+  // quote's possibleQuoters names every block above it: about 1,200 blocks and
+  // 700,000 entries in 50,000 characters. Each header is resolved once.
   it('reads 50,000 characters of nested Outlook headers quickly', () => {
     let text = ''
     for (let i = 0; text.length < 50000; i++) text += `From: a${i}\nSent: b\nline number ${i} is new\n`
@@ -445,6 +619,18 @@ describe('readProjectEmails cost', () => {
     const [reading] = readProjectEmails([fromNico(text)], members)
     expect(Date.now() - started).toBeLessThan(1000)
     expect(reading.quotes.length).toBeGreaterThan(1000)
+  })
+
+  // Every one of these could have been written by every one before it, and all
+  // are members, so no search ends early.
+  it('reads 50,000 characters of distinct same-depth member headers quickly', () => {
+    let text = ''
+    for (let i = 0; text.length < 50000; i++) text += `On ${i} <${TM}> wrote:\n> line ${i}\n`
+    const started = Date.now()
+    const [reading] = readProjectEmails([fromNico(text)], members)
+    expect(Date.now() - started).toBeLessThan(1000)
+    expect(reading.quotes.length).toBeGreaterThan(1000)
+    expect(reading.quotes.every((quote) => quote.author === 'member')).toBe(true)
   })
 })
 

@@ -1,4 +1,5 @@
 import { isValidEmail, normalizeEmail } from '@/lib/email/normalize'
+import { ENGLISH_ATTRIBUTION, FRENCH_ATTRIBUTION, HEADER_FIELD, startsAttribution } from './new-text'
 import { memberForAddress, type SenderMember } from './sender'
 
 // Who wrote a quoted block inside an email. Code decides this, never the model:
@@ -8,23 +9,24 @@ import { memberForAddress, type SenderMember } from './sender'
 //
 // `header` is the quote header as new-text.ts finds it: `>` markers already
 // stripped, lines joined with "\n". It is either an attribution ("On ... wrote:"
-// or the French "Le ... a écrit :", possibly wrapped over two lines) or a
-// divider and/or a field block (From:, Sent: or Date:, To:, Subject:). '' means
-// the quote has no header, or a quoter the app could not identify.
+// or the French "Le ... a écrit :", possibly wrapped over two lines, and with
+// any field lines directly under it) or a divider and/or a field block (From:,
+// Sent: or Date:, To:, Subject:). '' means the quote has no header, or a quoter
+// the app could not identify.
 
 // `bare` is true when the address is a loose token in the text, not one the mail
 // program put in an angle group or a mailto form. false when there is no address.
 export type HeaderAuthor = { name: string | null; email: string | null; bare: boolean }
 
-// A quote header is a few lines. Cutting here keeps every pattern below cheap
-// whatever the sender put in the email.
+// The longest From: line or attribution that is read, so every pattern below
+// stays cheap whatever the sender put in the email. A longer one names nobody:
+// it is never cut, since a cut could change which address is last.
 const MAX_HEADER_LENGTH = 2000
 
 // An address-shaped token: starts with a letter or digit, so a quote mark
 // before it is left out, and ends at the domain's last label, so a full stop
 // after it is left out.
 const ADDRESS = /[A-Za-z0-9][A-Za-z0-9._%+'-]*@[A-Za-z0-9.-]+\.[A-Za-z0-9-]+/g
-const FROM_LINE = /^\s*From:(.*)$/im
 // Where the address part starts: an angle group or a [mailto:...] form.
 const GROUP_START = /<|\[mailto:/i
 // An innermost angle group, and an Outlook [mailto:...] form. In
@@ -115,35 +117,49 @@ function attributionName(inner: string): string | null {
   )
 }
 
+const NOBODY: HeaderAuthor = { name: null, email: null, bare: false }
+
+// A header's two parts that can name someone: its attribution (the lines before
+// the first field line, joined with spaces; a divider when it has one instead)
+// and its first From: line, null when there is none. The other field lines are
+// never read: To: and Cc: name recipients, and a Subject: can hold any text.
+// Lines end at "\n" only, as in new-text.ts.
+function headerParts(header: string): { attribution: string; from: string | null } {
+  const lines = header.split('\n').map((line) => line.trim())
+  const firstField = lines.findIndex((line) => HEADER_FIELD.test(line))
+  const attribution = firstField < 0 ? lines : lines.slice(0, firstField)
+  const from = lines.find((line) => /^From:/i.test(line)) ?? null
+  return { attribution: attribution.join(' ').trim(), from }
+}
+
+// Whoever a From: line names.
+function parseFrom(line: string): HeaderAuthor {
+  if (line.length > MAX_HEADER_LENGTH) return NOBODY
+  const value = line.slice('From:'.length).trim()
+  return { name: cleanName(stripOpener(beforeAddress(value))), ...headerAddress(value) }
+}
+
+// Whoever "On ... wrote:" or its French form "Le ... a écrit :" names. Its
+// address is read from the text between On and wrote: (or Le and a écrit).
+function parseAttribution(attribution: string): HeaderAuthor {
+  if (attribution.length > MAX_HEADER_LENGTH) return NOBODY
+  const inner = attributionInner(attribution)
+  return inner === null ? NOBODY : { name: attributionName(inner), ...headerAddress(inner) }
+}
+
+// A From: line wins over an attribution above it.
 export function parseQuoteHeader(header: string): HeaderAuthor {
-  const text = header.slice(0, MAX_HEADER_LENGTH)
-
-  // A field block wins over an attribution. Only the first From: line is read:
-  // the To: and Cc: lines name recipients, never the author.
-  const from = FROM_LINE.exec(text)
-  if (from) {
-    const value = from[1].trim()
-    return { name: cleanName(stripOpener(beforeAddress(value))), ...headerAddress(value) }
-  }
-
-  // Otherwise "On ... wrote:" or its French form "Le ... a écrit :", which a
-  // mail client may have wrapped over two lines. Its address is read the same
-  // way, from the text between On and wrote: (or Le and a écrit).
-  const inner = attributionInner(text.split('\n').join(' '))
-  if (inner !== null) return { name: attributionName(inner), ...headerAddress(inner) }
-
-  return { name: null, email: null, bare: false }
+  const { attribution, from } = headerParts(header)
+  return from !== null ? parseFrom(from) : parseAttribution(attribution)
 }
 
 // The text between an attribution's opening word and its closing words, or
-// null when the header is not an attribution. English first, then French.
+// null when it is not an attribution from end to end. A display name can hold
+// an attribution of its own, in either language ("Le ..., On <a@b.c> wrote:
+// <d@e.f> a écrit :"), so only the outermost opening and closing words count.
 function attributionInner(joined: string): string | null {
-  const on = /\bOn\s/.exec(joined)
-  const wrote = joined.lastIndexOf('wrote:')
-  if (on && wrote > on.index) return joined.slice(on.index + on[0].length, wrote)
-  const le = /\bLe\s/.exec(joined)
-  const ecrit = joined.lastIndexOf(' a écrit')
-  if (le && ecrit >= le.index + le[0].length) return joined.slice(le.index + le[0].length, ecrit)
+  if (FRENCH_ATTRIBUTION.test(joined)) return joined.slice('Le '.length, joined.lastIndexOf(' a écrit'))
+  if (ENGLISH_ATTRIBUTION.test(joined)) return joined.slice('On '.length, joined.lastIndexOf(' wrote:'))
   return null
 }
 
@@ -153,7 +169,21 @@ export type QuoteAuthor =
   | { kind: 'unknown' }
 
 export function resolveQuoteAuthor(header: string, members: SenderMember[]): QuoteAuthor {
-  const parsed = parseQuoteHeader(header)
+  return resolveParsed(parseQuoteHeader(header), members)
+}
+
+// The author of the attribution above a header's From: line, or null when the
+// header does not have both. The From: line names the header's author
+// (resolveQuoteAuthor), but the fields directly under an attribution may be the
+// first lines of the attributed message, so its author could have written that
+// name. Unknown when the attribution cannot be read.
+export function resolveAttributionAuthor(header: string, members: SenderMember[]): QuoteAuthor | null {
+  const { attribution, from } = headerParts(header)
+  if (from === null || !startsAttribution(attribution)) return null
+  return resolveParsed(parseAttribution(attribution), members)
+}
+
+function resolveParsed(parsed: HeaderAuthor, members: SenderMember[]): QuoteAuthor {
   const { email, bare } = parsed
   // A header name that is itself address-shaped (a display name set to
   // someone's address) is never kept: no full address goes into a label.

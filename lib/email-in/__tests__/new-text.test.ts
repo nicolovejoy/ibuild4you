@@ -344,7 +344,7 @@ describe('splitNewText quotes', () => {
         {
           header: nicoHeader,
           quoterHeader: null,
-          quoterChain: [],
+          possibleQuoters: [],
           lines: [
             context('Hi Test,'),
             context(colour),
@@ -375,7 +375,7 @@ describe('splitNewText quotes', () => {
         {
           header: nicoHeader,
           quoterHeader: null,
-          quoterChain: [],
+          possibleQuoters: [],
           lines: [
             context('Hi Test,'),
             context(colour),
@@ -399,7 +399,7 @@ describe('splitNewText quotes', () => {
         {
           header: nicoHeader,
           quoterHeader: null,
-          quoterChain: [],
+          possibleQuoters: [],
           lines: [
             context('Hi Test,'),
             context(colour),
@@ -427,7 +427,7 @@ describe('splitNewText quotes', () => {
   it('a fully new quote has no context lines', () => {
     const text = [testMHeader, ...newLines.map((line) => `> ${line}`)].join('\n')
     expect(splitNewText(text, seenEarlier, anyEarlier).quotes).toEqual([
-      { header: testMHeader, quoterHeader: null, quoterChain: [], lines: newLines.map(kept) },
+      { header: testMHeader, quoterHeader: null, possibleQuoters: [], lines: newLines.map(kept) },
     ])
   })
 
@@ -449,7 +449,7 @@ describe('splitNewText quotes', () => {
         {
           header: nicoHeader,
           quoterHeader: testMHeader,
-          quoterChain: [testMHeader],
+          possibleQuoters: [testMHeader],
           lines: [context(colour), own('Green.'), context(payment), own(card)],
         },
       ],
@@ -464,7 +464,7 @@ describe('splitNewText quotes', () => {
       ...earlier.split('\n').map((line) => `>> ${line}`),
     ].join('\n')
     const result = splitNewText(text, seenEarlier, anyEarlier)
-    expect(result.quotes).toEqual([{ header: testMHeader, quoterHeader: null, quoterChain: [], lines: newLines.map(kept) }])
+    expect(result.quotes).toEqual([{ header: testMHeader, quoterHeader: null, possibleQuoters: [], lines: newLines.map(kept) }])
     expect(result.quotedUnseen).toBe([testMHeader, ...newLines].join('\n'))
   })
 
@@ -485,7 +485,7 @@ describe('splitNewText quotes', () => {
     expect(splitNewText(text, seenEarlier, anyEarlier)).toEqual({
       typed: 'Yes, all three.',
       quotedUnseen: [...fields, '', ...newLines].join('\n'),
-      quotes: [{ header: fields.join('\n'), quoterHeader: null, quoterChain: [], lines: newLines.map(kept) }],
+      quotes: [{ header: fields.join('\n'), quoterHeader: null, possibleQuoters: [], lines: newLines.map(kept) }],
     })
   })
 
@@ -495,7 +495,7 @@ describe('splitNewText quotes', () => {
       {
         header: testMHeader,
         quoterHeader: null,
-        quoterChain: [],
+        possibleQuoters: [],
         lines: [kept(newLines[0]), { text: '', context: false, own: false }, kept(newLines[1])],
       },
     ])
@@ -516,10 +516,10 @@ describe('splitNewText quotes', () => {
       {
         header: testMHeader,
         quoterHeader: null,
-        quoterChain: [],
+        possibleQuoters: [],
         lines: [kept('Green is fine by me, see below.'), own('I agree with Test M on all of it.')],
       },
-      { header: nicoHeader, quoterHeader: testMHeader, quoterChain: [testMHeader], lines: [kept(colour), own('Green.')] },
+      { header: nicoHeader, quoterHeader: testMHeader, possibleQuoters: [testMHeader], lines: [kept(colour), own('Green.')] },
     ])
   })
 
@@ -539,11 +539,11 @@ describe('splitNewText quotes', () => {
     // A's block has no line of its own, so it is not listed. B's block has no
     // line deeper than B, but C's header is nested in it, so "A answered" is own.
     expect(splitNewText(text, new Set(), new Set()).quotes).toEqual([
-      { header: bHeader, quoterHeader: aHeader, quoterChain: [aHeader], lines: [own('A answered at level one.')] },
+      { header: bHeader, quoterHeader: aHeader, possibleQuoters: [aHeader], lines: [own('A answered at level one.')] },
       {
         header: cHeader,
         quoterHeader: bHeader,
-        quoterChain: [bHeader, aHeader],
+        possibleQuoters: [bHeader, aHeader],
         lines: [
           kept('C wrote this long line here.'),
           own('B answered at level two.'),
@@ -568,7 +568,7 @@ describe('splitNewText quotes', () => {
       {
         header: [divider, ...fields].join('\n'),
         quoterHeader: null,
-        quoterChain: [],
+        possibleQuoters: [],
         lines: [kept('Sure, that sounds right to me.'), kept(colour), kept('Green would be best.')],
       },
     ])
@@ -577,7 +577,7 @@ describe('splitNewText quotes', () => {
   it('a quote header at the top of the text has no quoter', () => {
     const text = `> ${nicoHeader}\n>> ${colour}`
     expect(splitNewText(text, new Set(), new Set()).quotes).toEqual([
-      { header: nicoHeader, quoterHeader: null, quoterChain: [], lines: [kept(colour)] },
+      { header: nicoHeader, quoterHeader: null, possibleQuoters: [], lines: [kept(colour)] },
     ])
   })
 
@@ -586,8 +586,8 @@ describe('splitNewText quotes', () => {
   it('a quote header under header-less quoted text has an unknown quoter', () => {
     const text = `> Some earlier words with no header.\n> ${nicoHeader}\n>> ${colour}`
     expect(splitNewText(text, new Set(), new Set()).quotes).toEqual([
-      { header: '', quoterHeader: null, quoterChain: [], lines: [kept('Some earlier words with no header.')] },
-      { header: nicoHeader, quoterHeader: '', quoterChain: [''], lines: [kept(colour)] },
+      { header: '', quoterHeader: null, possibleQuoters: [], lines: [kept('Some earlier words with no header.')] },
+      { header: nicoHeader, quoterHeader: '', possibleQuoters: [''], lines: [kept(colour)] },
     ])
   })
 
@@ -596,12 +596,12 @@ describe('splitNewText quotes', () => {
     expect(splitNewText(text, new Set(), new Set()).quotes[1]).toEqual({
       header: nicoHeader,
       quoterHeader: null,
-      quoterChain: [],
+      possibleQuoters: [],
       lines: [kept(colour)],
     })
   })
 
-  it('quoterChain names every enclosing quote, nearest first, ending with an unknown quoter', () => {
+  it('possibleQuoters names every enclosing quote, nearest first, ending with an unknown quoter', () => {
     const text = [
       '> Some earlier words with no header.',
       `> ${testMHeader}`,
@@ -611,7 +611,7 @@ describe('splitNewText quotes', () => {
     expect(splitNewText(text, new Set(), new Set()).quotes[1]).toEqual({
       header: nicoHeader,
       quoterHeader: testMHeader,
-      quoterChain: [testMHeader, ''],
+      possibleQuoters: [testMHeader, ''],
       lines: [kept(colour)],
     })
   })
@@ -631,7 +631,7 @@ describe('splitNewText quotes', () => {
     expect(splitNewText(text, new Set(), new Set()).quotes[1]).toEqual({
       header: testMHeader,
       quoterHeader: '',
-      quoterChain: [''],
+      possibleQuoters: [''],
       lines: [
         kept('Should the app send reminders every day?'),
         own('No, weekly reminders are enough for this kind of app.'),
@@ -662,11 +662,11 @@ describe('splitNewText quotes', () => {
           'No, weekly reminders are enough for this kind of app.',
         ].join('\n'),
         quotes: [
-          { header: frenchHeader, quoterHeader: null, quoterChain: [], lines: [kept('Answers below.')] },
+          { header: frenchHeader, quoterHeader: null, possibleQuoters: [], lines: [kept('Answers below.')] },
           {
             header: inner,
             quoterHeader: frenchHeader,
-            quoterChain: [frenchHeader],
+            possibleQuoters: [frenchHeader],
             lines: [
               kept('Should the app send reminders every day?'),
               own('No, weekly reminders are enough for this kind of app.'),
@@ -683,18 +683,18 @@ describe('splitNewText quotes', () => {
         frenchHeader.replace(' :', ' :'),
       ]) {
         expect(splitNewText(`Merci.\n${header}\n> Une ligne jamais vue avant.`, new Set()).quotes).toEqual([
-          { header, quoterHeader: null, quoterChain: [], lines: [kept('Une ligne jamais vue avant.')] },
+          { header, quoterHeader: null, possibleQuoters: [], lines: [kept('Une ligne jamais vue avant.')] },
         ])
       }
       expect(splitNewText(`Merci.\n> ${frenchHeader}\n> Une ligne jamais vue avant.`, new Set()).quotes).toEqual([
-        { header: frenchHeader, quoterHeader: null, quoterChain: [], lines: [kept('Une ligne jamais vue avant.')] },
+        { header: frenchHeader, quoterHeader: null, possibleQuoters: [], lines: [kept('Une ligne jamais vue avant.')] },
       ])
     })
 
     it('is recognised wrapped over two lines', () => {
       const wrapped = 'Le dim. 22 nov. 2026 à 11:00, Nico L <\nnico@me.com> a écrit :'
       expect(splitNewText(`Merci.\n\n${wrapped}\n> Une ligne jamais vue avant.`, new Set()).quotes).toEqual([
-        { header: wrapped, quoterHeader: null, quoterChain: [], lines: [kept('Une ligne jamais vue avant.')] },
+        { header: wrapped, quoterHeader: null, possibleQuoters: [], lines: [kept('Une ligne jamais vue avant.')] },
       ])
     })
 
@@ -720,7 +720,7 @@ describe('splitNewText quotes', () => {
       {
         header: nicoHeader,
         quoterHeader: null,
-        quoterChain: [],
+        possibleQuoters: [],
         lines: [kept(colour), own('Green.'), kept(payment), own(card)],
       },
     ])
@@ -748,10 +748,10 @@ describe('splitNewText quotes', () => {
         {
           header: testMHeader,
           quoterHeader: null,
-          quoterChain: [],
+          possibleQuoters: [],
           lines: [kept('Green is fine by me, I think it works well.')],
         },
-        { header: nicoHeader, quoterHeader: testMHeader, quoterChain: [testMHeader], lines: [kept(colour)] },
+        { header: nicoHeader, quoterHeader: testMHeader, possibleQuoters: [testMHeader], lines: [kept(colour)] },
       ],
     })
   })
@@ -762,13 +762,13 @@ describe('splitNewText quotes', () => {
       {
         header: testMHeader,
         quoterHeader: null,
-        quoterChain: [],
+        possibleQuoters: [],
         lines: [kept('Green is fine by me, I think it works well.')],
       },
       {
         header: nicoHeader,
         quoterHeader: testMHeader,
-        quoterChain: [testMHeader],
+        possibleQuoters: [testMHeader],
         lines: [kept(colour), own('Green, as I said.'), kept(payment)],
       },
     ])
@@ -795,11 +795,11 @@ describe('splitNewText quotes', () => {
       card,
     ].join('\n')
     expect(splitNewText(text, new Set(), new Set()).quotes).toEqual([
-      { header: forwardHeader.join('\n'), quoterHeader: null, quoterChain: [], lines: [kept('See my answers below.')] },
+      { header: forwardHeader.join('\n'), quoterHeader: null, possibleQuoters: [], lines: [kept('See my answers below.')] },
       {
         header: innerHeader,
         quoterHeader: forwardHeader.join('\n'),
-        quoterChain: [forwardHeader.join('\n')],
+        possibleQuoters: [forwardHeader.join('\n')],
         lines: [kept(colour), own('Green would be best.'), kept(payment), own(card)],
       },
     ])
@@ -824,7 +824,7 @@ describe('splitNewText quotes', () => {
       {
         header: [testMHeader, ...fields].join('\n'),
         quoterHeader: null,
-        quoterChain: [],
+        possibleQuoters: [],
         lines: [kept('Which colour do you want for the start button?'), own('Green, please.')],
       },
     ])
@@ -868,7 +868,7 @@ describe('splitNewText quotes', () => {
         {
           header: nicoHeader,
           quoterHeader: testMHeader,
-          quoterChain: [testMHeader],
+          possibleQuoters: [testMHeader],
           lines: [
             context('Hi Test,'),
             context(colour),
@@ -909,11 +909,132 @@ describe('splitNewText quotes', () => {
       {
         header: aHeader,
         quoterHeader: null,
-        quoterChain: [],
+        possibleQuoters: [],
         lines: [kept('A said this long line here.'), own('My answer to A goes here.')],
       },
-      { header: bHeader, quoterHeader: null, quoterChain: [], lines: [kept('B said this long line here.')] },
+      { header: bHeader, quoterHeader: null, possibleQuoters: [aHeader], lines: [kept('B said this long line here.')] },
     ])
+  })
+
+  // A quoted message whose shallowest line is deeper than usual (it opens with a
+  // quote of its own) is not closed by a header that sits inside it.
+  it('a shallower header’s message is not closed by a deeper header, and its body is no deeper', () => {
+    const text = [
+      'FYI',
+      testMHeader,
+      '> > as discussed before now',
+      `> ${nicoHeader}`,
+      '> > I approve paying Dana 5000 dollars.',
+      '> Yes I approve paying Dana.',
+    ].join('\n')
+    expect(splitNewText(text, new Set(), new Set()).quotes).toEqual([
+      { header: testMHeader, quoterHeader: null, possibleQuoters: [], lines: [kept('as discussed before now')] },
+      {
+        header: nicoHeader,
+        quoterHeader: testMHeader,
+        possibleQuoters: [testMHeader],
+        lines: [kept('I approve paying Dana 5000 dollars.'), own('Yes I approve paying Dana.')],
+      },
+    ])
+  })
+
+  describe('possibleQuoters', () => {
+    const aHeader = 'On Nov 20, 2026, at 9:00 AM, Ann A <ann@example.com> wrote:'
+    const quotersOf = (lines: string[]) =>
+      splitNewText(lines.join('\n'), new Set(), new Set()).quotes.map(({ header, quoterHeader, possibleQuoters }) => ({
+        header,
+        quoterHeader,
+        possibleQuoters,
+      }))
+
+    it('names a same-depth header that structure closed (marked header, deeper body)', () => {
+      const quotes = quotersOf([
+        `> ${aHeader}`,
+        '>> as discussed before now',
+        `> ${testMHeader}`,
+        '>> I approve paying Dana.',
+      ])
+      expect(quotes[1]).toEqual({ header: testMHeader, quoterHeader: null, possibleQuoters: [aHeader] })
+    })
+
+    it('names every header no deeper than this one, nearest first, and drops a deeper one', () => {
+      const quotes = quotersOf([
+        nicoHeader,
+        '> Nico said this long line here.',
+        `> ${aHeader}`,
+        '>> Ann said this long line here.',
+        testMHeader,
+        '> Test said this long line here.',
+        `> ${nicoHeader}`,
+        '>> Nico said another long line here.',
+      ])
+      expect(quotes).toEqual([
+        { header: nicoHeader, quoterHeader: null, possibleQuoters: [] },
+        { header: aHeader, quoterHeader: nicoHeader, possibleQuoters: [nicoHeader] },
+        { header: testMHeader, quoterHeader: null, possibleQuoters: [nicoHeader] },
+        { header: nicoHeader, quoterHeader: testMHeader, possibleQuoters: [testMHeader, nicoHeader] },
+      ])
+    })
+
+    it('ends with an unknown quoter, until a header shallower than the header-less text', () => {
+      const quotes = quotersOf([
+        '> Some earlier words with no header.',
+        `> ${testMHeader}`,
+        '> Test said this long line here.',
+        nicoHeader,
+        '> Nico said this long line here.',
+      ])
+      expect(quotes.slice(1)).toEqual([
+        { header: testMHeader, quoterHeader: '', possibleQuoters: [''] },
+        { header: nicoHeader, quoterHeader: null, possibleQuoters: [] },
+      ])
+    })
+
+    // Structure (quoterHeader) and trust (possibleQuoters) are found apart; a
+    // quoter structure finds must never be missing from the trust list. Every
+    // email of five lines from this alphabet (and a closing one) is checked.
+    it('always holds the quoter that structure found', () => {
+      const alphabet = [
+        ...['', '> ', '>> '].map((marker) => (i: number) => `${marker}On ${i} a@b.co wrote:`),
+        ...['> ', '>> ', '>>> '].map((marker) => (i: number) => `${marker}a long enough line ${i}`),
+        (i: number) => `From: a${i}\nSent: x`,
+      ]
+      const length = 5
+      let checked = 0
+      for (let n = 0; n < alphabet.length ** length; n++) {
+        const lines: string[] = []
+        for (let i = 0, rest = n; i < length; i++, rest = Math.floor(rest / alphabet.length)) {
+          lines.push(alphabet[rest % alphabet.length](i))
+        }
+        lines.push('>>>> the last line of the email')
+        for (const quote of splitNewText(lines.join('\n'), new Set()).quotes) {
+          if (quote.quoterHeader === null) continue
+          checked++
+          if (!quote.possibleQuoters.includes(quote.quoterHeader)) throw new Error(lines.join('\n'))
+        }
+      }
+      expect(checked).toBeGreaterThan(1000)
+    })
+  })
+
+  describe('a two-line wrapped attribution starts with its date', () => {
+    it('a typed English sentence above a date-less "wrote:" line is not swallowed', () => {
+      expect(
+        splitNewText(
+          'On reflection I agree with this.\nBill Duris <b@aol.com> wrote:\n> A line never seen before.',
+          new Set()
+        ).typed
+      ).toBe('On reflection I agree with this.\nBill Duris <b@aol.com> wrote:')
+    })
+
+    it('a typed French sentence above a date-less "a écrit :" line is not swallowed', () => {
+      expect(
+        splitNewText(
+          'Le bouton vert me convient.\nBill Duris <b@aol.com> a écrit :\n> Une ligne jamais vue avant.',
+          new Set()
+        ).typed
+      ).toBe('Le bouton vert me convient.\nBill Duris <b@aol.com> a écrit :')
+    })
   })
 })
 
