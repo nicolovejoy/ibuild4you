@@ -609,8 +609,30 @@ describe('splitNewText quotes', () => {
       }
     })
 
+    it('has one too below deeper text or a deeper quote, under such a typed line', () => {
+      for (const block of [attribution, fieldBlock]) {
+        expect(quotersOf(['FYI', german, '> > as discussed before', ...block])[1]).toEqual(['', ['']])
+        expect(quotersOf(['FYI', german, '> > On 1 e@x.co wrote:', '> > old words here', ...block])[1]).toEqual([
+          '',
+          [''],
+        ])
+        // The typed line counts only before any quoted text, and the unknown
+        // message lasts until a header at depth 0.
+        expect(quotersOf(['FYI', '> > as discussed before', german, ...block])[1]).toEqual([null, []])
+        expect(quotersOf(['FYI', german, ...block, nicoHeader, '> Another long line, of Nico.'])[1]).toEqual([null, []])
+      }
+    })
+
+    it('has one too after a first header two or more levels deep', () => {
+      for (const block of [attribution, fieldBlock]) {
+        expect(quotersOf(['FYI', '> > On 1 e@x.co wrote:', '> > old words here', ...block])[1]).toEqual(['', ['']])
+      }
+    })
+
     it('is the sender’s quote under any other typed line', () => {
       for (const block of [attribution, fieldBlock]) {
+        // A sentence that ends in a colon has no date or address in it.
+        expect(quotersOf(['My answers are below:', ...block])).toEqual([[null, []]])
         expect(quotersOf(['Sounds good, see below.', '', ...block])).toEqual([[null, []]])
         expect(quotersOf([german, 'Sounds good, see below.', '', ...block])).toEqual([[null, []]])
         expect(quotersOf(block)).toEqual([[null, []]])
@@ -1143,7 +1165,7 @@ describe('splitNewText quotes', () => {
         ...['', '> ', '>> '].map((marker) => (i: number) => `${marker}On ${i} a@b.co wrote:`),
         ...['> ', '>> ', '>>> '].map((marker) => (i: number) => `${marker}a long enough line ${i}`),
         (i: number) => `From: a${i}\nSent: x`,
-        (i: number) => `> From: a${i}\n> Sent: x`,
+        (i: number) => `> From: a${i}@b.co\n> Sent: x`,
       ]
       const length = 5
       let checked = 0
@@ -1154,6 +1176,13 @@ describe('splitNewText quotes', () => {
         }
         lines.push('>>>> the last line of the email')
         for (const quote of splitNewText(lines.join('\n'), new Set()).quotes) {
+          // An own line's quoter is among the ones that could have written it.
+          for (const line of quote.lines) {
+            const quoter = line.quoter === undefined ? quote.quoterHeader : line.quoter
+            if (!line.own || quoter === null) continue
+            const from = quote.possibleQuoters.length - (line.possible ?? quote.possibleQuoters.length)
+            if (!quote.possibleQuoters.slice(from).includes(quoter)) throw new Error(lines.join('\n'))
+          }
           if (quote.quoterHeader === null) continue
           checked++
           if (!quote.possibleQuoters.includes(quote.quoterHeader)) throw new Error(lines.join('\n'))
@@ -1226,16 +1255,45 @@ describe('splitNewText quotes', () => {
       expect(splitNewText(text.join('\n'), new Set()).quotes).toHaveLength(1)
     })
 
-    it('an Apple Mail forward inside a quote: the fields one deeper are a header of their own', () => {
+    it('an Apple Mail forward inside a quote: the fields one deeper belong to its header', () => {
       const text = [testMHeader, '> Begin forwarded message:', '> ', ...fields.map((f) => `>> ${f}`), `>> ${newLines[0]}`]
       expect(splitNewText(text.join('\n'), new Set()).quotes).toEqual([
         {
-          header: fields.join('\n'),
-          quoterHeader: 'Begin forwarded message:\n',
-          possibleQuoters: ['Begin forwarded message:\n', testMHeader],
+          header: ['Begin forwarded message:', '', ...fields].join('\n'),
+          quoterHeader: testMHeader,
+          possibleQuoters: [testMHeader],
           lines: [kept(newLines[0])],
         },
       ])
+    })
+
+    const linesOf = (text: string) => splitNewText(text, new Set()).quotes.map((quote) => quote.lines)
+
+    // A member's own words that look like fields are never taken for a header.
+    it('a From: list with no address in it stays body text', () => {
+      const form = [
+        'The search form needs these fields:',
+        'From: departure city',
+        'To: arrival city',
+        'Date: the day of travel',
+      ]
+      for (const body of [form, [...form, 'Please build that first of all.']]) {
+        expect(linesOf([testMHeader, ...body.map((line) => `> ${line}`)].join('\n'))).toEqual([body.map(kept)])
+      }
+    })
+
+    it('a From: block with other text in it, or with nothing after it, stays body text', () => {
+      const intro = 'These are the fields of it:'
+      for (const body of [
+        [intro, 'From: a@b.co', 'some other text', 'Date: x', newLines[0]],
+        [intro, 'From: a@b.co', 'Date: x'],
+        [intro, '-----Original Message-----', 'From: a@b.co', 'Date: x'],
+        [intro, 'Begin forwarded message:'],
+      ]) {
+        const marked = [testMHeader, ...body.map((line) => `> ${line}`)].join('\n')
+        expect(linesOf(marked)).toEqual([body.map(kept)])
+        expect(linesOf(`${marked}\n\nMy answer is down here.`)[0].slice(0, body.length)).toEqual(body.map(kept))
+      }
     })
 
     it('reads 50,000 characters of marked From: and divider lines quickly', () => {
@@ -1245,6 +1303,10 @@ describe('splitNewText quotes', () => {
         '> -----Original Message-----\n',
         '> -----Original Message-----\n> \n> \nx\n',
         '> From: a\n> x\n>> Sent: b\n',
+        '> From: a@b.co\n',
+        '> From: a@b.co\n> Sent: b\n',
+        '> From: a@b.co\n> Sent: b\n> \n',
+        '> Begin forwarded message:\n> > From: a@b.co\n',
         `> ${'-'.repeat(1000)}\n`,
         `> On 1 a wrote:\n> b wrote:\n`,
       ]) {
@@ -1252,6 +1314,66 @@ describe('splitNewText quotes', () => {
         splitNewText(unit.repeat(Math.ceil(50000 / unit.length)), new Set(), new Set())
         expect(Date.now() - started).toBeLessThan(500)
       }
+    })
+  })
+
+  describe('who wrote an own line', () => {
+    const answer = 'Yes, go ahead with it today.'
+
+    it('the quoter of the outermost quote one level deeper, not of the one it is placed in', () => {
+      const fields = ['From: Dana Reyes <dana@books.example>', 'Date: Sun']
+      const text = [testMHeader, `> ${newLines[0]}`, ...fields.map((f) => `> ${f}`), `> ${newLines[1]}`, answer]
+      expect(splitNewText(text.join('\n'), new Set()).quotes[1]).toEqual({
+        header: fields.join('\n'),
+        quoterHeader: testMHeader,
+        possibleQuoters: [testMHeader],
+        lines: [kept(newLines[1]), { ...own(answer), quoter: null }],
+      })
+    })
+
+    it('two attributions at one depth (Apple Mail): an answer one level up is the sender’s', () => {
+      const text = [`> ${testMHeader}`, `> ${newLines[0]}`, `> ${nicoHeader}`, `> ${newLines[1]}`, answer].join('\n')
+      expect(splitNewText(text, new Set()).quotes[1]).toEqual({
+        header: nicoHeader,
+        quoterHeader: testMHeader,
+        possibleQuoters: [testMHeader],
+        lines: [kept(newLines[1]), { ...own(answer), quoter: null, possible: 0 }],
+      })
+    })
+
+    it('never an unknown quoter deeper than the line: at depth 0 it is the sender, and kept', () => {
+      const text = [`> ${nicoHeader}`, `>> ${colour}`, '> Deeper answer by someone.', answer].join('\n')
+      const held = splitNewText(text, seenLines([text]), allLines([text]))
+      expect(held.quotes).toEqual([
+        {
+          header: nicoHeader,
+          quoterHeader: '',
+          possibleQuoters: [''],
+          lines: [
+            context(colour),
+            context('Deeper answer by someone.'),
+            { ...own(answer), quoter: null, possible: 0 },
+          ],
+        },
+      ])
+    })
+  })
+
+  // A Gmail header sits at its quoter's body depth, so a deeper one is Apple's.
+  it('an attribution deeper than its quoter’s body has its body at its own depth', () => {
+    const text = [
+      `> ${testMHeader}`,
+      `> ${newLines[0]}`,
+      `>> ${nicoHeader}`,
+      `>> ${newLines[1]}`,
+      '>>> Shall we settle the price?',
+      '>> We agree to it, as said before.',
+    ].join('\n')
+    expect(splitNewText(text, new Set()).quotes[1]).toEqual({
+      header: nicoHeader,
+      quoterHeader: testMHeader,
+      possibleQuoters: [testMHeader],
+      lines: [kept(newLines[1]), kept('Shall we settle the price?'), kept('We agree to it, as said before.')],
     })
   })
 

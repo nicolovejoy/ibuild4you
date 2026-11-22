@@ -6,6 +6,7 @@ import {
   seenLines,
   splitNewText,
   type QuoteBlock,
+  type QuoteLine,
 } from './new-text'
 import {
   authorLabel,
@@ -44,49 +45,50 @@ export type EmailReading = {
 }
 
 // What a quote header says about who a credit depends on.
-// author: who wrote the message under it (resolveQuoteAuthor).
-// attribution: the author of the attribution above its From: line, who could
-//   have written that name; null when there is none (resolveAttributionAuthor).
-// nonMember: the one of these who is not a member (an outsider or unknown), the
-//   author first; null when there is none.
+// author: who wrote the message under it (resolveQuoteAuthor), and their label.
+// attribution: the label of the attribution's author above its From: line, who
+//   could have written that name, when they are not a member; else null
+//   (resolveAttributionAuthor).
+// nonMember: the label of the one of these who is not a member (an outsider or
+//   unknown), the author first; null when there is none.
 type HeaderCredit = {
-  author: QuoteAuthor
-  attribution: QuoteAuthor | null
-  nonMember: QuoteAuthor | null
+  author: QuoteAuthor['kind']
+  label: string
+  attribution: string | null
+  nonMember: string | null
 }
 
 function creditHeader(header: string, members: SenderMember[]): HeaderCredit {
   const author = resolveQuoteAuthor(header, members)
-  const attribution = resolveAttributionAuthor(header, members)
-  let nonMember: QuoteAuthor | null = null
-  if (author.kind !== 'member') nonMember = author
-  else if (attribution !== null && attribution.kind !== 'member') nonMember = attribution
-  return { author, attribution, nonMember }
+  const label = authorLabel(author)
+  const above = resolveAttributionAuthor(header, members)
+  const attribution = above !== null && above.kind !== 'member' ? authorLabel(above) : null
+  return { author: author.kind, label, attribution, nonMember: author.kind !== 'member' ? label : attribution }
 }
 
 // creditHeader, each distinct header once per email: the same header is a
 // possible quoter of every quote after it.
 type Resolve = (header: string) => HeaderCredit
 
-// The nearest of `headers` (nearest first) with a non-member in it, as that
-// non-member, or null.
-function nearestNonMember(headers: string[], resolve: Resolve): QuoteAuthor | null {
-  for (const header of headers) {
-    const { nonMember } = resolve(header)
+// The label of the nearest non-member among the last `count` of `headers`
+// (nearest first), or null.
+function nearestNonMember(headers: string[], count: number, resolve: Resolve): string | null {
+  for (let i = headers.length - count; i < headers.length; i++) {
+    const { nonMember } = resolve(headers[i])
     if (nonMember !== null) return nonMember
   }
   return null
 }
 
-// A member's label as passed along by a non-member: "Maker (Test M), as quoted
-// by Dana Reyes, not a project member".
-function asQuotedBy(label: string, passer: QuoteAuthor): string {
-  return `${label}, as quoted by ${authorLabel(passer)}`
+// A member's label as passed along by a non-member, if any: "Maker (Test M), as
+// quoted by Dana Reyes, not a project member".
+function passedAlong(label: string, passer: string | null): string {
+  return passer === null ? label : `${label}, as quoted by ${passer}`
 }
 
 // A quoted message from splitNewText, credited. An inside line was written by
-// whoever quoted the block: the email's sender when nothing encloses it, else
-// the author of the quote around it.
+// its quoter, the block's unless the line names another: the email's sender, or
+// the author of a quote around it.
 //
 // A credit is only as good as everyone who could have written the header it
 // rests on: anyone a member forwards can write "On ..., Test M <tm@yahoo.com>
@@ -98,34 +100,43 @@ function asQuotedBy(label: string, passer: QuoteAuthor): string {
 // and both labels say who passed it along. Not being sure of a genuine author
 // costs little; a forged member credit becomes a decision. An author who is
 // already an outsider or unknown keeps their plain label.
-function readQuote(block: QuoteBlock, email: ProjectEmail, resolve: Resolve): ReadingQuote {
-  const { author, attribution } = resolve(block.header)
-  // Who passed this whole block along. Its own attribution is nearer than any
-  // quote around it, but it passed along only the message under the From: line,
-  // not the inside lines, which its quoter wrote.
-  const outside = nearestNonMember(block.possibleQuoters, resolve)
-  const passer = attribution !== null && attribution.kind !== 'member' ? attribution : outside
-
-  let kind = author.kind
-  let label = authorLabel(author)
-  if (author.kind === 'member' && passer !== null) {
-    kind = 'outsider'
-    label = asQuotedBy(label, passer)
+function readQuote(block: QuoteBlock, sender: string, resolve: Resolve): ReadingQuote {
+  const { author, label, attribution } = resolve(block.header)
+  // The nearest non-member around the block, by how many of its possible
+  // quoters count (QuoteLine.possible). Few numbers, each looked up once.
+  const outsides = new Map<number, string | null>()
+  const outsideOf = (count: number): string | null => {
+    let outside = outsides.get(count)
+    if (outside === undefined) {
+      outside = nearestNonMember(block.possibleQuoters, count, resolve)
+      outsides.set(count, outside)
+    }
+    return outside
   }
 
-  // The inside lines' author. A quoter who is a member never counts as their
-  // own passer, but the attribution above their From: line does.
-  const quoter = block.quoterHeader === null ? null : resolve(block.quoterHeader).author
-  let by = quoter === null ? senderLabel(email.from_role, email.from_name) : authorLabel(quoter)
-  if ((quoter === null || quoter.kind === 'member') && outside !== null) by = asQuotedBy(by, outside)
+  // Who passed this whole block along. Its own attribution is nearer than any
+  // quote around it, but it passed along only the message under the From: line,
+  // not the inside lines, which a quoter wrote.
+  const everyone = block.possibleQuoters.length
+  const passer = author === 'member' ? (attribution ?? outsideOf(everyone)) : null
+
+  // A quoter who is a member never counts as their own passer, but the
+  // attribution above their From: line does.
+  const insideBy = (line: QuoteLine): string => {
+    const outside = outsideOf(line.possible ?? everyone)
+    const quoterHeader = line.quoter === undefined ? block.quoterHeader : line.quoter
+    if (quoterHeader === null) return passedAlong(sender, outside)
+    const quoter = resolve(quoterHeader)
+    return passedAlong(quoter.label, quoter.author === 'member' ? outside : null)
+  }
 
   return {
     header: block.header,
-    author: kind,
-    label,
+    author: passer === null ? author : 'outsider',
+    label: passedAlong(label, passer),
     lines: block.lines.map((line): ReadingLine => {
       if (line.context) return { text: line.text, kind: 'context', by: null }
-      if (line.own) return { text: line.text, kind: 'inside', by }
+      if (line.own) return { text: line.text, kind: 'inside', by: insideBy(line) }
       return { text: line.text, kind: 'new', by: null }
     }),
   }
@@ -167,7 +178,8 @@ export function readProjectEmails(emails: ProjectEmail[], members: SenderMember[
         }
         return credit
       }
-      quotes = split.quotes.map((block) => readQuote(block, email, resolve))
+      const sender = senderLabel(email.from_role, email.from_name)
+      quotes = split.quotes.map((block) => readQuote(block, sender, resolve))
     }
     // Added after the split: an email is never evidence against itself.
     for (const line of seenLines([text])) seen.add(line)

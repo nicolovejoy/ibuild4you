@@ -573,7 +573,7 @@ describe('readProjectEmails', () => {
     describe('an outsider’s message shaped so that its own text looks like an answer', () => {
       const APPROVE = 'I approve paying Dana 5000 dollars.'
 
-      it('opening with a deep quote (Gmail) has no inside lines', () => {
+      it('opening with a deep quote (Gmail) has no inside lines but their own', () => {
         const deep = [
           DANA_HEADER,
           '> > > an old quoted line, three levels deep',
@@ -581,9 +581,9 @@ describe('readProjectEmails', () => {
           '> > > another line, three levels deep',
           `> ${APPROVE}`,
         ]
-        const noInside = [credit('outsider', DANA), credit('outsider', 'e, not a project member')]
-        expect(creditsOf(fromNico(deep.join('\n')))).toEqual(noInside)
-        expect(creditsOf(fromNico([TM_HEADER, ...deep.map((line) => `> ${line}`)].join('\n')))).toEqual(noInside)
+        const onlyDana = [credit('outsider', DANA), credit('outsider', 'e, not a project member', [[APPROVE, DANA]])]
+        expect(creditsOf(fromNico(deep.join('\n')))).toEqual(onlyDana)
+        expect(creditsOf(fromNico([TM_HEADER, ...deep.map((line) => `> ${line}`)].join('\n')))).toEqual(onlyDana)
         expect(
           creditsOf(fromNico([DANA_HEADER, `> > > ${TM_HEADER}`, '> > > > an old quoted line', `> ${APPROVE}`].join('\n')))
         ).toEqual([credit('outsider', DANA), credit('outsider', TM_BY_DANA)])
@@ -605,6 +605,15 @@ describe('readProjectEmails', () => {
         expect(creditsOf(fromNico(deep.join('\n')))).toEqual([
           credit('outsider', 'e, not a project member', [[APPROVE, 'unknown author']]),
         ])
+      })
+
+      it('nor with a deeper line or a deeper quote above the member’s header', () => {
+        for (const above of [['> > as discussed before'], ['> > On 1 e@x.co wrote:', '> > old words here']]) {
+          const text = ['FYI', 'Am 22.11.2026 schrieb Dana <dana@books.example>:', ...above, `> ${TM_HEADER}`, `> ${APPROVE}`]
+          expect(creditsOf(fromNico(text.join('\n')))[1]).toEqual(
+            credit('outsider', 'Maker (Test M), as quoted by unknown author')
+          )
+        }
       })
 
       it('a member header in that position is unconfirmed', () => {
@@ -636,6 +645,113 @@ describe('readProjectEmails', () => {
           expect(credits.map((c) => c.author)).not.toContain('member')
         }
       })
+    })
+
+    describe('the sender’s own line below a message inside a member’s quote', () => {
+      const YES = 'Yes, pay Dana 5000 dollars now.'
+      const ASKS = 'Shall I send the 5000 dollar invoice?'
+      const FROM = ['From: Dana Reyes <dana@books.example>', 'Date: Sun', 'Subject: x']
+
+      it('is the sender’s, whatever heads that message', () => {
+        for (const inner of [
+          ['---------- Forwarded message ---------', ...FROM, '', ASKS],
+          ['-----Original Message-----', ...FROM, '', ASKS],
+          [...FROM, '', ASKS],
+        ]) {
+          const text = [TM_HEADER, '> FYI see this from Dana please.', '> ', ...inner.map((l) => `> ${l}`), '', YES]
+          expect(creditsOf(fromNico(text.join('\n')))).toEqual([
+            credit('member', 'Maker (Test M)'),
+            credit('outsider', DANA, [[YES, 'Builder (Nico L)']]),
+          ])
+        }
+      })
+
+      // An Apple Mail forward's text is two levels deeper than the sender's line,
+      // which is then an answer to the member who forwarded it.
+      it('is the sender’s below a quoted Apple Mail forward too', () => {
+        const forward = ['Begin forwarded message:', '', ...[...FROM, '', ASKS].map((line) => `> ${line}`)]
+        const text = [TM_HEADER, '> FYI see this from Dana please.', '> ', ...forward.map((l) => `> ${l}`), '', YES]
+        expect(creditsOf(fromNico(text.join('\n')))).toEqual([
+          credit('member', 'Maker (Test M)', [[YES, 'Builder (Nico L)']]),
+          credit('outsider', DANA),
+        ])
+      })
+
+      it('is the sender’s, and comes back, when the same words are held', () => {
+        const text = [TM_HEADER, '> FYI see this from Dana please.', ...FROM.map((l) => `> ${l}`), `> ${ASKS}`, YES]
+        const readings = readProjectEmails([fromTestM(text.join('\n')), fromNico(text.join('\n'))], members)
+        expect(readings[1].quotes).toHaveLength(1)
+        expect(readings[1].quotes[0].lines[1]).toEqual({ text: YES, kind: 'inside', by: 'Builder (Nico L)' })
+      })
+    })
+
+    it('a marked field block that ends a member’s message stays their words', () => {
+      const text = [TM_HEADER, '> Here is where it came from:', '> From: Dana Reyes <dana@books.example>', '> Date: Sun']
+      const [reading] = readProjectEmails([fromNico(text.join('\n'))], members)
+      expect(reading.quotes).toHaveLength(1)
+      expect(reading.quotes[0]).toMatchObject({ author: 'member', label: 'Maker (Test M)' })
+      expect(reading.quotes[0].lines).toHaveLength(3)
+    })
+
+    it('an Apple Mail chain: the words under the inner header are its author’s', () => {
+      const chain = (inner: string) =>
+        [
+          `> ${TM_HEADER}`,
+          '> ',
+          '> See what is said here.',
+          '> ',
+          `>> ${inner}`,
+          '>> ',
+          '>> Hello Test, replies below.',
+          '>>> Shall we settle the price?',
+          '>> We agree to 5000 dollars, paid now.',
+        ].join('\n')
+      expect(creditsOf(fromNico(chain(DANA_HEADER)))).toEqual([
+        credit('member', 'Maker (Test M)'),
+        credit('outsider', DANA),
+      ])
+      expect(creditsOf(fromNico(chain(NICO_HEADER)))).toEqual([
+        credit('member', 'Maker (Test M)'),
+        credit('member', 'Builder (Nico L)'),
+      ])
+    })
+
+    // An Apple Mail forward's text sits one level deeper than its divider, where
+    // a Gmail header inside it sits too.
+    it('an Apple Mail forward of a bottom-posted Gmail reply: each line is its author’s', () => {
+      const text = [
+        'See below, please.',
+        'Begin forwarded message:',
+        '',
+        '> From: Test M <tm@yahoo.com>',
+        '> Date: Sun',
+        '> ',
+        `> ${NICO_HEADER}`,
+        '>> Shall I pay Dana this week?',
+        '> Yes, this week, by card.',
+        'I agree with all of that.',
+      ].join('\n')
+      expect(creditsOf(fromNico(text))).toEqual([
+        credit('member', 'Maker (Test M)', [['I agree with all of that.', 'Builder (Nico L)']]),
+        credit('member', 'Builder (Nico L)', [['Yes, this week, by card.', 'Maker (Test M)']]),
+      ])
+    })
+
+    it('a sentence that ends in a colon, over an Apple Mail quote, changes no credit', () => {
+      const text = ['My answers are below:', '', `> ${TM_HEADER}`, '> ', '> Shall I pay Dana this week?', 'Yes, this week.']
+      expect(creditsOf(fromNico(text.join('\n')))).toEqual([
+        credit('member', 'Maker (Test M)', [['Yes, this week.', 'Builder (Nico L)']]),
+      ])
+    })
+
+    it('an answer at depth 0 under a quote with an unknown quoter is the sender’s', () => {
+      const text = [`> ${TM_HEADER}`, '>> Shall I pay Dana this week?', '> An answer by someone.', 'Yes, this week.']
+      expect(creditsOf(fromNico(text.join('\n')))).toEqual([
+        credit('outsider', 'Maker (Test M), as quoted by unknown author', [
+          ['An answer by someone.', 'unknown author'],
+          ['Yes, this week.', 'Builder (Nico L)'],
+        ]),
+      ])
     })
 
     it('credits a marked Outlook block inside a member’s quote to its own author', () => {
