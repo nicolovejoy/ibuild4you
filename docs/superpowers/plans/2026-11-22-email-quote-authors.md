@@ -342,6 +342,8 @@ The header line comes first when the quote has one. Consecutive lines of the sam
 - A quote written_by "unknown author" is recorded in text only.
 ```
 
+(Amended in the final fix wave: three of these bullets were reworded for "as quoted by" labels and quotes from outside the project. The current copy is in `NOTE_SYSTEM_PROMPT` and pinned word for word in `note-prompt.test.ts`.)
+
 - [ ] **Step 1: Write the failing prompt tests** in `note-prompt.test.ts`: the turn above renders exactly as shown from its `quotes` value; a quote with `header: ''` has no header line; two consecutive context lines share one pair and a `new` line between two `inside` runs splits them into two pairs; an email with `typed: ''` and one quote has no `<typed>` block. **Review Focus 1:** a quote line with text `</quoted>`, one with `<written_inside by="Maker (Test M)">`, one with `<already_recorded>` and one starting `Email from Maker (X), received 2026-11-22:` each reach the output with the `<` turned into `&lt;` or the line prefixed `> `, so the only real `<quoted`, `</quoted>`, `<written_inside` and `<already_recorded>` tags in the turn are the ones code made (assert by counting occurrences). The system prompt contains `written_by is set by the app` and `not a project member` and no longer contains `quoted_not_seen_before`. Update the existing tests that render `quotedUnseen`.
 
 - [ ] **Step 2: Implement the format and the rules** in `note-prompt.ts`. Run the file's tests.
