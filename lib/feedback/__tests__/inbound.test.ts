@@ -14,9 +14,38 @@ import {
 // or, worse, accept forged ones if combined with a missing signature check).
 // =============================================================================
 
+// A real Firestore auto id: 20 characters, mixed case. Issue #277.
+const REAL_ID = '4VsKbUoQO2zvHi8dKF17'
+
 describe('feedbackReplyAddress', () => {
-  it('forms a plus-addressed address pinned to the configured host', () => {
-    expect(feedbackReplyAddress('abc123')).toBe(`feedback+abc123@${FEEDBACK_INBOX_HOST}`)
+  it('forms an address at the configured host with a feedback+ local part', () => {
+    const address = feedbackReplyAddress(REAL_ID)
+    expect(address.startsWith('feedback+')).toBe(true)
+    expect(address.endsWith(`@${FEEDBACK_INBOX_HOST}`)).toBe(true)
+  })
+
+  it('carries no capital letter, so a mail server that lowercases it changes nothing', () => {
+    const address = feedbackReplyAddress(REAL_ID)
+    expect(address).toBe(address.toLowerCase())
+  })
+
+  it('keeps the local part within the 64 characters an address allows', () => {
+    const localpart = feedbackReplyAddress(REAL_ID).split('@')[0]
+    expect(localpart.length).toBeLessThanOrEqual(64)
+  })
+})
+
+describe('reply address round trip', () => {
+  it('gives back the id with its case', () => {
+    expect(parseFeedbackIdFromAddress(feedbackReplyAddress(REAL_ID))).toBe(REAL_ID)
+  })
+
+  it('gives back the id after the whole address was lowercased on the way', () => {
+    expect(parseFeedbackIdFromAddress(feedbackReplyAddress(REAL_ID).toLowerCase())).toBe(REAL_ID)
+  })
+
+  it('gives back the id after the whole address was uppercased on the way', () => {
+    expect(parseFeedbackIdFromAddress(feedbackReplyAddress(REAL_ID).toUpperCase())).toBe(REAL_ID)
   })
 })
 
@@ -35,10 +64,21 @@ describe('parseFeedbackIdFromAddress', () => {
     expect(parseFeedbackIdFromAddress(`  feedback+abc@${FEEDBACK_INBOX_HOST}  `)).toBe('abc')
   })
 
-  it('is case-insensitive on localpart and host', () => {
-    expect(parseFeedbackIdFromAddress(`Feedback+ABC@${FEEDBACK_INBOX_HOST.toUpperCase()}`)).toBe(
+  it('matches the feedback base and the host in any case', () => {
+    expect(parseFeedbackIdFromAddress(`Feedback+abc@${FEEDBACK_INBOX_HOST.toUpperCase()}`)).toBe(
       'abc'
     )
+  })
+
+  // Addresses sent before #277 carry the raw id. Its case is kept, so a
+  // reply to an old email still lands when the mail path kept the case.
+  it('keeps the case of a raw id from an address sent before the encoding', () => {
+    expect(parseFeedbackIdFromAddress(`feedback+${REAL_ID}@${FEEDBACK_INBOX_HOST}`)).toBe(REAL_ID)
+  })
+
+  it('returns null for an encoded tag that does not decode', () => {
+    expect(parseFeedbackIdFromAddress(`feedback+h-abc@${FEEDBACK_INBOX_HOST}`)).toBeNull()
+    expect(parseFeedbackIdFromAddress(`feedback+h-@${FEEDBACK_INBOX_HOST}`)).toBeNull()
   })
 
   it('returns null when the plus-tag is empty', () => {
