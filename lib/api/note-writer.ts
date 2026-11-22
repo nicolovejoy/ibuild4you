@@ -196,16 +196,22 @@ function cutTo(s: string, n: number): string {
 }
 
 // The characters an email carries: typed text plus every quote line's text,
-// context lines included. Tags, labels and headers are not counted.
+// context lines included. Tags, labels and headers are not counted, so the
+// limits bound the email text carried, not the exact size of the prompt.
 const emailSize = (item: EmailItem) => readingSize(item)
+
+const CUT_LINE: ReadingLine = { text: CUT_MARK, kind: 'new', by: null }
 
 // An email cut to `limit` characters, counted as emailSize counts them. Typed
 // text is kept first; when it alone passes the limit it is cut and ends with
 // CUT_MARK, and no quote is kept. Otherwise quote lines are kept in order while
-// they fit, the line that passes the limit is cut (dropped when nothing of it
-// fits), a CUT_MARK line ends that quote, and later quotes are dropped. Used
-// for a window email longer than the window limit alone, and for every email
-// shown as earlier context. An email within the limit is returned as it is.
+// they fit, and the line that passes the limit is cut (dropped when nothing of
+// it fits). A quote with no non-blank line kept is dropped whole, never shown
+// as a credited header with nothing under it, and so is every later quote.
+// CUT_MARK ends the last part kept: a CUT_MARK line on the last kept quote, or
+// the typed text when no quote is kept. Used for a window email longer than
+// the window limit alone, and for every email shown as earlier context. An
+// email within the limit is returned as it is.
 function cutEmail(item: EmailItem, limit: number): EmailItem {
   if (emailSize(item) <= limit) return item
   if (item.typed.length > limit) {
@@ -223,9 +229,16 @@ function cutEmail(item: EmailItem, limit: number): EmailItem {
       }
       const kept = cutTo(line.text, room)
       if (kept) lines.push({ ...line, text: kept })
-      lines.push({ text: CUT_MARK, kind: 'new', by: null })
-      quotes.push({ ...quote, lines })
-      return { ...item, quotes }
+      if (lines.some((l) => l.text !== '')) {
+        quotes.push({ ...quote, lines: [...lines, CUT_LINE] })
+        return { ...item, quotes }
+      }
+      // Nothing of this quote fits: the mark goes on what came before it.
+      const last = quotes.pop()
+      if (last) {
+        return { ...item, quotes: [...quotes, { ...last, lines: [...last.lines, CUT_LINE] }] }
+      }
+      return { ...item, typed: item.typed ? `${item.typed}\n${CUT_MARK}` : CUT_MARK, quotes: [] }
     }
     quotes.push(quote)
   }

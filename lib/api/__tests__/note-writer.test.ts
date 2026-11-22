@@ -1314,6 +1314,51 @@ describe('writeNoteForProject', () => {
         expect(notes()[0]).not.toHaveProperty('email_truncated')
       })
 
+      // A quote none of whose lines fit is dropped whole: it is never shown as
+      // a credited header with nothing under it. The mark ends what was kept.
+      it('drops a quote when the typed text fills the limit exactly, and marks the typed text', async () => {
+        const typed = bigText('alpha', EMAIL_CONTEXT_CHAR_LIMIT)
+        seedProject({ notes_through_at: '2026-11-19T11:00:00.000Z' })
+        seedEmail('e1_p1', '2026-11-19T11:00:00.000Z', [typed, '', NICO_HEADER, '> A quoted line nobody has seen yet'].join('\n'), TEST_M)
+        seedEmail('e2_p1', '2026-11-19T12:00:00.000Z', 'a brand new email here')
+        mockMessagesCreate.mockResolvedValue(noteResponse(someNote))
+
+        await writeNoteForProject(db, 'p1')
+
+        const earlier = earlierBlock()
+        expect(block(earlier, 'typed')).toBe(`${typed}\n[cut here]`)
+        expect(earlier).not.toContain('<quoted')
+      })
+
+      it('ends the first quote with the mark when it fills the limit exactly, and drops the second', async () => {
+        const typed = 'Short reply.'
+        // 18 lines of 100 and one of 188: 1,988 characters, so typed and the
+        // first quote hold exactly EMAIL_CONTEXT_CHAR_LIMIT.
+        const first = [
+          ...Array.from({ length: 18 }, (_, i) => `bravo line ${i} `.padEnd(100, 'x')),
+          'bravo last line '.padEnd(188, 'y'),
+        ]
+        expect(typed.length + first.join('').length).toBe(EMAIL_CONTEXT_CHAR_LIMIT)
+        seedProject({ notes_through_at: '2026-11-19T11:00:00.000Z' })
+        seedEmail(
+          'e1_p1',
+          '2026-11-19T11:00:00.000Z',
+          [typed, '', NICO_HEADER, ...quoteLines(first.join('\n')), '', TM_HEADER, '> A charlie line nobody has seen yet'].join('\n'),
+          TEST_M
+        )
+        seedEmail('e2_p1', '2026-11-19T12:00:00.000Z', 'a brand new email here')
+        mockMessagesCreate.mockResolvedValue(noteResponse(someNote))
+
+        await writeNoteForProject(db, 'p1')
+
+        const earlier = earlierBlock()
+        expect(block(earlier, 'typed')).toBe(typed)
+        expect(earlier.match(/<quoted /g)).toHaveLength(1)
+        expect(quoted(earlier)!.body).toBe([NICO_HEADER, ...first, '[cut here]'].join('\n'))
+        expect(earlier).not.toContain('charlie')
+        expect(earlier).not.toContain(TM_HEADER)
+      })
+
       it('drops the quotes of an email whose typed text alone passes the limit', async () => {
         const typed = bigText('alpha', 3_000)
         seedProject({ notes_through_at: '2026-11-19T11:00:00.000Z' })

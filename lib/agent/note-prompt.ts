@@ -38,15 +38,35 @@ const PROMPT_TAGS = [
   'already_recorded',
   'written_inside',
 ]
-const TAG_OPENING = new RegExp(`<(\\s*\\/?\\s*(?:${PROMPT_TAGS.join('|')}))`, 'gi')
+// The `/` sits in its own optional group so the two whitespace runs never
+// compete for the same characters: a `<` before a long run of spaces would
+// otherwise make the match quadratic.
+const TAG_OPENING = new RegExp(`<(\\s*(?:\\/\\s*)?(?:${PROMPT_TAGS.join('|')}))`, 'gi')
 const TURN_LABEL_LINE = /^(?=[ \t]*(?:(?:User|Builder|Assistant):|Email from ))/gim
+
+const isSpace = (c: string) => /\s/.test(c)
+
+// A `<` at the very end of the text, with only whitespace and at most one `/`
+// after it, becomes `&lt;`. Each text is neutralized alone and then joined to
+// the next with "\n", so an open `<` there would be completed into a tag by
+// whatever text comes next. Scanned by index, with no regex, so that a long run
+// of spaces cannot make it slow.
+function closeOpenEnd(text: string): string {
+  let end = text.length
+  while (end > 0 && isSpace(text[end - 1])) end--
+  if (end > 0 && text[end - 1] === '/') end--
+  while (end > 0 && isSpace(text[end - 1])) end--
+  if (end === 0 || text[end - 1] !== '<') return text
+  return `${text.slice(0, end - 1)}&lt;${text.slice(end)}`
+}
 
 // Email text as it goes into the prompt. Anyone a member forwards can write
 // the body, so it must not be able to end a block early or start a turn of its
-// own: a `<` or `</` before one of the prompt's tag names becomes `&lt;`, and a
-// line that starts with a turn label gets `> ` in front. Any other `<` stays.
+// own: a `<` or `</` before one of the prompt's tag names becomes `&lt;`, so
+// does a `<` left open at the end of the text, and a line that starts with a
+// turn label gets `> ` in front. Any other `<` stays.
 export function neutralizeEmailText(text: string): string {
-  return text.replace(TAG_OPENING, '&lt;$1').replace(TURN_LABEL_LINE, '> ')
+  return closeOpenEnd(text.replace(TAG_OPENING, '&lt;$1')).replace(TURN_LABEL_LINE, '> ')
 }
 
 // The tags around a run of quote lines: context lines are already recorded,
