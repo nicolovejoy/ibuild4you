@@ -142,9 +142,17 @@ export type QuoteLine = { text: string; context: boolean; own: boolean }
 // One quoted message: the lines under one quote header.
 // header: the header's lines, markers stripped, joined with '\n'; '' for `>`
 //   lines that come before any header.
-// quoterHeader: the header of the quote this one sits inside (the person who
-//   quoted it wrote that message); null when the email's sender quoted it.
-export type QuoteBlock = { header: string; quoterHeader: string | null; lines: QuoteLine[] }
+// quoterHeader: null = the email's sender quoted it; '' = someone the app could
+//   not identify; otherwise the header of the quote this one sits inside.
+// quoterChain: the headers of every enclosing quote, nearest first (its first
+//   element is quoterHeader; empty when that is null; [''] for an unknown quoter).
+//   (Amended in the final fix wave: unknown quoter and the chain.)
+export type QuoteBlock = {
+  header: string
+  quoterHeader: string | null
+  quoterChain: string[]
+  lines: QuoteLine[]
+}
 
 // Every non-blank normalized line of every text, of any length.
 export function allLines(texts: string[]): Set<string>
@@ -158,10 +166,10 @@ export function splitNewText(
 
 **The rules to add.** A line's depth is the number of `>` in its leading marker run. A quote header's depth is the depth of its first line. A block is a header and the quoted lines after it, up to the next header; `>` lines before the first header form one block with `header: ''` and depth 0 (unmarked lines there stay `typed`, as today).
 
-1. **Own lines, by body depth.** (Third wording, settled during Task 2's review rounds. Gmail puts a quote's body one level deeper than its `On … wrote:` line; Apple Mail puts that line inside the blockquote, at the body's own depth; Outlook uses a field block and no markers.) Each header block has a body depth `b`; `h` is its header's depth. Fields-headed (a divider and/or a `From:`/`Sent:` block): `b = h`. Attribution-headed: if any non-blank content line between this header and the next header is deeper than `h`, `b` is the smallest such depth; else if there is no content line there and the next header is nested deeper (depth `n > h`), `b = n` when that next block is fields-headed or its own body depth is greater than `n`, otherwise `max(h, n - 1)`; otherwise `b = h`. Stack: a header at depth `h` pops every block with `b > h`; its quoter is the new top of the stack, or null; then it is pushed. A quoted line at depth `k` goes to the nearest block from the top with `b <= k + 1`: `own` when `b == k + 1`, body when `b <= k`; with no such block it goes to the shallowest block, own. Lines never pop the stack. `>` lines before any header form the header-less block, never own. An own line is never dropped, long or short, like a typed line. Own is a best reading, not a certainty: a quoted line a mail program re-wrapped without its `>` reads as own. Header detection is unchanged: an attribution still takes in the field lines directly under it, marked or not.
+1. **Own lines, by body depth.** (Third wording, settled during Task 2's review rounds. Gmail puts a quote's body one level deeper than its `On … wrote:` line; Apple Mail puts that line inside the blockquote, at the body's own depth; Outlook uses a field block and no markers.) Each header block has a body depth `b`; `h` is its header's depth. Fields-headed (a divider and/or a `From:`/`Sent:` block): `b = h`. Attribution-headed: if any non-blank content line between this header and the next header is deeper than `h`, `b` is the smallest such depth; else if there is no content line there and the next header is nested deeper (depth `n > h`), `b = n` when that next block is fields-headed or its own body depth is greater than `n`, otherwise `max(h, n - 1)`; otherwise `b = h`. Stack: a header at depth `h` pops every block with `b > h`; its quoter is the new top of the stack, or null; then it is pushed. A quoted line at depth `k` goes to the nearest block from the top with `b <= k + 1`: `own` when `b == k + 1`, body when `b <= k`; with no such block it goes to the shallowest block, own. Lines never pop the stack. `>` lines before any header form the header-less block, never own. An own line in a block the email's sender quoted (quoter null) is never dropped, long or short, like a typed line; in a block with any other quoter it is filtered like a body line (amended in the final fix wave, so held inline answers do not come back in later replies). Own is a best reading, not a certainty: a quoted line a mail program re-wrapped without its `>` reads as own. Header detection is unchanged: an attribution still takes in the field lines directly under it, marked or not.
 2. **Short lines.** Today a short quoted line follows the fate of its nearest long neighbour. Keep that, with one change when `seenAny` is given: a short, non-blank, non-own quoted line whose neighbour was dropped is dropped only if `seenAny` has its normalized form; otherwise it is kept. Without `seenAny` the behaviour is today's. An own line is never the neighbour that decides another line's fate (as a header line is not today). Blank lines follow their neighbour as today.
 3. **Rule 3, the whole message comes back.** After fates are decided: a block that has at least one line dropped as seen and at least one kept non-blank line brings every dropped line back, marked `context: true`. A block with no kept non-blank line stays out entirely (an older level of the thread that the app already holds). A block with no dropped line has no context lines.
-4. **`quoterHeader`.** The header of the block's quoter on the rule 1 stack (the top of the stack after the pops); null when the stack is empty. Only header blocks are on the stack, so it is never `''`.
+4. **`quoterHeader` and `quoterChain`.** The header of the block's quoter on the rule 1 stack (the top of the stack after the pops); null when the stack is empty, except that a header opening at depth 1 or more under header-less `>` text that holds a non-blank line at that depth or shallower has an unknown quoter, `''`. `quoterChain` follows the quoters up to the sender, nearest first. (Amended in the final fix wave.)
 5. **`quotes`** lists, in order, each block with at least one kept non-blank line. Its `lines` are the block's kept lines and context lines in their original order, runs of blank lines collapsed to one and blank lines trimmed from both ends (as `joinLines` does). A blank line is `{ text: '', context: false, own: false }`.
 6. **`quotedUnseen` and `typed`** keep their meaning: `quotedUnseen` is the kept quoted lines and their kept headers, without context lines. Its content changes only where rule 1 or 2 now keeps a line that used to be dropped.
 

@@ -344,6 +344,7 @@ describe('splitNewText quotes', () => {
         {
           header: nicoHeader,
           quoterHeader: null,
+          quoterChain: [],
           lines: [
             context('Hi Test,'),
             context(colour),
@@ -374,6 +375,7 @@ describe('splitNewText quotes', () => {
         {
           header: nicoHeader,
           quoterHeader: null,
+          quoterChain: [],
           lines: [
             context('Hi Test,'),
             context(colour),
@@ -397,6 +399,7 @@ describe('splitNewText quotes', () => {
         {
           header: nicoHeader,
           quoterHeader: null,
+          quoterChain: [],
           lines: [
             context('Hi Test,'),
             context(colour),
@@ -424,7 +427,7 @@ describe('splitNewText quotes', () => {
   it('a fully new quote has no context lines', () => {
     const text = [testMHeader, ...newLines.map((line) => `> ${line}`)].join('\n')
     expect(splitNewText(text, seenEarlier, anyEarlier).quotes).toEqual([
-      { header: testMHeader, quoterHeader: null, lines: newLines.map(kept) },
+      { header: testMHeader, quoterHeader: null, quoterChain: [], lines: newLines.map(kept) },
     ])
   })
 
@@ -446,6 +449,7 @@ describe('splitNewText quotes', () => {
         {
           header: nicoHeader,
           quoterHeader: testMHeader,
+          quoterChain: [testMHeader],
           lines: [context(colour), own('Green.'), context(payment), own(card)],
         },
       ],
@@ -460,7 +464,7 @@ describe('splitNewText quotes', () => {
       ...earlier.split('\n').map((line) => `>> ${line}`),
     ].join('\n')
     const result = splitNewText(text, seenEarlier, anyEarlier)
-    expect(result.quotes).toEqual([{ header: testMHeader, quoterHeader: null, lines: newLines.map(kept) }])
+    expect(result.quotes).toEqual([{ header: testMHeader, quoterHeader: null, quoterChain: [], lines: newLines.map(kept) }])
     expect(result.quotedUnseen).toBe([testMHeader, ...newLines].join('\n'))
   })
 
@@ -481,7 +485,7 @@ describe('splitNewText quotes', () => {
     expect(splitNewText(text, seenEarlier, anyEarlier)).toEqual({
       typed: 'Yes, all three.',
       quotedUnseen: [...fields, '', ...newLines].join('\n'),
-      quotes: [{ header: fields.join('\n'), quoterHeader: null, lines: newLines.map(kept) }],
+      quotes: [{ header: fields.join('\n'), quoterHeader: null, quoterChain: [], lines: newLines.map(kept) }],
     })
   })
 
@@ -491,6 +495,7 @@ describe('splitNewText quotes', () => {
       {
         header: testMHeader,
         quoterHeader: null,
+        quoterChain: [],
         lines: [kept(newLines[0]), { text: '', context: false, own: false }, kept(newLines[1])],
       },
     ])
@@ -511,9 +516,10 @@ describe('splitNewText quotes', () => {
       {
         header: testMHeader,
         quoterHeader: null,
+        quoterChain: [],
         lines: [kept('Green is fine by me, see below.'), own('I agree with Test M on all of it.')],
       },
-      { header: nicoHeader, quoterHeader: testMHeader, lines: [kept(colour), own('Green.')] },
+      { header: nicoHeader, quoterHeader: testMHeader, quoterChain: [testMHeader], lines: [kept(colour), own('Green.')] },
     ])
   })
 
@@ -533,10 +539,11 @@ describe('splitNewText quotes', () => {
     // A's block has no line of its own, so it is not listed. B's block has no
     // line deeper than B, but C's header is nested in it, so "A answered" is own.
     expect(splitNewText(text, new Set(), new Set()).quotes).toEqual([
-      { header: bHeader, quoterHeader: aHeader, lines: [own('A answered at level one.')] },
+      { header: bHeader, quoterHeader: aHeader, quoterChain: [aHeader], lines: [own('A answered at level one.')] },
       {
         header: cHeader,
         quoterHeader: bHeader,
+        quoterChain: [bHeader, aHeader],
         lines: [
           kept('C wrote this long line here.'),
           own('B answered at level two.'),
@@ -561,6 +568,7 @@ describe('splitNewText quotes', () => {
       {
         header: [divider, ...fields].join('\n'),
         quoterHeader: null,
+        quoterChain: [],
         lines: [kept('Sure, that sounds right to me.'), kept(colour), kept('Green would be best.')],
       },
     ])
@@ -569,7 +577,7 @@ describe('splitNewText quotes', () => {
   it('a quote header at the top of the text has no quoter', () => {
     const text = `> ${nicoHeader}\n>> ${colour}`
     expect(splitNewText(text, new Set(), new Set()).quotes).toEqual([
-      { header: nicoHeader, quoterHeader: null, lines: [kept(colour)] },
+      { header: nicoHeader, quoterHeader: null, quoterChain: [], lines: [kept(colour)] },
     ])
   })
 
@@ -578,8 +586,8 @@ describe('splitNewText quotes', () => {
   it('a quote header under header-less quoted text has an unknown quoter', () => {
     const text = `> Some earlier words with no header.\n> ${nicoHeader}\n>> ${colour}`
     expect(splitNewText(text, new Set(), new Set()).quotes).toEqual([
-      { header: '', quoterHeader: null, lines: [kept('Some earlier words with no header.')] },
-      { header: nicoHeader, quoterHeader: '', lines: [kept(colour)] },
+      { header: '', quoterHeader: null, quoterChain: [], lines: [kept('Some earlier words with no header.')] },
+      { header: nicoHeader, quoterHeader: '', quoterChain: [''], lines: [kept(colour)] },
     ])
   })
 
@@ -588,6 +596,22 @@ describe('splitNewText quotes', () => {
     expect(splitNewText(text, new Set(), new Set()).quotes[1]).toEqual({
       header: nicoHeader,
       quoterHeader: null,
+      quoterChain: [],
+      lines: [kept(colour)],
+    })
+  })
+
+  it('quoterChain names every enclosing quote, nearest first, ending with an unknown quoter', () => {
+    const text = [
+      '> Some earlier words with no header.',
+      `> ${testMHeader}`,
+      `>> ${nicoHeader}`,
+      `>>> ${colour}`,
+    ].join('\n')
+    expect(splitNewText(text, new Set(), new Set()).quotes[1]).toEqual({
+      header: nicoHeader,
+      quoterHeader: testMHeader,
+      quoterChain: [testMHeader, ''],
       lines: [kept(colour)],
     })
   })
@@ -607,6 +631,7 @@ describe('splitNewText quotes', () => {
     expect(splitNewText(text, new Set(), new Set()).quotes[1]).toEqual({
       header: testMHeader,
       quoterHeader: '',
+      quoterChain: [''],
       lines: [
         kept('Should the app send reminders every day?'),
         own('No, weekly reminders are enough for this kind of app.'),
@@ -637,10 +662,11 @@ describe('splitNewText quotes', () => {
           'No, weekly reminders are enough for this kind of app.',
         ].join('\n'),
         quotes: [
-          { header: frenchHeader, quoterHeader: null, lines: [kept('Answers below.')] },
+          { header: frenchHeader, quoterHeader: null, quoterChain: [], lines: [kept('Answers below.')] },
           {
             header: inner,
             quoterHeader: frenchHeader,
+            quoterChain: [frenchHeader],
             lines: [
               kept('Should the app send reminders every day?'),
               own('No, weekly reminders are enough for this kind of app.'),
@@ -657,18 +683,18 @@ describe('splitNewText quotes', () => {
         frenchHeader.replace(' :', ' :'),
       ]) {
         expect(splitNewText(`Merci.\n${header}\n> Une ligne jamais vue avant.`, new Set()).quotes).toEqual([
-          { header, quoterHeader: null, lines: [kept('Une ligne jamais vue avant.')] },
+          { header, quoterHeader: null, quoterChain: [], lines: [kept('Une ligne jamais vue avant.')] },
         ])
       }
       expect(splitNewText(`Merci.\n> ${frenchHeader}\n> Une ligne jamais vue avant.`, new Set()).quotes).toEqual([
-        { header: frenchHeader, quoterHeader: null, lines: [kept('Une ligne jamais vue avant.')] },
+        { header: frenchHeader, quoterHeader: null, quoterChain: [], lines: [kept('Une ligne jamais vue avant.')] },
       ])
     })
 
     it('is recognised wrapped over two lines', () => {
       const wrapped = 'Le dim. 22 nov. 2026 à 11:00, Nico L <\nnico@me.com> a écrit :'
       expect(splitNewText(`Merci.\n\n${wrapped}\n> Une ligne jamais vue avant.`, new Set()).quotes).toEqual([
-        { header: wrapped, quoterHeader: null, lines: [kept('Une ligne jamais vue avant.')] },
+        { header: wrapped, quoterHeader: null, quoterChain: [], lines: [kept('Une ligne jamais vue avant.')] },
       ])
     })
 
@@ -694,6 +720,7 @@ describe('splitNewText quotes', () => {
       {
         header: nicoHeader,
         quoterHeader: null,
+        quoterChain: [],
         lines: [kept(colour), own('Green.'), kept(payment), own(card)],
       },
     ])
@@ -721,9 +748,10 @@ describe('splitNewText quotes', () => {
         {
           header: testMHeader,
           quoterHeader: null,
+          quoterChain: [],
           lines: [kept('Green is fine by me, I think it works well.')],
         },
-        { header: nicoHeader, quoterHeader: testMHeader, lines: [kept(colour)] },
+        { header: nicoHeader, quoterHeader: testMHeader, quoterChain: [testMHeader], lines: [kept(colour)] },
       ],
     })
   })
@@ -734,11 +762,13 @@ describe('splitNewText quotes', () => {
       {
         header: testMHeader,
         quoterHeader: null,
+        quoterChain: [],
         lines: [kept('Green is fine by me, I think it works well.')],
       },
       {
         header: nicoHeader,
         quoterHeader: testMHeader,
+        quoterChain: [testMHeader],
         lines: [kept(colour), own('Green, as I said.'), kept(payment)],
       },
     ])
@@ -765,10 +795,11 @@ describe('splitNewText quotes', () => {
       card,
     ].join('\n')
     expect(splitNewText(text, new Set(), new Set()).quotes).toEqual([
-      { header: forwardHeader.join('\n'), quoterHeader: null, lines: [kept('See my answers below.')] },
+      { header: forwardHeader.join('\n'), quoterHeader: null, quoterChain: [], lines: [kept('See my answers below.')] },
       {
         header: innerHeader,
         quoterHeader: forwardHeader.join('\n'),
+        quoterChain: [forwardHeader.join('\n')],
         lines: [kept(colour), own('Green would be best.'), kept(payment), own(card)],
       },
     ])
@@ -793,6 +824,7 @@ describe('splitNewText quotes', () => {
       {
         header: [testMHeader, ...fields].join('\n'),
         quoterHeader: null,
+        quoterChain: [],
         lines: [kept('Which colour do you want for the start button?'), own('Green, please.')],
       },
     ])
@@ -836,6 +868,7 @@ describe('splitNewText quotes', () => {
         {
           header: nicoHeader,
           quoterHeader: testMHeader,
+          quoterChain: [testMHeader],
           lines: [
             context('Hi Test,'),
             context(colour),
@@ -876,9 +909,10 @@ describe('splitNewText quotes', () => {
       {
         header: aHeader,
         quoterHeader: null,
+        quoterChain: [],
         lines: [kept('A said this long line here.'), own('My answer to A goes here.')],
       },
-      { header: bHeader, quoterHeader: null, lines: [kept('B said this long line here.')] },
+      { header: bHeader, quoterHeader: null, quoterChain: [], lines: [kept('B said this long line here.')] },
     ])
   })
 })

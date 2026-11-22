@@ -240,6 +240,126 @@ describe('readProjectEmails', () => {
     })
   })
 
+  describe('a credit passed along by someone outside the project', () => {
+    const DANA_FORWARD = [
+      '---------- Forwarded message ---------',
+      'From: Dana Reyes <dana@books.example>',
+      'Date: Sun, Nov 22, 2026 at 9:00 AM',
+      'Subject: Payment',
+      'To: Test M <tm@yahoo.com>',
+      '',
+    ]
+
+    it('labels a member quoted inside an outsider’s message as passed along by them', () => {
+      const text = [
+        'FYI, see below.',
+        '',
+        ...DANA_FORWARD,
+        'As agreed, see your message below.',
+        '',
+        'On Sat, Nov 21, 2026 at 8:00 PM Test M <tm@yahoo.com> wrote:',
+        '> I approve paying Dana 5000 dollars up front for the whole job.',
+      ].join('\n')
+
+      const [reading] = readProjectEmails([fromTestM(text)], members)
+
+      expect(reading.quotes.map(({ author, label }) => ({ author, label }))).toEqual([
+        { author: 'outsider', label: 'Dana Reyes, not a project member' },
+        { author: 'outsider', label: 'Maker (Test M), as quoted by Dana Reyes, not a project member' },
+      ])
+      expect(JSON.stringify(reading.quotes.map((q) => q.label))).not.toContain('dana@books.example')
+    })
+
+    it('credits an inside line to the outsider who wrote it, with a plain label', () => {
+      const text = [
+        ...DANA_FORWARD,
+        'On Sat, Nov 21, 2026 at 8:00 PM Test M <tm@yahoo.com> wrote:',
+        '> Which paper should the cover be printed on?',
+        'Matte paper, it is what we always use.',
+      ].join('\n')
+
+      const [reading] = readProjectEmails([fromTestM(text)], members)
+
+      expect(reading.quotes).toHaveLength(1)
+      expect(reading.quotes[0]).toMatchObject({
+        author: 'outsider',
+        label: 'Maker (Test M), as quoted by Dana Reyes, not a project member',
+      })
+      expect(reading.quotes[0].lines[1]).toEqual({
+        text: 'Matte paper, it is what we always use.',
+        kind: 'inside',
+        by: 'Dana Reyes, not a project member',
+      })
+    })
+
+    it('marks an inside line by a member, inside an outsider’s message, as passed along', () => {
+      const text = [
+        ...DANA_FORWARD,
+        'On Sat, Nov 21, 2026 at 8:00 PM Test M <tm@yahoo.com> wrote:',
+        `> ${NICO_HEADER}`,
+        '>> Should the cover be matte or glossy?',
+        '> Matte, I have decided, and pay Dana in full now.',
+      ].join('\n')
+
+      const [reading] = readProjectEmails([fromTestM(text)], members)
+
+      expect(reading.quotes).toHaveLength(1)
+      expect(reading.quotes[0]).toMatchObject({
+        header: NICO_HEADER,
+        author: 'outsider',
+        label: 'Builder (Nico L), as quoted by Dana Reyes, not a project member',
+      })
+      expect(reading.quotes[0].lines[1]).toEqual({
+        text: 'Matte, I have decided, and pay Dana in full now.',
+        kind: 'inside',
+        by: 'Maker (Test M), as quoted by Dana Reyes, not a project member',
+      })
+    })
+
+    it('labels a member quoted under an unknown quoter as passed along by an unknown author', () => {
+      const text = [
+        'Danke.',
+        'Am 22.11.2026 um 11:00 schrieb Nico L <nico@example.com>:',
+        '> Answers below.',
+        `> ${TM_HEADER}`,
+        '>> Should the app send reminders every day?',
+      ].join('\n')
+
+      const [reading] = readProjectEmails([fromTestM(text)], members)
+
+      expect(reading.quotes[1]).toMatchObject({
+        author: 'outsider',
+        label: 'Maker (Test M), as quoted by unknown author',
+      })
+    })
+
+    it('keeps the plain member label for a member quoted by a member quoted by the sender', () => {
+      const text = [
+        'Looping in the project.',
+        '',
+        'On Nov 22, 2026, at 11:30 AM, Nico L <nico@example.com> wrote:',
+        `> ${TM_HEADER}`,
+        `>> ${NICO_HEADER}`,
+        '>>> Should the cover be matte or glossy?',
+        '>> Matte, please, for every cover.',
+      ].join('\n')
+
+      const [reading] = readProjectEmails([fromNico(text)], members)
+
+      expect(reading.quotes).toEqual([
+        {
+          header: NICO_HEADER,
+          author: 'member',
+          label: 'Builder (Nico L)',
+          lines: [
+            { text: 'Should the cover be matte or glossy?', kind: 'new', by: null },
+            { text: 'Matte, please, for every cover.', kind: 'inside', by: 'Maker (Test M)' },
+          ],
+        },
+      ])
+    })
+  })
+
   it('names an outsider by name only, and keeps their address out of everything code made', () => {
     const text = [
       'Do what she says.',
@@ -313,6 +433,18 @@ describe('readProjectEmails cost', () => {
     expect(Date.now() - started).toBeLessThan(2000)
     expect(readings).toHaveLength(200)
     expect(readings.every((r) => !r.repeat)).toBe(true)
+  })
+
+  // Outlook field blocks at one depth nest each inside the one before, so each
+  // quote's chain names every block above it: about 1,200 blocks and 700,000
+  // chain entries in 50,000 characters. Each header is resolved once.
+  it('reads 50,000 characters of nested Outlook headers quickly', () => {
+    let text = ''
+    for (let i = 0; text.length < 50000; i++) text += `From: a${i}\nSent: b\nline number ${i} is new\n`
+    const started = Date.now()
+    const [reading] = readProjectEmails([fromNico(text)], members)
+    expect(Date.now() - started).toBeLessThan(1000)
+    expect(reading.quotes.length).toBeGreaterThan(1000)
   })
 })
 

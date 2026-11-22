@@ -7,7 +7,7 @@ import {
   splitNewText,
   type QuoteBlock,
 } from './new-text'
-import { authorLabel, resolveQuoteAuthor, senderLabel } from './quote-author'
+import { authorLabel, resolveQuoteAuthor, senderLabel, type QuoteAuthor } from './quote-author'
 import type { SenderMember } from './sender'
 
 // One reading of each project email: what its sender typed, and each quoted
@@ -23,8 +23,11 @@ export type ReadingQuote = {
   // unchanged ('' for `>` lines with no header). The one field that may hold a
   // non-member's address.
   header: string
+  // 'outsider' too for a member's quote passed along by a non-member (readQuote).
   author: 'member' | 'outsider' | 'unknown'
-  label: string // authorLabel of the quote's author
+  // authorLabel of the quote's author, with ", as quoted by …" when a
+  // non-member passed a member's quote along.
+  label: string
   lines: ReadingLine[]
 }
 export type EmailReading = {
@@ -34,22 +37,63 @@ export type EmailReading = {
   quotes: ReadingQuote[]
 }
 
+// Resolves a header to its author, each distinct header once per email: the
+// same header sits in the chain of every quote nested under it.
+type Resolve = (header: string) => QuoteAuthor
+
+// The nearest author in `chain` from `from` on that is not a member (an
+// outsider or unknown), or null when they are all members.
+function nearestNonMember(chain: QuoteAuthor[], from: number): QuoteAuthor | null {
+  for (let i = from; i < chain.length; i++) if (chain[i].kind !== 'member') return chain[i]
+  return null
+}
+
+// A member's label as passed along by a non-member: "Maker (Test M), as quoted
+// by Dana Reyes, not a project member".
+function asQuotedBy(label: string, passer: QuoteAuthor): string {
+  return `${label}, as quoted by ${authorLabel(passer)}`
+}
+
 // A quoted message from splitNewText, credited. An inside line was written by
 // whoever quoted the block: the email's sender when nothing encloses it, else
 // the author of the quote around it.
-function readQuote(block: QuoteBlock, email: ProjectEmail, members: SenderMember[]): ReadingQuote {
-  const author = resolveQuoteAuthor(block.header, members)
-  const quoter =
-    block.quoterHeader === null
-      ? senderLabel(email.from_role, email.from_name)
-      : authorLabel(resolveQuoteAuthor(block.quoterHeader, members))
+//
+// A credit is only as good as everyone who passed the text along: anyone a
+// member forwards can write "On ..., Test M <tm@yahoo.com> wrote:" into their
+// own message. So when a member's quote, or a member's inside lines, reached
+// the sender through someone who is not a member (an outsider, or a quoter the
+// app could not identify), the credit is unconfirmed: the quote counts as an
+// outsider's, and both labels say who passed it along. An author who is
+// already an outsider or unknown keeps their plain label.
+function readQuote(block: QuoteBlock, email: ProjectEmail, resolve: Resolve): ReadingQuote {
+  const author = resolve(block.header)
+  const chain = block.quoterChain.map(resolve)
+
+  let kind = author.kind
+  let label = authorLabel(author)
+  const passer = nearestNonMember(chain, 0)
+  if (author.kind === 'member' && passer) {
+    kind = 'outsider'
+    label = asQuotedBy(label, passer)
+  }
+
+  // `by` names the quoter, chain[0]; what passed it along is the chain above it.
+  let by: string
+  if (chain.length === 0) {
+    by = senderLabel(email.from_role, email.from_name)
+  } else {
+    by = authorLabel(chain[0])
+    const above = nearestNonMember(chain, 1)
+    if (chain[0].kind === 'member' && above) by = asQuotedBy(by, above)
+  }
+
   return {
     header: block.header,
-    author: author.kind,
-    label: authorLabel(author),
+    author: kind,
+    label,
     lines: block.lines.map((line): ReadingLine => {
       if (line.context) return { text: line.text, kind: 'context', by: null }
-      if (line.own) return { text: line.text, kind: 'inside', by: quoter }
+      if (line.own) return { text: line.text, kind: 'inside', by }
       return { text: line.text, kind: 'new', by: null }
     }),
   }
@@ -82,7 +126,16 @@ export function readProjectEmails(emails: ProjectEmail[], members: SenderMember[
     if (!repeat) {
       const split = splitNewText(text, seen, seenAny)
       typed = split.typed
-      quotes = split.quotes.map((block) => readQuote(block, email, members))
+      const authors = new Map<string, QuoteAuthor>()
+      const resolve: Resolve = (header) => {
+        let author = authors.get(header)
+        if (author === undefined) {
+          author = resolveQuoteAuthor(header, members)
+          authors.set(header, author)
+        }
+        return author
+      }
+      quotes = split.quotes.map((block) => readQuote(block, email, resolve))
     }
     // Added after the split: an email is never evidence against itself.
     for (const line of seenLines([text])) seen.add(line)

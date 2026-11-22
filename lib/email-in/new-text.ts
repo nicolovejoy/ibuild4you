@@ -83,7 +83,17 @@ export type QuoteLine = { text: string; context: boolean; own: boolean }
 //   the email's sender. '': someone the app could not identify (the header
 //   sits inside `>` text whose header was not recognised, step 3). Otherwise
 //   the header of the quote this one sits inside: its author wrote that message.
-export type QuoteBlock = { header: string; quoterHeader: string | null; lines: QuoteLine[] }
+// quoterChain: the headers of every quote enclosing this one, nearest first:
+//   everyone who passed this message along before the email's sender. Its
+//   first element is quoterHeader, and it is empty when quoterHeader is null.
+//   An unknown quoter is '' and ends the chain. A credit is only as good as
+//   everyone in it (lib/email-in/reading.ts).
+export type QuoteBlock = {
+  header: string
+  quoterHeader: string | null
+  quoterChain: string[]
+  lines: QuoteLine[]
+}
 
 type Line = {
   raw: string
@@ -504,15 +514,32 @@ function headerText(block: Block): string {
 // thread that the app already holds. A block that has new lines and dropped
 // lines brings every dropped line back as context, so an inline answer arrives
 // with the question it answers. Every drop is a drop as seen (step 4), so a
-// listed block shows all its lines. Its quoter was found in step 3.
+// listed block shows all its lines. Its quoter was found in step 3; its chain
+// follows the quoters up to the email's sender.
 function collectQuotes(blocks: Block[]): QuoteBlock[] {
+  // Each header's text made once, so the chains share the same strings.
+  const texts = new Map<Block, string>()
+  const textOf = (block: Block): string => {
+    let text = texts.get(block)
+    if (text === undefined) {
+      text = headerText(block)
+      texts.set(block, text)
+    }
+    return text
+  }
+
   const quotes: QuoteBlock[] = []
   for (const block of blocks) {
     if (!block.lines.some((line) => line.kept && line.normalized !== '')) continue
     for (const line of block.lines) line.context = !line.kept && line.normalized !== ''
+    const quoterChain: string[] = []
+    for (let quoter = block.quoter; quoter !== null; quoter = quoter.quoter) {
+      quoterChain.push(textOf(quoter))
+    }
     quotes.push({
-      header: headerText(block),
-      quoterHeader: block.quoter ? headerText(block.quoter) : null,
+      header: textOf(block),
+      quoterHeader: quoterChain.length > 0 ? quoterChain[0] : null,
+      quoterChain,
       lines: trimBlankRuns(block.lines.map(toQuoteLine)),
     })
   }
