@@ -1038,6 +1038,31 @@ describe('PUT /api/briefs — patch', () => {
     expect(mockFoldNotes).not.toHaveBeenCalled()
   })
 
+  it('a stale stamp is reported before a drop that matches nothing: 409 stale_prep, not a list of failed drops', async () => {
+    // The live brief is v3 and the prep was made from v2. A drop that no longer
+    // matches is what a moved brief looks like, so the stale answer comes first.
+    const res = await putPatch({
+      patch: { drop: { features: ['Loyalty card'] } },
+      prep_stamp: { brief_version: 2, note_ids: [] },
+    })
+    expect(res.status).toBe(409)
+    expect((await res.json()).error).toBe('stale_prep')
+    expect(mockUpsertBrief).not.toHaveBeenCalled()
+    expect(mockFoldNotes).not.toHaveBeenCalled()
+  })
+
+  it('a stale stamp with force: true still refuses a drop that matches nothing', async () => {
+    const res = await putPatch({
+      patch: { drop: { features: ['Loyalty card'] } },
+      prep_stamp: { brief_version: 2, note_ids: [] },
+      force: true,
+    })
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toBe('patch_drop_unmatched')
+    expect(mockUpsertBrief).not.toHaveBeenCalled()
+    expect(mockFoldNotes).not.toHaveBeenCalled()
+  })
+
   it('a patch replacing a locked decision, unstamped: the lock is saved verbatim and locks_kept names it', async () => {
     // A second entry keeps the patch from being a no-op, so a version is saved.
     const res = await putPatch({

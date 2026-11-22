@@ -9,7 +9,7 @@ import { hasBriefContent } from '@/lib/brief/has-content'
 import type { BriefContent } from '@/lib/types'
 
 export type PastePreviewLine = {
-  id: 'changes' | 'implicit' | 'unmatched' | 'locks' | 'rewrite' | 'no-brief'
+  id: 'changes' | 'implicit' | 'unmatched' | 'locks' | 'rewrite' | 'no-brief' | 'not-evaluated'
   text: string
   warn: boolean // warning style, like a stale version line
 }
@@ -31,15 +31,24 @@ function wholeBriefForCompare(brief: unknown): BriefContent | null {
 
 // The preview runs on every keystroke and the pasted JSON and the stored brief
 // are both untrusted shapes, so any failure means no preview, never a crash.
-export function pastePreviewLines(pasteValue: string, briefContent: BriefContent | null): PastePreviewLine[] {
+// briefVersion is the live brief's version, null when it is not known.
+export function pastePreviewLines(
+  pasteValue: string,
+  briefContent: BriefContent | null,
+  briefVersion: number | null = null
+): PastePreviewLine[] {
   try {
-    return buildLines(pasteValue, briefContent)
+    return buildLines(pasteValue, briefContent, briefVersion)
   } catch {
     return []
   }
 }
 
-function buildLines(pasteValue: string, briefContent: BriefContent | null): PastePreviewLine[] {
+function buildLines(
+  pasteValue: string,
+  briefContent: BriefContent | null,
+  briefVersion: number | null
+): PastePreviewLine[] {
   if (pasteValue.trim() === '') return []
   const parsed = parseNextConvoPayload(pasteValue)
   if (!parsed.ok) return []
@@ -51,6 +60,13 @@ function buildLines(pasteValue: string, briefContent: BriefContent | null): Past
     if (!live) return [{ id: 'no-brief', text: copy.brief.patchNoBrief, warn: true }]
     const patch = normalizeBriefPatch(payload.patch)
     if (!patch) return []
+    // The patch was written against an older brief. Merged into the live one,
+    // a drop already made reads as a failed drop and an entry already added
+    // reads as "Changes: none", so say it was not evaluated. The version line
+    // above this one says the brief moved and what to do.
+    if (payload.stamp && briefVersion != null && payload.stamp.brief_version < briefVersion) {
+      return [{ id: 'not-evaluated', text: copy.brief.patchNotEvaluated, warn: true }]
+    }
     const { summary, unmatched, locksTouched } = applyBriefPatch(live, patch)
     // A payload that left "brief_patch" out (read as an empty patch) and would
     // still fold notes gets a warning in place of the plain "Changes: none".
