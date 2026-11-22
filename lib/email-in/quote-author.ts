@@ -1,5 +1,12 @@
 import { isValidEmail, normalizeEmail } from '@/lib/email/normalize'
-import { ENGLISH_ATTRIBUTION, FRENCH_ATTRIBUTION, HEADER_FIELD, startsAttribution } from './new-text'
+import {
+  ENGLISH_ATTRIBUTION,
+  endsAttribution,
+  FRENCH_ATTRIBUTION,
+  HEADER_FIELD,
+  isAttribution,
+  startsAttribution,
+} from './new-text'
 import { memberForAddress, type SenderMember } from './sender'
 
 // Who wrote a quoted block inside an email. Code decides this, never the model:
@@ -14,8 +21,10 @@ import { memberForAddress, type SenderMember } from './sender'
 // Sent: or Date:, To:, Subject:). '' means the quote has no header, or a quoter
 // the app could not identify.
 
-// `bare` is true when the address is a loose token in the text, not one the mail
-// program put in an angle group or a mailto form. false when there is no address.
+// `bare` is true when the address does not prove who the author is: a loose
+// token in the text, not one the mail program put in an angle group or a mailto
+// form, or one in a From: line that cannot be relied on (parseFrom). false when
+// there is no address.
 export type HeaderAuthor = { name: string | null; email: string | null; bare: boolean }
 
 // The longest From: line or attribution that is read, so every pattern below
@@ -27,6 +36,7 @@ const MAX_HEADER_LENGTH = 2000
 // before it is left out, and ends at the domain's last label, so a full stop
 // after it is left out.
 const ADDRESS = /[A-Za-z0-9][A-Za-z0-9._%+'-]*@[A-Za-z0-9.-]+\.[A-Za-z0-9-]+/g
+const WHOLE_ADDRESS = new RegExp(`^${ADDRESS.source}$`)
 // Where the address part starts: an angle group or a [mailto:...] form.
 const GROUP_START = /<|\[mailto:/i
 // An innermost angle group, and an Outlook [mailto:...] form. In
@@ -39,10 +49,11 @@ const MAILTO_GROUP = /\[mailto:([^\]]*)\]/gi
 const AM_PM = /^ *(?:AM|PM)\b/
 const TIME_ZONE = /^ *[A-Z]{2,5}\b/
 
-// The first address-shaped token that is a valid address, normalized.
-function firstAddress(text: string): string | null {
-  const token = text.match(ADDRESS)?.[0]
-  return token && isValidEmail(token) ? normalizeEmail(token) : null
+// The text as an address, normalized, when it is one valid address from end to
+// end. An address inside a longer one proves nothing: in
+// "tm@yahoo.com"@evil.com the mailbox is at evil.com.
+function wholeAddress(text: string): string | null {
+  return WHOLE_ADDRESS.test(text) && isValidEmail(text) ? normalizeEmail(text) : null
 }
 
 // What leads into an address after the name ("Name <", "Name [mailto:") is cut
@@ -61,19 +72,33 @@ function stripOpener(text: string): string {
 
 // The author's address in a From: value or an attribution's middle.
 // Display names are written by whoever sent the original mail, so an address
-// inside one proves nothing. The real address is the one in the LAST angle
-// group or [mailto:] form; if that group holds no valid address there is none,
-// and no other token is tried. Only when the text has no group at all is a bare
-// address taken, and then only if it is the one address-shaped token in it.
+// inside one proves nothing. The real address is the LAST angle group or
+// [mailto:] form: the whole of it, with nothing but closing brackets after it
+// (an address such as <"<tm@yahoo.com>"@evil.com> holds a group of its own). If
+// that is not one valid address there is none, and no other token is tried.
+// Only when the text has no group at all is a bare address taken, and then only
+// if it is the one address-shaped token in it.
 function headerAddress(text: string): { email: string | null; bare: boolean } {
   const groups = [...text.matchAll(ANGLE_GROUP), ...text.matchAll(MAILTO_GROUP)]
   if (groups.length > 0) {
     groups.sort((a, b) => a.index - b.index)
-    return { email: firstAddress(groups[groups.length - 1][1]), bare: false }
+    const last = groups[groups.length - 1]
+    const after = text.slice(last.index + last[0].length)
+    const address = last[1].trim().replace(/^mailto:/i, '').trim()
+    return { email: /^[\s>\])]*$/.test(after) ? wholeAddress(address) : null, bare: false }
   }
   const tokens = text.match(ADDRESS)
-  const email = tokens?.length === 1 ? firstAddress(tokens[0]) : null
+  const email = tokens?.length === 1 ? wholeAddress(tokens[0]) : null
   return { email, bare: email !== null }
+}
+
+// Whether a From: value's groups hold more than one address. A link repeats its
+// own address (<a@b.c<mailto:a@b.c>>), which counts as one.
+function hasSeveralAddresses(text: string): boolean {
+  const group = GROUP_START.exec(text)
+  if (!group) return false
+  const addresses = text.slice(group.index).match(ADDRESS) ?? []
+  return new Set(addresses.map(normalizeEmail)).size > 1
 }
 
 // The text before the address part: up to the first group, or else up to the
@@ -119,38 +144,60 @@ function attributionName(inner: string): string | null {
 
 const NOBODY: HeaderAuthor = { name: null, email: null, bare: false }
 
-// A header's two parts that can name someone: its attribution (the lines before
-// the first field line, joined with spaces; a divider when it has one instead)
-// and its first From: line, null when there is none. The other field lines are
-// never read: To: and Cc: name recipients, and a Subject: can hold any text.
-// Lines end at "\n" only, as in new-text.ts.
-function headerParts(header: string): { attribution: string; from: string | null } {
+// The two parts of a header that can name someone, each null when the header
+// does not have it: its attribution, the lines before the first field line, and
+// its first From: line. The other field lines are never read: To: and Cc: name
+// recipients, and a Subject: can hold any text. Lines end at "\n" only, as in
+// new-text.ts.
+function headerParts(header: string): { attribution: HeaderAuthor | null; from: HeaderAuthor | null } {
   const lines = header.split('\n').map((line) => line.trim())
   const firstField = lines.findIndex((line) => HEADER_FIELD.test(line))
-  const attribution = firstField < 0 ? lines : lines.slice(0, firstField)
-  const from = lines.find((line) => /^From:/i.test(line)) ?? null
-  return { attribution: attribution.join(' ').trim(), from }
+  const fieldsAt = firstField < 0 ? lines.length : firstField
+  const fromAt = lines.findIndex((line) => /^From:/i.test(line))
+  return {
+    attribution: startsAttribution(lines[0])
+      ? parseAttribution(lines.slice(0, fieldsAt), lines[fieldsAt] ?? '')
+      : null,
+    from: fromAt < 0 ? null : parseFrom(lines[fromAt], lines[fromAt + 1] ?? ''),
+  }
 }
 
-// Whoever a From: line names.
-function parseFrom(line: string): HeaderAuthor {
+// Whoever a From: line names. Its address proves nothing (it is as good as a
+// bare one) when the line may have been wrapped and lost its end, which is
+// when the line under it is not a field; when it was sent on behalf of someone,
+// whose display name then comes last; and when it holds several addresses.
+function parseFrom(line: string, next: string): HeaderAuthor {
   if (line.length > MAX_HEADER_LENGTH) return NOBODY
   const value = line.slice('From:'.length).trim()
-  return { name: cleanName(stripOpener(beforeAddress(value))), ...headerAddress(value) }
+  const { email, bare } = headerAddress(value)
+  const unproven =
+    !HEADER_FIELD.test(next) || /\bon\s+behalf\s+of\b/i.test(value) || hasSeveralAddresses(value)
+  return {
+    name: cleanName(stripOpener(beforeAddress(value))),
+    email,
+    bare: bare || (email !== null && unproven),
+  }
 }
 
-// Whoever "On ... wrote:" or its French form "Le ... a écrit :" names. Its
-// address is read from the text between On and wrote: (or Le and a écrit).
-function parseAttribution(attribution: string): HeaderAuthor {
-  if (attribution.length > MAX_HEADER_LENGTH) return NOBODY
-  const inner = attributionInner(attribution)
+// Whoever "On ... wrote:" or its French form "Le ... a écrit :" names, from its
+// lines and the field line under them. Its address is read from the text
+// between On and wrote: (or Le and a écrit).
+//
+// Nobody, when a line that ends like an attribution follows a whole one. It may
+// be the end of a wrapped display name, so the address above it is not the
+// author's; or the quoted message's own first line, so neither is its own.
+function parseAttribution(lines: string[], fieldLine: string): HeaderAuthor {
+  const joined = lines.join(' ')
+  if (joined.length > MAX_HEADER_LENGTH) return NOBODY
+  if (isAttribution(lines.slice(0, -1).join(' ')) || endsAttribution(fieldLine)) return NOBODY
+  const inner = attributionInner(joined)
   return inner === null ? NOBODY : { name: attributionName(inner), ...headerAddress(inner) }
 }
 
 // A From: line wins over an attribution above it.
 export function parseQuoteHeader(header: string): HeaderAuthor {
   const { attribution, from } = headerParts(header)
-  return from !== null ? parseFrom(from) : parseAttribution(attribution)
+  return from ?? attribution ?? NOBODY
 }
 
 // The text between an attribution's opening word and its closing words, or
@@ -179,8 +226,7 @@ export function resolveQuoteAuthor(header: string, members: SenderMember[]): Quo
 // name. Unknown when the attribution cannot be read.
 export function resolveAttributionAuthor(header: string, members: SenderMember[]): QuoteAuthor | null {
   const { attribution, from } = headerParts(header)
-  if (from === null || !startsAttribution(attribution)) return null
-  return resolveParsed(parseAttribution(attribution), members)
+  return attribution !== null && from !== null ? resolveParsed(attribution, members) : null
 }
 
 function resolveParsed(parsed: HeaderAuthor, members: SenderMember[]): QuoteAuthor {

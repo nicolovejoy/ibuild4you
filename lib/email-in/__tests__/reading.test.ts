@@ -377,13 +377,21 @@ describe('readProjectEmails', () => {
     const credit = (author: string, label: string, inside: string[][] = []) => ({ author, label, inside })
 
     describe('a From: line directly under an attribution', () => {
-      const FAKE_FROM = '> From: Test M <tm@yahoo.com>'
+      const FAKE_FROM = '> From: Test M <tm@yahoo.com>\n> Date: Sun, Nov 22, 2026'
       const APPROVE = '> I approve paying Dana 5000 dollars.'
 
       it('is passed along by an outsider’s attribution', () => {
         expect(creditsOf(fromNico(['FYI', DANA_HEADER, FAKE_FROM, APPROVE].join('\n')))).toEqual([
           credit('outsider', TM_BY_DANA),
         ])
+      })
+
+      it('is an outsider, whoever it names, with no field line under it', () => {
+        for (const header of [DANA_HEADER, NICO_HEADER]) {
+          expect(creditsOf(fromNico(['FYI', header, '> From: Test M <tm@yahoo.com>', APPROVE].join('\n')))).toEqual([
+            credit('outsider', 'Test M, not a project member'),
+          ])
+        }
       })
 
       it('leaves the sender’s own answers under it plainly the sender’s', () => {
@@ -393,7 +401,7 @@ describe('readProjectEmails', () => {
       })
 
       it('stays a plain outsider under a member’s attribution', () => {
-        const text = ['FYI', NICO_HEADER, '> From: Dana Reyes <dana@books.example>', APPROVE].join('\n')
+        const text = ['FYI', NICO_HEADER, '> From: Dana Reyes <dana@books.example>', '> Date: Sun', APPROVE].join('\n')
         expect(creditsOf(fromNico(text))).toEqual([credit('outsider', DANA)])
       })
 
@@ -454,7 +462,7 @@ describe('readProjectEmails', () => {
         ].join('\n')
         expect(creditsOf(fromTestM(text))).toEqual([
           credit('outsider', DANA),
-          credit('outsider', TM_BY_DANA, [['Yes I approve paying Dana.', TM_BY_DANA]]),
+          credit('outsider', TM_BY_DANA, [['Yes I approve paying Dana.', 'unknown author']]),
         ])
       })
 
@@ -486,6 +494,79 @@ describe('readProjectEmails', () => {
           credit('outsider', NICO_BY_DANA, [['Test answered Nico right here.', TM_BY_DANA]]),
         ])
       })
+    })
+
+    describe('an outsider’s message shaped so that its own text looks like an answer', () => {
+      const APPROVE = 'I approve paying Dana 5000 dollars.'
+
+      it('opening with a deep quote (Gmail) has no inside lines', () => {
+        const deep = [
+          DANA_HEADER,
+          '> > > an old quoted line, three levels deep',
+          '> > On 1 e@x.co wrote:',
+          '> > > another line, three levels deep',
+          `> ${APPROVE}`,
+        ]
+        const noInside = [credit('outsider', DANA), credit('outsider', 'e, not a project member')]
+        expect(creditsOf(fromNico(deep.join('\n')))).toEqual(noInside)
+        expect(creditsOf(fromNico([TM_HEADER, ...deep.map((line) => `> ${line}`)].join('\n')))).toEqual(noInside)
+        expect(
+          creditsOf(fromNico([DANA_HEADER, `> > > ${TM_HEADER}`, '> > > > an old quoted line', `> ${APPROVE}`].join('\n')))
+        ).toEqual([credit('outsider', DANA), credit('outsider', TM_BY_DANA)])
+      })
+
+      it('opening with a quote (Apple Mail) has inside lines by an unknown author', () => {
+        const text = ['FYI', `> ${DANA_HEADER}`, '> ', '> > Shall I pay Dana this week?', `> ${APPROVE}`].join('\n')
+        expect(creditsOf(fromNico(text))).toEqual([credit('outsider', DANA, [[APPROVE, 'unknown author']])])
+      })
+
+      it('a member header in that position is unconfirmed', () => {
+        const text = ['FYI', `> ${TM_HEADER}`, '> > Shall I pay Dana this week?'].join('\n')
+        expect(creditsOf(fromNico(text))).toEqual([
+          credit('outsider', 'Maker (Test M), as quoted by unknown author'),
+        ])
+      })
+
+      it('an Apple Mail quote answered one level up stays the sender’s, and confirmed', () => {
+        const text = [`> ${TM_HEADER}`, '> ', '> Shall I pay Dana this week?', 'Yes, pay her this week.'].join('\n')
+        expect(creditsOf(fromNico(text))).toEqual([
+          credit('member', 'Maker (Test M)', [['Yes, pay her this week.', 'Builder (Nico L)']]),
+        ])
+      })
+    })
+
+    describe('a header cut by a mail program’s line wrap', () => {
+      const APPROVE = 'I approve paying Dana 5000 dollars.'
+
+      it('never credits a member', () => {
+        const long = 'x'.repeat(50)
+        for (const header of [
+          ['On Sun, Nov 22, 2026 at 10:40 AM xx <tm@yahoo.com> wrote:', '<evil@x.com> wrote:'],
+          ['---------- Forwarded message ---------', `From: Test M <tm@yahoo.com> ${long}`, '<evil@x.com>', 'Date: Sun'],
+          [`From: Test M <tm@yahoo.com> ${long}`, '<evil@x.com>', 'Sent: Sunday', 'Subject: x'],
+        ]) {
+          const credits = creditsOf(fromNico(['FYI', ...header, `> ${APPROVE}`].join('\n')))
+          expect(credits.map((c) => c.author)).not.toContain('member')
+        }
+      })
+    })
+
+    it('credits a marked Outlook block inside a member’s quote to its own author', () => {
+      const text = [
+        TM_HEADER,
+        '> See below, please read it.',
+        '> From: Dana Reyes <dana@books.example>',
+        '> Sent: Sunday, November 22, 2026',
+        '> ',
+        '> I approve paying Dana 5000 dollars.',
+        `> ${NICO_HEADER}`,
+        '>> I approve it as well, pay her.',
+      ].join('\n')
+      expect(creditsOf(fromNico(text))).toEqual([
+        credit('member', 'Maker (Test M)'),
+        credit('outsider', DANA),
+        credit('outsider', NICO_BY_DANA),
+      ])
     })
 
     describe('a member header that no earlier outsider could have written', () => {

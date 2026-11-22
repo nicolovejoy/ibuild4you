@@ -194,7 +194,7 @@ describe('parseQuoteHeader', () => {
     // often as a field: it never names the author.
     expect(
       parseQuoteHeader(
-        'On Nov 22, 2026, at 10:40 AM, Dana Reyes <dana@books.example> wrote:\nSubject: On 1, <tm@yahoo.com> wrote:'
+        'On Nov 22, 2026, at 10:40 AM, Dana Reyes <dana@books.example> wrote:\nSubject: from Test M <tm@yahoo.com>'
       )
     ).toEqual({ name: 'Dana Reyes', email: 'dana@books.example', bare: false })
     expect(parseQuoteHeader('Begin forwarded message:\n\nSubject: On 1, T <tm@yahoo.com> wrote:')).toEqual({
@@ -256,6 +256,66 @@ describe('parseQuoteHeader', () => {
     }
   })
 
+  it('takes an address only when it is the whole of the last group', () => {
+    for (const group of [
+      '<"tm@yahoo.com"@evil.com>',
+      '<_tm@yahoo.com>',
+      '<a!tm@yahoo.com>',
+      '<étm@yahoo.com>',
+      '<tm@yahoo.comé.com>',
+      '<tm@yahoo.com, x@y.com>',
+      '<"<tm@yahoo.com>"@evil.com>',
+      '<"[mailto:tm@yahoo.com]"@evil.com>',
+      '[mailto:"tm@yahoo.com"@evil.com]',
+    ]) {
+      expect(parseQuoteHeader(`From: Dana ${group}\nSent: x`).email).toBeNull()
+      expect(parseQuoteHeader(`On 1 Nov 2026, Dana ${group} wrote:`).email).toBeNull()
+    }
+    for (const group of ['< tm@yahoo.com >', '<mailto:tm@yahoo.com>', '<MAILTO:tm@yahoo.com>']) {
+      expect(parseQuoteHeader(`From: T ${group}\nSent: x`)).toMatchObject({ email: 'tm@yahoo.com', bare: false })
+    }
+  })
+
+  // Its value may have been wrapped, and the rest of it lost.
+  it('does not trust a From: line with no field line directly under it', () => {
+    for (const header of [
+      'From: Test M <tm@yahoo.com>',
+      '---------- Forwarded message ---------\nFrom: Test M <tm@yahoo.com> xxxxxxxx',
+      'From: Test M <tm@yahoo.com> \n<evil@x.com>\nSent: x',
+      'Sent: x\nFrom: Test M <tm@yahoo.com>',
+    ]) {
+      expect(parseQuoteHeader(header)).not.toMatchObject({ email: 'tm@yahoo.com', bare: false })
+    }
+  })
+
+  it('does not trust a From: line written on behalf of someone, or with two addresses', () => {
+    for (const value of [
+      'b@evil.com [mailto:b@evil.com] On Behalf Of Test M <tm@yahoo.com>',
+      'Bob on  behalf of Test M <tm@yahoo.com>',
+      'Bob <b@evil.com> Test M <tm@yahoo.com>',
+      'Bob <b@evil.com<mailto:tm@yahoo.com>>',
+    ]) {
+      expect(parseQuoteHeader(`From: ${value}\nSent: x`)).toMatchObject({ bare: true })
+    }
+    for (const value of ['T <tm@yahoo.com>[mailto:TM@yahoo.com]', 'T <tm@yahoo.com<mailto:tm@yahoo.com>>']) {
+      expect(parseQuoteHeader(`From: ${value}\nSent: x`)).toMatchObject({ email: 'tm@yahoo.com', bare: false })
+    }
+  })
+
+  // The last line may be the end of a wrapped display name, or the quoted
+  // message's own first line, so neither address is the author's.
+  it('reads nobody from an attribution with a line after it that ends like one', () => {
+    for (const header of [
+      'On Nov 22, 2026, x <tm@yahoo.com> wrote:\n<evil@x.com> wrote:',
+      'On Nov 22, 2026, x <evil@x.com> wrote:\n<tm@yahoo.com> wrote:',
+      'On Nov 22, 2026, x\n<evil@x.com> wrote:\n<tm@yahoo.com> wrote:',
+      'Le 22 nov. 2026, x <tm@yahoo.com> a écrit :\n<evil@x.com> a écrit :',
+      'On Nov 22, 2026, x <tm@yahoo.com> wrote:\nSubject: <evil@x.com> wrote:',
+    ]) {
+      expect(parseQuoteHeader(header)).toEqual({ name: null, email: null, bare: false })
+    }
+  })
+
   it('reads a hostile 50,000-character header quickly', () => {
     const headers = [
       'From: ' + 'a'.repeat(25000) + '@' + 'a.'.repeat(12500),
@@ -263,6 +323,9 @@ describe('parseQuoteHeader', () => {
       'Le 1 ' + ' a écrit'.repeat(6000) + ' a écrit :',
       'Le ' + ' '.repeat(50000) + 'a écrit :',
       'To: x\n'.repeat(8000) + 'From: x',
+      'From: ' + 'on behalf '.repeat(190) + '<a@b.co>'.repeat(10) + '\nSent: x',
+      'From: <' + 'a.'.repeat(990) + '@>\nSent: x',
+      'On 1 wrote:\n' + 'wrote '.repeat(8000) + 'wrote:',
       '\n'.repeat(50000) + 'From: x',
       'On 1 wrote:' + '\nFrom: x <a@b.co>'.repeat(3000),
       ' '.repeat(50000) + 'From: x',
@@ -378,6 +441,18 @@ describe('resolveQuoteAuthor and labels', () => {
       kind: 'outsider',
       name: 'Bill Duris',
     })
+  })
+
+  it('puts no address in a label when the address is not whole', () => {
+    for (const header of [
+      'From: <"tm@yahoo.com"@evil.com>\nSent: x',
+      on('<"tm@yahoo.com"@evil.com>'),
+      on('"tm@yahoo.com"@evil.com'),
+    ]) {
+      const author = resolveQuoteAuthor(header, members)
+      expect(author.kind).not.toBe('member')
+      expect(authorLabel(author)).not.toContain('@')
+    }
   })
 
   it('names an unknown address by its local part', () => {

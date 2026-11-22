@@ -574,10 +574,37 @@ describe('splitNewText quotes', () => {
     ])
   })
 
-  it('a quote header at the top of the text has no quoter', () => {
+  // Gmail's shape (the body deeper than its header) one level down: it sits in a
+  // quoted message whose header is missing, so its quoter is unknown.
+  it('a marked header at the top of the text, its body deeper, has an unknown quoter', () => {
     const text = `> ${nicoHeader}\n>> ${colour}`
     expect(splitNewText(text, new Set(), new Set()).quotes).toEqual([
-      { header: nicoHeader, quoterHeader: null, possibleQuoters: [], lines: [kept(colour)] },
+      { header: nicoHeader, quoterHeader: '', possibleQuoters: [''], lines: [kept(colour)] },
+    ])
+  })
+
+  it('a marked header at the top of the text, its body at its depth (Apple Mail), is the sender’s quote', () => {
+    const text = `> ${nicoHeader}\n> ${colour}\nGreen.`
+    expect(splitNewText(text, new Set(), new Set()).quotes).toEqual([
+      { header: nicoHeader, quoterHeader: null, possibleQuoters: [], lines: [kept(colour), own('Green.')] },
+    ])
+  })
+
+  it('an unknown quoter lasts until a header shallower than its quote', () => {
+    const text = [
+      `> ${nicoHeader}`,
+      `>> ${colour}`,
+      `> ${testMHeader}`,
+      `>> ${newLines[0]}`,
+      nicoHeader,
+      `> ${newLines[1]}`,
+    ].join('\n')
+    expect(
+      splitNewText(text, new Set(), new Set()).quotes.map((quote) => [quote.quoterHeader, quote.possibleQuoters])
+    ).toEqual([
+      ['', ['']],
+      ['', [nicoHeader, '']],
+      [null, []],
     ])
   })
 
@@ -591,8 +618,18 @@ describe('splitNewText quotes', () => {
     ])
   })
 
-  it('header-less text only deeper than the header leaves the sender as the quoter', () => {
+  it('header-less text deeper than a Gmail-shaped marked header: its quoter is unknown all the same', () => {
     const text = `>> Some earlier words, quoted twice over.\n> ${nicoHeader}\n>> ${colour}`
+    expect(splitNewText(text, new Set(), new Set()).quotes[1]).toEqual({
+      header: nicoHeader,
+      quoterHeader: '',
+      possibleQuoters: [''],
+      lines: [kept(colour)],
+    })
+  })
+
+  it('header-less text only deeper than an Apple Mail header leaves the sender as the quoter', () => {
+    const text = `>> Some earlier words, quoted twice over.\n> ${nicoHeader}\n> ${colour}`
     expect(splitNewText(text, new Set(), new Set()).quotes[1]).toEqual({
       header: nicoHeader,
       quoterHeader: null,
@@ -954,7 +991,7 @@ describe('splitNewText quotes', () => {
         `> ${testMHeader}`,
         '>> I approve paying Dana.',
       ])
-      expect(quotes[1]).toEqual({ header: testMHeader, quoterHeader: null, possibleQuoters: [aHeader] })
+      expect(quotes[1]).toEqual({ header: testMHeader, quoterHeader: '', possibleQuoters: [aHeader, ''] })
     })
 
     it('names every header no deeper than this one, nearest first, and drops a deeper one', () => {
@@ -998,6 +1035,7 @@ describe('splitNewText quotes', () => {
         ...['', '> ', '>> '].map((marker) => (i: number) => `${marker}On ${i} a@b.co wrote:`),
         ...['> ', '>> ', '>>> '].map((marker) => (i: number) => `${marker}a long enough line ${i}`),
         (i: number) => `From: a${i}\nSent: x`,
+        (i: number) => `> From: a${i}\n> Sent: x`,
       ]
       const length = 5
       let checked = 0
@@ -1014,6 +1052,98 @@ describe('splitNewText quotes', () => {
         }
       }
       expect(checked).toBeGreaterThan(1000)
+    })
+  })
+
+  // A mail program may wrap an attribution right after a "wrote:" in its
+  // display name; what is left of it is no one's text.
+  describe('a line under an attribution that ends like one', () => {
+    it('belongs to the header, in either language, wrapped or marked', () => {
+      const wrappedHeader = 'On Nov 22, 2026, at 10:40 AM, x\n<tm@yahoo.com> wrote:'
+      for (const [header, rest] of [
+        [testMHeader, '<evil@x.com> wrote:'],
+        [wrappedHeader, '<evil@x.com> wrote:'],
+        ['Le 22 nov. 2026 à 11:00, x <tm@yahoo.com> a écrit :', '<evil@x.com> a écrit :'],
+      ]) {
+        const plain = `FYI\n${header}\n${rest}\n> ${newLines[0]}`
+        expect(splitNewText(plain, new Set()).quotes).toEqual([
+          { header: `${header}\n${rest}`, quoterHeader: null, possibleQuoters: [], lines: [kept(newLines[0])] },
+        ])
+        const marked = `FYI\n> ${header.replace('\n', '\n> ')}\n> ${rest}\n> ${newLines[0]}`
+        expect(splitNewText(marked, new Set()).quotes).toEqual([
+          { header: `${header}\n${rest}`, quoterHeader: null, possibleQuoters: [], lines: [kept(newLines[0])] },
+        ])
+      }
+    })
+
+    it('does not belong to it at another depth, or when it starts an attribution', () => {
+      expect(splitNewText(`${testMHeader}\n> Danny wrote:\n> ${newLines[0]}`, new Set()).quotes[0].header).toBe(
+        testMHeader
+      )
+      expect(
+        splitNewText(`${testMHeader}\n${nicoHeader}\n> ${newLines[0]}`, new Set()).quotes[0]
+      ).toMatchObject({ header: nicoHeader, quoterHeader: testMHeader })
+    })
+  })
+
+  describe('marked dividers and Outlook blocks', () => {
+    const fields = ['From: Dana Reyes <dana@books.example>', 'Sent: Sunday, November 22, 2026', 'Subject: Payment']
+
+    it('a marked Outlook block inside a quote is a header, quoted by its author', () => {
+      const text = [testMHeader, `> ${newLines[0]}`, ...fields.map((f) => `> ${f}`), '> ', `> ${newLines[1]}`]
+      expect(splitNewText(text.join('\n'), new Set()).quotes).toEqual([
+        { header: testMHeader, quoterHeader: null, possibleQuoters: [], lines: [kept(newLines[0])] },
+        {
+          header: fields.join('\n'),
+          quoterHeader: testMHeader,
+          possibleQuoters: [testMHeader],
+          lines: [kept(newLines[1])],
+        },
+      ])
+    })
+
+    it('a marked divider with its fields is a header', () => {
+      const divider = '-----Original Message-----'
+      const text = [testMHeader, `> ${newLines[0]}`, `> ${divider}`, '> ', ...fields.map((f) => `> ${f}`), `> ${newLines[1]}`]
+      expect(splitNewText(text.join('\n'), new Set()).quotes[1]).toEqual({
+        header: [divider, '', ...fields].join('\n'),
+        quoterHeader: testMHeader,
+        possibleQuoters: [testMHeader],
+        lines: [kept(newLines[1])],
+      })
+    })
+
+    it('a block whose lines are not all at one depth is not a header', () => {
+      const text = [testMHeader, `> ${newLines[0]}`, `> ${fields[0]}`, `>> ${fields[1]}`, `> ${newLines[1]}`]
+      expect(splitNewText(text.join('\n'), new Set()).quotes).toHaveLength(1)
+    })
+
+    it('an Apple Mail forward inside a quote: the fields one deeper are a header of their own', () => {
+      const text = [testMHeader, '> Begin forwarded message:', '> ', ...fields.map((f) => `>> ${f}`), `>> ${newLines[0]}`]
+      expect(splitNewText(text.join('\n'), new Set()).quotes).toEqual([
+        {
+          header: fields.join('\n'),
+          quoterHeader: 'Begin forwarded message:\n',
+          possibleQuoters: ['Begin forwarded message:\n', testMHeader],
+          lines: [kept(newLines[0])],
+        },
+      ])
+    })
+
+    it('reads 50,000 characters of marked From: and divider lines quickly', () => {
+      for (const unit of [
+        '> From: a\n',
+        '> From: a\n> Sent: b\n> c\n',
+        '> -----Original Message-----\n',
+        '> -----Original Message-----\n> \n> \nx\n',
+        '> From: a\n> x\n>> Sent: b\n',
+        `> ${'-'.repeat(1000)}\n`,
+        `> On 1 a wrote:\n> b wrote:\n`,
+      ]) {
+        const started = Date.now()
+        splitNewText(unit.repeat(Math.ceil(50000 / unit.length)), new Set(), new Set())
+        expect(Date.now() - started).toBeLessThan(500)
+      }
     })
   })
 

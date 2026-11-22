@@ -86,7 +86,7 @@ export type QuoteLine = { text: string; context: boolean; own: boolean }
 //   inside: its author wrote that message.
 // possibleQuoters: the header of every earlier message that could enclose this
 //   one, nearest first, whatever shape the mail program gave it; '' comes last
-//   when `>` text with no header could. Anyone in it could have written this
+//   when a message whose header was not recognised could. Anyone in it could have written this
 //   header themselves, so a credit is only as good as everyone in it
 //   (lib/email-in/reading.ts). It holds quoterHeader, unless that is null, and
 //   every quoter around it.
@@ -124,17 +124,18 @@ type HeaderKind = 'attribution' | 'fields'
 // before the first header form one block with no header lines.
 type Block = {
   headerLines: Line[]
-  // null for the block of `>` lines before the first header.
+  // null for a block with no header.
   kind: HeaderKind | null
   // The depth of the header's first line. For the block of `>` lines before the
   // first header, the shallowest depth of a non-blank line in it (at least 1).
+  // For an unknown quoter's empty block (step 3), the depth it was found at.
   depth: number
   // The depth the quoted message's own text sits at (step 3). A line one level
   // shallower was written by the quoter.
   bodyDepth: number
   // The block whose body this one's header sits in; null when the email's
-  // sender quoted it. The header-less block when the quoter is unknown (step
-  // 3): it has no header lines, so its header text is ''.
+  // sender quoted it. A block with no header lines, so with the header text '',
+  // when the quoter is unknown (step 3).
   quoter: Block | null
   // The nearest earlier block that could enclose this one (step 3). Followed
   // from block to block, it gives possibleQuoters.
@@ -156,13 +157,21 @@ function splitLines(text: string): string[] {
 // line is checked in linear time.
 export const ENGLISH_ATTRIBUTION = /^On .+ wrote:$/
 export const FRENCH_ATTRIBUTION = /^Le .+ a écrit\s?:$/
-function isAttribution(text: string): boolean {
+export function isAttribution(text: string): boolean {
   return (ENGLISH_ATTRIBUTION.test(text) || FRENCH_ATTRIBUTION.test(text)) && /[\d@]/.test(text)
 }
 
 // The start of an attribution that a mail client may have wrapped onto the next line.
 export function startsAttribution(text: string): boolean {
   return text.startsWith('On ') || text.startsWith('Le ')
+}
+
+// A line that ends like an attribution but does not start one: the end of an
+// attribution that a mail program wrapped right after a "wrote:" in its display
+// name ("On ..., x <a@b.c> wrote:" over "<d@e.f> wrote:").
+const ATTRIBUTION_END = /(?:wrote|a écrit\s?):$/
+export function endsAttribution(text: string): boolean {
+  return ATTRIBUTION_END.test(text) && !startsAttribution(text)
 }
 
 const DIVIDERS = [
@@ -187,11 +196,50 @@ function quoteDepth(line: string): number {
 // How many header-field lines (From:, Sent:, Date:, To:, Cc:, Subject:) run
 // directly from `index`. Fields count with their `>` markers stripped, since
 // Apple Mail quotes a forward's field block. The run ends at the first other
-// line, a blank one included.
-function fieldRunLength(lines: string[], index: number): number {
+// line, a blank one included. With `depth` given, it also ends at the first
+// line at another depth.
+function fieldRunLength(lines: string[], index: number, depth?: number): number {
   let end = index
-  while (end < lines.length && HEADER_FIELD.test(removeQuoteMarkers(lines[end]).trim())) end++
+  while (
+    end < lines.length &&
+    HEADER_FIELD.test(removeQuoteMarkers(lines[end]).trim()) &&
+    (depth === undefined || quoteDepth(lines[end]) === depth)
+  ) {
+    end++
+  }
   return end - index
+}
+
+// How many lines the "On ... wrote:" at `index` spans: 0 when there is none.
+// The lines are read with their `>` markers stripped, since Apple Mail quotes
+// the attribution along with the text under it.
+function attributionLength(lines: string[], index: number): number {
+  const attribution = removeQuoteMarkers(lines[index]).trim()
+  let end = index
+  if (isAttribution(attribution)) {
+    end = index + 1
+  } else {
+    // "On ... wrote:" (or "Le ... a écrit :") wrapped over two lines by the
+    // sender's mail client. A real one starts with its date, so its first line
+    // holds a digit: a typed sentence that starts with "On " or "Le " is not
+    // joined to the line under it. It never joins a blank line or a line that
+    // is a whole attribution itself, and both lines carry a `>` marker or
+    // neither does.
+    const marked = /^\s*>/.test(lines[index])
+    const rawNext = index + 1 < lines.length ? lines[index + 1] : ''
+    const next = removeQuoteMarkers(rawNext).trim()
+    const startsWithDate = startsAttribution(attribution) && /\d/.test(attribution)
+    const nextCanJoin = next !== '' && /^\s*>/.test(rawNext) === marked && !isAttribution(next)
+    if (!startsWithDate || !nextCanJoin || !isAttribution(`${attribution} ${next}`)) return 0
+    end = index + 2
+  }
+  // A line that may be the end of it belongs to it. Then nobody can tell who
+  // wrote it (lib/email-in/quote-author.ts).
+  const isEnd =
+    end < lines.length &&
+    quoteDepth(lines[end]) === quoteDepth(lines[index]) &&
+    endsAttribution(removeQuoteMarkers(lines[end]).trim())
+  return isEnd ? end + 1 - index : end - index
 }
 
 // The quote header starting at `index`: how many lines it spans, and its kind.
@@ -199,41 +247,39 @@ function fieldRunLength(lines: string[], index: number): number {
 // directly under it, so a quote we already hold does not leak its
 // Sent:/To:/Subject: lines as unseen text.
 function quoteHeaderAt(lines: string[], index: number): { span: number; kind: HeaderKind } | null {
-  const line = lines[index].trim()
+  const attribution = attributionLength(lines, index)
+  if (attribution > 0) {
+    return { span: attribution + fieldRunLength(lines, index + attribution), kind: 'attribution' }
+  }
 
-  // "On ... wrote:" is checked with its `>` markers stripped, since Apple Mail
-  // quotes the attribution along with the text under it.
-  const marked = /^\s*>/.test(lines[index])
-  const attribution = removeQuoteMarkers(lines[index]).trim()
-  if (isAttribution(attribution)) {
-    return { span: 1 + fieldRunLength(lines, index + 1), kind: 'attribution' }
-  }
-  // "On ... wrote:" (or "Le ... a écrit :") wrapped over two lines by the
-  // sender's mail client. A real one starts with its date, so its first line
-  // holds a digit: a typed sentence that starts with "On " or "Le " is not
-  // joined to the line under it. It never joins a blank line or a line that is
-  // a whole attribution itself, and both lines carry a `>` marker or neither does.
-  const rawNext = index + 1 < lines.length ? lines[index + 1] : ''
-  const next = removeQuoteMarkers(rawNext).trim()
-  const startsWithDate = startsAttribution(attribution) && /\d/.test(attribution)
-  const nextCanJoin = next !== '' && /^\s*>/.test(rawNext) === marked && !isAttribution(next)
-  if (startsWithDate && nextCanJoin && isAttribution(`${attribution} ${next}`)) {
-    return { span: 2 + fieldRunLength(lines, index + 2), kind: 'attribution' }
-  }
+  // A divider or an Outlook block may be marked: someone quoted the message it
+  // heads. Then all its lines sit at one depth.
+  const line = removeQuoteMarkers(lines[index]).trim()
+  const depth = quoteDepth(lines[index])
 
   // A divider, any blank lines directly under it (a bare `>` counts as blank),
-  // then its header fields.
+  // then its header fields. An unmarked divider may have marked fields (Apple
+  // Mail's "Begin forwarded message:").
   if (DIVIDERS.some((divider) => divider.test(line))) {
+    const onlyDepth = depth > 0 ? depth : undefined
     let end = index + 1
-    while (end < lines.length && removeQuoteMarkers(lines[end]).trim() === '') end++
-    return { span: end - index + fieldRunLength(lines, end), kind: 'fields' }
+    while (
+      end < lines.length &&
+      removeQuoteMarkers(lines[end]).trim() === '' &&
+      (onlyDepth === undefined || quoteDepth(lines[end]) === onlyDepth)
+    ) {
+      end++
+    }
+    return { span: end - index + fieldRunLength(lines, end, onlyDepth), kind: 'fields' }
   }
 
   // Outlook: "From:" with "Sent:" or "Date:" within the next 4 lines.
   if (line.startsWith('From:')) {
-    const following = lines.slice(index + 1, index + 5).map((l) => l.trim())
-    if (following.some((l) => l.startsWith('Sent:') || l.startsWith('Date:'))) {
-      return { span: 1 + fieldRunLength(lines, index + 1), kind: 'fields' }
+    for (let i = index + 1; i < lines.length && i <= index + 4 && quoteDepth(lines[i]) === depth; i++) {
+      const field = removeQuoteMarkers(lines[i]).trim()
+      if (field.startsWith('Sent:') || field.startsWith('Date:')) {
+        return { span: 1 + fieldRunLength(lines, index + 1, depth), kind: 'fields' }
+      }
     }
   }
   return null
@@ -296,32 +342,33 @@ function newBlock(kind: HeaderKind | null, depth: number): Block {
 // without its `>` reads as own.
 //
 // The open header blocks are kept on a stack. A header at depth h closes every
-// open block whose header is at h or deeper and whose body is deeper than h.
-// A block whose header is shallower than h stays open, since a message is never
-// closed by a header deeper than its own: the header sits in it, so its body is
-// at h at the deepest. (Its first lines can be deeper, when the message opens
-// with a quote of its own.) The block left on top is the one whose body the
-// header sits in, its quoter. A quoted line at depth k goes to the nearest open
-// block, from the top, whose body depth is at most k + 1: own when the body is
-// exactly one level deeper, not own otherwise. When none qualifies, it goes to
-// the shallowest open block, own. Lines never close a block, so a line typed
-// under a nested quote goes back to the outer message.
+// open block whose body is deeper than h; the block left on top is the one
+// whose body the header sits in, its quoter. No body is more than one level
+// deeper than its header, so a header never closes a block whose own header is
+// shallower than it. A quoted line at depth k goes to the nearest open block,
+// from the top, whose body depth is at most k + 1: own when the body is exactly
+// one level deeper, not own otherwise. When none qualifies, it goes to the
+// shallowest open block, own. Lines never close a block, so a line typed under
+// a nested quote goes back to the outer message.
 //
-// The header-less block is never on the stack, but it can be a quoter. When a
-// header at depth 1 or more has no open block to sit in, and the header-less
-// text holds a non-blank line at that depth or shallower, the header sits
-// inside a quoted message whose own header the app did not recognise (one in
+// A header at depth 1 or more with no open block to sit in may still sit inside
+// a quoted message, one whose own header the app did not recognise (one in
 // another language, say). Whoever wrote that message quoted this one, and the
-// app cannot tell who: the quoter is unknown, never the email's sender. A
-// header that is the first quoted line (Apple Mail's marked attribution) has no
-// such text above it and keeps the sender as its quoter.
+// app cannot tell who: the quoter is unknown, never the email's sender. It is
+// so in two cases. The header-less text holds a non-blank line at the header's
+// depth or shallower: that text is the message. Or the header's own body is
+// deeper than it, Gmail's shape: a header at depth 1 in that shape is itself
+// quoted text. An Apple Mail header at depth 1, with its body at depth 1, is
+// the sender's own quote. An unknown quoter is a block with no header lines:
+// the header-less block, or an empty one that stands for the message.
 //
 // That quoter is a best reading, and a message can be shaped to be read wrong:
 // body depths come from its own lines. So who could have written a header is
 // found apart, from header depths alone. A header at depth h can sit in any
 // earlier message whose header is at h or shallower, until a still shallower
-// header ends that message. The second stack holds those messages, with the
-// header-less block, at its shallowest non-blank depth, at the bottom.
+// header ends that message. The second stack holds those messages. At its
+// bottom is the header-less block or the unknown quoter's, if any, at the
+// shallowest depth its text is known to sit at.
 function findBlocks(lines: Line[]): Block[] {
   const headerBlocks = headerBlocksWithBodyDepths(lines)
 
@@ -335,12 +382,20 @@ function findBlocks(lines: Line[]): Block[] {
       // The first line of a header opens its block; the rest of its span is already in it.
       if (block.headerLines[0] !== line) continue
 
-      closeBlocks(open, block.depth)
-      if (open.length > 0) block.quoter = open[open.length - 1]
-      else if (headerless !== null && headerless.depth <= block.depth) block.quoter = headerless
+      while (open.length > 0 && open[open.length - 1].bodyDepth > block.depth) open.pop()
+      while (possible.length > 0 && possible[possible.length - 1].depth > block.depth) possible.pop()
+
+      if (open.length > 0) {
+        block.quoter = open[open.length - 1]
+      } else if (block.depth >= 1 && (possible.length > 0 || block.bodyDepth > block.depth)) {
+        // With no block open, every header still in `possible` is at this depth
+        // and Gmail-shaped, so it got an unknown quoter here: the bottom of
+        // `possible`, when there is one, is always a block with no header.
+        if (possible.length === 0) possible.push(newBlock(null, block.depth))
+        block.quoter = possible[0]
+      }
       open.push(block)
 
-      while (possible.length > 0 && possible[possible.length - 1].depth > block.depth) possible.pop()
       block.possibleQuoter = possible.length > 0 ? possible[possible.length - 1] : null
       possible.push(block)
 
@@ -363,19 +418,6 @@ function findBlocks(lines: Line[]): Block[] {
   return blocks
 }
 
-// Close the open blocks that a header at this depth ends, and make the block it
-// sits in no deeper than it (step 3). Both the header depths and the body
-// depths never decrease up the stack, and no body is deeper than the header
-// above it, so only the top block's body can still be too deep.
-function closeBlocks(open: Block[], depth: number): void {
-  let top = open[open.length - 1]
-  while (top !== undefined && top.depth >= depth && top.bodyDepth > depth) {
-    open.pop()
-    top = open[open.length - 1]
-  }
-  if (top !== undefined && top.bodyDepth > depth) top.bodyDepth = depth
-}
-
 // One block per quote header, in text order (a header's id is its index), with
 // its body depth. A field block's body is at its own depth. For an
 // "On ... wrote:" header at depth h, the non-blank lines between it and the
@@ -385,8 +427,10 @@ function closeBlocks(open: Block[], depth: number): void {
 // header is itself Gmail-style or a field block (it sits at its quoter's body
 // depth), otherwise at n - 1 (an Apple Mail header sits one level inside its
 // quoter's body), but never shallower than h. Otherwise the body is at h.
-// The last rule needs the next block's body depth, so blocks are resolved from
-// the last one back.
+// And never more than one level deeper than the header: no mail program puts it
+// there, but a message that opens with a deep quote of its own can look so.
+// The next block's body depth is needed, so blocks are resolved from the last
+// one back.
 function headerBlocksWithBodyDepths(lines: Line[]): Block[] {
   const headerBlocks: Block[] = []
   // Per header block: the shallowest depth deeper than its header among the
@@ -425,15 +469,16 @@ function headerBlocksWithBodyDepths(lines: Line[]): Block[] {
     } else {
       block.bodyDepth = block.depth
     }
+    block.bodyDepth = Math.min(block.bodyDepth, block.depth + 1)
   }
   return headerBlocks
 }
 
 // Put a quoted line in its open block (see step 3) and mark it own when the
 // block's body is one level deeper. A blank line is never own. Body depths
-// never decrease up the stack (a header leaves no open body deeper than itself,
-// closeBlocks, and its own body is at least as deep as it), so a binary search
-// finds the nearest block from the top whose body depth is at most `depth + 1`.
+// never decrease up the stack (a header closes every body deeper than itself,
+// and its own body is at least as deep as it), so a binary search finds the
+// nearest block from the top whose body depth is at most `depth + 1`.
 function placeLine(open: Block[], line: Line): void {
   let found = -1
   let low = 0
