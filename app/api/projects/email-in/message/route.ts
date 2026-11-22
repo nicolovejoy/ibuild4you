@@ -43,16 +43,20 @@ export async function GET(request: Request) {
   }
 
   // The project's own emails only, so another project's email id is a 404 here,
-  // the same as an id that does not exist. The reading runs over the whole list,
-  // oldest first, because what an email shows as new depends on the emails
-  // before it: this is the reading the note writer was given.
+  // the same as an id that does not exist. What an email shows as new depends
+  // on the emails before it and on none after it, so the reading runs over the
+  // list, oldest first, up to and including this one. This is the reading the
+  // note writer starts from: the writer may then cut a very long email to fit
+  // its window, and members are read as they are now, not as they were when
+  // the note was written.
   const emails = await listProjectEmails(db, projectId)
-  const members = await loadSenderMembers(db, emailProjectOf(projectId, projectDoc.data()))
-  const readings = readProjectEmails(emails, members)
-  const reading = readings.find((r) => r.email.id === emailId)
-  if (!reading) {
+  const index = emails.findIndex((e) => e.id === emailId)
+  if (index < 0) {
     return NextResponse.json({ error: 'Email not found' }, { status: 404 })
   }
+  const members = await loadSenderMembers(db, emailProjectOf(projectId, projectDoc.data()))
+  const readings = readProjectEmails(emails.slice(0, index + 1), members)
+  const reading = readings[readings.length - 1]
 
   const { email } = reading
   return NextResponse.json({

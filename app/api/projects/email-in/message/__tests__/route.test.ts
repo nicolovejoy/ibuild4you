@@ -201,6 +201,34 @@ describe('GET /api/projects/email-in/message', () => {
     })
   })
 
+  // A reading depends only on the emails before it, so the route reads up to
+  // the target and no further.
+  it('gives the same reading when a later email quotes and repeats the target', async () => {
+    const before = await (await GET(getReq('p1', 'e2_p1'))).json()
+    storedEmails.push(
+      stored({
+        id: 'e3_p1',
+        received_at: '2026-11-22T19:00:00.000Z',
+        text: `Thanks.\n\nOn Nov 22, 2026, at 11:00 AM, Test M <tm@yahoo.com> wrote:\n${INLINE_REPLY.split('\n')
+          .map((line) => `> ${line}`)
+          .join('\n')}`,
+      }),
+      stored({
+        id: 'e4_p1',
+        from_email: 'tm@yahoo.com',
+        from_name: 'Test M',
+        from_role: 'maker',
+        received_at: '2026-11-22T19:30:00.000Z',
+        text: INLINE_REPLY,
+      })
+    )
+    const after = await (await GET(getReq('p1', 'e2_p1'))).json()
+    expect(after).toEqual(before)
+    expect(after.repeat).toBe(false)
+    // The later repeat is read as a repeat when it is the target.
+    expect((await (await GET(getReq('p1', 'e4_p1'))).json()).repeat).toBe(true)
+  })
+
   it('shows the first email whole, as typed text with no quotes', async () => {
     const body = await (await GET(getReq('p1', 'e1_p1'))).json()
     expect(body.typed).toBe(QUESTIONS)

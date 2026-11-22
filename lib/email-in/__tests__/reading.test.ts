@@ -219,6 +219,26 @@ describe('readProjectEmails', () => {
   })
 })
 
+describe('readProjectEmails cost', () => {
+  // Each email is parsed once for the repeat check, so many long emails from
+  // one sender stay fast (it used to re-parse every earlier email per email).
+  it('reads 200 emails of 5,000 characters from one sender in under 2 seconds', () => {
+    const emails = Array.from({ length: 200 }, (_, i) => {
+      let text = ''
+      for (let j = 0; text.length < 5000; j++) {
+        // Short lines: the cost is per line, so this is the heavy shape.
+        text += `Mail ${i}, line ${j}.\n`
+      }
+      return fromNico(text.slice(0, 5000))
+    })
+    const started = Date.now()
+    const readings = readProjectEmails(emails, members)
+    expect(Date.now() - started).toBeLessThan(2000)
+    expect(readings).toHaveLength(200)
+    expect(readings.every((r) => !r.repeat)).toBe(true)
+  })
+})
+
 describe('readingSize', () => {
   it('counts the typed text and every quote line', () => {
     const reading = {

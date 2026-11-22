@@ -509,9 +509,14 @@ export function splitNewText(
   }
 }
 
-// A text's non-blank, non-header lines, normalized, typed and quoted apart,
-// and whether any of them is long enough to be evidence.
-function contentLines(text: string): { typed: Set<string>; quoted: Set<string>; hasEvidence: boolean } {
+// What the repeat check compares, parsed once per email: a text's non-blank,
+// non-header lines, normalized, typed and quoted apart, and whether any of them
+// is long enough to be evidence. A caller comparing one email with many earlier
+// ones (lib/email-in/reading.ts) makes one signature per email and compares
+// those, so no text is parsed twice.
+export type RepeatSignature = { typed: Set<string>; quoted: Set<string>; hasEvidence: boolean }
+
+export function repeatSignature(text: string): RepeatSignature {
   const typed = new Set<string>()
   const quoted = new Set<string>()
   let hasEvidence = false
@@ -532,9 +537,14 @@ function contentLines(text: string): { typed: Set<string>; quoted: Set<string>; 
 // no") is new words, so it always stops a repeat. The note writer asks this
 // only of an earlier email from the same sender.
 export function isRepeatOf(text: string, earlierText: string): boolean {
-  const now = contentLines(text)
+  return isRepeatOfSignature(repeatSignature(text), repeatSignature(earlierText))
+}
+
+// isRepeatOf on two signatures (repeatSignature).
+export function isRepeatOfSignature(now: RepeatSignature, earlier: RepeatSignature): boolean {
   if (!now.hasEvidence) return false
-  const earlier = contentLines(earlierText)
+  // A set cannot be inside a smaller one: skip the line-by-line check.
+  if (now.typed.size > earlier.typed.size || now.quoted.size > earlier.quoted.size) return false
   for (const line of now.typed) if (!earlier.typed.has(line)) return false
   for (const line of now.quoted) if (!earlier.quoted.has(line)) return false
   return true

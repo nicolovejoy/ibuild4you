@@ -1,5 +1,12 @@
 import type { ProjectEmail } from '@/lib/types'
-import { allLines, isRepeatOf, seenLines, splitNewText, type QuoteBlock } from './new-text'
+import {
+  allLines,
+  isRepeatOfSignature,
+  repeatSignature,
+  seenLines,
+  splitNewText,
+  type QuoteBlock,
+} from './new-text'
 import { authorLabel, resolveQuoteAuthor, senderLabel } from './quote-author'
 import type { SenderMember } from './sender'
 
@@ -60,13 +67,16 @@ function readQuote(block: QuoteBlock, email: ProjectEmail, members: SenderMember
 export function readProjectEmails(emails: ProjectEmail[], members: SenderMember[]): EmailReading[] {
   const seen = new Set<string>()
   const seenAny = new Set<string>()
+  // One repeat signature per email, made once: each email is compared with
+  // every earlier one from its sender, and parsing a text per comparison made
+  // many long emails take seconds.
+  const signatures = emails.map((email) => repeatSignature(email.text ?? ''))
   return emails.map((email, i) => {
     const text = email.text ?? ''
-    const repeat = emails
-      .slice(0, i)
-      .some(
-        (earlier) => earlier.from_email === email.from_email && isRepeatOf(text, earlier.text ?? '')
-      )
+    let repeat = false
+    for (let j = 0; j < i && !repeat; j++) {
+      repeat = emails[j].from_email === email.from_email && isRepeatOfSignature(signatures[i], signatures[j])
+    }
     let typed = ''
     let quotes: ReadingQuote[] = []
     if (!repeat) {
