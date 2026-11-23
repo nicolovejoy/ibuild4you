@@ -8,9 +8,11 @@ import type { BriefNote, BriefNoteSource } from '@/lib/types'
 // session_id says whether a chat session was too. It can misread "both" as
 // "email" when the chat sat in an archived session (session_id is null then).
 export function noteSource(
-  n: Pick<BriefNote, 'made_from' | 'email_sources' | 'session_id'>,
+  n: Pick<BriefNote, 'made_from' | 'email_sources' | 'session_id'>
 ): BriefNoteSource {
-  if (n.made_from) return n.made_from
+  if (n.made_from === 'chat' || n.made_from === 'email' || n.made_from === 'both') {
+    return n.made_from
+  }
   if (n.email_sources && n.email_sources.length > 0) {
     return n.session_id ? 'both' : 'email'
   }
