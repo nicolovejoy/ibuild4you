@@ -1130,8 +1130,13 @@ describe('writeNoteForProject', () => {
 
     const earlierBlock = () =>
       userText(lastCall()).split('<earlier_context>')[1].split('</earlier_context>')[0]
+    // #284: the limits count an email as the prompt shows it. For an email of
+    // typed text only, cut: how many characters of that text fit in `limit`
+    // once the label line, the tags and the cut mark are counted.
+    const cutTypedRoom = (limit: number, who = 'Maker (Bill Duris)') =>
+      limit - `Email from ${who}, received 2026-11-19:\n<typed>\n\n[cut here]\n</typed>`.length
 
-    it('cuts an earlier-context email to 2,000 characters without marking the note truncated', async () => {
+    it('cuts an earlier-context email to the context limit without marking the note truncated', async () => {
       seedProject({ notes_through_at: '2026-11-19T11:00:00.000Z' })
       const text = bigText('alpha', 10_000)
       seedEmail('e1_p1', '2026-11-19T11:00:00.000Z', text)
@@ -1140,7 +1145,7 @@ describe('writeNoteForProject', () => {
 
       const res = await writeNoteForProject(db, 'p1')
 
-      expect(block(earlierBlock(), 'typed')).toBe(`${text.slice(0, 2_000)}\n[cut here]`)
+      expect(block(earlierBlock(), 'typed')).toBe(`${text.slice(0, cutTypedRoom(EMAIL_CONTEXT_CHAR_LIMIT))}\n[cut here]`)
       expect(res).toMatchObject({ covered: 1, through: '2026-11-19T12:00:00.000Z' })
       expect(notes()[0]).toMatchObject({ email_ids: ['e2_p1'] })
       expect(notes()[0]).not.toHaveProperty('email_truncated')
@@ -1295,9 +1300,10 @@ describe('writeNoteForProject', () => {
       expect(mockMessagesCreate).not.toHaveBeenCalled()
     })
 
-    it('three emails of 20,000 new characters: the first run covers two, the second the third', async () => {
+    it('three emails of 19,000 new characters: the first run covers two, the second the third', async () => {
       seedProject()
-      const texts = ['alpha', 'bravo', 'charlie'].map((tag) => bigText(tag, 20_000))
+      // Two of them fill the window with room to spare for their label lines and tags.
+      const texts = ['alpha', 'bravo', 'charlie'].map((tag) => bigText(tag, 19_000))
       seedEmail('e1_p1', '2026-11-19T10:00:00.000Z', texts[0])
       seedEmail('e2_p1', '2026-11-19T11:00:00.000Z', texts[1])
       seedEmail('e3_p1', '2026-11-19T12:00:00.000Z', texts[2])
@@ -1380,7 +1386,7 @@ describe('writeNoteForProject', () => {
       await expect(writeNoteForProject(db, 'p1')).rejects.toThrow('write_note_no_messages')
     })
 
-    it('one email of 60,000 new characters: the prompt holds 40,000 of it and [cut here]', async () => {
+    it('one email of 60,000 new characters: the turn as shown is 40,000 characters and ends [cut here]', async () => {
       seedProject()
       const text = bigText('alpha', 60_000)
       seedEmail('e1_p1', '2026-11-19T10:00:00.000Z', text)
@@ -1388,7 +1394,10 @@ describe('writeNoteForProject', () => {
 
       const res = await writeNoteForProject(db, 'p1')
 
-      expect(block(newMessagesBlock(), 'typed')).toBe(`${text.slice(0, 40_000)}\n[cut here]`)
+      expect(block(newMessagesBlock(), 'typed')).toBe(
+        `${text.slice(0, cutTypedRoom(EMAIL_WINDOW_CHAR_LIMIT))}\n[cut here]`
+      )
+      expect(newMessagesBlock().trim()).toHaveLength(EMAIL_WINDOW_CHAR_LIMIT)
       expect(res).toMatchObject({ covered: 1, through: '2026-11-19T10:00:00.000Z' })
       expect(notes()[0]).toMatchObject({ email_ids: ['e1_p1'], email_truncated: true })
     })
@@ -1411,8 +1420,11 @@ describe('writeNoteForProject', () => {
       expect(block(nm, 'typed')).toBe(typed)
       const keptQuote = quoted(nm)!.body
       expect(keptQuote.endsWith('\n[cut here]')).toBe(true)
-      // The quote's lines get the 10,000 characters left (line text only).
-      expect(carriedText(nm, [header]) - typed.length).toBe(10_000)
+      // The quote gets what the typed part leaves of the limit once the label
+      // line, the tags and the quote's header are counted: the turn as shown
+      // fills the limit exactly.
+      expect(nm.trim()).toHaveLength(EMAIL_WINDOW_CHAR_LIMIT)
+      expect(carriedText(nm, [header]) - typed.length).toBeLessThan(10_000)
       expect(notes()[0].email_truncated).toBe(true)
     })
 
@@ -1502,7 +1514,8 @@ describe('writeNoteForProject', () => {
         const quote = quoted(nm)!
         expect(quote.body.startsWith(`${NICO_HEADER}\n<already_recorded>\nalpha line 0 `)).toBe(true)
         expect(quote.body.endsWith('\n[cut here]')).toBe(true)
-        expect(carriedText(nm, [NICO_HEADER])).toBe(EMAIL_WINDOW_CHAR_LIMIT)
+        // The turn as shown (label, tags and header included) fills the limit.
+        expect(nm.trim()).toHaveLength(EMAIL_WINDOW_CHAR_LIMIT)
         // The bravo lines after the cut are gone.
         expect(nm).not.toContain(fresh.split('\n').at(-1))
         expect(res).toMatchObject({ covered: 1, through: '2026-11-19T11:00:00.000Z' })
@@ -1521,14 +1534,17 @@ describe('writeNoteForProject', () => {
         const earlier = earlierBlock()
         expect(block(earlier, 'typed')).toBe('Short reply.')
         expect(quoted(earlier)!.body.endsWith('\n[cut here]')).toBe(true)
-        expect(carriedText(earlier, [NICO_HEADER])).toBe(EMAIL_CONTEXT_CHAR_LIMIT)
+        expect(earlier.trim()).toHaveLength(EMAIL_CONTEXT_CHAR_LIMIT)
         expect(notes()[0]).not.toHaveProperty('email_truncated')
       })
 
       // A quote none of whose lines fit is dropped whole: it is never shown as
       // a credited header with nothing under it. The mark ends what was kept.
-      it('drops a quote when the typed text fills the limit exactly, and marks the typed text', async () => {
-        const typed = bigText('alpha', EMAIL_CONTEXT_CHAR_LIMIT)
+      it('drops a quote when the typed text fills the limit as shown, and marks the typed text', async () => {
+        // Typed text sized so that it is kept whole and the mark takes the
+        // last of the room: no quote line has room, so the quote is dropped
+        // and the mark ends the typed text.
+        const typed = bigText('alpha', cutTypedRoom(EMAIL_CONTEXT_CHAR_LIMIT, 'Maker (Test M)'))
         seedProject({ notes_through_at: '2026-11-19T11:00:00.000Z' })
         seedEmail('e1_p1', '2026-11-19T11:00:00.000Z', [typed, '', NICO_HEADER, '> A quoted line nobody has seen yet'].join('\n'), TEST_M)
         seedEmail('e2_p1', '2026-11-19T12:00:00.000Z', 'a brand new email here')
@@ -1541,15 +1557,20 @@ describe('writeNoteForProject', () => {
         expect(earlier).not.toContain('<quoted')
       })
 
-      it('ends the first quote with the mark when it fills the limit exactly, and drops the second', async () => {
+      it('ends the first quote with the mark when it fills the limit as shown, and drops the second', async () => {
         const typed = 'Short reply.'
-        // 18 lines of 100 and one of 188: 1,988 characters, so typed and the
-        // first quote hold exactly EMAIL_CONTEXT_CHAR_LIMIT.
+        // The turn as shown around the first quote's lines: label line, typed
+        // text, the quote's tags and header, and the mark line that ends it.
+        const head = `Email from Maker (Test M), received 2026-11-19:\n<typed>\n${typed}\n</typed>\n<quoted written_by="Nico L, not a project member">\n${NICO_HEADER}\n`
+        const tail = '\n[cut here]\n</quoted>'
+        // 17 lines of 100 and a last one that takes what is left, so the lines
+        // (joined by newlines) fill the limit exactly.
+        const lastLength = EMAIL_CONTEXT_CHAR_LIMIT - head.length - tail.length - 17 * 101
         const first = [
-          ...Array.from({ length: 18 }, (_, i) => `bravo line ${i} `.padEnd(100, 'x')),
-          'bravo last line '.padEnd(188, 'y'),
+          ...Array.from({ length: 17 }, (_, i) => `bravo line ${i} `.padEnd(100, 'x')),
+          'bravo last line '.padEnd(lastLength, 'y'),
         ]
-        expect(typed.length + first.join('').length).toBe(EMAIL_CONTEXT_CHAR_LIMIT)
+        expect(head.length + first.join('\n').length + tail.length).toBe(EMAIL_CONTEXT_CHAR_LIMIT)
         seedProject({ notes_through_at: '2026-11-19T11:00:00.000Z' })
         seedEmail(
           'e1_p1',
@@ -1580,8 +1601,99 @@ describe('writeNoteForProject', () => {
         await writeNoteForProject(db, 'p1')
 
         const earlier = earlierBlock()
-        expect(block(earlier, 'typed')).toBe(`${typed.slice(0, EMAIL_CONTEXT_CHAR_LIMIT)}\n[cut here]`)
+        expect(block(earlier, 'typed')).toBe(
+          `${typed.slice(0, cutTypedRoom(EMAIL_CONTEXT_CHAR_LIMIT, 'Maker (Test M)'))}\n[cut here]`
+        )
         expect(earlier).not.toContain('<quoted')
+      })
+    })
+
+    // #284: the limits count the email as the prompt shows it, with the tags
+    // around each run of lines, the label of each quote and the line that
+    // starts the turn, not only the text of its lines. An email of many short
+    // quoted messages carries more of those than of text.
+    describe('limits count the prompt as built (#284)', () => {
+      const HEADER = 'On Nov 22, 2026, at 10:40 AM, Nico L <nico@example.com> wrote:'
+      // `count` quoted messages from the builder, each one line of about 60
+      // characters nobody else has, so the line filter keeps all of it.
+      function manyQuotes(tag: string, count: number): string {
+        const parts: string[] = []
+        for (let i = 0; i < count; i++) {
+          parts.push(HEADER, `> ${tag} ${i} `.padEnd(60, 'x'), '')
+        }
+        return parts.join('\n')
+      }
+      function seedBuilder() {
+        coll('project_members').set('mem2', { project_id: 'p1', email: 'nico@example.com', role: 'owner' })
+      }
+      const NICO = { from_email: 'nico@example.com', from_name: 'Nico L', from_role: 'builder' as const }
+      // Each email turn in a block, whole: its label line to the line before
+      // the next label (turns are joined with a blank line).
+      const emailTurns = (text: string) => text.split(/\n\n(?=Email from )/)
+
+      it('cuts an email of many short quotes so the turn as shown fits the window limit', async () => {
+        seedProject()
+        seedBuilder()
+        // 500 lines of 60 characters: 30,000 of text, under the limit as it
+        // was counted, but over 100,000 once every quote has its tags and header.
+        seedEmail('e1_p1', '2026-11-22T18:00:00.000Z', manyQuotes('alpha', 500), { from_name: 'Test M', from_role: 'maker' })
+        mockMessagesCreate.mockResolvedValue(noteResponse(someNote))
+
+        await writeNoteForProject(db, 'p1')
+
+        const turns = emailTurns(newMessagesBlock().trim())
+        expect(turns).toHaveLength(1)
+        expect(turns[0].length).toBeLessThanOrEqual(EMAIL_WINDOW_CHAR_LIMIT)
+        // It is cut, not emptied: most of the room is used, and the mark and
+        // the truncated flag say so.
+        expect(turns[0].length).toBeGreaterThan(EMAIL_WINDOW_CHAR_LIMIT - 1_000)
+        expect(turns[0].endsWith('[cut here]\n</quoted>')).toBe(true)
+        expect(notes()[0].email_truncated).toBe(true)
+      })
+
+      it('cuts an email shown as earlier context so the turn as shown fits the context limit', async () => {
+        seedProject({ notes_through_at: '2026-11-22T18:00:00.000Z' })
+        seedBuilder()
+        seedEmail('e1_p1', '2026-11-22T18:00:00.000Z', manyQuotes('alpha', 20), NICO)
+        seedEmail('e2_p1', '2026-11-22T19:00:00.000Z', 'a brand new email here')
+        mockMessagesCreate.mockResolvedValue(noteResponse(someNote))
+
+        await writeNoteForProject(db, 'p1')
+
+        const turns = emailTurns(earlierBlock().trim())
+        expect(turns).toHaveLength(1)
+        expect(turns[0].length).toBeLessThanOrEqual(EMAIL_CONTEXT_CHAR_LIMIT)
+        expect(turns[0]).toContain('[cut here]')
+        expect(notes()[0]).not.toHaveProperty('email_truncated')
+      })
+
+      // Two emails whose text adds up to 18,000, under the limit as it was
+      // counted. As shown they are over it, so the second waits. It is not
+      // read by this run and notes_through_at stops before it, so the next run
+      // reads it whole.
+      it('leaves the email that no longer fits for the next run and never moves past it', async () => {
+        seedProject()
+        seedBuilder()
+        seedEmail('e1_p1', '2026-11-22T18:00:00.000Z', manyQuotes('alpha', 150), NICO)
+        seedEmail('e2_p1', '2026-11-22T19:00:00.000Z', manyQuotes('bravo', 150), NICO)
+        mockMessagesCreate.mockResolvedValue(noteResponse(someNote))
+
+        const first = await writeNoteForProject(db, 'p1')
+
+        expect(first).toMatchObject({ covered: 1, through: '2026-11-22T18:00:00.000Z' })
+        expect(coll('projects').get('p1')!.notes_through_at).toBe('2026-11-22T18:00:00.000Z')
+        expect(newMessagesBlock()).toContain('alpha 149')
+        expect(newMessagesBlock()).not.toContain('bravo')
+        expect(notes()[0]).toMatchObject({ email_ids: ['e1_p1'] })
+        expect(notes()[0]).not.toHaveProperty('email_truncated')
+
+        const second = await writeNoteForProject(db, 'p1')
+
+        expect(second).toMatchObject({ covered: 1, through: '2026-11-22T19:00:00.000Z' })
+        expect(newMessagesBlock()).toContain('bravo 0 ')
+        expect(newMessagesBlock()).toContain('bravo 149')
+        expect(notes().map((n) => n.email_ids)).toEqual([['e1_p1'], ['e2_p1']])
+        expect(coll('projects').get('p1')!.notes_through_at).toBe('2026-11-22T19:00:00.000Z')
       })
     })
 

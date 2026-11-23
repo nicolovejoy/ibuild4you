@@ -35,7 +35,12 @@ import {
   EMAIL_WINDOW_CHAR_LIMIT,
   NOTE_MAX_TOKENS,
 } from '@/lib/agent/constants'
-import { NOTE_SYSTEM_PROMPT, buildNoteUserContent, type Message as NoteTurn } from '@/lib/agent/note-prompt'
+import {
+  NOTE_SYSTEM_PROMPT,
+  buildNoteUserContent,
+  formatEmail,
+  type Message as NoteTurn,
+} from '@/lib/agent/note-prompt'
 import { logAnthropicCall } from '@/lib/observability/anthropic'
 import { addNote, isEmptyNote, listUnfoldedNotes } from '@/lib/api/brief-notes'
 import { upsertBrief } from '@/lib/api/briefs'
@@ -199,25 +204,53 @@ function cutTo(s: string, n: number): string {
   return last >= 0xd800 && last <= 0xdbff ? cut.slice(0, -1) : cut
 }
 
-// The characters an email carries: typed text plus every quote line's text,
-// context lines included. Tags, labels and headers are not counted, so the
-// limits bound the email text carried, not the exact size of the prompt.
-const emailSize = (item: EmailItem) => readingSize(item)
+// The size of an email as the prompt shows it (#284): the characters of its
+// turn as buildNoteUserContent writes it, so the label line, the tags around
+// each run of lines, each quote's written_by and header, and the `> ` put in
+// front of a turn label all count, not only the text of the lines. An email
+// with no text is covered without being shown, so its size is 0. The blank
+// line that joins one turn to the next is not counted. Both limits
+// (EMAIL_WINDOW_CHAR_LIMIT, EMAIL_CONTEXT_CHAR_LIMIT) are in these units.
+const emailSize = (item: EmailItem) => (hasText(item) ? formatEmail(emailTurn(item)).length : 0)
 
 const CUT_LINE: ReadingLine = { text: CUT_MARK, kind: 'new', by: null }
 
-// An email cut to `limit` characters, counted as emailSize counts them. Typed
-// text is kept first; when it alone passes the limit it is cut and ends with
-// CUT_MARK, and no quote is kept. Otherwise quote lines are kept in order while
-// they fit, and the line that passes the limit is cut (dropped when nothing of
-// it fits). A quote with no non-blank line kept is dropped whole, never shown
-// as a credited header with nothing under it, and so is every later quote.
-// CUT_MARK ends the last part kept: a CUT_MARK line on the last kept quote, or
-// the typed text when no quote is kept. Used for a window email longer than
-// the window limit alone, and for every email shown as earlier context. An
-// email within the limit is returned as it is.
+// An email cut so that it is shown in at most `limit` characters, counted as
+// emailSize counts them; an email within the limit is returned as it is. Used
+// for a window email longer than the window limit alone, and for every email
+// shown as earlier context.
+//
+// The tags and labels depend on what is kept, so the room for text is found by
+// trial: the most characters of text (see cutEmailText) for which the email as
+// shown still fits, by binary search. The rendered size nearly but not strictly
+// grows with the text: closeOpenEnd escapes a `<` only at the very end of a
+// line, so a quote line `a<b` renders longer at room 2 (`a&lt;`, 5 characters)
+// than at room 3 (`a<b`, 3). The search only ever returns a room it measured
+// as fitting (or 0, where only the mark is left), so the result never exceeds
+// the limit and can at worst leave out a few characters that would have fitted.
 function cutEmail(item: EmailItem, limit: number): EmailItem {
   if (emailSize(item) <= limit) return item
+  let fits = 0
+  let tooBig = readingSize(item) // keeps all the text: measured above as not fitting
+  while (tooBig - fits > 1) {
+    const room = Math.floor((fits + tooBig) / 2)
+    if (emailSize(cutEmailText(item, room)) <= limit) fits = room
+    else tooBig = room
+  }
+  return cutEmailText(item, fits)
+}
+
+// An email cut to at most `limit` characters of text, counted by readingSize:
+// the typed text plus every quote line, context lines included, with no tags
+// or labels. Typed text is kept first; when it alone passes the limit it is cut
+// and ends with CUT_MARK, and no quote is kept. Otherwise quote lines are kept
+// in order while they fit, and the line that passes the limit is cut (dropped
+// when nothing of it fits). A quote with no non-blank line kept is dropped
+// whole, never shown as a credited header with nothing under it, and so is
+// every later quote. CUT_MARK ends the last part kept: a CUT_MARK line on the
+// last kept quote, or the typed text when no quote is kept.
+function cutEmailText(item: EmailItem, limit: number): EmailItem {
+  if (readingSize(item) <= limit) return item
   if (item.typed.length > limit) {
     return { ...item, typed: `${cutTo(item.typed, limit)}\n${CUT_MARK}`, quotes: [] }
   }
@@ -250,10 +283,10 @@ function cutEmail(item: EmailItem, limit: number): EmailItem {
   return { ...item, quotes }
 }
 
-// This note's window: the longest prefix of the new items whose emails hold at
-// most EMAIL_WINDOW_CHAR_LIMIT characters, counted by emailSize (chat adds
-// nothing to the sum). It stops before the email that would pass the limit, and the rest
-// waits for the next run. An email that passes the limit alone is cut instead,
+// This note's window: the longest prefix of the new items whose emails are
+// shown in at most EMAIL_WINDOW_CHAR_LIMIT characters, counted by emailSize
+// (chat adds nothing to the sum). It stops before the email that would pass the
+// limit, and the rest waits for the next run. An email that passes the limit alone is cut instead,
 // so it cannot hold the stream back. Never empty when `items` is not.
 //
 // The window never ends between two items with the same timestamp: the next
@@ -301,21 +334,22 @@ function takeWindow(items: StreamItem[]): { window: StreamItem[]; truncated: boo
 
 const PACIFIC_DAY = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles' })
 
-// A stream item as the prompt builder takes it. An email's day is the Pacific
-// calendar date it was received (en-CA formats as YYYY-MM-DD).
+// An email as the prompt builder takes it. Its day is the Pacific calendar date
+// it was received (en-CA formats as YYYY-MM-DD).
+function emailTurn(item: EmailItem): NonNullable<NoteTurn['email']> {
+  return {
+    role: item.email.from_role,
+    name: item.email.from_name,
+    day: PACIFIC_DAY.format(new Date(item.email.received_at)),
+    typed: item.typed,
+    quotes: item.quotes,
+  }
+}
+
+// A stream item as the prompt builder takes it.
 function toTurn(item: StreamItem): NoteTurn {
   if (item.kind === 'message') return item.msg
-  return {
-    role: 'email',
-    content: '',
-    email: {
-      role: item.email.from_role,
-      name: item.email.from_name,
-      day: PACIFIC_DAY.format(new Date(item.email.received_at)),
-      typed: item.typed,
-      quotes: item.quotes,
-    },
-  }
+  return { role: 'email', content: '', email: emailTurn(item) }
 }
 
 const nonEmpty = (v: unknown): v is string => typeof v === 'string' && v.trim() !== ''

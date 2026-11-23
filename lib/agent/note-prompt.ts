@@ -105,8 +105,9 @@ function formatQuote(quote: ReadingQuote): string[] {
   return out
 }
 
-// One email as a turn. A part that is empty is left out with its tags.
-function formatEmail(email: NonNullable<Message['email']>): string {
+// One email as a turn. A part that is empty is left out with its tags. Exported
+// so the note writer can measure an email as it will be shown (#284).
+export function formatEmail(email: NonNullable<Message['email']>): string {
   const label = email.role === 'builder' ? 'Builder' : 'Maker'
   const lines = [`Email from ${label} (${email.name}), received ${email.day}:`]
   if (email.typed) lines.push('<typed>', neutralizeEmailText(email.typed), '</typed>')
