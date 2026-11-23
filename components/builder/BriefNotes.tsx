@@ -11,6 +11,7 @@ import { ChevronDown, ChevronRight, NotebookPen } from 'lucide-react'
 import { StatusMessage } from '@/components/ui/StatusMessage'
 import { LoadingButton } from '@/components/ui/LoadingButton'
 import { copy } from '@/lib/copy'
+import { noteSource } from '@/lib/brief/note-source'
 import { normalizeRisks, resolvedLine, riskOwner, riskText } from '@/lib/brief/risks'
 import type { StalePrepInfo } from '@/lib/query/hooks'
 import type { BriefNote } from '@/lib/types'
@@ -95,7 +96,7 @@ export function UnfoldedNotesList({ notes }: { notes: BriefNote[] | undefined })
         <div className="mt-2 space-y-3">
           {notes.map((n) => (
             <div key={n.id} className="text-xs text-brand-ink-soft">
-              <p className="font-medium text-gray-800">{c.noteHeading(noteDay(n.created_at))}</p>
+              <p className="font-medium text-gray-800">{c.noteHeading(noteDay(n.created_at), noteSource(n))}</p>
               {noteLines(n).map((line, i) => (
                 <p key={i}>{line}</p>
               ))}

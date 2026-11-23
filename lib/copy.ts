@@ -1,7 +1,7 @@
 // Centralized user-facing copy. Edit this file to change text across the app.
 // Organized by context. Functions accept dynamic values; strings are static.
 
-import type { BriefPatchSummary } from '@/lib/types'
+import type { BriefNoteSource, BriefPatchSummary } from '@/lib/types'
 
 export const copy = {
   // --- Invite & nudge messages ---
@@ -333,7 +333,13 @@ export const copy = {
     // prep that silently lacked them would read as "no new build news".
     copyPrepReportsFailed: "Couldn't load the build reports, so the prep was not copied. Try again.",
     newSinceCuration: (n: number) => `New since last curation (${n})`,
-    noteHeading: (day: string) => `Conversation of ${day}`,
+    // The heading follows what the note was made from (#276).
+    noteHeading: (day: string, from: BriefNoteSource) =>
+      from === 'email'
+        ? `Email of ${day}`
+        : from === 'both'
+          ? `Conversation and email of ${day}`
+          : `Conversation of ${day}`,
     noteDecision: (topic: string, decision: string) => `Decision: ${topic}: ${decision}`,
     noteRiskAdded: (text: string, owner?: string) => `Open risk${owner ? ` (${owner})` : ''}: ${text}`,
     noteRiskResolved: (text: string) => `Resolved: ${text}`,

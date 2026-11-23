@@ -77,6 +77,29 @@ describe('UnfoldedNotesList', () => {
     expect(screen.getByText('Wants to change locked Stack: Vue (nephew knows it)')).toBeTruthy()
   })
 
+  it('heads an email-only note Email of', () => {
+    render(<UnfoldedNotesList notes={[{ ...note, session_id: null, made_from: 'email' }]} />)
+    fireEvent.click(screen.getByRole('button', { name: /New since last curation/ }))
+    expect(screen.getByText('Email of Oct 28')).toBeTruthy()
+  })
+
+  it('heads a chat and email note Conversation and email of', () => {
+    render(<UnfoldedNotesList notes={[{ ...note, made_from: 'both' }]} />)
+    fireEvent.click(screen.getByRole('button', { name: /New since last curation/ }))
+    expect(screen.getByText('Conversation and email of Oct 28')).toBeTruthy()
+  })
+
+  it('heads an older email-only note by its email sources', () => {
+    const older: BriefNote = {
+      ...note,
+      session_id: null,
+      email_sources: [{ from_name: 'Bill Duris', from_role: 'maker', received_at: '2026-10-28T18:00:00.000Z' }],
+    }
+    render(<UnfoldedNotesList notes={[older]} />)
+    fireEvent.click(screen.getByRole('button', { name: /New since last curation/ }))
+    expect(screen.getByText('Email of Oct 28')).toBeTruthy()
+  })
+
   it("lists each 👎 reply with the maker's reason when there is one", () => {
     render(
       <UnfoldedNotesList
