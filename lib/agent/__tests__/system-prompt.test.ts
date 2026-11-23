@@ -929,6 +929,23 @@ describe('unfolded notes block (#229)', () => {
     expect(stable).toContain('### Conversation and email of Oct 28')
   })
 
+  it('heads an older note with no made_from by its email sources: Email of', () => {
+    // Written before #276: no made_from, no chat session, one email source.
+    const { stable } = buildSystemPromptParts({
+      ...minimalInput,
+      briefContent: brief,
+      unfoldedNotes: [
+        note({
+          session_id: null,
+          email_sources: [{ from_name: 'Bill', from_role: 'maker', received_at: '2026-10-29T05:00:00Z' }],
+          created_at: '2026-10-29T05:00:00Z',
+        }),
+      ],
+    })
+    expect(stable).toContain('### Email of Oct 28')
+    expect(stable).not.toContain('### Conversation of Oct 28')
+  })
+
   it('still renders with no brief content', () => {
     const { stable } = buildSystemPromptParts({ ...minimalInput, unfoldedNotes: [note()] })
     expect(stable).toContain('## New since the brief was last curated')
