@@ -222,9 +222,12 @@ const CUT_LINE: ReadingLine = { text: CUT_MARK, kind: 'new', by: null }
 //
 // The tags and labels depend on what is kept, so the room for text is found by
 // trial: the most characters of text (see cutEmailText) for which the email as
-// shown still fits, by binary search. More text means as many tags or more, so
-// a room that fits is a fit for any smaller one. The search only ever returns
-// a room it measured as fitting (or 0, where only the mark is left).
+// shown still fits, by binary search. The rendered size nearly but not strictly
+// grows with the text: closeOpenEnd escapes a `<` only at the very end of a
+// line, so a quote line `a<b` renders longer at room 2 (`a&lt;`, 5 characters)
+// than at room 3 (`a<b`, 3). The search only ever returns a room it measured
+// as fitting (or 0, where only the mark is left), so the result never exceeds
+// the limit and can at worst leave out a few characters that would have fitted.
 function cutEmail(item: EmailItem, limit: number): EmailItem {
   if (emailSize(item) <= limit) return item
   let fits = 0

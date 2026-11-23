@@ -1541,13 +1541,10 @@ describe('writeNoteForProject', () => {
       // A quote none of whose lines fit is dropped whole: it is never shown as
       // a credited header with nothing under it. The mark ends what was kept.
       it('drops a quote when the typed text fills the limit as shown, and marks the typed text', async () => {
-        // Typed text that fills the limit with its label line and tags and
-        // nothing else: the mark then has no room, so the typed text gives up
-        // the characters it takes.
-        const typed = bigText(
-          'alpha',
-          EMAIL_CONTEXT_CHAR_LIMIT - 'Email from Maker (Test M), received 2026-11-19:\n<typed>\n\n</typed>'.length
-        )
+        // Typed text sized so that it is kept whole and the mark takes the
+        // last of the room: no quote line has room, so the quote is dropped
+        // and the mark ends the typed text.
+        const typed = bigText('alpha', cutTypedRoom(EMAIL_CONTEXT_CHAR_LIMIT, 'Maker (Test M)'))
         seedProject({ notes_through_at: '2026-11-19T11:00:00.000Z' })
         seedEmail('e1_p1', '2026-11-19T11:00:00.000Z', [typed, '', NICO_HEADER, '> A quoted line nobody has seen yet'].join('\n'), TEST_M)
         seedEmail('e2_p1', '2026-11-19T12:00:00.000Z', 'a brand new email here')
@@ -1556,9 +1553,7 @@ describe('writeNoteForProject', () => {
         await writeNoteForProject(db, 'p1')
 
         const earlier = earlierBlock()
-        expect(block(earlier, 'typed')).toBe(
-          `${typed.slice(0, cutTypedRoom(EMAIL_CONTEXT_CHAR_LIMIT, 'Maker (Test M)'))}\n[cut here]`
-        )
+        expect(block(earlier, 'typed')).toBe(`${typed}\n[cut here]`)
         expect(earlier).not.toContain('<quoted')
       })
 
