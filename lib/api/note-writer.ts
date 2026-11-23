@@ -70,7 +70,8 @@ export const EMPTY_BRIEF: BriefContent = {
 }
 
 // Tools are part of the cached prefix (tools → system), so changing this
-// schema invalidates the system-prompt cache. Don't tweak casually.
+// schema invalidates the system-prompt cache. Don't tweak casually. (The one
+// cache write from adding nothing_new was accepted for #276.)
 const WRITE_NOTE_TOOL = {
   name: 'write_note',
   description:
@@ -79,6 +80,8 @@ const WRITE_NOTE_TOOL = {
     type: 'object' as const,
     properties: {
       text: { type: 'string' },
+      // True when the stretch added nothing relevant to the brief. Never stored.
+      nothing_new: { type: 'boolean' },
       decisions: {
         type: 'array',
         items: {
@@ -119,7 +122,7 @@ const WRITE_NOTE_TOOL = {
         },
       },
     },
-    required: ['text', 'decisions', 'risks_added', 'risks_resolved', 'lock_reversals'],
+    required: ['text', 'nothing_new', 'decisions', 'risks_added', 'risks_resolved', 'lock_reversals'],
   },
 }
 
@@ -341,11 +344,21 @@ function coerceNote(raw: Record<string, unknown>) {
           reason: r.reason.trim(),
         }))
     : []
+  const risks_added = normalizeRisks(raw.risks_added)
+  const risks_resolved = normalizeResolvedRisks(raw.risks_resolved)
+  // nothing_new can only drop text, never structured content: a wrong `true`
+  // costs a few sentences, never a decision or a risk. It is not stored.
+  const structured =
+    decisions.length > 0 ||
+    risks_added.length > 0 ||
+    risks_resolved.length > 0 ||
+    lock_reversals.length > 0
+  const dropText = raw.nothing_new === true && !structured
   return {
-    text: typeof raw.text === 'string' ? raw.text.trim() : '',
+    text: !dropText && typeof raw.text === 'string' ? raw.text.trim() : '',
     decisions,
-    risks_added: normalizeRisks(raw.risks_added),
-    risks_resolved: normalizeResolvedRisks(raw.risks_resolved),
+    risks_added,
+    risks_resolved,
     lock_reversals,
   }
 }
@@ -586,6 +599,10 @@ export async function writeNoteForProject(
       }),
     }
     noteId = await addNote(db, briefId, note)
+  } else {
+    // Nothing worth a note. The cursor below still moves, so the stretch is
+    // not read again. Ids and counts only, never text.
+    console.log(JSON.stringify({ event: 'brief.note_empty', project_id: projectId, covered }))
   }
 
   await projectRef.update({ notes_through_at: through })

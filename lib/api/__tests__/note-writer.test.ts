@@ -409,6 +409,152 @@ describe('writeNoteForProject', () => {
     expect(coll('projects').get('p1')!.notes_through_at).toBe('2026-10-01T00:00:01Z')
   })
 
+  // #276: the model says "nothing relevant" with nothing_new. Code may drop a
+  // text-only note on that flag, never a note that carries a decision or a risk.
+  describe('nothing_new (#276)', () => {
+    const nothingNew = {
+      text: 'Nothing relevant to the brief was said.',
+      nothing_new: true,
+      decisions: [],
+      risks_added: [],
+      risks_resolved: [],
+      lock_reversals: [],
+    }
+
+    it('nothing_new with only text writes no note and advances notes_through_at', async () => {
+      seedProject()
+      seedBrief(emptyBrief, '2026-09-01T00:00:00Z')
+      seedSession('s1', '2026-10-01T00:00:00Z')
+      seedMessage('m1', 's1', '2026-10-01T00:00:01Z', 'ok thanks')
+      mockMessagesCreate.mockResolvedValue(noteResponse(nothingNew))
+
+      const res = await writeNoteForProject(db, 'p1')
+
+      expect(res.note_id).toBeNull()
+      expect(notes()).toHaveLength(0)
+      expect(coll('projects').get('p1')!.notes_through_at).toBe('2026-10-01T00:00:01Z')
+    })
+
+    it('nothing_new is ignored when the model also returned a decision', async () => {
+      seedProject()
+      seedBrief(emptyBrief, '2026-09-01T00:00:00Z')
+      seedSession('s1', '2026-10-01T00:00:00Z')
+      seedMessage('m1', 's1', '2026-10-01T00:00:01Z', 'pickup only')
+      mockMessagesCreate.mockResolvedValue(noteResponse({ ...someNote, nothing_new: true }))
+
+      await writeNoteForProject(db, 'p1')
+
+      expect(notes()).toHaveLength(1)
+      expect(notes()[0].text).toBe(someNote.text)
+      expect(notes()[0].decisions).toEqual(someNote.decisions)
+    })
+
+    it.each([
+      ['a risk added', { risks_added: [{ text: 'Opening hours unknown', owner: 'maker' }] }],
+      ['a risk settled', { risks_resolved: [{ text: 'Hosting', resolution: 'Vercel' }] }],
+      ['a decision', { decisions: [{ topic: 'Delivery', decision: 'Pickup only' }] }],
+    ])('nothing_new is ignored when the model returned %s: the text is kept', async (_n, extra) => {
+      seedProject()
+      seedBrief(emptyBrief, '2026-09-01T00:00:00Z')
+      seedSession('s1', '2026-10-01T00:00:00Z')
+      seedMessage('m1', 's1', '2026-10-01T00:00:01Z', 'something')
+      mockMessagesCreate.mockResolvedValue(noteResponse({ ...nothingNew, ...extra }))
+
+      await writeNoteForProject(db, 'p1')
+
+      expect(notes()).toHaveLength(1)
+      expect(notes()[0].text).toBe(nothingNew.text)
+    })
+
+    it('nothing_new is ignored when the model returned a lock reversal the maker confirmed', async () => {
+      seedProject()
+      seedBrief(
+        { ...emptyBrief, decisions: [{ topic: 'Payment', decision: 'Stripe only', locked: true }] },
+        '2026-09-01T00:00:00Z'
+      )
+      seedSession('s1', '2026-10-01T00:00:00Z')
+      seedMessage('m1', 's1', '2026-10-01T00:00:01Z', 'switch to PayPal, I am sure')
+      mockMessagesCreate.mockResolvedValue(
+        noteResponse({
+          ...nothingNew,
+          lock_reversals: [{ topic: 'Payment', proposed: 'PayPal', reason: 'maker confirmed' }],
+        })
+      )
+
+      await writeNoteForProject(db, 'p1')
+
+      expect(notes()).toHaveLength(1)
+      expect(notes()[0].text).toBe(nothingNew.text)
+      expect(notes()[0].lock_reversals).toHaveLength(1)
+    })
+
+    it('nothing_new keeps a note that carries a 👎, with empty text', async () => {
+      seedProject()
+      seedSession('s1', '2026-10-01T00:00:00Z')
+      coll('messages').set('m1', {
+        session_id: 's1', created_at: '2026-10-01T00:00:01Z', role: 'agent', content: 'Hmm', rating: 'down',
+      })
+      mockMessagesCreate.mockResolvedValue(noteResponse(nothingNew))
+
+      const res = await writeNoteForProject(db, 'p1')
+
+      expect(res.note_id).toBeTruthy()
+      expect(notes()).toHaveLength(1)
+      expect(notes()[0].text).toBe('')
+      expect(notes()[0].thumbs_down).toEqual([{ excerpt: 'Hmm' }])
+    })
+
+    it('asks the model for nothing_new, as a required boolean', async () => {
+      seedProject({ notes_through_at: '2026-10-28T10:00:00.000Z' })
+      seedSession('s1', '2026-10-28T09:00:00.000Z')
+      seedMessage('m1', 's1', '2026-10-28T11:00:00.000Z', 'hello')
+      mockMessagesCreate.mockResolvedValue(noteResponse(someNote))
+      await writeNoteForProject(db, 'p1')
+      const schema = (lastCall().tools[0] as unknown as {
+        input_schema: { properties: Record<string, unknown>; required: string[] }
+      }).input_schema
+      expect(schema.properties.nothing_new).toEqual({ type: 'boolean' })
+      expect(schema.required).toContain('nothing_new')
+    })
+
+    it('never stores nothing_new on a note', async () => {
+      seedProject()
+      seedBrief(emptyBrief, '2026-09-01T00:00:00Z')
+      seedSession('s1', '2026-10-01T00:00:00Z')
+      seedMessage('m1', 's1', '2026-10-01T00:00:01Z', 'pickup only')
+      mockMessagesCreate.mockResolvedValue(noteResponse({ ...someNote, nothing_new: false }))
+      await writeNoteForProject(db, 'p1')
+      expect(notes()[0]).not.toHaveProperty('nothing_new')
+    })
+
+    it('an empty run logs brief.note_empty and the next run reads nothing', async () => {
+      const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+      seedProject()
+      seedBrief(emptyBrief, '2026-09-01T00:00:00Z')
+      seedSession('s1', '2026-10-01T00:00:00Z')
+      seedMessage('m1', 's1', '2026-10-01T00:00:01Z', 'ok thanks')
+      mockMessagesCreate.mockResolvedValue(noteResponse(nothingNew))
+
+      await writeNoteForProject(db, 'p1')
+
+      const events = log.mock.calls
+        .map((c) => {
+          try {
+            return JSON.parse(String(c[0]))
+          } catch {
+            return null
+          }
+        })
+        .filter((e) => e && e.event === 'brief.note_empty')
+      expect(events).toEqual([{ event: 'brief.note_empty', project_id: 'p1', covered: 1 }])
+
+      // The cursor moved, so the same stretch is not read again.
+      await expect(writeNoteForProject(db, 'p1')).rejects.toThrow('write_note_no_messages')
+      expect(mockMessagesCreate).toHaveBeenCalledTimes(1)
+      log.mockRestore()
+    })
+  })
+
   it('max_tokens throws write_note_max_tokens and does not advance notes_through_at', async () => {
     seedProject({ notes_through_at: '2026-10-01T00:00:00Z' })
     seedBrief(emptyBrief, '2026-09-01T00:00:00Z')
