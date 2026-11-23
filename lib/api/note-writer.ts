@@ -321,7 +321,11 @@ function toTurn(item: StreamItem): NoteTurn {
 const nonEmpty = (v: unknown): v is string => typeof v === 'string' && v.trim() !== ''
 
 // Coerce the model's tool input into a note body. Anything malformed is dropped.
-function coerceNote(raw: Record<string, unknown>) {
+// `canReverseLocks` is false for a window with no maker chat turn: a lock
+// reversal contests the live brief without a paste, so it needs the maker's own
+// words, never an email or a Builder line alone. Such reversals are cleared
+// here, before the nothing_new check, so they do not count as structured content.
+function coerceNote(raw: Record<string, unknown>, canReverseLocks: boolean) {
   const decisions = Array.isArray(raw.decisions)
     ? raw.decisions
         .filter(
@@ -332,7 +336,7 @@ function coerceNote(raw: Record<string, unknown>) {
         )
         .map((d) => ({ topic: d.topic.trim(), decision: d.decision.trim() }))
     : []
-  const lock_reversals: BriefNoteLockReversal[] = Array.isArray(raw.lock_reversals)
+  const lock_reversals: BriefNoteLockReversal[] = canReverseLocks && Array.isArray(raw.lock_reversals)
     ? raw.lock_reversals
         .filter((r): r is BriefNoteLockReversal => {
           const o = r as Record<string, unknown>
@@ -558,12 +562,13 @@ export async function writeNoteForProject(
 
   const thumbsDown = thumbsDownEntries(newMessages)
   const body = {
-    ...coerceNote((toolUse.input ?? {}) as Record<string, unknown>),
+    ...coerceNote(
+      (toolUse.input ?? {}) as Record<string, unknown>,
+      // Lock reversals need the maker's own chat turn (see coerceNote).
+      newMessages.some((m) => m.role === 'user' && !m.builder)
+    ),
     ...(thumbsDown.length > 0 && { thumbs_down: thumbsDown }),
   }
-  // A lock reversal contests the live brief without a paste, so it needs the
-  // maker's own chat turn. Never from an email or a Builder line alone.
-  if (!newMessages.some((m) => m.role === 'user' && !m.builder)) body.lock_reversals = []
 
   // Persist: note → notes_through_at → brief contest. A throw before
   // notes_through_at moves leaves it where it was, so the next run retries

@@ -488,6 +488,71 @@ describe('writeNoteForProject', () => {
       expect(notes()[0].lock_reversals).toHaveLength(1)
     })
 
+    // Only the boolean true may drop text. A string or null is not the flag.
+    it.each([
+      ['the string "true"', 'true'],
+      ['null', null],
+    ])('nothing_new as %s is not the flag: a text-only note is kept whole', async (_n, flag) => {
+      seedProject()
+      seedBrief(emptyBrief, '2026-09-01T00:00:00Z')
+      seedSession('s1', '2026-10-01T00:00:00Z')
+      seedMessage('m1', 's1', '2026-10-01T00:00:01Z', 'ok thanks')
+      mockMessagesCreate.mockResolvedValue(noteResponse({ ...nothingNew, nothing_new: flag }))
+
+      await writeNoteForProject(db, 'p1')
+
+      expect(notes()).toHaveLength(1)
+      expect(notes()[0].text).toBe(nothingNew.text)
+    })
+
+    // A lock reversal from a window with no maker chat turn is cleared, so it
+    // must not count as structured content that protects the text.
+    it('nothing_new drops the text when the only lock reversal is cleared (email-only window)', async () => {
+      const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+      seedProject()
+      seedBrief(
+        { ...emptyBrief, decisions: [{ topic: 'Payment', decision: 'Stripe only', locked: true }] },
+        '2026-09-01T00:00:00Z'
+      )
+      // seedEmail lives in the emails block below, so the email is set inline.
+      coll('project_emails').set('e1_p1', {
+        project_id: 'p1',
+        from_email: 'bill@example.com',
+        from_name: 'Bill Duris',
+        from_role: 'maker',
+        received_at: '2026-11-19T17:00:00.000Z',
+        sent_at: null,
+        subject: 'Re: the shop',
+        message_id: '<e1_p1@mail>',
+        text: 'just saying hello',
+        truncated: false,
+        attachments: [],
+      })
+      mockMessagesCreate.mockResolvedValue(
+        noteResponse({
+          ...nothingNew,
+          lock_reversals: [{ topic: 'Payment', proposed: 'PayPal', reason: 'an email said so' }],
+        })
+      )
+
+      const res = await writeNoteForProject(db, 'p1')
+
+      expect(res.note_id).toBeNull()
+      expect(notes()).toHaveLength(0)
+      expect(coll('projects').get('p1')!.notes_through_at).toBe('2026-11-19T17:00:00.000Z')
+      const events = log.mock.calls
+        .map((c) => {
+          try {
+            return JSON.parse(String(c[0]))
+          } catch {
+            return null
+          }
+        })
+        .filter((e) => e && e.event === 'brief.note_empty')
+      expect(events).toHaveLength(1)
+      log.mockRestore()
+    })
+
     it('nothing_new keeps a note that carries a 👎, with empty text', async () => {
       seedProject()
       seedSession('s1', '2026-10-01T00:00:00Z')
