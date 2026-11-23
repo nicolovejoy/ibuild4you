@@ -1467,6 +1467,55 @@ describe('writeNoteForProject', () => {
       expect(mockMessagesCreate).not.toHaveBeenCalled()
     })
 
+    it('stamps made_from email on a note from emails only', async () => {
+      seedProject()
+      seedEmail('e1_p1', '2026-11-19T17:00:00.000Z', 'I want the gallery page to load fast')
+      mockMessagesCreate.mockResolvedValue(noteResponse(someNote))
+
+      await writeNoteForProject(db, 'p1')
+
+      expect(notes()[0].made_from).toBe('email')
+    })
+
+    it('stamps made_from both on a note from chat and email', async () => {
+      seedProject()
+      seedSession('s1', '2026-11-19T00:00:00.000Z')
+      seedMessage('m1', 's1', '2026-11-19T10:00:00.000Z', 'chat one')
+      seedEmail('e1_p1', '2026-11-19T11:00:00.000Z', 'email after the chat')
+      mockMessagesCreate.mockResolvedValue(noteResponse(someNote))
+
+      await writeNoteForProject(db, 'p1')
+
+      expect(notes()[0].made_from).toBe('both')
+    })
+
+    it('stamps made_from chat on a note from chat only', async () => {
+      seedProject()
+      seedSession('s1', '2026-10-01T00:00:00Z')
+      seedMessage('m1', 's1', '2026-10-01T00:00:01Z', 'hello')
+      mockMessagesCreate.mockResolvedValue(noteResponse(someNote))
+
+      await writeNoteForProject(db, 'p1')
+
+      expect(notes()[0].made_from).toBe('chat')
+    })
+
+    it('an email with nothing new left does not count as email', async () => {
+      const text = 'Please add a metronome to the practice page.\n\nThanks,\nBill'
+      seedProject({ notes_through_at: '2026-11-19T10:00:00.000Z' })
+      seedSession('s1', '2026-11-19T00:00:00.000Z')
+      seedEmail('e1_p1', '2026-11-19T10:00:00.000Z', text)
+      // The same words again: seen in full, so no text is left to read.
+      seedEmail('e2_p1', '2026-11-19T11:00:00.000Z', text)
+      seedMessage('m1', 's1', '2026-11-19T12:00:00.000Z', 'a chat message after it')
+      mockMessagesCreate.mockResolvedValue(noteResponse(someNote))
+
+      await writeNoteForProject(db, 'p1')
+
+      expect(notes()[0].made_from).toBe('chat')
+      expect(notes()[0].email_sources).toEqual([])
+    })
+
     it('leaves the email fields off a note that covered no email', async () => {
       seedProject()
       seedSession('s1', '2026-10-01T00:00:00Z')

@@ -23,6 +23,7 @@ import type {
   BriefContent,
   BriefDecision,
   BriefNote,
+  BriefNoteSource,
   BriefNoteLockReversal,
   BriefNoteThumbsDown,
   ProjectEmail,
@@ -562,12 +563,17 @@ export async function writeNoteForProject(
     const briefId = briefDoc
       ? briefDoc.id
       : (await upsertBrief(db, projectId, EMPTY_BRIEF, 'create')).id
+    const hasChat = newMessages.length > 0 // any role counts as conversation
+    const hasEmail = newEmails.some(hasText)
+    const madeFrom: BriefNoteSource = hasChat && hasEmail ? 'both' : hasEmail ? 'email' : 'chat'
     const note: Omit<BriefNote, 'id'> = {
       session_id: sessionId,
       created_at: new Date().toISOString(),
       folded_at: null,
       ...body,
-      // Stamped by code from the window, never by the model.
+      // Stamped by code from the window, never by the model. An email with no
+      // text left does not count as email, the same rule as email_sources.
+      made_from: madeFrom,
       ...(newEmails.length > 0 && {
         email_ids: newEmails.map((item) => item.email.id),
         email_sources: newEmails.filter(hasText).map((item) => ({
