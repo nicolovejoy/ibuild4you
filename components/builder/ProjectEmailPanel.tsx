@@ -1,9 +1,15 @@
 'use client'
 
 import { useState } from 'react'
-import { useCreateProjectEmailIn, useProjectEmailIn } from '@/lib/query/hooks'
+import {
+  useCreateProjectEmailIn,
+  useProjectEmailIn,
+  useProjectEmailMessage,
+  type ProjectEmailMessage,
+} from '@/lib/query/hooks'
 import { copy } from '@/lib/copy'
 import { CopyField } from '@/components/ui/CopyField'
+import { Modal } from '@/components/ui/Modal'
 
 const t = copy.projectEmail
 
@@ -28,6 +34,77 @@ export function canSeeProjectEmail(
   return isSystemAdmin || viewerRole === 'owner' || viewerRole === 'builder' || viewerRole === 'admin'
 }
 
+type ReadLine = ProjectEmailMessage['quotes'][number]['lines'][number]
+
+// Consecutive lines of one kind (and, inside a quote, one writer) form a group.
+// A blank line belongs to the group it sits in and never starts one, so a gap in
+// a quote does not split it; a blank before any group is dropped.
+function groupLines(lines: ReadLine[]): { kind: ReadLine['kind']; by: string | null; lines: ReadLine[] }[] {
+  const groups: { kind: ReadLine['kind']; by: string | null; lines: ReadLine[] }[] = []
+  for (const line of lines) {
+    const last = groups[groups.length - 1]
+    if (line.text === '') {
+      if (last) last.lines.push(line)
+    } else if (last && last.kind === line.kind && last.by === line.by) {
+      last.lines.push(line)
+    } else {
+      groups.push({ kind: line.kind, by: line.by, lines: [line] })
+    }
+  }
+  return groups
+}
+
+// The body of the modal: one stored email as the note writer read it.
+function EmailMessage({ message }: { message: ProjectEmailMessage }) {
+  const nothingNew = !message.repeat && message.typed === '' && message.quotes.length === 0
+  return (
+    <div className="space-y-3 text-sm text-brand-charcoal">
+      <p className="text-xs text-brand-ink-soft">
+        {t.openFrom(dayFmt.format(new Date(message.received_at)), message.from_name, t.roles[message.from_role])}
+      </p>
+      <p className="text-xs text-brand-ink-soft">{t.openIntro}</p>
+      {message.repeat && <p>{t.openRepeat}</p>}
+      {nothingNew && <p>{t.openNothingNew}</p>}
+      {message.truncated && <p>{t.openTruncated}</p>}
+
+      {message.typed !== '' && (
+        <div className="space-y-1">
+          <h4 className="text-xs font-medium text-brand-ink-soft">{t.openTyped}</h4>
+          <p className="whitespace-pre-wrap break-words">{message.typed}</p>
+        </div>
+      )}
+
+      {message.quotes.map((quote, qi) => (
+        <div key={qi} className="space-y-1">
+          <h4 className="text-xs font-medium text-brand-ink-soft">{t.openQuoted(quote.label)}</h4>
+          {quote.header && <p className="text-xs text-brand-ink-soft whitespace-pre-wrap break-words">{quote.header}</p>}
+          {groupLines(quote.lines).map((group, gi) => (
+            <div
+              key={gi}
+              className={
+                group.kind === 'context'
+                  ? 'text-brand-ink-soft'
+                  : group.kind === 'inside'
+                    ? 'border-l-2 border-brand-line pl-3'
+                    : ''
+              }
+            >
+              {group.kind === 'context' && <p className="text-xs">{t.openContext}</p>}
+              {group.kind === 'inside' && <p className="text-xs text-brand-ink-soft">{t.openInside(group.by ?? '')}</p>}
+              {group.lines.map((line, li) => (
+                // An empty div would collapse, so a blank line keeps a line's height.
+                <div key={li} className="min-h-5 break-words">
+                  {line.text}
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 // The project's email address: the builder keeps it on CC, and mail from
 // members becomes brief notes. Shows the address (or offers to create it), the
 // newest emails received (who, when, subject; never the text), and what was
@@ -36,6 +113,9 @@ export function ProjectEmailPanel({ projectId }: { projectId: string }) {
   const { data, isLoading, error: loadError } = useProjectEmailIn(projectId)
   const create = useCreateProjectEmailIn(projectId)
   const [error, setError] = useState<string | null>(null)
+  // The received email that is open in the modal; closing clears it.
+  const [opened, setOpened] = useState<{ id: string; subject: string } | null>(null)
+  const message = useProjectEmailMessage(projectId, opened?.id ?? null)
 
   const onCreate = async () => {
     setError(null)
@@ -95,14 +175,21 @@ export function ProjectEmailPanel({ projectId }: { projectId: string }) {
               <p className="text-sm text-brand-ink-soft">{t.noneReceived}</p>
             ) : (
               <ul className="space-y-0.5">
-                {data.recent.map((e, i) => (
-                  <li key={`${e.received_at}-${i}`} className="text-sm text-brand-charcoal">
-                    {t.recentRow(
-                      dayFmt.format(new Date(e.received_at)),
-                      e.from_name,
-                      t.roles[e.from_role],
-                      e.subject || t.noSubject
-                    )}
+                {data.recent.map((e) => (
+                  <li key={e.id} className="text-sm text-brand-charcoal">
+                    {/* Looks like the plain row it was; the text is the button's name. */}
+                    <button
+                      type="button"
+                      onClick={() => setOpened({ id: e.id, subject: e.subject })}
+                      className="text-left break-words hover:underline focus-visible:outline-2 focus-visible:outline-brand-navy rounded-sm"
+                    >
+                      {t.recentRow(
+                        dayFmt.format(new Date(e.received_at)),
+                        e.from_name,
+                        t.roles[e.from_role],
+                        e.subject || t.noSubject
+                      )}
+                    </button>
                   </li>
                 ))}
               </ul>
@@ -121,6 +208,16 @@ export function ProjectEmailPanel({ projectId }: { projectId: string }) {
           )}
         </>
       )}
+
+      <Modal isOpen={opened !== null} onClose={() => setOpened(null)} title={opened?.subject || t.noSubject} size="lg">
+        {message.isLoading && <div className="text-gray-400 text-sm">{t.loading}</div>}
+        {message.error && (
+          <p role="alert" className="text-xs text-red-500">
+            {t.openError}
+          </p>
+        )}
+        {message.data && <EmailMessage message={message.data} />}
+      </Modal>
 
       {(error || loadError) && (
         <p role="alert" className="text-xs text-red-500">

@@ -20,5 +20,7 @@ export const queryKeys = {
   appReadKey: (slug: string | undefined) => ['app-read-key', slug] as const,
   buildStatusKey: (projectId: string | undefined) => ['build-status-key', projectId] as const,
   projectEmailIn: (projectId: string | undefined) => ['project-email-in', projectId] as const,
+  projectEmailMessage: (projectId: string | undefined, emailId: string | null) =>
+    ['project-email-message', projectId, emailId] as const,
   fileUrl: (fileId: string | undefined) => ['fileUrl', fileId] as const,
 }

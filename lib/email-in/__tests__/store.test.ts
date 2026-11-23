@@ -7,7 +7,7 @@ vi.mock('firebase-admin/firestore', () => ({
   FieldValue: { increment: (n: number) => ({ __increment: n }) },
 }))
 
-import { storeProjectEmail, recordDrop, listProjectEmails, listRecentProjectEmailRows, EMAIL_TEXT_MAX } from '../store'
+import { storeProjectEmail, recordDrop, listProjectEmails, listRecentProjectEmailRows, projectEmailDocId, EMAIL_TEXT_MAX } from '../store'
 
 type Doc = Record<string, unknown>
 
@@ -380,7 +380,14 @@ describe('listRecentProjectEmailRows', () => {
     const out = await listRecentProjectEmailRows(db, 'p1', 10)
     expect(calls.selects).toEqual([['from_name', 'from_role', 'received_at', 'subject']])
     expect(out).toHaveLength(1)
-    expect(Object.keys(out[0]).sort()).toEqual(['from_name', 'from_role', 'received_at', 'subject'])
+    expect(Object.keys(out[0]).sort()).toEqual(['from_name', 'from_role', 'id', 'received_at', 'subject'])
+  })
+
+  it('carries each row\'s document id, so the panel can open that email', async () => {
+    const { db } = makeDb()
+    await storeProjectEmail(db, 'a', email({ received_at: '2026-11-20T08:00:00.000Z' }))
+    const out = await listRecentProjectEmailRows(db, 'p1', 10)
+    expect(out[0].id).toBe(projectEmailDocId('a', 'p1'))
   })
 
   it('returns the newest `limit` rows, newest first, for that project only', async () => {

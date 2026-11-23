@@ -15,9 +15,9 @@ function count(value: unknown): number {
 }
 
 // GET /api/projects/email-in?project_id= — what the Setup panel shows (builder+):
-// the address (null until minted), the newest emails as who/when/subject, and
+// the address (null until minted), the newest emails as id/who/when/subject, and
 // the drop counters with when the last drop was. Never an email's text, sender
-// address or attachments.
+// address or attachments; one email's text is read through ./message.
 export async function GET(request: Request) {
   const auth = await getAuthenticatedUser(request)
   if (auth.error) return auth.error

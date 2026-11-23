@@ -117,8 +117,10 @@ export async function listProjectEmails(db: Firestore, projectId: string): Promi
 }
 
 // What the Setup panel shows for each received email: who, in what role, when,
-// and the subject. Never the text.
+// and the subject. Never the text. `id` is the project_emails document id, what
+// the panel passes to the message route to open that email.
 export interface RecentEmailRow {
+  id: string
   from_name: string
   from_role: 'maker' | 'builder'
   received_at: string
@@ -126,9 +128,9 @@ export interface RecentEmailRow {
 }
 
 // The newest `limit` emails of a project as panel rows, newest first. The query
-// reads only four fields, so a stored text of up to 50,000 characters is never
-// pulled for a ten-row list. Single equality filter and no orderBy (no
-// composite index, as with the flood count); the sort is in memory.
+// reads only four fields besides the id, so a stored text of up to 50,000
+// characters is never pulled for a ten-row list. Single equality filter and no
+// orderBy (no composite index, as with the flood count); the sort is in memory.
 export async function listRecentProjectEmailRows(
   db: Firestore,
   projectId: string,
@@ -142,6 +144,7 @@ export async function listRecentProjectEmailRows(
     .map((d) => {
       const e = d.data()
       return {
+        id: d.id,
         from_name: e.from_name,
         from_role: e.from_role,
         received_at: e.received_at,

@@ -2,13 +2,12 @@ import { NextResponse } from 'next/server'
 import { Webhook, WebhookVerificationError } from 'svix'
 import type { DocumentReference, Firestore } from 'firebase-admin/firestore'
 import { getAdminDb } from '@/lib/firebase/admin'
-import { getUserDisplayName } from '@/lib/api/firebase-server-helpers'
 import { buildInboundReply, findFeedbackIdInRecipients } from '@/lib/feedback/inbound'
 import { normalizeEmail } from '@/lib/email/normalize'
-import { formatDisplayName } from '@/lib/copy'
 import { fetchReceivedEmail, type ReceivedEmail } from '@/lib/email/resend-received'
 import { projectAddressesIn } from '@/lib/email-in/address'
 import { checkSender, type SenderCheck, type SenderMember } from '@/lib/email-in/sender'
+import { emailProjectOf, loadSenderMembers, type EmailProject } from '@/lib/email-in/members'
 import { EMAIL_TEXT_MAX, recordDrop, storeProjectEmail } from '@/lib/email-in/store'
 
 // =============================================================================
@@ -80,11 +79,7 @@ const MAX_PROJECT_ADDRESSES = 10
 
 // A project the email is addressed to, with the requester fields that can
 // name a member who has never signed in (they come with the lookup, no read).
-interface MatchedProject {
-  id: string
-  requester_email: string // normalized, '' when absent
-  requester_name: string | null // formatted as getUserDisplayName does
-}
+type MatchedProject = EmailProject
 
 export async function POST(request: Request) {
   const secret = process.env.RESEND_INBOUND_SECRET
@@ -239,63 +234,9 @@ async function findProjects(db: Firestore, addresses: string[]): Promise<Matched
       .where('email_in_address', '==', address)
       .limit(1)
       .get()
-    for (const doc of snap.docs) {
-      const d = doc.data()
-      const str = (v: unknown) => (typeof v === 'string' ? v : undefined)
-      found.set(doc.id, {
-        id: doc.id,
-        requester_email: normalizeEmail(str(d.requester_email) ?? ''),
-        requester_name: formatDisplayName(str(d.requester_first_name), str(d.requester_last_name)),
-      })
-    }
+    for (const doc of snap.docs) found.set(doc.id, emailProjectOf(doc.id, doc.data()))
   }
   return [...found.values()]
-}
-
-// The name of an active member, resolved the way the members route builds
-// ProjectMemberSummary.display_name (the rows carry none): their users row,
-// else the email's local part. A maker who has never signed in has no users
-// row, so before that last fallback the project's requester name is used when
-// the member is the requester.
-async function memberDisplayName(
-  db: Firestore,
-  project: MatchedProject,
-  uid: string,
-  email: string
-): Promise<string> {
-  const name = await getUserDisplayName(db, uid, email)
-  // getUserDisplayName gives the local part when nothing names the member.
-  const unnamed = name === email.split('@')[0]
-  if (
-    unnamed &&
-    project.requester_name &&
-    project.requester_email &&
-    normalizeEmail(email) === project.requester_email
-  ) {
-    return project.requester_name
-  }
-  return name
-}
-
-// The project's member rows for checkSender, display names resolved. Removed
-// rows are passed through, unresolved, so checkSender sees them as removed.
-async function loadMembers(db: Firestore, project: MatchedProject): Promise<SenderMember[]> {
-  const snap = await db.collection('project_members').where('project_id', '==', project.id).get()
-  return Promise.all(
-    snap.docs.map(async (doc) => {
-      const d = doc.data()
-      const email = typeof d.email === 'string' ? d.email : ''
-      // Any truthy removed_at counts as removed, whatever its type.
-      const removed_at = d.removed_at ? String(d.removed_at) : null
-      const uid = typeof d.user_id === 'string' ? d.user_id : ''
-      return {
-        email,
-        role: d.role,
-        removed_at,
-        display_name: removed_at || !email ? undefined : await memberDisplayName(db, project, uid, email),
-      }
-    })
-  )
 }
 
 // Who sent it, failing closed. The strict parser in checkSender reads the raw
@@ -337,7 +278,7 @@ async function handleProjectEmail(
   storeTime: () => string
 ): Promise<ProjectOutcome> {
   const projectId = project.id
-  const check = checkEmailSender(email, await loadMembers(db, project))
+  const check = checkEmailSender(email, await loadSenderMembers(db, project))
 
   let outcome: ProjectOutcome
   if (check.ok) {
