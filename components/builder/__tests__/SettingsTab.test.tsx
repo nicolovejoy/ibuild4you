@@ -120,6 +120,12 @@ describe('Settings tab: sections', () => {
     expect(screen.queryByLabelText(t.connections.repo)).toBeNull()
   })
 
+  it('opens Connections from the start when the project has received email', () => {
+    renderTab(project({ last_email_at: '2026-11-23T20:00:00Z' }))
+    const connections = screen.getByRole('button', { name: new RegExp(t.connections.heading) })
+    expect(connections.getAttribute('aria-expanded')).toBe('true')
+  })
+
   it('folds and unfolds a section from its heading', () => {
     renderTab()
     const sam = screen.getByRole('button', { name: new RegExp(`^${t.sam.heading}`) })

@@ -244,7 +244,9 @@ export function SettingsTab({
       <CollapsibleSection
         title={t.connections.heading}
         summary={connectionsSummary(live)}
-        defaultOpen={false}
+        // Open from the start when the project has received email and this
+        // viewer can see the panel, so the list is not one click away.
+        defaultOpen={Boolean(project.last_email_at) && canSeeProjectEmail(project.viewer_role, isAdmin)}
       >
         <div className="space-y-5">
           <div>

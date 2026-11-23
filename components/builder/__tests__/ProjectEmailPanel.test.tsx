@@ -230,14 +230,13 @@ describe('ProjectEmailPanel opening an email', () => {
     expect(screen.queryByRole('dialog')).toBeNull()
   })
 
-  it('shows the from line, the intro and the subject as the title while it loads', async () => {
+  it('shows the from line and the subject as the title while it loads, with no intro sentence', async () => {
     await open()
     expect(screen.getByRole('heading', { name: 'Re: the menu' })).toBeTruthy()
     expect(screen.getByRole('dialog').textContent).toContain('Loading…')
-    expect(
-      await screen.findByText('This is the email as the note writer read it. Its text never goes into the brief word for word.')
-    ).toBeTruthy()
-    expect(screen.getByText('November 19 · Bill Duris (maker)')).toBeTruthy()
+    expect(await screen.findByText('November 19 · Bill Duris (maker)')).toBeTruthy()
+    // Nico, 2026-11-23: the explanatory sentence under the from line is gone.
+    expect(screen.queryByText(/as the note writer read it/)).toBeNull()
   })
 
   it('shows typed text, a quote with context, inside and new lines, each caption once', async () => {

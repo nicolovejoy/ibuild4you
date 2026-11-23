@@ -839,7 +839,6 @@ export const copy = {
     loadError: 'Could not load the project email address.',
     // A row opens the email as the note writer read it (builder only).
     openFrom: (day: string, name: string, role: string) => `${day} · ${name} (${role})`,
-    openIntro: 'This is the email as the note writer read it. Its text never goes into the brief word for word.',
     openRepeat: 'This email repeats an earlier one from the same sender, so the note writer skipped it.',
     openNothingNew: 'Nothing in this email was new: every line was already held.',
     openTruncated: 'This email was longer than the app keeps. The end of it was cut.',

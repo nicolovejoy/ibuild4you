@@ -62,7 +62,6 @@ function EmailMessage({ message }: { message: ProjectEmailMessage }) {
       <p className="text-xs text-brand-ink-soft">
         {t.openFrom(dayFmt.format(new Date(message.received_at)), message.from_name, t.roles[message.from_role])}
       </p>
-      <p className="text-xs text-brand-ink-soft">{t.openIntro}</p>
       {message.repeat && <p>{t.openRepeat}</p>}
       {nothingNew && <p>{t.openNothingNew}</p>}
       {message.truncated && <p>{t.openTruncated}</p>}
