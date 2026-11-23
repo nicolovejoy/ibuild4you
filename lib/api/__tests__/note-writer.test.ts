@@ -1500,6 +1500,32 @@ describe('writeNoteForProject', () => {
       expect(notes()[0].made_from).toBe('chat')
     })
 
+    it('stamps made_from both when the chat sits in an archived session', async () => {
+      seedProject()
+      seedSession('s1', '2026-11-19T00:00:00.000Z', { status: 'archived' })
+      seedMessage('m1', 's1', '2026-11-19T10:00:00.000Z', 'chat in a closed conversation')
+      seedEmail('e1_p1', '2026-11-19T11:00:00.000Z', 'email after the chat')
+      mockMessagesCreate.mockResolvedValue(noteResponse(someNote))
+
+      await writeNoteForProject(db, 'p1')
+
+      // session_id is null here, so made_from cannot lean on it.
+      expect(notes()[0].session_id).toBeNull()
+      expect(notes()[0].made_from).toBe('both')
+    })
+
+    it('counts a chat message from the agent as conversation', async () => {
+      seedProject()
+      seedSession('s1', '2026-11-19T00:00:00.000Z')
+      seedMessage('m1', 's1', '2026-11-19T10:00:00.000Z', 'a greeting from Sam', 'agent')
+      seedEmail('e1_p1', '2026-11-19T11:00:00.000Z', 'email after the greeting')
+      mockMessagesCreate.mockResolvedValue(noteResponse(someNote))
+
+      await writeNoteForProject(db, 'p1')
+
+      expect(notes()[0].made_from).toBe('both')
+    })
+
     it('an email with nothing new left does not count as email', async () => {
       const text = 'Please add a metronome to the practice page.\n\nThanks,\nBill'
       seedProject({ notes_through_at: '2026-11-19T10:00:00.000Z' })

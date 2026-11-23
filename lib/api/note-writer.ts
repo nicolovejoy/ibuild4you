@@ -564,7 +564,8 @@ export async function writeNoteForProject(
       ? briefDoc.id
       : (await upsertBrief(db, projectId, EMPTY_BRIEF, 'create')).id
     const hasChat = newMessages.length > 0 // any role counts as conversation
-    const hasEmail = newEmails.some(hasText)
+    const emailsWithText = newEmails.filter(hasText)
+    const hasEmail = emailsWithText.length > 0
     const madeFrom: BriefNoteSource = hasChat && hasEmail ? 'both' : hasEmail ? 'email' : 'chat'
     const note: Omit<BriefNote, 'id'> = {
       session_id: sessionId,
@@ -576,7 +577,7 @@ export async function writeNoteForProject(
       made_from: madeFrom,
       ...(newEmails.length > 0 && {
         email_ids: newEmails.map((item) => item.email.id),
-        email_sources: newEmails.filter(hasText).map((item) => ({
+        email_sources: emailsWithText.map((item) => ({
           from_name: item.email.from_name,
           from_role: item.email.from_role,
           received_at: item.email.received_at,
