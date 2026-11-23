@@ -21,28 +21,65 @@ export function Modal({ isOpen, onClose, title, label, children, size = 'md' }: 
   const titleId = useId()
   const common = useMakerCopy().common
 
+  // Remember what had focus before the dialog opened. This is done during
+  // render, not in an effect: React applies a child's autoFocus while
+  // committing, before any effect runs, so by then document.activeElement would
+  // be the autofocused input inside the dialog. During the first render that
+  // shows the dialog, the children have not been committed yet.
+  const openerRef = useRef<HTMLElement | null>(null)
+  // dialogRef is still empty on that first render, and filled on later ones.
+  if (isOpen && !dialogRef.current && typeof document !== 'undefined') {
+    const active = document.activeElement as HTMLElement | null
+    openerRef.current = active && active !== document.body ? active : null
+  }
+
   useEffect(() => {
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
+    if (!isOpen) return
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose()
+        return
+      }
+      if (e.key !== 'Tab') return
+      const dialog = dialogRef.current
+      if (!dialog) return
+      // Keep Tab and Shift+Tab inside the dialog, including when focus has
+      // fallen out of it (the focused element was removed or disabled).
+      const items = Array.from(dialog.querySelectorAll<HTMLElement>(FOCUSABLE))
+      const first = items[0] ?? dialog
+      const last = items[items.length - 1] ?? dialog
+      const active = document.activeElement
+      if (!active || !dialog.contains(active)) {
+        e.preventDefault()
+        first.focus()
+      } else if (e.shiftKey && (active === first || active === dialog)) {
+        e.preventDefault()
+        last.focus()
+      } else if (!e.shiftKey && active === last) {
+        e.preventDefault()
+        first.focus()
+      }
     }
 
-    if (isOpen) {
-      document.addEventListener('keydown', handleEscape)
-      document.body.style.overflow = 'hidden'
-    }
+    document.addEventListener('keydown', handleKeyDown)
+    document.body.style.overflow = 'hidden'
 
     return () => {
-      document.removeEventListener('keydown', handleEscape)
+      document.removeEventListener('keydown', handleKeyDown)
       document.body.style.overflow = 'unset'
     }
   }, [isOpen, onClose])
 
-  // Focus goes into the dialog when it opens and back to whatever opened it
-  // when it closes or unmounts. Keyed on isOpen only: onClose is usually a new
-  // function every render and must not re-run this.
+  // Focus goes into the dialog when it opens and back to the opener when it
+  // closes or unmounts. Keyed on isOpen only: onClose is usually a new function
+  // every render and must not re-run this.
   useEffect(() => {
-    if (!isOpen) return
-    const opener = document.activeElement as HTMLElement | null
+    if (!isOpen) {
+      openerRef.current = null
+      return
+    }
+    const opener = openerRef.current
     const dialog = dialogRef.current
     // A child with autoFocus has already taken focus; leave it there.
     if (dialog && !dialog.contains(document.activeElement)) dialog.focus()
@@ -59,26 +96,6 @@ export function Modal({ isOpen, onClose, title, label, children, size = 'md' }: 
     lg: 'max-w-4xl',
   }
 
-  // Keep Tab and Shift+Tab inside the dialog.
-  const handleTab = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (e.key !== 'Tab') return
-    const items = Array.from(e.currentTarget.querySelectorAll<HTMLElement>(FOCUSABLE))
-    if (items.length === 0) {
-      e.preventDefault()
-      return
-    }
-    const first = items[0]
-    const last = items[items.length - 1]
-    const active = document.activeElement
-    if (e.shiftKey && (active === first || active === e.currentTarget)) {
-      e.preventDefault()
-      last.focus()
-    } else if (!e.shiftKey && active === last) {
-      e.preventDefault()
-      first.focus()
-    }
-  }
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="fixed inset-0 bg-black/50" onClick={onClose} />
@@ -89,7 +106,6 @@ export function Modal({ isOpen, onClose, title, label, children, size = 'md' }: 
         aria-labelledby={title ? titleId : undefined}
         aria-label={title ? undefined : label || common.dialogFallbackLabel}
         tabIndex={-1}
-        onKeyDown={handleTab}
         className={`relative bg-white rounded-lg p-6 w-full mx-auto ${sizeClasses[size]} max-h-[90vh] overflow-y-auto shadow-xl focus:outline-none`}
         onClick={(e) => e.stopPropagation()}
       >

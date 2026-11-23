@@ -118,7 +118,56 @@ describe('Modal', () => {
     opener.focus()
     fireEvent.click(opener)
     const dialog = screen.getByRole('dialog')
-    expect(dialog.contains(document.activeElement)).toBe(true)
+    // With no autoFocus child, the dialog container itself takes focus.
+    expect(document.activeElement).toBe(dialog)
+
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(document.activeElement).toBe(opener)
+  })
+
+  it('returns focus to the opener when a child has autoFocus (modal stays mounted)', () => {
+    function Harness() {
+      const [open, setOpen] = useState(false)
+      return (
+        <>
+          <button onClick={() => setOpen(true)}>Open it</button>
+          <Modal isOpen={open} onClose={() => setOpen(false)} title="T">
+            <input aria-label="inside" autoFocus />
+          </Modal>
+        </>
+      )
+    }
+    render(<Harness />)
+    const opener = screen.getByRole('button', { name: 'Open it' })
+    opener.focus()
+    fireEvent.click(opener)
+    expect(document.activeElement).toBe(screen.getByLabelText('inside'))
+
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(document.activeElement).toBe(opener)
+  })
+
+  it('returns focus to the opener when a child has autoFocus (modal mounted conditionally)', () => {
+    function Harness() {
+      const [open, setOpen] = useState(false)
+      return (
+        <>
+          <button onClick={() => setOpen(true)}>Open it</button>
+          {open && (
+            <Modal isOpen onClose={() => setOpen(false)} title="T">
+              <input aria-label="inside" autoFocus />
+            </Modal>
+          )}
+        </>
+      )
+    }
+    render(<Harness />)
+    const opener = screen.getByRole('button', { name: 'Open it' })
+    opener.focus()
+    fireEvent.click(opener)
+    expect(document.activeElement).toBe(screen.getByLabelText('inside'))
 
     fireEvent.keyDown(document, { key: 'Escape' })
     expect(screen.queryByRole('dialog')).toBeNull()
@@ -148,5 +197,32 @@ describe('Modal', () => {
     expect(document.activeElement).toBe(close)
     fireEvent.keyDown(close, { key: 'Tab', shiftKey: true })
     expect(document.activeElement).toBe(last)
+  })
+
+  it('pulls focus back into the dialog on Tab when focus has fallen to the body', () => {
+    render(
+      <Modal isOpen onClose={() => {}} title="T">
+        <button>First</button>
+      </Modal>
+    )
+    const dialog = screen.getByRole('dialog')
+    ;(document.activeElement as HTMLElement).blur()
+    expect(document.activeElement).toBe(document.body)
+    fireEvent.keyDown(document.body, { key: 'Tab' })
+    expect(dialog.contains(document.activeElement)).toBe(true)
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Close' }))
+  })
+
+  it('keeps focus in the dialog on Tab when nothing in it is focusable', () => {
+    // Nothing focusable in the content: the close button is the only stop.
+    render(
+      <Modal isOpen onClose={() => {}} title="T">
+        plain text
+      </Modal>
+    )
+    const dialog = screen.getByRole('dialog')
+    ;(document.activeElement as HTMLElement).blur()
+    expect(() => fireEvent.keyDown(document.body, { key: 'Tab' })).not.toThrow()
+    expect(dialog.contains(document.activeElement)).toBe(true)
   })
 })
