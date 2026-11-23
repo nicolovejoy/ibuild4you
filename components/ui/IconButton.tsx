@@ -9,6 +9,8 @@ interface IconButtonProps {
   variant?: 'default' | 'danger' | 'ghost'
   disabled?: boolean
   title?: string
+  /** Accessible name for a button that has only an icon. */
+  ariaLabel?: string
 }
 
 export function IconButton({
@@ -19,6 +21,7 @@ export function IconButton({
   variant = 'default',
   disabled = false,
   title,
+  ariaLabel,
 }: IconButtonProps) {
   const sizeClasses = {
     sm: 'p-1',
@@ -43,6 +46,7 @@ export function IconButton({
       onClick={onClick}
       disabled={disabled}
       title={title}
+      aria-label={ariaLabel}
       className={`
         rounded-md transition-all
         ${sizeClasses[size]}
@@ -51,7 +55,7 @@ export function IconButton({
         ${className}
       `}
     >
-      <Icon className={iconSizes[size]} />
+      <Icon className={iconSizes[size]} aria-hidden="true" />
     </button>
   )
 }
