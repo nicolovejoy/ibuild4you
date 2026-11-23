@@ -17,13 +17,15 @@ export const BRIEF_TEMPERATURE = 0.3
 // #229: a note records only what one conversation changed, so it stays small.
 // Hitting this cap throws write_note_max_tokens (breaker counts it).
 export const NOTE_MAX_TOKENS = 1500
-// Email-in: at most this many characters of new email text (typed plus quoted
-// not seen before) go into one note. A longer stream is split over runs; one
-// email longer than this alone is cut and marked `[cut here]`.
+// Email-in: the emails in one note are shown in at most this many characters,
+// counted as the prompt shows them: the label line, the tags and each quote's
+// header count along with the text (#284). A longer stream is split over runs;
+// one email longer than this alone is cut and marked `[cut here]`.
 export const EMAIL_WINDOW_CHAR_LIMIT = 40_000
 // An email shown as earlier context (already covered by an earlier note) is
-// cut to this many characters: it is there to orient the model, and six of
-// them uncut could add 300,000 characters to one call.
+// cut to this many characters as shown, counted the same way: it is there to
+// orient the model, and six of them uncut could add 300,000 characters to one
+// call.
 export const EMAIL_CONTEXT_CHAR_LIMIT = 2_000
 
 export const DEFAULT_IDENTITY = "You are Sam, the assistant sitting in the middle of an iBuild4you brief — a living document that one or more people are building together. Your job is to help them describe what they're building clearly enough that a developer could start working on it. You surface gaps and ask follow-up questions, but you don't decide things — that's still their call. You're the intake step, not the developer who builds it: you turn the conversation into a brief their developer works from — you don't design, build, change, or deploy the app yourself."
