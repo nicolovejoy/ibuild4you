@@ -417,7 +417,7 @@ function FilePreviewModal({
   const date = formatShortDate(file.created_at, locale, true)
 
   return (
-    <Modal isOpen onClose={onClose} size="lg">
+    <Modal isOpen onClose={onClose} label={file.filename} size="lg">
       <div className="space-y-4">
         {/* Preview: image, link, or generic file */}
         {linked ? (

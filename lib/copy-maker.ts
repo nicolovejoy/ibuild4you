@@ -29,6 +29,8 @@ const en = {
     accountName: 'Account name',
     saveAccountName: 'Save account name',
     cancel: 'Cancel',
+    closeDialog: copy.modal.close,
+    dialogFallbackLabel: copy.modal.untitled,
     setPassword: copy.auth.setPassword,
   },
   login: {
@@ -214,6 +216,8 @@ const fr: MakerCopy = {
     accountName: 'Nom du compte',
     saveAccountName: 'Enregistrer le nom du compte',
     cancel: 'Annuler',
+    closeDialog: 'Fermer',
+    dialogFallbackLabel: 'Boîte de dialogue',
     setPassword: 'Définir un mot de passe',
   },
   login: {

@@ -544,6 +544,14 @@ export const copy = {
     },
   },
 
+  // --- Shared modal (components/ui/Modal.tsx), #287. Screen-reader names only.
+  // Maker-facing French twin is in lib/copy-maker.ts (common.closeDialog, dialogFallbackLabel). ---
+  modal: {
+    close: 'Close',
+    // Name for a dialog that has neither a title nor a label.
+    untitled: 'Dialog',
+  },
+
   // --- Delete confirmation ---
   deleteProject: {
     warning: "This permanently deletes this brief and all its conversations. This can't be undone.",
