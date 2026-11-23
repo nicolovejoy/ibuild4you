@@ -1,5 +1,6 @@
 import { latestShipped } from '@/lib/brief/shipped'
 import { hasBriefContent } from '@/lib/brief/has-content'
+import { noteSource } from '@/lib/brief/note-source'
 import { AGENT_BEHAVIOR_RULES, CONVERGE_BEHAVIOR_RULES, DEFAULT_IDENTITY, FACILITATOR_IDENTITY, FACILITATOR_RULES } from './constants'
 import { briefRoleLabel } from '@/lib/roles/display'
 import { renderPrototypeFeedbackBlock, type PrototypeFeedbackItem } from './prototype-feedback'
@@ -84,7 +85,11 @@ const noteDayFormat = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Los_
 export function renderUnfoldedNotesBlock(notes: BriefNote[]): string | null {
   if (notes.length === 0) return null
   const sections = notes.map((n) => {
-    const lines = [`### Conversation of ${noteDayFormat.format(new Date(n.created_at))}`, n.text]
+    // The heading says what the note was made from (#276).
+    const source = noteSource(n)
+    const word =
+      source === 'both' ? 'Conversation and email' : source === 'email' ? 'Email' : 'Conversation'
+    const lines = [`### ${word} of ${noteDayFormat.format(new Date(n.created_at))}`, n.text]
     if (n.decisions.length > 0) {
       lines.push('Decisions:', ...n.decisions.map((d) => `- ${d.topic}: ${d.decision}`))
     }

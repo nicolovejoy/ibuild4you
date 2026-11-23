@@ -910,6 +910,25 @@ describe('unfolded notes block (#229)', () => {
     expect(stable).toContain('### Conversation of Oct 28')
   })
 
+  it('heads an email-only note Email of', () => {
+    const { stable } = buildSystemPromptParts({
+      ...minimalInput,
+      briefContent: brief,
+      unfoldedNotes: [note({ created_at: '2026-10-29T05:00:00Z', made_from: 'email' })],
+    })
+    expect(stable).toContain('### Email of Oct 28')
+    expect(stable).not.toContain('### Conversation of Oct 28')
+  })
+
+  it('heads a chat and email note Conversation and email of', () => {
+    const { stable } = buildSystemPromptParts({
+      ...minimalInput,
+      briefContent: brief,
+      unfoldedNotes: [note({ created_at: '2026-10-29T05:00:00Z', made_from: 'both' })],
+    })
+    expect(stable).toContain('### Conversation and email of Oct 28')
+  })
+
   it('still renders with no brief content', () => {
     const { stable } = buildSystemPromptParts({ ...minimalInput, unfoldedNotes: [note()] })
     expect(stable).toContain('## New since the brief was last curated')
