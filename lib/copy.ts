@@ -312,6 +312,10 @@ export const copy = {
     writeNoteWriting: 'Writing…',
     writeNoteCancel: 'Cancel',
     writeNoteNothingNew: 'Nothing new since the last note.',
+    // The writer read something new but found nothing bearing on the brief, so
+    // it wrote no note (#276). Not an error: the stretch is marked read.
+    writeNoteNothingRelevant:
+      'Nothing relevant to the brief was said since the last note, so no note was written.',
     writeNoteFailed: "Couldn't write the note — try again.",
     // Copy prep (#229) failed: nothing reached the clipboard.
     copyPrepBriefChanged: "Couldn't copy the prep — the brief changed while loading. Try again.",

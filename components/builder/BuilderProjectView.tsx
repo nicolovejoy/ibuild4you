@@ -515,6 +515,9 @@ function BriefTab({
   const queryClient = useQueryClient()
   const [generating, setGenerating] = useState(false)
   const [genError, setGenError] = useState<string | null>(null)
+  // #276: the writer answered but wrote no note (nothing relevant). Shown in the
+  // dialog, which stays open, so the builder is not left to think a note exists.
+  const [genNothingRelevant, setGenNothingRelevant] = useState(false)
   // #229: a paste the server refused as a stale prep (409). Keeps the payload
   // as parsed, so Save anyway resends exactly that with force: true.
   const [stalePrep, setStalePrep] = useState<{ info: StalePrepInfo; payload: NextConvoPayload } | null>(null)
@@ -568,6 +571,7 @@ function BriefTab({
   const handleGenerate = async () => {
     setGenerating(true)
     setGenError(null)
+    setGenNothingRelevant(false)
     try {
       const res = await apiFetch('/api/briefs/notes', {
         method: 'POST',
@@ -580,6 +584,12 @@ function BriefTab({
       queryClient.invalidateQueries({ queryKey: queryKeys.brief(projectId) })
       queryClient.invalidateQueries({ queryKey: queryKeys.briefVersions(projectId) })
       queryClient.invalidateQueries({ queryKey: queryKeys.briefNotes(projectId) })
+      // note_id is null when the stretch had nothing relevant: no note exists.
+      const { note_id } = (await res.json()) as { note_id: string | null }
+      if (note_id === null) {
+        setGenNothingRelevant(true)
+        return
+      }
       setShowGenConfirm(false)
     } catch (err) {
       console.error('Writing the note failed:', err)
@@ -982,7 +992,7 @@ function BriefTab({
                 </button>
               )}
               <button
-                onClick={() => { setGenError(null); setShowGenConfirm(true) }}
+                onClick={() => { setGenError(null); setGenNothingRelevant(false); setShowGenConfirm(true) }}
                 className="flex items-center gap-1.5 text-xs text-brand-ink-soft hover:text-brand-navy"
               >
                 <NotebookPen className="h-3.5 w-3.5" />
@@ -1015,6 +1025,7 @@ function BriefTab({
         <div className="space-y-4">
           <p className="text-sm text-brand-ink-soft">{copy.brief.writeNoteConfirm}</p>
           {genError && <StatusMessage type="error" message={genError} />}
+          {genNothingRelevant && <StatusMessage type="info" message={copy.brief.writeNoteNothingRelevant} />}
           <div className="flex justify-end gap-2">
             <button type="button" onClick={() => setShowGenConfirm(false)} disabled={generating} className="px-4 py-2 text-sm text-brand-ink-soft hover:text-gray-800 disabled:opacity-50">
               {copy.brief.writeNoteCancel}
