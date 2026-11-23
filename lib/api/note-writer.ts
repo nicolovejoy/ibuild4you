@@ -23,6 +23,7 @@ import type {
   BriefContent,
   BriefDecision,
   BriefNote,
+  BriefNoteSource,
   BriefNoteLockReversal,
   BriefNoteThumbsDown,
   ProjectEmail,
@@ -69,7 +70,8 @@ export const EMPTY_BRIEF: BriefContent = {
 }
 
 // Tools are part of the cached prefix (tools → system), so changing this
-// schema invalidates the system-prompt cache. Don't tweak casually.
+// schema invalidates the system-prompt cache. Don't tweak casually. (The one
+// cache write from adding nothing_new was accepted for #276.)
 const WRITE_NOTE_TOOL = {
   name: 'write_note',
   description:
@@ -78,6 +80,8 @@ const WRITE_NOTE_TOOL = {
     type: 'object' as const,
     properties: {
       text: { type: 'string' },
+      // True when the stretch added nothing relevant to the brief. Never stored.
+      nothing_new: { type: 'boolean' },
       decisions: {
         type: 'array',
         items: {
@@ -118,7 +122,7 @@ const WRITE_NOTE_TOOL = {
         },
       },
     },
-    required: ['text', 'decisions', 'risks_added', 'risks_resolved', 'lock_reversals'],
+    required: ['text', 'nothing_new', 'decisions', 'risks_added', 'risks_resolved', 'lock_reversals'],
   },
 }
 
@@ -317,7 +321,11 @@ function toTurn(item: StreamItem): NoteTurn {
 const nonEmpty = (v: unknown): v is string => typeof v === 'string' && v.trim() !== ''
 
 // Coerce the model's tool input into a note body. Anything malformed is dropped.
-function coerceNote(raw: Record<string, unknown>) {
+// `canReverseLocks` is false for a window with no maker chat turn: a lock
+// reversal contests the live brief without a paste, so it needs the maker's own
+// words, never an email or a Builder line alone. Such reversals are cleared
+// here, before the nothing_new check, so they do not count as structured content.
+function coerceNote(raw: Record<string, unknown>, canReverseLocks: boolean) {
   const decisions = Array.isArray(raw.decisions)
     ? raw.decisions
         .filter(
@@ -328,7 +336,7 @@ function coerceNote(raw: Record<string, unknown>) {
         )
         .map((d) => ({ topic: d.topic.trim(), decision: d.decision.trim() }))
     : []
-  const lock_reversals: BriefNoteLockReversal[] = Array.isArray(raw.lock_reversals)
+  const lock_reversals: BriefNoteLockReversal[] = canReverseLocks && Array.isArray(raw.lock_reversals)
     ? raw.lock_reversals
         .filter((r): r is BriefNoteLockReversal => {
           const o = r as Record<string, unknown>
@@ -340,11 +348,21 @@ function coerceNote(raw: Record<string, unknown>) {
           reason: r.reason.trim(),
         }))
     : []
+  const risks_added = normalizeRisks(raw.risks_added)
+  const risks_resolved = normalizeResolvedRisks(raw.risks_resolved)
+  // nothing_new can only drop text, never structured content: a wrong `true`
+  // costs a few sentences, never a decision or a risk. It is not stored.
+  const structured =
+    decisions.length > 0 ||
+    risks_added.length > 0 ||
+    risks_resolved.length > 0 ||
+    lock_reversals.length > 0
+  const dropText = raw.nothing_new === true && !structured
   return {
-    text: typeof raw.text === 'string' ? raw.text.trim() : '',
+    text: !dropText && typeof raw.text === 'string' ? raw.text.trim() : '',
     decisions,
-    risks_added: normalizeRisks(raw.risks_added),
-    risks_resolved: normalizeResolvedRisks(raw.risks_resolved),
+    risks_added,
+    risks_resolved,
     lock_reversals,
   }
 }
@@ -544,12 +562,13 @@ export async function writeNoteForProject(
 
   const thumbsDown = thumbsDownEntries(newMessages)
   const body = {
-    ...coerceNote((toolUse.input ?? {}) as Record<string, unknown>),
+    ...coerceNote(
+      (toolUse.input ?? {}) as Record<string, unknown>,
+      // Lock reversals need the maker's own chat turn (see coerceNote).
+      newMessages.some((m) => m.role === 'user' && !m.builder)
+    ),
     ...(thumbsDown.length > 0 && { thumbs_down: thumbsDown }),
   }
-  // A lock reversal contests the live brief without a paste, so it needs the
-  // maker's own chat turn. Never from an email or a Builder line alone.
-  if (!newMessages.some((m) => m.role === 'user' && !m.builder)) body.lock_reversals = []
 
   // Persist: note → notes_through_at → brief contest. A throw before
   // notes_through_at moves leaves it where it was, so the next run retries
@@ -562,15 +581,21 @@ export async function writeNoteForProject(
     const briefId = briefDoc
       ? briefDoc.id
       : (await upsertBrief(db, projectId, EMPTY_BRIEF, 'create')).id
+    const hasChat = newMessages.length > 0 // any role counts as conversation
+    const emailsWithText = newEmails.filter(hasText)
+    const hasEmail = emailsWithText.length > 0
+    const madeFrom: BriefNoteSource = hasChat && hasEmail ? 'both' : hasEmail ? 'email' : 'chat'
     const note: Omit<BriefNote, 'id'> = {
       session_id: sessionId,
       created_at: new Date().toISOString(),
       folded_at: null,
       ...body,
-      // Stamped by code from the window, never by the model.
+      // Stamped by code from the window, never by the model. An email with no
+      // text left does not count as email, the same rule as email_sources.
+      made_from: madeFrom,
       ...(newEmails.length > 0 && {
         email_ids: newEmails.map((item) => item.email.id),
-        email_sources: newEmails.filter(hasText).map((item) => ({
+        email_sources: emailsWithText.map((item) => ({
           from_name: item.email.from_name,
           from_role: item.email.from_role,
           received_at: item.email.received_at,
@@ -579,6 +604,10 @@ export async function writeNoteForProject(
       }),
     }
     noteId = await addNote(db, briefId, note)
+  } else {
+    // Nothing worth a note. The cursor below still moves, so the stretch is
+    // not read again. Ids and counts only, never text.
+    console.log(JSON.stringify({ event: 'brief.note_empty', project_id: projectId, covered }))
   }
 
   await projectRef.update({ notes_through_at: through })

@@ -453,6 +453,9 @@ export interface BriefNoteResolvedRisk {
   resolution: string
 }
 
+// #276: what a note was made from, for its heading.
+export type BriefNoteSource = 'chat' | 'email' | 'both'
+
 export interface BriefNote {
   id: string
   session_id: string | null
@@ -474,6 +477,9 @@ export interface BriefNote {
   email_ids?: string[]
   email_sources?: { from_name: string; from_role: 'maker' | 'builder'; received_at: string }[]
   email_truncated?: boolean
+  // #276: what the note's window held. Stamped by code (never the model);
+  // absent on notes written before #276. Read it through noteSource().
+  made_from?: BriefNoteSource
 }
 
 export interface BriefNoteThumbsDown {
