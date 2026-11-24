@@ -842,7 +842,6 @@ export const copy = {
     openRepeat: 'This email repeats an earlier one from the same sender, so the note writer skipped it.',
     openNothingNew: 'Nothing in this email was new: every line was already held.',
     openTruncated: 'This email was longer than the app keeps. The end of it was cut.',
-    openTyped: 'Typed',
     openQuoted: (label: string) => `Quoted, written by ${label}`,
     openContext: 'Already recorded, shown for context',
     openInside: (by: string) => `Written inside the quote by ${by}`,

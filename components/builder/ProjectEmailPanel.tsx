@@ -67,10 +67,8 @@ function EmailMessage({ message }: { message: ProjectEmailMessage }) {
       {message.truncated && <p>{t.openTruncated}</p>}
 
       {message.typed !== '' && (
-        <div className="space-y-1">
-          <h4 className="text-xs font-medium text-brand-ink-soft">{t.openTyped}</h4>
-          <p className="whitespace-pre-wrap break-words">{message.typed}</p>
-        </div>
+        // No label: text directly under the sender line reads as theirs.
+        <p className="whitespace-pre-wrap break-words">{message.typed}</p>
       )}
 
       {message.quotes.map((quote, qi) => (

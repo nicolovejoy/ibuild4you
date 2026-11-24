@@ -263,8 +263,9 @@ describe('ProjectEmailPanel opening an email', () => {
       },
     }
     await open()
-    expect(await screen.findByText('Typed')).toBeTruthy()
-    const typed = screen.getByText(/Sounds good\./)
+    const typed = await screen.findByText(/Sounds good\./)
+    // The sender's own words carry no label of their own.
+    expect(screen.queryByText('Typed')).toBeNull()
     expect(typed.textContent).toBe('Sounds good.\nSee you Friday.')
     expect(typed.className).toContain('whitespace-pre-wrap')
     expect(screen.getByText('Quoted, written by Bill Duris')).toBeTruthy()
@@ -291,7 +292,6 @@ describe('ProjectEmailPanel opening an email', () => {
   it('says when nothing in the email was new', async () => {
     await open()
     expect(await screen.findByText('Nothing in this email was new: every line was already held.')).toBeTruthy()
-    expect(screen.queryByText('Typed')).toBeNull()
   })
 
   it('says when the end of the email was cut', async () => {
