@@ -507,6 +507,22 @@ describe('getProjectRole / getViewerBriefRole — email fallback normalization',
     })
   })
 
+  it('getViewerMembership does not read a removed row (#295)', async () => {
+    const db = fakeDbWithEmailMember({
+      storedEmail: 'sam@example.com',
+      memberData: {
+        brief_role: 'contributor',
+        archived_at: '2026-11-20T18:00:00.000Z',
+        removed_at: '2026-11-21T18:00:00.000Z',
+      },
+      emailWhereSpy: () => {},
+    })
+    expect(await getViewerMembership(db, 'p1', 'uid-no-match', 'sam@example.com')).toEqual({
+      brief_role: null,
+      archived: false,
+    })
+  })
+
   it('getViewerMembership says not archived when the flag is cleared or there is no row', async () => {
     const cleared = fakeDbWithEmailMember({
       storedEmail: 'sam@example.com',

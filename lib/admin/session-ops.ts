@@ -96,7 +96,11 @@ export function planReopen({
     sessionUpdates.push({ id: archiveId, patch: archivePatch(now) })
   }
 
-  const survivors = sessions.filter((s) => s.id !== archiveId)
+  // Survivors: the reopened conversation (active again, even if it was
+  // archived) plus every other conversation not archived before or by this op.
+  const survivors = sessions.filter(
+    (s) => s.id === reopenId || (s.id !== archiveId && s.status !== 'archived')
+  )
   return {
     sessionUpdates,
     projectPatch: counterPatch(survivors, now),
@@ -134,7 +138,8 @@ export function planArchive({
     return { error: `This conversation has ${target.messageCount} messages. To archive it, type the brief title to confirm.` }
   }
 
-  const survivors = sessions.filter((s) => s.id !== sessionId)
+  // Conversations archived earlier are not survivors either (#296).
+  const survivors = sessions.filter((s) => s.id !== sessionId && s.status !== 'archived')
   return {
     sessionUpdates: [{ id: sessionId, patch: archivePatch(now) }],
     projectPatch: counterPatch(survivors, now),

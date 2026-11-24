@@ -27,17 +27,15 @@ const mockProjectDocGet = vi.fn(async () => ({ exists: true, data: () => project
 const mockProjectDocUpdate = vi.fn(async () => {})
 
 function membersWhereChain() {
+  const get = async () => ({
+    empty: existingMemberEmpty,
+    docs: existingMemberEmpty
+      ? []
+      : [{ ref: { update: vi.fn(async () => {}) }, data: () => ({}) }],
+  })
   return {
-    where: () => ({
-      limit: () => ({
-        get: async () => ({
-          empty: existingMemberEmpty,
-          docs: existingMemberEmpty
-            ? []
-            : [{ ref: { update: vi.fn(async () => {}) }, data: () => ({}) }],
-        }),
-      }),
-    }),
+    // POST reads every matching row (.get()); the PATCH re-key still uses limit(1).
+    where: () => ({ get, limit: () => ({ get }) }),
   }
 }
 

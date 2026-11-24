@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getAuthenticatedUser, getAdminDb, hasSystemRole } from '@/lib/api/firebase-server-helpers'
 import { normalizeEmail } from '@/lib/email/normalize'
+import { findMemberRows } from '@/lib/members/find'
 
 // POST /api/projects/claim — claim a project that was shared with you
 export async function POST(request: Request) {
@@ -32,22 +33,17 @@ export async function POST(request: Request) {
   // token boundary, but this is an authz decision, so don't depend on that.
   const email = normalizeEmail(auth.email)
 
-  // Check membership by email
-  const memberSnap = await db
-    .collection('project_members')
-    .where('project_id', '==', project_id)
-    .where('email', '==', email)
-    .limit(1)
-    .get()
+  // Check membership by email. Only an active row counts: a removed member
+  // (removed_at set) can no longer claim (#295).
+  const { active: memberDoc } = await findMemberRows(db, project_id, 'email', email)
 
-  if (memberSnap.empty) {
+  if (!memberDoc) {
     return NextResponse.json({ error: 'This project was not shared with you' }, { status: 403 })
   }
 
   const now = new Date().toISOString()
 
   // Update membership record with user_id if it exists
-  const memberDoc = memberSnap.docs[0]
   if (!memberDoc.data().user_id) {
     await memberDoc.ref.update({
       user_id: auth.uid,

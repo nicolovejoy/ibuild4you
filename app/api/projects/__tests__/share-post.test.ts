@@ -21,6 +21,10 @@ let lastCollection = ''
 let projectDocData: Record<string, unknown> = {}
 // Whether an existing member with the invited email already exists.
 let existingMemberEmpty = true
+// The rows the invited email matches, when a test needs more than "one active
+// row" (#295: removed rows). null = fall back to existingMemberEmpty.
+let invitedRows: Record<string, unknown>[] | null = null
+const memberUpdates: Record<string, unknown>[] = []
 
 const mockProjectDocGet = vi.fn(async () => ({ exists: true, data: () => projectDocData }))
 const mockProjectDocUpdate = vi.fn(async (data: Record<string, unknown>) => {
@@ -28,19 +32,18 @@ const mockProjectDocUpdate = vi.fn(async (data: Record<string, unknown>) => {
 })
 
 function membersWhereChain() {
-  // .where().where().limit().get()
-  return {
-    where: () => ({
-      limit: () => ({
-        get: async () => ({
-          empty: existingMemberEmpty,
-          docs: existingMemberEmpty
-            ? []
-            : [{ ref: { update: vi.fn(async () => {}) }, data: () => ({}) }],
-        }),
-      }),
-    }),
+  // .where().where().get() — every row for the invited email
+  const get = async () => {
+    const rows = invitedRows ?? (existingMemberEmpty ? [] : [{}])
+    return {
+      empty: rows.length === 0,
+      docs: rows.map((row) => ({
+        ref: { update: vi.fn(async (d: Record<string, unknown>) => { memberUpdates.push({ ...d, _row: row }) }) },
+        data: () => row,
+      })),
+    }
   }
+  return { where: () => ({ get, limit: () => ({ get }) }) }
 }
 
 // Welcome-on-share fixtures. activeSession null → the welcome block is skipped.
@@ -137,6 +140,8 @@ describe('POST /api/projects/share', () => {
     approvedSets.length = 0
     projectDocData = {}
     existingMemberEmpty = true
+    invitedRows = null
+    memberUpdates.length = 0
     activeSession = null
     allSessions = []
     messageAdds.length = 0
@@ -196,6 +201,32 @@ describe('POST /api/projects/share', () => {
     allSessions = [{ id: 's1', data: { welcome_message: 'Hi Sam' } }, activeSession]
     await POST(makeReq({ project_id: 'p1', email: 'first@example.com' }))
     expect(messageAdds.map((m) => m.content)).toEqual(['Round two: https://app.example.com'])
+  })
+
+  // #295: the invite used to update the removed row and leave removed_at set,
+  // so the email went out and the link answered "not found".
+  it('refuses to invite a removed member and writes nothing (#295)', async () => {
+    invitedRows = [{ role: 'maker', removed_at: '2026-11-01T00:00:00.000Z' }]
+    const res = await POST(makeReq({ project_id: 'p1', email: 'gone@example.com' }))
+    expect(res.status).toBe(409)
+    const data = await res.json()
+    expect(data.error).toMatch(/removed from the brief/)
+    expect(memberAdds).toHaveLength(0)
+    expect(memberUpdates).toHaveLength(0)
+    expect(approvedSets).toHaveLength(0)
+    expect(projectUpdates).toHaveLength(0)
+    expect(ensureInviteResetLinkMock).not.toHaveBeenCalled()
+  })
+
+  it('re-shares onto the active row when a removed row sits beside it (#295)', async () => {
+    const active = { role: 'maker', removed_at: null }
+    invitedRows = [{ role: 'maker', removed_at: '2026-11-01T00:00:00.000Z' }, active]
+    const res = await POST(makeReq({ project_id: 'p1', email: 'back@example.com', role: 'apprentice' }))
+    expect(res.status).toBe(200)
+    expect(memberAdds).toHaveLength(0)
+    expect(memberUpdates).toHaveLength(1)
+    expect(memberUpdates[0]._row).toBe(active)
+    expect(memberUpdates[0].role).toBe('apprentice')
   })
 
   it('returns 400 and writes nothing for a malformed email', async () => {
