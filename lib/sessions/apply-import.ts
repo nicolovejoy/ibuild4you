@@ -14,103 +14,107 @@ const CONFIG_FIELDS = ['session_mode', 'seed_questions', 'builder_directives', '
 // re-snapshot the new config onto the session, clear the "maker is waiting"
 // flags, and post the new welcome if it is new for this round (#214). A new
 // welcome replaces the unanswered opening instead of following it (Project 5).
+// The import reads and writes in one transaction, so a maker reply or rating
+// that lands meanwhile is seen.
 export async function applyImportToOpenSession(
   db: Firestore,
   projectId: string,
   project: Record<string, unknown>,
   now: string
 ): Promise<'no_session' | 'maker_replied' | 'applied'> {
-  // No orderBy: avoids a composite index; the active session is picked in memory.
-  const sessionSnap = await db.collection('sessions').where('project_id', '==', projectId).get()
-  const active = sessionSnap.docs
-    .filter((d) => d.data().status === 'active')
-    .sort((a, b) => String(b.data().created_at).localeCompare(String(a.data().created_at)))[0]
-  if (!active) return 'no_session'
+  // One transaction from the first read to the last write: a maker message or
+  // a rating that lands while the import runs is either seen (Firestore re-runs
+  // this callback with the new state) or waits until the import has committed.
+  // The callback may run more than once, so it does nothing outside `tx`.
+  return db.runTransaction(async (tx) => {
+    // No orderBy: avoids a composite index; the active session is picked in memory.
+    const sessionSnap = await tx.get(db.collection('sessions').where('project_id', '==', projectId))
+    const active = sessionSnap.docs
+      .filter((d) => d.data().status === 'active')
+      .sort((a, b) => String(b.data().created_at).localeCompare(String(a.data().created_at)))[0]
+    if (!active) return 'no_session'
 
-  const msgSnap = await db
-    .collection('messages')
-    .where('session_id', '==', active.id)
-    .orderBy('created_at', 'asc')
-    .get()
-  const messages = msgSnap.docs
-  const greetings = messages.filter((d) => d.data().kind === 'unqueued_greeting')
-  const replyRows = messages.map((d) => d.data() as ReplyCheckMessage)
-  if (makerRepliedSinceReopen(replyRows)) return 'maker_replied'
-
-  // The welcome the session already opened with (its snapshot, read before we
-  // overwrite it) counts as used, so re-importing an unchanged welcome is a no-op.
-  // Archived sessions count as "earlier" too, same as session creation.
-  const welcome = welcomeToPost({
-    isFirstSession: false,
-    welcome: project.welcome_message as string | undefined,
-    earlierWelcomes: sessionSnap.docs.map((d) => d.data().welcome_message as string | undefined),
-  })
-  // Also skip a welcome already present as an agent message in this session.
-  const alreadyPosted =
-    welcome !== null &&
-    messages.some(
-      (d) => d.data().role === 'agent' && String(d.data().content ?? '').trim() === welcome.trim()
+    const msgSnap = await tx.get(
+      db.collection('messages').where('session_id', '==', active.id).orderBy('created_at', 'asc')
     )
-  const toPost = alreadyPosted ? null : welcome
+    const messages = msgSnap.docs
+    const greetings = messages.filter((d) => d.data().kind === 'unqueued_greeting')
+    const replyRows = messages.map((d) => d.data() as ReplyCheckMessage)
+    if (makerRepliedSinceReopen(replyRows)) return 'maker_replied'
 
-  // Canned greetings go, except one the maker rated (deleting it would leave
-  // projects.thumbs_down_count too high). When a new welcome is posted, the unanswered opening
-  // goes too: every agent message at or after the opening point (>=, because an
-  // earlier import's welcome has created_at equal to its own point). We only get
-  // here when the maker has not spoken after that point, so none of these was
-  // answered. Agent messages before it (Sam's replies to the maker) stay, and so
-  // does a message the maker rated.
-  const toDelete = new Map<string, (typeof messages)[number]>()
-  for (const g of greetings) {
-    if (!g.data().rating) toDelete.set(g.id, g)
-  }
-  if (toPost) {
-    const point = reopenPoint(replyRows)
-    for (const d of messages) {
-      const m = d.data()
-      if (m.role !== 'agent' || m.rating) continue
-      if (point === null || String(m.created_at ?? '') >= point) toDelete.set(d.id, d)
+    // The welcome the session already opened with (its snapshot, read before we
+    // overwrite it) counts as used, so re-importing an unchanged welcome is a no-op.
+    // Archived sessions count as "earlier" too, same as session creation.
+    const welcome = welcomeToPost({
+      isFirstSession: false,
+      welcome: project.welcome_message as string | undefined,
+      earlierWelcomes: sessionSnap.docs.map((d) => d.data().welcome_message as string | undefined),
+    })
+    // Also skip a welcome already present as an agent message in this session.
+    const alreadyPosted =
+      welcome !== null &&
+      messages.some(
+        (d) => d.data().role === 'agent' && String(d.data().content ?? '').trim() === welcome.trim()
+      )
+    const toPost = alreadyPosted ? null : welcome
+
+    // Canned greetings go, except one the maker rated (deleting it would leave
+    // projects.thumbs_down_count too high). When a new welcome is posted, the unanswered opening
+    // goes too: every agent message at or after the opening point (>=, because an
+    // earlier import's welcome has created_at equal to its own point). We only get
+    // here when the maker has not spoken after that point, so none of these was
+    // answered. Agent messages before it (Sam's replies to the maker) stay, and so
+    // does a message the maker rated.
+    const toDelete = new Map<string, (typeof messages)[number]>()
+    for (const g of greetings) {
+      if (!g.data().rating) toDelete.set(g.id, g)
     }
-  }
+    if (toPost) {
+      const point = reopenPoint(replyRows)
+      for (const d of messages) {
+        const m = d.data()
+        if (m.role !== 'agent' || m.rating) continue
+        if (point === null || String(m.created_at ?? '') >= point) toDelete.set(d.id, d)
+      }
+    }
 
-  const batch = db.batch()
-  for (const d of toDelete.values()) batch.delete(d.ref)
+    for (const d of toDelete.values()) tx.delete(d.ref)
 
-  const sessionUpdate: Record<string, unknown> = {}
-  for (const field of CONFIG_FIELDS) {
-    if (project[field] !== undefined) sessionUpdate[field] = project[field]
-  }
-  sessionUpdate.agent_model = briefModelSnapshot(project)
-  batch.update(active.ref, {
-    ...sessionUpdate,
-    // With a welcome posted the conversation is already opened: stamp the kickoff
-    // so it declines instead of greeting on top. Otherwise null re-arms it.
-    last_kickoff_at: toPost ? now : null,
-    unqueued_notified_at: null,
-    updated_at: now,
-  })
-  const projectUpdate: Record<string, unknown> = { maker_waiting_since: null }
-  // A posted welcome starts the automatic-reminder cadence over, as Start does
-  // through POST /api/sessions. Otherwise the cron sees a maker message newer
-  // than latest_session_created_at and skips with maker_already_responded, so
-  // the new welcome would never be reminded. The field name is historical: here
-  // it marks when the conversation was re-opened with a new welcome. The
-  // dashboard recomputes its own value from the sessions (and keeps this one
-  // when it is later), so nothing else reads it differently.
-  if (toPost) projectUpdate.latest_session_created_at = now
-  batch.update(db.collection('projects').doc(projectId), projectUpdate)
-
-  if (toPost) {
-    batch.set(db.collection('messages').doc(), {
-      session_id: active.id,
-      role: 'agent',
-      kind: 'welcome',
-      content: toPost,
-      created_at: now,
+    const sessionUpdate: Record<string, unknown> = {}
+    for (const field of CONFIG_FIELDS) {
+      if (project[field] !== undefined) sessionUpdate[field] = project[field]
+    }
+    sessionUpdate.agent_model = briefModelSnapshot(project)
+    tx.update(active.ref, {
+      ...sessionUpdate,
+      // With a welcome posted the conversation is already opened: stamp the kickoff
+      // so it declines instead of greeting on top. Otherwise null re-arms it.
+      last_kickoff_at: toPost ? now : null,
+      unqueued_notified_at: null,
       updated_at: now,
     })
-  }
+    const projectUpdate: Record<string, unknown> = { maker_waiting_since: null }
+    // A posted welcome starts the automatic-reminder cadence over, as Start does
+    // through POST /api/sessions. Otherwise the cron sees a maker message newer
+    // than latest_session_created_at and skips with maker_already_responded, so
+    // the new welcome would never be reminded. The field name is historical: here
+    // it marks when the conversation was re-opened with a new welcome. The
+    // dashboard recomputes its own value from the sessions (and keeps this one
+    // when it is later), so nothing else reads it differently.
+    if (toPost) projectUpdate.latest_session_created_at = now
+    tx.update(db.collection('projects').doc(projectId), projectUpdate)
 
-  await batch.commit()
-  return 'applied'
+    if (toPost) {
+      tx.set(db.collection('messages').doc(), {
+        session_id: active.id,
+        role: 'agent',
+        kind: 'welcome',
+        content: toPost,
+        created_at: now,
+        updated_at: now,
+      })
+    }
+
+    return 'applied'
+  })
 }

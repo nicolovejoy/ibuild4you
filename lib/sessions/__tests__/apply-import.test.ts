@@ -3,14 +3,21 @@ import type { Firestore } from 'firebase-admin/firestore'
 import { applyImportToOpenSession } from '../apply-import'
 import { decideReminder } from '@/lib/api/reminder-cadence'
 
-// Minimal in-memory Firestore: collections of docs, where/orderBy/get, and a
-// batch that records writes (nothing is applied; tests assert on the record).
+// Minimal in-memory Firestore: collections of docs, where/orderBy, and a
+// transaction that records writes (nothing is applied to the data; tests assert
+// on the record). Reads are only allowed through the transaction: a query's
+// public get() is logged in directReads, which the code under test must leave
+// empty. `interleave` simulates another write landing during the first attempt:
+// that attempt's writes are dropped and the callback runs again.
 type Row = Record<string, unknown>
+type Ref = { collection: string; id: string }
+type Data = Record<string, Record<string, Row>>
 
-function makeDb(data: Record<string, Record<string, Row>>) {
+function makeDb(data: Data, opts: { interleave?: (data: Data) => void } = {}) {
   const writes: { op: string; collection: string; id: string; data?: Row }[] = []
+  const directReads: string[] = []
   let nextId = 0
-  const ref = (collection: string, id: string) => ({ collection, id })
+  const ref = (collection: string, id: string): Ref => ({ collection, id })
   const db = {
     collection(name: string) {
       const filters: [string, unknown][] = []
@@ -24,10 +31,14 @@ function makeDb(data: Record<string, Record<string, Row>>) {
           order = field
           return q
         },
-        async get() {
+        async _run() {
           let rows = Object.entries(data[name] ?? {}).filter(([, d]) => filters.every(([f, v]) => d[f] === v))
           if (order) rows = rows.sort((a, b) => String(a[1][order!]).localeCompare(String(b[1][order!])))
           return { docs: rows.map(([id, d]) => ({ id, data: () => d, ref: ref(name, id) })) }
+        },
+        async get() {
+          directReads.push(name)
+          return q._run()
         },
         doc(id?: string) {
           return ref(name, id ?? `new-${nextId++}`)
@@ -36,15 +47,30 @@ function makeDb(data: Record<string, Record<string, Row>>) {
       return q
     },
     batch() {
-      return {
-        delete: (r: { collection: string; id: string }) => writes.push({ op: 'delete', collection: r.collection, id: r.id }),
-        update: (r: { collection: string; id: string }, d: Row) => writes.push({ op: 'update', collection: r.collection, id: r.id, data: d }),
-        set: (r: { collection: string; id: string }, d: Row) => writes.push({ op: 'set', collection: r.collection, id: r.id, data: d }),
-        commit: async () => {},
+      throw new Error('apply-import must write through its transaction')
+    },
+    async runTransaction<T>(fn: (tx: unknown) => Promise<T>): Promise<T> {
+      for (let attempt = 1; ; attempt++) {
+        const pending: typeof writes = []
+        const tx = {
+          get: (q: { _run: () => Promise<unknown> }) => q._run(),
+          delete: (r: Ref) => pending.push({ op: 'delete', collection: r.collection, id: r.id }),
+          update: (r: Ref, d: Row) => pending.push({ op: 'update', collection: r.collection, id: r.id, data: d }),
+          set: (r: Ref, d: Row) => pending.push({ op: 'set', collection: r.collection, id: r.id, data: d }),
+        }
+        const result = await fn(tx)
+        // Simulates Firestore aborting the first attempt because another write
+        // touched what it read: that attempt's writes are dropped and it re-runs.
+        if (attempt === 1 && opts.interleave) {
+          opts.interleave(data)
+          continue
+        }
+        writes.push(...pending) // commit
+        return result
       }
     },
   }
-  return { db: db as unknown as Firestore, writes }
+  return { db: db as unknown as Firestore, writes, directReads }
 }
 
 const NOW = '2026-10-17T12:00:00.000Z'
@@ -301,5 +327,44 @@ describe('applyImportToOpenSession', () => {
     await applyImportToOpenSession(db, 'p1', project, NOW)
     expect(deletes(writes)).toEqual([])
     expect(writes.filter((w) => w.op === 'set')).toHaveLength(1)
+  })
+
+  // #293 item 3: the reads and writes share one transaction.
+  it('reads and writes only through the transaction', async () => {
+    const { db, writes, directReads } = makeDb({ sessions: { s1: activeSession }, messages: { w0: sam('Old', T1) } })
+    await applyImportToOpenSession(db, 'p1', project, NOW)
+    expect(directReads).toEqual([])
+    expect(writes).toContainEqual({ op: 'delete', collection: 'messages', id: 'w0' })
+    expect(writes.filter((w) => w.op === 'set' && w.collection === 'messages')).toHaveLength(1)
+  })
+
+  it('a maker reply that lands while the import runs is seen on the retry → maker_replied, nothing written', async () => {
+    const { db, writes } = makeDb(
+      { sessions: { s1: activeSession }, messages: { w0: sam('Old', T1) } },
+      { interleave: (d) => { d.messages.m9 = maker(T2) } }
+    )
+    expect(await applyImportToOpenSession(db, 'p1', project, NOW)).toBe('maker_replied')
+    expect(writes).toEqual([])
+  })
+
+  it('a rating that lands while the import runs keeps the rated welcome', async () => {
+    const { db, writes } = makeDb(
+      { sessions: { s1: activeSession }, messages: { w0: sam('Old', T1) } },
+      { interleave: (d) => { d.messages.w0.rating = 'up' } }
+    )
+    await applyImportToOpenSession(db, 'p1', project, NOW)
+    expect(deletes(writes)).toEqual([])
+    const sets = writes.filter((w) => w.op === 'set' && w.collection === 'messages')
+    expect(sets).toHaveLength(1)
+    expect(sets[0].data).toMatchObject({ content: 'Fresh welcome' })
+  })
+
+  it('a second import right after the first does not post the welcome twice', async () => {
+    const { db, writes } = makeDb(
+      { sessions: { s1: activeSession }, messages: { w0: sam('Old', T1) } },
+      { interleave: (d) => { d.messages.wNew = sam('Fresh welcome', NOW, { kind: 'welcome' }) } }
+    )
+    await applyImportToOpenSession(db, 'p1', project, NOW)
+    expect(writes.filter((w) => w.op === 'set' && w.collection === 'messages')).toEqual([])
   })
 })
