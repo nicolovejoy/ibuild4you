@@ -15,13 +15,20 @@ const answers: Record<string, unknown> = {}
 // When set, GET /api/messages waits for it, so a test can look at the header
 // while the messages are still being fetched.
 let messagesGate: Promise<void> | null = null
+// What PATCH /api/projects says the import did (the real route answers it when
+// the request carries payload_pasted_at). null = the import step threw.
+let importApplied: 'applied' | 'no_session' | 'maker_replied' | null = 'applied'
 const apiFetch = vi.fn(async (url: string, init?: { method?: string; body?: string }) => {
   const path = url.split('?')[0]
   const method = init?.method ?? 'GET'
   if (path === '/api/briefs' && method === 'PUT') {
     return new Response(JSON.stringify({ version: 4, content: {}, size_warning: null, locks_kept: [] }), { status: 200 })
   }
-  if (path === '/api/projects' && method === 'PATCH') return new Response(JSON.stringify({ id: 'p1' }), { status: 200 })
+  if (path === '/api/projects' && method === 'PATCH') {
+    const body = JSON.parse(init?.body ?? '{}')
+    const answer = 'payload_pasted_at' in body ? { id: 'p1', import_applied: importApplied } : { id: 'p1' }
+    return new Response(JSON.stringify(answer), { status: 200 })
+  }
   if (path === '/api/projects/p1/email' && method === 'POST') {
     // Like the server: record the reminder on the project the next GET returns.
     answers['/api/projects'] = {
@@ -95,6 +102,7 @@ async function renderView() {
 beforeEach(() => {
   search = 'tab=conversations'
   messagesGate = null
+  importApplied = 'applied'
   for (const key of Object.keys(answers)) delete answers[key]
   apiFetch.mockClear()
   answers['/api/projects'] = {
@@ -248,7 +256,74 @@ describe('the banner after a paste', () => {
     expect(screen.queryByRole('dialog')).toBeNull()
   })
 
+  it('says the config applies from the next conversation when the server could not apply the import', async () => {
+    // The import step threw: the server answered import_applied null. The
+    // messages look unanswered, but the banner believes the server.
+    importApplied = null
+    answers['/api/messages'] = [userMsg('m1', T1), agentMsg('m2', T2), agentMsg('m3', T3, 'welcome')]
+    await pasteAndImport()
+    await waitFor(() => expect(apiFetch.mock.calls.some(([u]) => u.startsWith('/api/messages'))).toBe(true))
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20))
+    })
+    expect(await screen.findByText(bannerHas(copy.nextRound.importAppliesNext))).toBeTruthy()
+    expect(screen.queryByText(bannerHas(copy.nextRound.importAppliedToOpen))).toBeNull()
+  })
+
+  it('keeps Nudge and no dialog when a stale realtime snapshot lands after the import', async () => {
+    // Cached before the paste: the maker spoke and the canned greeting followed.
+    const stale = [userMsg('m1', T1), agentMsg('m2', T2), agentMsg('m3', T2, 'unqueued_greeting')]
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    client.setQueryData(['messages', 's1'], stale)
+    // The server holds the import-posted welcome.
+    answers['/api/messages'] = [userMsg('m1', T1), agentMsg('m2', T2), agentMsg('m3', T3, 'welcome')]
+    let release: () => void = () => {}
+    messagesGate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    await pasteAndImport(client)
+    await waitFor(() => expect(apiFetch.mock.calls.some(([u]) => u.startsWith('/api/messages'))).toBe(true))
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20))
+    })
+    // A stale snapshot from the realtime listener lands while the fetch is pending.
+    await act(async () => {
+      client.setQueryData(['messages', 's1'], stale)
+      await new Promise((resolve) => setTimeout(resolve, 20))
+    })
+    expect(screen.queryAllByRole('button', { name: /Start conversation 2/ })).toHaveLength(0)
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(screen.getByRole('button', { name: /^Nudge/ })).toBeTruthy()
+    await act(async () => {
+      release()
+      await new Promise((resolve) => setTimeout(resolve, 20))
+    })
+    // And again after the fresh messages are in: the stale list arrives late.
+    await act(async () => {
+      client.setQueryData(['messages', 's1'], stale)
+      await new Promise((resolve) => setTimeout(resolve, 1900))
+    })
+    expect(screen.queryAllByRole('button', { name: /Start conversation 2/ })).toHaveLength(0)
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(screen.getByRole('button', { name: /^Nudge/ })).toBeTruthy()
+    expect(screen.getByText(bannerHas(copy.nextRound.importAppliedToOpen))).toBeTruthy()
+  })
+
+  it('goes back to the messages once the banner is dismissed', async () => {
+    // The server said the import applied, but the messages say the maker answered.
+    answers['/api/messages'] = [userMsg('m1', T1), agentMsg('m2', T2), agentMsg('m3', T3, 'welcome'), userMsg('m4', T4)]
+    await pasteAndImport()
+    await waitFor(() => expect(apiFetch.mock.calls.some(([u]) => u.startsWith('/api/messages'))).toBe(true))
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20))
+    })
+    fireEvent.click(await screen.findByRole('button', { name: 'Dismiss' }))
+    expect(await screen.findByRole('button', { name: /Start conversation 2/ })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /^Nudge/ })).toBeNull()
+  })
+
   it('says the config applies from the next conversation when none is open', async () => {
+    importApplied = 'no_session'
     answers['/api/sessions'] = []
     // No maker on the brief, so the header is on Invite and the banner shows.
     answers['/api/projects'] = { ...(answers['/api/projects'] as object), requester_email: undefined }

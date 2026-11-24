@@ -308,6 +308,28 @@ describe('PATCH /api/projects', () => {
     expect(mockApplyImport).not.toHaveBeenCalled()
   })
 
+  it('PATCH with payload_pasted_at answers what the import did', async () => {
+    mockApplyImport.mockResolvedValueOnce('applied')
+    const res = await PATCH(makePatchRequest({ project_id: 'proj-1', payload_pasted_at: '2026-10-17T00:00:00.000Z' }))
+    expect((await res.json()).import_applied).toBe('applied')
+    mockApplyImport.mockResolvedValueOnce('maker_replied')
+    const res2 = await PATCH(makePatchRequest({ project_id: 'proj-1', payload_pasted_at: '2026-10-17T00:00:00.000Z' }))
+    expect((await res2.json()).import_applied).toBe('maker_replied')
+  })
+
+  it('PATCH answers import_applied null when the import step threw', async () => {
+    mockApplyImport.mockRejectedValueOnce(new Error('boom'))
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const res = await PATCH(makePatchRequest({ project_id: 'proj-1', payload_pasted_at: '2026-10-17T00:00:00.000Z' }))
+    expect((await res.json()).import_applied).toBeNull()
+    spy.mockRestore()
+  })
+
+  it('PATCH without payload_pasted_at has no import_applied', async () => {
+    const res = await PATCH(makePatchRequest({ project_id: 'proj-1', context: 'x' }))
+    expect('import_applied' in (await res.json())).toBe(false)
+  })
+
   it('marks a PATCHed last_nudged_at as a copy', async () => {
     const res = await PATCH(makePatchRequest({ project_id: 'proj-1', last_nudged_at: '2026-11-23T22:10:00.000Z' }))
     expect(res.status).toBe(200)
