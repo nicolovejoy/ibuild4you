@@ -4,6 +4,7 @@ import { copy } from '@/lib/copy'
 import { briefModelSnapshot } from '@/lib/agent/model-choices'
 import { welcomeToPost } from '@/lib/sessions/welcome'
 import { excludeArchived, isArchivedSession } from '@/lib/sessions/active'
+import { makerAnsweredOpening, type ReplyCheckMessage } from '@/lib/sessions/maker-replied'
 
 // GET /api/sessions?project_id=xxx — list sessions for a project
 export async function GET(request: Request) {
@@ -123,20 +124,18 @@ export async function POST(request: Request) {
     updated_at: now,
   })
 
-  // A session being completed here that the maker never spoke in has not
-  // "used" its welcome (#214): an import posts the new welcome into the open
-  // session, then the builder clicks Start. Without this the welcome would be
-  // stranded in a completed session and the new one would open empty. One
-  // query per active session (normally one).
+  // A session being completed here whose opening the maker has not answered
+  // has not "used" its welcome (#214): an import posts the new welcome into the
+  // open session, then the builder clicks Start. Without this the welcome would
+  // be stranded in a completed session and the new one would open empty. The
+  // opening is the welcome an import posted, else the start of the conversation
+  // (maker-replied.ts). One query per active session (normally one); it reads
+  // all its messages, normally tens of documents.
   const unusedSessionIds = new Set<string>()
   for (const doc of activeSessions.docs) {
-    const makerSnap = await db
-      .collection('messages')
-      .where('session_id', '==', doc.id)
-      .where('role', '==', 'user')
-      .limit(1)
-      .get()
-    if (makerSnap.empty) unusedSessionIds.add(doc.id)
+    const msgSnap = await db.collection('messages').where('session_id', '==', doc.id).get()
+    const rows = msgSnap.docs.map((d) => d.data() as ReplyCheckMessage)
+    if (!makerAnsweredOpening(rows)) unusedSessionIds.add(doc.id)
   }
 
   // Open the conversation with the builder's welcome, word for word: always on
