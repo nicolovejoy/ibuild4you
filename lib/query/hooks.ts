@@ -474,6 +474,14 @@ export function useClaimProject() {
   })
 }
 
+// The project lookup answered 404: no such brief, or the viewer has no role on it.
+export class ProjectNotFoundError extends Error {
+  constructor() {
+    super('Project not found')
+    this.name = 'ProjectNotFoundError'
+  }
+}
+
 // Resolve a slug or Firestore ID to a single project. The response includes
 // `viewer_role`, so callers no longer need a separate /api/projects/role hit.
 export function useResolveProject(slugOrId: string | undefined) {
@@ -481,11 +489,14 @@ export function useResolveProject(slugOrId: string | undefined) {
     queryKey: queryKeys.resolveProject(slugOrId),
     queryFn: async () => {
       const res = await apiFetch(`/api/projects?slug=${encodeURIComponent(slugOrId!)}`)
-      if (!res.ok) throw new Error('Project not found')
+      if (res.status === 404) throw new ProjectNotFoundError()
+      if (!res.ok) throw new Error('Failed to load project')
       return res.json()
     },
     enabled: !!slugOrId,
     staleTime: 60 * 1000,
+    // A 404 is final; anything else keeps the app's one retry.
+    retry: (failureCount, error) => !(error instanceof ProjectNotFoundError) && failureCount < 1,
   })
 }
 

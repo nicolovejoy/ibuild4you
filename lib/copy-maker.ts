@@ -197,6 +197,11 @@ const en = {
     daysAgo: (n: number) => `${n}d ago`,
     dateLocale: 'en-US',
   },
+  projectPage: {
+    notFound: copy.projectPage.notFound,
+    loadFailed: copy.projectPage.loadFailed,
+    backToDashboard: copy.projectPage.backToDashboard,
+  },
 }
 
 export type MakerCopy = typeof en
@@ -400,6 +405,11 @@ const fr: MakerCopy = {
     hoursAgo: (n: number) => `il y a ${n} h`,
     daysAgo: (n: number) => `il y a ${n} j`,
     dateLocale: 'fr-FR',
+  },
+  projectPage: {
+    notFound: 'Ce brief est introuvable. Il a peut-être été supprimé, ou il n’a pas été partagé avec vous.',
+    loadFailed: 'Impossible de charger ce brief. Rechargez la page pour réessayer.',
+    backToDashboard: 'Retour à vos briefs',
   },
 }
 
