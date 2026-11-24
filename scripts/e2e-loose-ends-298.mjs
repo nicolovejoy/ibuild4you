@@ -268,8 +268,7 @@ try {
   await dlg.getByRole('button', { name: 'Share', exact: true }).click()
   const shareResp = await shareP
   grade(shareResp?.status() === 409, 'I: the invite answers 409', `status ${shareResp?.status()}`)
-  // Mutations retry once (lib/query/query-client.ts), so the message shows
-  // only after the second 409: wait for it and time it.
+  // The share hook does not retry (lib/query/hooks.ts, useShareProject), so the message should follow the first 409 at once.
   const MSG = 'This person was removed from the brief. Restore them under People instead of inviting them again.'
   const t0 = Date.now()
   await dlg.getByText(MSG).first().waitFor({ timeout: 10000 }).catch(() => {})
