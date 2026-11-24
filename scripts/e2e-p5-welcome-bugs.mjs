@@ -19,6 +19,17 @@
 //              builder then opens conversation 2 with W3. After the maker
 //              answers, the header shows Start and the Start modal's
 //              "Opens with" line shows the next welcome.
+//   E (bug 2)  Stale cache: the builder opens Conversations first (messages are
+//              cached in the page), switches to Brief without a reload, imports
+//              the payload with a welcome; no Start dialog appears at any point
+//              while the hand-off happens and the header ends on Nudge.
+//   F          Email then copy: after Send reminder, Copy reminder shows both
+//              sentences, the emailed one (with the address) first and the
+//              copied one after it, on the page and after a reload.
+//   G          After the import the reminders strip does not say "paused (maker
+//              replied)" and the turn badge says waiting on the maker, on the
+//              project page and on the dashboard card. Auto reminders are turned
+//              on for the throwaway brief so the strip is not just "Reminders off".
 //
 // The maker is a test-cast identity (the kickoff is maker-only and the test
 // admin resolves to owner; docs/runbooks.md, agent-driven e2e). Needs
@@ -164,6 +175,43 @@ async function pasteOnBriefTab(slug, json) {
     await page.waitForTimeout(2500)
   }
 }
+
+// Stale cache: open Conversations first so its messages are cached in the page,
+// switch to the Brief tab with no reload, paste, and watch for a Start dialog
+// the whole time the import hands off. Returns what was seen.
+async function pasteWithStaleCache(slug, json) {
+  await page.goto(`${BASE}/projects/${slug}?tab=conversations`, { waitUntil: 'domcontentloaded' })
+  await page.waitForTimeout(4500)
+  const cachedText = await mainText()
+  const loaded = /dog-walking/.test(cachedText)
+  await page.screenshot({ path: `${SHOTS}/E0-conversations-before-import.png`, fullPage: true })
+  await page.locator('nav button:visible', { hasText: /^\s*Brief\s*$/ }).first().click()
+  await page.waitForTimeout(1500)
+  // Brief is the default tab, so its URL carries no ?tab=: the paste box is the sign.
+  const onBrief = await page.getByPlaceholder(/prep chat/).isVisible().catch(() => false)
+  await page.getByPlaceholder(/prep chat/).fill(JSON.stringify(json))
+  await page.getByRole('button', { name: 'Import JSON' }).click()
+  // Poll 12 seconds in 250 ms steps: click "Continue" when it shows, and look for
+  // any dialog on every step.
+  const dialogs = []
+  let clicked = false
+  const t0 = Date.now()
+  for (let i = 0; i < 48; i++) {
+    const dlg = page.getByRole('dialog')
+    if ((await dlg.count().catch(() => 0)) > 0) {
+      const seen = `+${Date.now() - t0} ms, continue clicked ${clicked}, url ${page.url().replace(/^[^?]*/, '') || '(no query)'}: ${squash(await dlg.first().innerText().catch(() => '')).slice(0, 100)}`
+      if (dialogs.length === 0) await page.screenshot({ path: `${SHOTS}/E1-dialog-seen.png`, fullPage: true })
+      dialogs.push(seen)
+    }
+    const cont = page.getByRole('button', { name: 'Continue to Conversations' })
+    if (!clicked && (await cont.isVisible().catch(() => false))) {
+      await cont.click().catch(() => {})
+      clicked = true
+    }
+    await page.waitForTimeout(250)
+  }
+  return { loaded, onBrief, dialogs }
+}
 const mainText = async (pg = page) => squash(await pg.locator('main').innerText().catch(() => ''))
 
 try {
@@ -192,6 +240,8 @@ try {
   console.log('--- B: maker spoke, kickoff greeting, import posts a welcome')
   const { proj, auth } = await createBrief(`e2e welcome-bugs B ${stamp} — delete me`, W1)
   const [s1] = await sessionsOf(auth, proj.id)
+  const arOn = await call(page, auth, 'PATCH', '/api/projects', { project_id: proj.id, auto_reminders_enabled: true })
+  grade(arOn.status() === 200, 'G: PATCH auto_reminders_enabled (setup, so the strip is not just "Reminders off")', `status ${arOn.status()}`)
   const maker = await makerSession(proj.slug)
   await makerSays(maker, 'I want a booking page for my dog-walking service.', { auth, sessionId: s1.id })
   const afterChat = await msgsOf(auth, s1.id)
@@ -208,11 +258,15 @@ try {
   grade(greetings.length === 1, 'B: kickoff posted one canned greeting', `kickoff ${ko.status()}, ${greetings.length} greeting(s)`)
 
   // The builder pastes a next-convo payload with W3, through the real paste box.
-  await pasteOnBriefTab(proj.slug, {
+  const stale = await pasteWithStaleCache(proj.slug, {
     _payload_type: 'next-convo',
     welcome_message: W3,
     brief: { ...BRIEF, problem: `Round two ${stamp}` },
   })
+  grade(stale.loaded && stale.onBrief, 'E: Conversations was open with its messages loaded, then Brief opened without a reload',
+    `messages shown ${stale.loaded}, on Brief tab ${stale.onBrief}`)
+  grade(stale.dialogs.length === 0, 'E: no dialog appeared at any point during the import and hand-off (12 s, every 250 ms)',
+    stale.dialogs.length ? `seen: ${stale.dialogs[0]}` : 'none seen')
   grade(!page.url().includes('tab=brief'), 'B: the import hands off to Conversations', page.url().replace(/\?.*/, ''))
   const afterImport = await msgsOf(auth, s1.id)
   const lastAgent = agentMsgs(afterImport).slice(-1)[0]
@@ -228,6 +282,12 @@ try {
   const startBtn = await page.getByRole('button', { name: /Start conversation 2/ }).count()
   grade(nudgeBtn > 0 && startBtn === 0, 'B: header shows Nudge, not "Start conversation 2"', `Nudge buttons ${nudgeBtn}, Start buttons ${startBtn}`)
   grade((await page.getByRole('dialog').count()) === 0, 'B: no Start window opened by itself')
+  grade(nudgeBtn > 0 && startBtn === 0, 'E: after the stale-cache import the header ends on Nudge', `Nudge buttons ${nudgeBtn}, Start buttons ${startBtn}`)
+  const strip = await page.locator('span', { hasText: /^Reminders (on|off)/ }).first().innerText().catch(() => '(strip not found)')
+  grade(strip !== '(strip not found)' && !/paused \(maker replied\)/.test(strip) && !/maker replied/i.test(strip),
+    'G: the reminders strip does not say "paused (maker replied)"', `strip: "${squash(strip)}"`)
+  const badge = text1.match(/Waiting on \w+|Your turn|Maker waiting[^.]{0,30}|Waiting for builder|Needs setup/)?.[0]
+  grade(badge === 'Waiting on Mara', 'G: the turn badge on the project page says waiting on the maker', `badge: "${badge}"`)
   const bannerMatch = text1.match(/Payload loaded\.[^]*?(?= Dismiss|$)/)
   const banner = bannerMatch ? bannerMatch[0].slice(0, 140) : '(no banner)'
   grade(/Payload loaded\./.test(text1) && /applied to the open conversation/.test(text1) && !/from the next conversation/.test(text1),
@@ -285,6 +345,45 @@ try {
   const dash = squash(await page.locator('body').innerText().catch(() => ''))
   grade(okEmailed(dash), 'D: the dashboard card shows the same emailed sentence')
   await page.screenshot({ path: `${SHOTS}/B5-dashboard.png`, fullPage: false })
+  const card = await page.evaluate((title) => {
+    const re = /Waiting on [^\n]+|Your turn|Maker waiting[^\n]*|Waiting for builder|Needs setup|Completed/
+    const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT)
+    let n
+    while ((n = walk.nextNode())) {
+      if (!n.textContent.includes(title)) continue
+      for (let el = n.parentElement; el && el !== document.body; el = el.parentElement) {
+        const m = el.innerText.match(re)
+        if (m) return { turn: m[0].trim(), card: el.innerText.replace(/\s+/g, ' ').slice(0, 160) }
+      }
+    }
+    return null
+  }, `e2e welcome-bugs B ${stamp}`)
+  grade(card?.turn === 'Waiting on Mara', 'G: the turn badge on the dashboard card says waiting on the maker', card ? `badge: "${card.turn}" in "${card.card}"` : '(card not found)')
+
+  // F: email then copy. The last reminder was emailed above; now copy one.
+  await page.goto(`${BASE}/projects/${proj.slug}?tab=conversations`, { waitUntil: 'domcontentloaded' })
+  await page.waitForTimeout(4500)
+  await page.getByRole('button', { name: /^Nudge/ }).first().click()
+  await page.waitForTimeout(600)
+  const copyAt2 = new Date()
+  await page.getByRole('button', { name: 'Copy reminder' }).click()
+  await page.waitForTimeout(2500)
+  await page.keyboard.press('Escape')
+  await page.waitForTimeout(800)
+  const both = (t) => {
+    const e = [sendAt, new Date(sendAt.getTime() - 60000), new Date(sendAt.getTime() + 60000)].map(emailedRe).map((x) => t.indexOf(x)).filter((i) => i >= 0)
+    const c = [copyAt2, new Date(copyAt2.getTime() - 60000), new Date(copyAt2.getTime() + 60000)].map(copiedRe).map((x) => t.indexOf(x)).filter((i) => i >= 0)
+    return e.length > 0 && c.length > 0 && Math.min(...e) < Math.min(...c)
+  }
+  const bothEv = (t) => t.match(/Reminder emailed to[^]*?send it\./)?.[0] || '(not found)'
+  const text6 = await mainText()
+  await page.screenshot({ path: `${SHOTS}/F1-email-then-copy.png`, fullPage: true })
+  grade(both(text6), 'F: after email then copy the line shows the emailed sentence (with the address) first, then the copied one', bothEv(text6))
+  await page.reload({ waitUntil: 'domcontentloaded' })
+  await page.waitForTimeout(4500)
+  const text7 = await mainText()
+  await page.screenshot({ path: `${SHOTS}/F2-email-then-copy-after-reload.png`, fullPage: true })
+  grade(both(text7), 'F: both sentences are still there, in that order, after a reload', bothEv(text7))
 
   // POST /api/sessions as the builder anyway: conversation 2 opens with W3.
   const s2res = await call(page, auth, 'POST', '/api/sessions', { project_id: proj.id })
