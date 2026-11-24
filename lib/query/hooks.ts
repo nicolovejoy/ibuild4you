@@ -496,6 +496,7 @@ export function useResolveProject(slugOrId: string | undefined) {
     enabled: !!slugOrId,
     staleTime: 60 * 1000,
     // A 404 is final; anything else keeps the app's one retry.
+    // `failureCount < 1` mirrors the app default `retry: 1` in lib/query/query-client.ts.
     retry: (failureCount, error) => !(error instanceof ProjectNotFoundError) && failureCount < 1,
   })
 }

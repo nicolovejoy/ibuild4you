@@ -48,8 +48,16 @@ export default function ProjectPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, user, approved])
 
-  // The lookup failed for good (a 404 is not retried; anything else was retried once).
-  if (user && approved && resolveError) {
+  // Show the message when the first lookup failed for good (a 404 is not retried;
+  // anything else was retried once), or when a later lookup says 404: the brief is
+  // gone or the viewer lost access. A later failure of any other kind keeps the
+  // view that already loaded, so a flaky network does not unmount a chat in progress.
+  if (
+    user &&
+    approved &&
+    resolveError &&
+    (!resolved || resolveError instanceof ProjectNotFoundError)
+  ) {
     const notFound = resolveError instanceof ProjectNotFoundError
     return (
       <div className="min-h-screen bg-brand-cream flex items-center justify-center px-4">

@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup } from '@testing-library/react'
+import { render, screen, cleanup, act } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { copy } from '@/lib/copy'
 import { makerCopy } from '@/lib/copy-maker'
 import { LocaleContext } from '@/components/locale-context'
+import { queryKeys } from '@/lib/query/keys'
 import ProjectPage from '../page'
 
 // The project page when the lookup fails (#291): a 404 says the brief was not
@@ -31,8 +32,13 @@ vi.mock('next/navigation', () => ({
   useParams: () => ({ id: 'gone-brief' }),
   useSearchParams: () => new URLSearchParams(''),
 }))
-vi.mock('@/components/builder/BuilderProjectView', () => ({ BuilderProjectView: () => null }))
-vi.mock('@/components/maker/MakerProjectView', () => ({ MakerProjectView: () => null }))
+// Stand-ins for the two views: a marker tells a test the view is mounted.
+vi.mock('@/components/builder/BuilderProjectView', () => ({
+  BuilderProjectView: () => <div data-testid="project-view" />,
+}))
+vi.mock('@/components/maker/MakerProjectView', () => ({
+  MakerProjectView: () => <div data-testid="project-view" />,
+}))
 
 const lookups = () =>
   apiFetch.mock.calls.filter(([path]) => path.startsWith('/api/projects?slug=')).length
@@ -42,9 +48,8 @@ const answerEveryLookup = (status: number, body: object) =>
 // The app's default retry (one), without its delay between tries.
 function renderPage(wrapper: (children: ReactNode) => ReactNode = (c) => c) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: 1, retryDelay: 0 } } })
-  return render(
-    <QueryClientProvider client={client}>{wrapper(<ProjectPage />)}</QueryClientProvider>
-  )
+  render(<QueryClientProvider client={client}>{wrapper(<ProjectPage />)}</QueryClientProvider>)
+  return client
 }
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
@@ -106,5 +111,51 @@ describe('ProjectPage when the brief cannot be shown', () => {
     expect(await screen.findByText(copy.loading)).toBeTruthy()
     expect(screen.queryByText(copy.projectPage.notFound)).toBeNull()
     expect(screen.queryByText(copy.projectPage.loadFailed)).toBeNull()
+  })
+
+  describe('after the brief has loaded', () => {
+    // First lookup answers with a project; anything else (the auto-claim) answers 200.
+    async function renderLoaded() {
+      const project = { id: 'p1', slug: 'gone-brief', viewer_role: 'maker' }
+      apiFetch.mockImplementation((path) =>
+        Promise.resolve(
+          new Response(JSON.stringify(path.startsWith('/api/projects?slug=') ? project : {}), {
+            status: 200,
+          })
+        )
+      )
+      const client = renderPage()
+      expect(await screen.findByTestId('project-view')).toBeTruthy()
+      return client
+    }
+
+    // Refetch the page's lookup, then let React Query's batched notification reach the page.
+    async function refetchLookup(client: QueryClient) {
+      await act(async () => {
+        await client.refetchQueries({ queryKey: queryKeys.resolveProject('gone-brief') })
+        await wait(20)
+      })
+    }
+
+    it('keeps the loaded view when a later refetch fails', async () => {
+      const client = await renderLoaded()
+      answerEveryLookup(500, { error: 'boom' })
+
+      await refetchLookup(client)
+
+      expect(screen.getByTestId('project-view')).toBeTruthy()
+      expect(screen.queryByText(copy.projectPage.loadFailed)).toBeNull()
+      expect(screen.queryByText(copy.projectPage.notFound)).toBeNull()
+    })
+
+    it('switches to not found when a later refetch answers 404', async () => {
+      const client = await renderLoaded()
+      answerEveryLookup(404, { error: 'Project not found' })
+
+      await refetchLookup(client)
+
+      expect(screen.getByText(copy.projectPage.notFound)).toBeTruthy()
+      expect(screen.queryByTestId('project-view')).toBeNull()
+    })
   })
 })
