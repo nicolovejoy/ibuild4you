@@ -400,6 +400,16 @@ export const copy = {
     stampMaker: 'Last maker activity',
     never: 'never',
     newerThanPaste: 'newer than your paste',
+    // One line under the three stamps: is the last paste still the one the
+    // maker has to answer? Nothing is shown before the first paste.
+    pasteStatus: {
+      current: (when: string, version: number | null, who: string | null) =>
+        `The paste of ${when}${version != null ? ` (v${version})` : ''} is current: ${who ?? 'the maker'} has not written since.`,
+      used: (when: string, who: string | null) =>
+        `The paste of ${when} is used: ${who ?? 'the maker'} has written since. Next: copy the prep.`,
+      usedPrepCopied: (when: string, who: string | null) =>
+        `The paste of ${when} is used, and you copied the prep after ${who ?? 'the maker'} last wrote. Next: paste the new payload.`,
+    },
     // Recency dot on each ferry stamp (also its accessible label)
     recency: { newest: 'Most recent', middle: 'In between', oldest: 'Oldest' },
     copyPrep: 'Copy next-convo prep',

@@ -120,6 +120,17 @@ export function FerryDesk({
     .filter(Boolean)
     .join(' · ')
 
+  // Whether the last paste is still the one the maker has to answer. The
+  // 'used' states are the builder's move, so they are set in stronger ink.
+  const pasteStatusLine =
+    stamps.pasteStatus === 'current'
+      ? copy.brief.pasteStatus.current(pasted.absolute, pasted.version, maker.who)
+      : stamps.pasteStatus === 'used'
+        ? copy.brief.pasteStatus.used(pasted.absolute, maker.who)
+        : stamps.pasteStatus === 'used_prep_copied'
+          ? copy.brief.pasteStatus.usedPrepCopied(pasted.absolute, maker.who)
+          : null
+
   // Which brief version the pasted payload was prepped from, shown before
   // Import so a stale paste is visible up front. Nothing when the box is
   // empty, the JSON doesn't parse yet, or there is no prep stamp.
@@ -182,6 +193,15 @@ export function FerryDesk({
           hot={maker.newerThanPaste}
         />
       </div>
+
+      {pasteStatusLine && (
+        <p
+          data-testid="paste-status"
+          className={`text-sm ${stamps.pasteStatus === 'current' ? 'text-brand-ink-soft' : 'font-medium text-brand-navy'}`}
+        >
+          {pasteStatusLine}
+        </p>
+      )}
 
       <textarea
         ref={textareaRef}

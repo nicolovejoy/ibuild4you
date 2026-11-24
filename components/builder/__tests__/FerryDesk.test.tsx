@@ -10,6 +10,7 @@ import { copy } from '@/lib/copy'
 afterEach(cleanup)
 
 const stamps = (overrides: Partial<FerryStamps> = {}): FerryStamps => ({
+  pasteStatus: 'none',
   copied: {
     at: '2026-10-17T16:14:00.000Z',
     absolute: 'Oct 17, 9:14 AM',
@@ -212,6 +213,36 @@ describe('FerryDesk', () => {
     fireEvent.keyDown(box, { key: 'Escape' })
     expect(filled.onEscapeEmpty).not.toHaveBeenCalled()
     expect(document.activeElement).not.toBe(box)
+  })
+
+  describe('paste status line', () => {
+    const pasted = { at: '2026-10-17T16:20:00.000Z', absolute: 'Oct 17, 9:20 AM', relative: '1 hour ago', recency: 'newest' as const, version: 7 }
+
+    it('shows nothing before the first paste', () => {
+      renderDesk()
+      expect(screen.queryByTestId('paste-status')).toBeNull()
+    })
+
+    it('says the paste is current while the maker has not written since', () => {
+      renderDesk({ stamps: stamps({ pasteStatus: 'current', pasted }) })
+      expect(screen.getByTestId('paste-status').textContent).toBe(
+        'The paste of Oct 17, 9:20 AM (v7) is current: Sam has not written since.'
+      )
+    })
+
+    it('says the paste is used and what comes next', () => {
+      renderDesk({ stamps: stamps({ pasteStatus: 'used', pasted }) })
+      expect(screen.getByTestId('paste-status').textContent).toBe(
+        'The paste of Oct 17, 9:20 AM is used: Sam has written since. Next: copy the prep.'
+      )
+    })
+
+    it('says the new payload is what is missing once the prep is copied', () => {
+      renderDesk({ stamps: stamps({ pasteStatus: 'used_prep_copied', pasted }) })
+      expect(screen.getByTestId('paste-status').textContent).toBe(
+        'The paste of Oct 17, 9:20 AM is used, and you copied the prep after Sam last wrote. Next: paste the new payload.'
+      )
+    })
   })
 
   it('shows the brief version as a label at the top of the desk, before the stamps', () => {
