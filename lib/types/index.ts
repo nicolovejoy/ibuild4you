@@ -105,6 +105,10 @@ export interface Project extends BaseEntity {
   auto_reminders_enabled?: boolean
   reminders_sent_count?: number
   last_reminder_sent_at?: string | null
+  // When the cron last sent an automatic reminder. Unlike last_reminder_sent_at
+  // (nulled by every maker message), nothing clears it; the builder's reminder
+  // line reads it.
+  last_auto_reminder_at?: string | null
   // Written by the notify cron's note writer (app/api/cron/notify, #229; the
   // field names predate it). The error is cleared on the next successful note;
   // the Brief tab shows it until then.

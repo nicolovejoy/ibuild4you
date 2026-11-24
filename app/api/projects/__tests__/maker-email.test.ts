@@ -331,17 +331,18 @@ describe('POST /api/projects/[id]/email', () => {
     expect(call.text).toContain('https://ibuild4you.com/projects/byside')
   })
 
-  it('suppresses the real send on preview for a non-allowlisted maker, but still stamps activity', async () => {
+  it('suppresses the real send on preview for a non-allowlisted maker and records no reminder', async () => {
     process.env.VERCEL_ENV = 'preview'
     const res = await POST(makeReq({ kind: 'nudge' }), { params })
     expect(res.status).toBe(200)
     const data = await res.json()
     expect(data.suppressed).toBe(true)
     expect(sendMakerEmailMock).not.toHaveBeenCalled()
-    // Nothing was emailed, so the method and addresses are null.
-    expect(mockProjectUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({ last_nudged_at: expect.any(String), last_nudged_method: null, last_nudged_to: null })
-    )
+    // Nothing was emailed, so no reminder is recorded: not a time, a method or addresses.
+    const written = mockProjectUpdate.mock.calls[0][0]
+    expect('last_nudged_at' in written).toBe(false)
+    expect('last_nudged_method' in written).toBe(false)
+    expect('last_nudged_to' in written).toBe(false)
   })
 
   it('still sends on preview when the maker is allowlisted (@ibuild4you.com)', async () => {

@@ -156,6 +156,9 @@ export function useSendMakerEmail() {
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.projects() })
       queryClient.invalidateQueries({ queryKey: queryKeys.project(variables.project_id) })
+      // The builder view reads the project through useResolveProject; without
+      // this its "last reminder" line stays on the old value until it goes stale.
+      queryClient.invalidateQueries({ queryKey: queryKeys.resolveProject(variables.project_id) })
     },
   })
 }

@@ -96,6 +96,8 @@ describe('GET /api/cron/maker-reminders', () => {
     const update = proj.ref.update.mock.calls[0][0]
     expect(update.reminders_sent_count).toBe(1)
     expect(typeof update.last_reminder_sent_at).toBe('string')
+    // The same time goes in a field a maker's reply does not clear, for the builder's line.
+    expect(update.last_auto_reminder_at).toBe(update.last_reminder_sent_at)
 
     expect(mockReminderLogAdd).toHaveBeenCalledOnce()
     const logged = mockReminderLogAdd.mock.calls[0][0]

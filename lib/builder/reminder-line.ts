@@ -8,7 +8,11 @@ import type { DispatchState } from './conversations-view'
 
 type ReminderProject = Pick<
   Project,
-  'last_nudged_at' | 'last_nudged_method' | 'last_nudged_to' | 'last_reminder_sent_at'
+  | 'last_nudged_at'
+  | 'last_nudged_method'
+  | 'last_nudged_to'
+  | 'last_reminder_sent_at'
+  | 'last_auto_reminder_at'
 >
 
 export type ReminderLine =
@@ -38,11 +42,13 @@ export function pacificDateTime(iso: string): string {
 }
 
 // The newest reminder, manual (last_nudged_at: emailed or copied) or automatic
-// (last_reminder_sent_at, the cron). On a tie the manual one wins: it carries
+// (the cron). The cron writes last_auto_reminder_at, which nothing clears;
+// last_reminder_sent_at is nulled by every maker message (it drives the cadence),
+// so it is only the fallback for reminders sent before the new field. On a tie the manual one wins: it carries
 // the address. Timestamps are UTC ISO strings, so string order is time order.
 export function latestReminder(project: ReminderProject): ReminderLine {
   const manualAt = project.last_nudged_at
-  const autoAt = project.last_reminder_sent_at
+  const autoAt = project.last_auto_reminder_at ?? project.last_reminder_sent_at
   if (!manualAt && !autoAt) return { kind: 'none' }
   if (autoAt && (!manualAt || autoAt > manualAt)) return { kind: 'automatic', at: autoAt }
   const at = manualAt as string

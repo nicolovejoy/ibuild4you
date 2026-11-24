@@ -204,6 +204,9 @@ export async function GET(request: Request) {
         await bk.docRef.update({
           reminders_sent_count: bk.prevCount + 1,
           last_reminder_sent_at: nowIso,
+          // Not cleared by a maker message, so the builder's reminder line
+          // can still show this reminder after the maker replies.
+          last_auto_reminder_at: nowIso,
           updated_at: nowIso,
         })
       }

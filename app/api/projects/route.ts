@@ -45,13 +45,18 @@ async function ensureUniqueSlug(db: FirebaseFirestore.Firestore, slug: string, e
 // apprentice's browser never gets them.
 const EMAIL_IN_FIELDS = ['email_in_address', 'last_email_at', 'email_in_dropped'] as const
 
+// Fields only builder-side viewers get. last_nudged_to holds the maker's
+// address(es); a maker or apprentice keeps last_nudged_at, which their
+// dashboard card shows as "Nudged ...".
+const BUILDER_ONLY_FIELDS = ['last_nudged_to'] as const
+
 function withoutEmailInFields<T extends Record<string, unknown>>(
   project: T,
   viewerRole: string | null | undefined
 ): T {
   if (viewerRole === 'owner' || viewerRole === 'builder' || viewerRole === 'admin') return project
   const stripped: Record<string, unknown> = { ...project }
-  for (const field of EMAIL_IN_FIELDS) delete stripped[field]
+  for (const field of [...EMAIL_IN_FIELDS, ...BUILDER_ONLY_FIELDS]) delete stripped[field]
   return stripped as T
 }
 
@@ -251,6 +256,12 @@ export async function PATCH(request: Request) {
   if ('last_nudged_at' in updates) {
     patch.last_nudged_method = 'copy'
     patch.last_nudged_to = null
+    // The browser's clock is not compared with server times (the reminder line
+    // takes the newest of copies, emails and the cron), so the server's time
+    // replaces the client's. Builder activity sent in the same request is the
+    // same moment (useNudgeCopy sends both).
+    patch.last_nudged_at = patch.updated_at
+    if ('last_builder_activity_at' in updates) patch.last_builder_activity_at = patch.updated_at
   }
 
   // Regenerate slug when title changes

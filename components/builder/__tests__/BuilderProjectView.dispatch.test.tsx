@@ -23,6 +23,13 @@ const apiFetch = vi.fn(async (url: string, init?: { method?: string; body?: stri
   }
   if (path === '/api/projects' && method === 'PATCH') return new Response(JSON.stringify({ id: 'p1' }), { status: 200 })
   if (path === '/api/projects/p1/email' && method === 'POST') {
+    // Like the server: record the reminder on the project the next GET returns.
+    answers['/api/projects'] = {
+      ...(answers['/api/projects'] as object),
+      last_nudged_at: '2026-11-23T22:10:00.000Z', // after the welcome the tests post (T3)
+      last_nudged_method: 'email',
+      last_nudged_to: ['sam@example.com'],
+    }
     return new Response(
       JSON.stringify({ ok: true, results: [], to: ['sam@example.com'], suppressed: false }),
       { status: 200 }
@@ -357,5 +364,8 @@ describe('the last reminder on the header', () => {
     )
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
     expect(screen.getByRole('button', { name: /^Nudge/ })).toBeTruthy()
+    // The line now says it was emailed, to the address the server reported.
+    expect(await screen.findByText(/^Reminder emailed to sam@example\.com, /)).toBeTruthy()
+    expect(screen.queryByText(copy.reminderLine.none)).toBeNull()
   })
 })

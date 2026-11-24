@@ -23,6 +23,10 @@ const EMAIL_IN = {
   email_in_dropped: { auth_failed: 1, last_auth_failed_from: 'bduris@aol.com' },
 }
 
+// The last reminder: its time stays for everyone (the maker's dashboard card says
+// "Nudged ..."), the addresses it went to are builder-side only.
+const NUDGE = { last_nudged_at: '2026-11-23T22:10:00.000Z', last_nudged_to: ['sam@example.com'] }
+
 function docSnap(id: string) {
   const d = projects[id]
   return { id, exists: d !== undefined, data: () => d }
@@ -94,8 +98,8 @@ beforeEach(() => {
   mockGetViewerMembership.mockResolvedValue({ brief_role: null, archived: false })
   auth = { uid: 'u1', email: 'viewer@example.com', systemRoles: [], error: null }
   projects = {
-    p1: { title: 'Cafe', slug: 'cafe', ...EMAIL_IN },
-    p2: { title: 'Shop', slug: 'shop', ...EMAIL_IN },
+    p1: { title: 'Cafe', slug: 'cafe', ...EMAIL_IN, ...NUDGE },
+    p2: { title: 'Shop', slug: 'shop', ...EMAIL_IN, ...NUDGE },
   }
   members = []
 })
@@ -163,5 +167,34 @@ describe('GET /api/projects (the list)', () => {
     const list = (await get()) as Doc[]
     expect(list).toHaveLength(2)
     expect(list.every(hasAll)).toBe(true)
+  })
+})
+
+describe('GET /api/projects: the addresses of the last reminder', () => {
+  for (const role of ['maker', 'apprentice']) {
+    it(`leaves last_nudged_to out for role ${role} and keeps the time`, async () => {
+      mockGetProjectRole.mockResolvedValue(role)
+      const body = await get('?slug=cafe')
+      expect('last_nudged_to' in body).toBe(false)
+      expect(body.last_nudged_at).toBe(NUDGE.last_nudged_at)
+    })
+  }
+
+  it('keeps last_nudged_to for a builder', async () => {
+    mockGetProjectRole.mockResolvedValue('builder')
+    expect((await get('?slug=cafe')).last_nudged_to).toEqual(NUDGE.last_nudged_to)
+  })
+
+  it('strips it per project in the list by the viewer role there', async () => {
+    members = [
+      { project_id: 'p1', user_id: 'u1', email: 'viewer@example.com', role: 'maker' },
+      { project_id: 'p2', user_id: 'u1', email: 'viewer@example.com', role: 'builder' },
+    ]
+    const list = (await get()) as Doc[]
+    const p1 = list.find((p) => p.id === 'p1')!
+    const p2 = list.find((p) => p.id === 'p2')!
+    expect('last_nudged_to' in p1).toBe(false)
+    expect(p1.last_nudged_at).toBe(NUDGE.last_nudged_at)
+    expect(p2.last_nudged_to).toEqual(NUDGE.last_nudged_to)
   })
 })

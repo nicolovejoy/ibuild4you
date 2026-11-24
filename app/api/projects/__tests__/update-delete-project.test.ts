@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { NextResponse } from 'next/server'
 import { PATCH, DELETE } from '../route'
 
@@ -313,11 +313,46 @@ describe('PATCH /api/projects', () => {
     expect(res.status).toBe(200)
     expect(mockDocUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
-        last_nudged_at: '2026-11-23T22:10:00.000Z',
+        last_nudged_at: expect.any(String),
         last_nudged_method: 'copy',
         last_nudged_to: null,
       })
     )
+  })
+
+  describe('a copy is timed by the server, not the browser clock', () => {
+    const SERVER_NOW = '2026-11-23T22:10:00.000Z'
+    const CLIENT_CLOCK = '2026-11-20T01:00:00.000Z' // a browser clock that is days off
+    beforeEach(() => {
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date(SERVER_NOW))
+    })
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    it('stores the server time for last_nudged_at and the builder activity sent with it', async () => {
+      await PATCH(
+        makePatchRequest({ project_id: 'proj-1', last_nudged_at: CLIENT_CLOCK, last_builder_activity_at: CLIENT_CLOCK })
+      )
+      expect(mockDocUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({ last_nudged_at: SERVER_NOW, last_builder_activity_at: SERVER_NOW })
+      )
+    })
+
+    it('does not add builder activity when the request did not send it', async () => {
+      await PATCH(makePatchRequest({ project_id: 'proj-1', last_nudged_at: CLIENT_CLOCK }))
+      const written = mockDocUpdate.mock.calls[0][0]
+      expect(written.last_nudged_at).toBe(SERVER_NOW)
+      expect('last_builder_activity_at' in written).toBe(false)
+    })
+
+    it('leaves last_builder_activity_at alone when sent without last_nudged_at', async () => {
+      await PATCH(makePatchRequest({ project_id: 'proj-1', last_builder_activity_at: CLIENT_CLOCK }))
+      const written = mockDocUpdate.mock.calls[0][0]
+      expect(written.last_builder_activity_at).toBe(CLIENT_CLOCK)
+      expect('last_nudged_at' in written).toBe(false)
+    })
   })
 
   it('ignores last_nudged_method and last_nudged_to sent by the client', async () => {

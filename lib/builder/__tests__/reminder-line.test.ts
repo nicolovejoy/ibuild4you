@@ -51,6 +51,22 @@ describe('latestReminder', () => {
     expect(latestReminder({ last_reminder_sent_at: T1 })).toEqual({ kind: 'automatic', at: T1 })
   })
 
+  it('the automatic reminder survives the maker replying (last_reminder_sent_at is cleared then)', () => {
+    expect(latestReminder({ last_reminder_sent_at: null, last_auto_reminder_at: T1 })).toEqual({
+      kind: 'automatic',
+      at: T1,
+    })
+    // And it still loses to a newer manual reminder.
+    expect(
+      latestReminder({
+        last_nudged_at: T2,
+        last_nudged_method: 'copy',
+        last_reminder_sent_at: null,
+        last_auto_reminder_at: T1,
+      })
+    ).toEqual({ kind: 'copied', at: T2 })
+  })
+
   it('the newer of manual and automatic wins', () => {
     expect(
       latestReminder({ last_nudged_at: T2, last_nudged_method: 'copy', last_reminder_sent_at: T1 })
