@@ -314,7 +314,8 @@ try {
     await page.keyboard.press('Escape')
     await page.waitForTimeout(700)
     const after = await page.getByRole('dialog').count()
-    grade(after === open - 1, 'M send-email: one Escape closes only the confirmation', `${open} open before, ${after} after`)
+    grade(after === open - 1, 'M send-email: one Escape closes only the confirmation',
+      `${open} open before, ${after} after, focus ${await focused()}, url ${page.url().replace(BASE, '')}`)
     while (await page.getByRole('dialog').count()) {
       await page.keyboard.press('Escape')
       await page.waitForTimeout(500)

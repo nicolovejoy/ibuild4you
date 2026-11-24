@@ -2,6 +2,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, fireEvent, cleanup } from '@testing-library/react'
 import React, { useState } from 'react'
+import { flushSync } from 'react-dom'
 import { Modal } from '../Modal'
 
 afterEach(cleanup)
@@ -260,5 +261,27 @@ describe('Modal', () => {
     // dialog's first stop, not the outer one's.
     fireEvent.keyDown(innerButton, { key: 'Tab' })
     expect(inner.contains(document.activeElement)).toBe(true)
+  })
+
+  // In a browser React removes the inner modal as soon as its listener
+  // returns, before the outer modal's listener runs for the same key press.
+  // flushSync reproduces that here. The outer modal must still stay open.
+  it('Escape closes only the inner modal even when it is gone before the outer listener runs', () => {
+    const closeOuter = vi.fn()
+    function Stacked() {
+      const [innerOpen, setInnerOpen] = useState(true)
+      return (
+        <Modal isOpen onClose={closeOuter} title="Outer">
+          <button>Outer button</button>
+          <Modal isOpen={innerOpen} onClose={() => flushSync(() => setInnerOpen(false))} title="Inner">
+            <button>Inner button</button>
+          </Modal>
+        </Modal>
+      )
+    }
+    render(<Stacked />)
+    document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    expect(screen.queryByRole('dialog', { name: 'Inner' })).toBeNull()
+    expect(closeOuter).not.toHaveBeenCalled()
   })
 })

@@ -43,6 +43,10 @@ export function Modal({ isOpen, onClose, title, label, children, size = 'md' }: 
       const open = document.querySelectorAll('[role="dialog"][aria-modal="true"]')
       if (open.length > 1 && open[open.length - 1] !== dialogRef.current) return
       if (e.key === 'Escape') {
+        // In a browser React removes this modal as soon as this listener
+        // returns, so a modal under it would then find itself on top and close
+        // too on the same key press. Stop the event here.
+        e.stopImmediatePropagation()
         onClose()
         return
       }
