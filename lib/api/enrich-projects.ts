@@ -120,6 +120,15 @@ export async function enrichProjects(
         }
         if (data.status === 'active') hasActiveSession = true
       }
+      // An import that posts a new welcome into an open conversation stamps the
+      // stored value with that moment (lib/sessions/apply-import.ts). Keep it
+      // when it is later than any session start, so the turn badge and the
+      // reminders line see the conversation as re-opened. Deleting or archiving
+      // sessions rewrites the stored value (lib/admin/session-ops.ts).
+      const stored = project.latest_session_created_at as string | null | undefined
+      if (stored && (!latestSessionCreatedAt || stored > latestSessionCreatedAt)) {
+        latestSessionCreatedAt = stored
+      }
 
       return {
         ...project,

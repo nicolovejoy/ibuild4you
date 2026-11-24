@@ -71,10 +71,22 @@ describe('NextRoundPanel', () => {
     expect(onOpenImport).toHaveBeenCalled()
   })
 
-  it('says Sam greets when the welcome was already used, and that Sam drafts the nudge', () => {
+  it('says nothing is queued when the welcome was already used and nothing was pasted since the maker spoke', () => {
     render(
       <NextRoundPanel
         project={project({ welcome_message: 'Hi Maya.' })}
+        sessions={[session('s1', 'Hi Maya.')]}
+        unusedSessionId={null}
+      />
+    )
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(t.heading) }))
+    expect(screen.getByText(t.openingNothingQueued)).toBeTruthy()
+  })
+
+  it('says Sam greets when the welcome was already used and a paste is queued, and that Sam drafts the nudge', () => {
+    render(
+      <NextRoundPanel
+        project={project({ welcome_message: 'Hi Maya.', payload_pasted_at: '2026-11-23T10:00:00.000Z' })}
         sessions={[session('s1', 'Hi Maya.')]}
         unusedSessionId={null}
       />

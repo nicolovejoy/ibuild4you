@@ -26,12 +26,32 @@ describe('nextRound: what the next conversation would open with', () => {
     })
     expect(fresh.opening).toEqual({ kind: 'welcome', text: 'Round two' })
 
+    // Something was pasted since the maker last spoke: Sam greets with it.
     const used = nextRound({
-      project: { welcome_message: 'Round one' },
+      project: {
+        welcome_message: 'Round one',
+        payload_pasted_at: '2026-11-23T10:00:00.000Z',
+        last_maker_message_at: '2026-11-22T10:00:00.000Z',
+      },
       sessions: [session('s1', 'Round one')],
       unusedSessionId: null,
     })
     expect(used.opening).toEqual({ kind: 'kickoff' })
+  })
+
+  it('opens with the canned note when nothing was pasted since the maker last spoke', () => {
+    const base = { welcome_message: 'Round one' }
+    const sessions = [session('s1', 'Round one')]
+    // Never pasted.
+    expect(nextRound({ project: base, sessions, unusedSessionId: null }).opening).toEqual({ kind: 'nothing_queued' })
+    // Pasted, but before the maker's last message.
+    expect(
+      nextRound({
+        project: { ...base, payload_pasted_at: '2026-11-21T10:00:00.000Z', last_maker_message_at: '2026-11-22T10:00:00.000Z' },
+        sessions,
+        unusedSessionId: null,
+      }).opening
+    ).toEqual({ kind: 'nothing_queued' })
   })
 
   it('does not count a conversation the maker never spoke in as having used its welcome', () => {

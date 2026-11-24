@@ -27,6 +27,7 @@ import { useLocale, useMakerCopy } from '@/components/locale-context'
 import { viewerBriefRole } from '@/lib/roles/display'
 import { groupBriefs, shouldFlatten, type SectionKey } from '@/lib/dashboard/group-briefs'
 import { makerNewerThanPaste } from '@/lib/builder/ferry-stamps'
+import { latestReminder, reminderText } from '@/lib/builder/reminder-line'
 import { isBuilderSideRole } from '@/lib/projects/project-view'
 import { parseNewProjectPayload } from '@/lib/api/import-payload'
 import { parseLooseJson } from '@/lib/utils'
@@ -294,6 +295,7 @@ function ProjectList({ isAdmin }: { isAdmin: boolean }) {
       project.status === 'active' &&
       !project.viewer_archived &&
       makerNewerThanPaste(project)
+    const lastReminder = latestReminder(project)
     return (
       <Card key={project.id} style={{ borderLeft: `6px solid ${briefIdentity(project.id).color}` }}>
         <CardBody>
@@ -389,8 +391,11 @@ function ProjectList({ isAdmin }: { isAdmin: boolean }) {
                 {!project.last_maker_message_at && project.shared_at && (
                   <span>{d.sharedAt(ago(project.shared_at))}</span>
                 )}
-                {project.last_nudged_at && (
-                  <span>{d.nudgedAt(ago(project.last_nudged_at))}</span>
+                {builderSide ? (
+                  // Builders see the last reminder with its method and Pacific time.
+                  lastReminder.kind !== 'none' && <span>{reminderText(lastReminder)}</span>
+                ) : (
+                  project.last_nudged_at && <span>{d.nudgedAt(ago(project.last_nudged_at))}</span>
                 )}
               </div>
             </div>

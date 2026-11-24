@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { NextResponse } from 'next/server'
 import { PATCH, DELETE } from '../route'
 
@@ -306,6 +306,118 @@ describe('PATCH /api/projects', () => {
   it('PATCH without payload_pasted_at does not', async () => {
     await PATCH(makePatchRequest({ project_id: 'proj-1', context: 'x' }))
     expect(mockApplyImport).not.toHaveBeenCalled()
+  })
+
+  it('PATCH with payload_pasted_at answers what the import did', async () => {
+    mockApplyImport.mockResolvedValueOnce('applied')
+    const res = await PATCH(makePatchRequest({ project_id: 'proj-1', payload_pasted_at: '2026-10-17T00:00:00.000Z' }))
+    expect((await res.json()).import_applied).toBe('applied')
+    mockApplyImport.mockResolvedValueOnce('maker_replied')
+    const res2 = await PATCH(makePatchRequest({ project_id: 'proj-1', payload_pasted_at: '2026-10-17T00:00:00.000Z' }))
+    expect((await res2.json()).import_applied).toBe('maker_replied')
+  })
+
+  it('PATCH answers import_applied null when the import step threw', async () => {
+    mockApplyImport.mockRejectedValueOnce(new Error('boom'))
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const res = await PATCH(makePatchRequest({ project_id: 'proj-1', payload_pasted_at: '2026-10-17T00:00:00.000Z' }))
+    expect((await res.json()).import_applied).toBeNull()
+    spy.mockRestore()
+  })
+
+  it('PATCH without payload_pasted_at has no import_applied', async () => {
+    const res = await PATCH(makePatchRequest({ project_id: 'proj-1', context: 'x' }))
+    expect('import_applied' in (await res.json())).toBe(false)
+  })
+
+  it('marks a PATCHed last_nudged_at as a copy', async () => {
+    const res = await PATCH(makePatchRequest({ project_id: 'proj-1', last_nudged_at: '2026-11-23T22:10:00.000Z' }))
+    expect(res.status).toBe(200)
+    expect(mockDocUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        last_nudged_at: expect.any(String),
+        last_nudged_method: 'copy',
+      })
+    )
+  })
+
+  it('a copy does not touch the last email (its addresses or its time)', async () => {
+    await PATCH(makePatchRequest({ project_id: 'proj-1', last_nudged_at: '2026-11-23T22:10:00.000Z' }))
+    const written = mockDocUpdate.mock.calls[0][0]
+    expect('last_nudged_to' in written).toBe(false)
+    expect('last_nudge_emailed_at' in written).toBe(false)
+  })
+
+  it('a client cannot write last_nudge_emailed_at', async () => {
+    await PATCH(
+      makePatchRequest({
+        project_id: 'proj-1',
+        last_nudged_at: '2026-11-23T22:10:00.000Z',
+        last_nudge_emailed_at: '2026-11-23T22:10:00.000Z',
+      })
+    )
+    const written = mockDocUpdate.mock.calls[0][0]
+    expect('last_nudge_emailed_at' in written).toBe(false)
+  })
+
+  describe('a copy is timed by the server, not the browser clock', () => {
+    const SERVER_NOW = '2026-11-23T22:10:00.000Z'
+    const CLIENT_CLOCK = '2026-11-20T01:00:00.000Z' // a browser clock that is days off
+    beforeEach(() => {
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date(SERVER_NOW))
+    })
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    it('stores the server time for last_nudged_at and the builder activity sent with it', async () => {
+      await PATCH(
+        makePatchRequest({ project_id: 'proj-1', last_nudged_at: CLIENT_CLOCK, last_builder_activity_at: CLIENT_CLOCK })
+      )
+      expect(mockDocUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({ last_nudged_at: SERVER_NOW, last_builder_activity_at: SERVER_NOW })
+      )
+    })
+
+    it('does not add builder activity when the request did not send it', async () => {
+      await PATCH(makePatchRequest({ project_id: 'proj-1', last_nudged_at: CLIENT_CLOCK }))
+      const written = mockDocUpdate.mock.calls[0][0]
+      expect(written.last_nudged_at).toBe(SERVER_NOW)
+      expect('last_builder_activity_at' in written).toBe(false)
+    })
+
+    it('leaves last_builder_activity_at alone when sent without last_nudged_at', async () => {
+      await PATCH(makePatchRequest({ project_id: 'proj-1', last_builder_activity_at: CLIENT_CLOCK }))
+      const written = mockDocUpdate.mock.calls[0][0]
+      expect(written.last_builder_activity_at).toBe(CLIENT_CLOCK)
+      expect('last_nudged_at' in written).toBe(false)
+    })
+  })
+
+  it('ignores last_nudged_method and last_nudged_to sent by the client', async () => {
+    const res = await PATCH(
+      makePatchRequest({ project_id: 'proj-1', last_nudged_method: 'email', last_nudged_to: ['a@x.com'], context: 'x' })
+    )
+    expect(res.status).toBe(200)
+    const written = mockDocUpdate.mock.calls[0][0]
+    expect('last_nudged_method' in written).toBe(false)
+    expect('last_nudged_to' in written).toBe(false)
+  })
+
+  it('a client cannot claim an email by sending last_nudged_at with method email', async () => {
+    await PATCH(
+      makePatchRequest({
+        project_id: 'proj-1',
+        last_nudged_at: '2026-11-23T22:10:00.000Z',
+        last_nudged_method: 'email',
+        last_nudged_to: ['a@x.com'],
+      })
+    )
+    expect(mockDocUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ last_nudged_method: 'copy' })
+    )
+    expect('last_nudged_to' in mockDocUpdate.mock.calls[0][0]).toBe(false)
   })
 
   it('PATCH ignores maker_waiting_since from the client', async () => {

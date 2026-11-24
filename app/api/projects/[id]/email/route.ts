@@ -217,7 +217,16 @@ export async function POST(
   if (kind === 'invite') {
     update.shared_at = now
   } else {
-    update.last_nudged_at = now
+    // Record the reminder only when an email really went out. When every
+    // recipient was suppressed (preview), nothing was sent, so no reminder is
+    // recorded: not the time, the method or the addresses.
+    const delivered = results.filter((r) => !r.suppressed).map((r) => r.to)
+    if (delivered.length > 0) {
+      update.last_nudged_at = now
+      update.last_nudge_emailed_at = now
+      update.last_nudged_method = 'email'
+      update.last_nudged_to = delivered
+    }
   }
   await projectDoc.ref.update(update)
 

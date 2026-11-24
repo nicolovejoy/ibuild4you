@@ -667,6 +667,7 @@ export const copy = {
     opening: 'Sam opens with',
     openingDefault: 'The standard welcome. No opening message is set.',
     openingKickoff: 'No new opening message. Sam greets the maker and picks up where they left off.',
+    openingNothingQueued: 'Nothing new pasted since the maker last spoke. Sam posts a short note saying nothing is queued yet.',
     mode: 'Mode',
     modes: {
       discover: 'Discover',
@@ -685,8 +686,26 @@ export const copy = {
     nudgeDrafted: 'Sam drafts it.',
     readOnly: 'Read only. To change any of this, paste a new payload.',
     pasteLink: 'Go to the paste box on Brief',
+    // The banner after a paste, when the header is not on Start. The first
+    // applies when the paste reached the open conversation, the second when
+    // the config waits for the next one.
+    importAppliedToOpen: '; agent config applied to the open conversation',
+    importAppliesNext: '; agent config applies from the next conversation',
     // Under the Start conversation modal's buttons.
     startHint: 'What Sam opens with is under Next round on this tab. A new paste changes it.',
+  },
+
+  // --- Builder: the last reminder to the maker, on the Conversations header and the
+  // dashboard card. English only; maker viewers never see these. ---
+  reminderLine: {
+    none: 'No reminder sent since the welcome was posted.',
+    emailed: (to: string, when: string) => `Reminder emailed to ${to}, ${when}.`,
+    copied: (when: string) => `Reminder text copied ${when}. The app did not send it.`,
+    automatic: (when: string) => `Automatic reminder emailed ${when}.`,
+    // A stamp with no stored method (recorded before 2026-11-23). A send that
+    // delivered nothing (all recipients suppressed on preview) records nothing.
+    recorded: (when: string) =>
+      `Reminder recorded ${when}. The app did not save whether it was emailed or copied.`,
   },
 
   // --- Admin: Loop feedback inbox bulk actions (#232). English only. ---

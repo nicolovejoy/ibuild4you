@@ -17,7 +17,11 @@ interface TurnIndicator {
 export function getTurnIndicator(
   project: Project | undefined,
   viewerRole: ViewerRole,
-  locale: Locale = 'en'
+  locale: Locale = 'en',
+  // The builder's Conversations header knows the open conversation's messages.
+  // `false` = the maker has not answered its opening (an import re-opened it
+  // with a new welcome), whatever the project's last-message time says.
+  opts: { makerAnsweredOpening?: boolean } = {}
 ): TurnIndicator | null {
   if (!project) return null
   const t = makerCopy[locale].turn
@@ -42,7 +46,8 @@ export function getTurnIndicator(
     return { state: 'maker_waiting', label: t.makerWaiting, className: 'bg-rose-100 text-rose-700' }
   }
 
-  const makerMessagedInCurrentSession = project.last_maker_message_at
+  const makerMessagedInCurrentSession = opts.makerAnsweredOpening !== false
+    && project.last_maker_message_at
     && project.latest_session_created_at
     && project.last_maker_message_at > project.latest_session_created_at
 

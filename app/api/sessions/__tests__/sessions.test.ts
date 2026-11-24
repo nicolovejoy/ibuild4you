@@ -43,10 +43,9 @@ let mockProjectExists = true
 // --- Mock active sessions query ---
 let mockActiveSessionDocs: { id: string; ref: { id: string } }[] = []
 
-// --- Mock maker-message lookup per session (#214 I1): session ids whose
-// conversation holds at least one role 'user' message. The route asks
-// messages.where(session_id).where(role == 'user').limit(1) per active session.
-let mockSessionsWithMakerMessage = new Set<string>()
+// --- Mock messages per session (#214 I1, Project 5): the route reads every
+// message of each active session and asks makerAnsweredOpening about them.
+let mockSessionMessages: Record<string, Record<string, unknown>[]> = {}
 const messagesQueries: string[] = []
 
 // --- Mock "all sessions for this project" query (#70 first-session check,
@@ -89,15 +88,11 @@ const mockDoc = vi.fn((id?: string) => ({
 function messagesCollection() {
   return {
     where: vi.fn((_field: string, _op: string, sessionId: string) => ({
-      where: vi.fn(() => ({
-        limit: vi.fn(() => ({
-          get: vi.fn(async () => {
-            messagesQueries.push(sessionId)
-            const has = mockSessionsWithMakerMessage.has(sessionId)
-            return { empty: !has, size: has ? 1 : 0, docs: has ? [{ id: 'm1' }] : [] }
-          }),
-        })),
-      })),
+      get: vi.fn(async () => {
+        messagesQueries.push(sessionId)
+        const rows = mockSessionMessages[sessionId] ?? []
+        return { docs: rows.map((d, i) => ({ id: `m${i}`, data: () => d })) }
+      }),
     })),
     doc: mockDoc,
   }
@@ -195,7 +190,7 @@ describe('POST /api/sessions', () => {
     mockActiveSessionDocs = []
     mockExistingSessionsCount = 0 // default: this is the project's first session
     mockExistingSessionDocs = null
-    mockSessionsWithMakerMessage = new Set()
+    mockSessionMessages = {}
     messagesQueries.length = 0
   })
 
@@ -327,7 +322,10 @@ describe('POST /api/sessions', () => {
       { id: 's2', data: () => ({ status: 'active', welcome_message: 'Round two hello' }) },
     ]
     mockActiveSessionDocs = [{ id: 's2', ref: { id: 's2' } }]
-    mockSessionsWithMakerMessage = new Set(['s1'])
+    // s2 holds only Sam's welcome: the maker never spoke in it.
+    mockSessionMessages = {
+      s2: [{ role: 'agent', content: 'Round two hello', created_at: '2026-10-10T08:00:00.000Z' }],
+    }
     mockProjectData = { ...mockProjectData, welcome_message: 'Round two hello' }
 
     await POST(makePostRequest({ project_id: 'proj1' }))
@@ -343,7 +341,52 @@ describe('POST /api/sessions', () => {
       { id: 's2', data: () => ({ status: 'active', welcome_message: 'Round two hello' }) },
     ]
     mockActiveSessionDocs = [{ id: 's2', ref: { id: 's2' } }]
-    mockSessionsWithMakerMessage = new Set(['s1', 's2'])
+    mockSessionMessages = { s2: [{ role: 'user', created_at: '2026-10-10T09:00:00.000Z' }] }
+    mockProjectData = { ...mockProjectData, welcome_message: 'Round two hello' }
+
+    await POST(makePostRequest({ project_id: 'proj1' }))
+
+    expect(batchSets.find((s) => s.data.role === 'agent')).toBeUndefined()
+  })
+
+  // Project 5: the maker spoke, then an import posted a new welcome (kind
+  // 'welcome') into the same conversation. The maker has not answered that
+  // welcome, so it was not used: replay it into the new conversation.
+  it('replays a welcome the maker has not answered when an import posted it after their last message', async () => {
+    mockExistingSessionDocs = [
+      { id: 's1', data: () => ({ status: 'completed', welcome_message: 'Round one hello' }) },
+      { id: 's2', data: () => ({ status: 'active', welcome_message: 'Round two hello' }) },
+    ]
+    mockActiveSessionDocs = [{ id: 's2', ref: { id: 's2' } }]
+    mockSessionMessages = {
+      s2: [
+        { role: 'user', created_at: '2026-10-10T09:00:00.000Z' },
+        { role: 'agent', content: 'Sam reply', created_at: '2026-10-10T10:00:00.000Z' },
+        { role: 'agent', kind: 'welcome', content: 'Round two hello', created_at: '2026-10-10T11:00:00.000Z' },
+      ],
+    }
+    mockProjectData = { ...mockProjectData, welcome_message: 'Round two hello' }
+
+    await POST(makePostRequest({ project_id: 'proj1' }))
+
+    const msgSet = batchSets.find((s) => s.data.role === 'agent')
+    expect(msgSet?.data.content).toBe('Round two hello')
+  })
+
+  it('does not replay an import-posted welcome the maker answered', async () => {
+    mockExistingSessionDocs = [
+      { id: 's1', data: () => ({ status: 'completed', welcome_message: 'Round one hello' }) },
+      { id: 's2', data: () => ({ status: 'active', welcome_message: 'Round two hello' }) },
+    ]
+    mockActiveSessionDocs = [{ id: 's2', ref: { id: 's2' } }]
+    mockSessionMessages = {
+      s2: [
+        { role: 'user', created_at: '2026-10-10T09:00:00.000Z' },
+        { role: 'agent', content: 'Sam reply', created_at: '2026-10-10T10:00:00.000Z' },
+        { role: 'agent', kind: 'welcome', content: 'Round two hello', created_at: '2026-10-10T11:00:00.000Z' },
+        { role: 'user', created_at: '2026-10-10T12:00:00.000Z' },
+      ],
+    }
     mockProjectData = { ...mockProjectData, welcome_message: 'Round two hello' }
 
     await POST(makePostRequest({ project_id: 'proj1' }))

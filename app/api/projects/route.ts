@@ -45,13 +45,18 @@ async function ensureUniqueSlug(db: FirebaseFirestore.Firestore, slug: string, e
 // apprentice's browser never gets them.
 const EMAIL_IN_FIELDS = ['email_in_address', 'last_email_at', 'email_in_dropped'] as const
 
+// Fields only builder-side viewers get. last_nudged_to holds the maker's
+// address(es); a maker or apprentice keeps last_nudged_at, which their
+// dashboard card shows as "Nudged ...".
+const BUILDER_ONLY_FIELDS = ['last_nudged_to'] as const
+
 function withoutEmailInFields<T extends Record<string, unknown>>(
   project: T,
   viewerRole: string | null | undefined
 ): T {
   if (viewerRole === 'owner' || viewerRole === 'builder' || viewerRole === 'admin') return project
   const stripped: Record<string, unknown> = { ...project }
-  for (const field of EMAIL_IN_FIELDS) delete stripped[field]
+  for (const field of [...EMAIL_IN_FIELDS, ...BUILDER_ONLY_FIELDS]) delete stripped[field]
   return stripped as T
 }
 
@@ -245,6 +250,20 @@ export async function PATCH(request: Request) {
     }
   }
   if ('model' in updates && !isBriefModel(updates.model)) patch.model = null
+  // Only the copy buttons send last_nudged_at, so the server records it as a
+  // copy. The client cannot claim an email, and the email route is the only
+  // writer of method 'email'. A copy leaves last_nudged_to and
+  // last_nudge_emailed_at alone, so they always describe the last email. The
+  // three method and email fields are not in `allowed`.
+  if ('last_nudged_at' in updates) {
+    patch.last_nudged_method = 'copy'
+    // The browser's clock is not compared with server times (the reminder line
+    // takes the newest of copies, emails and the cron), so the server's time
+    // replaces the client's. Builder activity sent in the same request is the
+    // same moment (useNudgeCopy sends both).
+    patch.last_nudged_at = patch.updated_at
+    if ('last_builder_activity_at' in updates) patch.last_builder_activity_at = patch.updated_at
+  }
 
   // Regenerate slug when title changes
   if (patch.title && typeof patch.title === 'string') {
@@ -255,16 +274,25 @@ export async function PATCH(request: Request) {
 
   // A later payload import: clean and re-arm the open conversation (#214).
   // Best effort; the project update above already succeeded.
+  // The answer says what the import did, so the builder's page does not have to
+  // guess it from messages that may still be stale. null = the step threw.
+  let importApplied: Awaited<ReturnType<typeof applyImportToOpenSession>> | null | undefined
   if ('payload_pasted_at' in updates) {
+    importApplied = null
     try {
       const result = await applyImportToOpenSession(db, project_id, { ...projectDoc.data(), ...patch }, patch.updated_at as string)
       console.log('[projects] apply_import', { project_id, result })
+      importApplied = result
     } catch (err) {
       console.error('[projects] apply_import_failed', err)
     }
   }
 
-  return NextResponse.json({ id: project_id, ...patch })
+  return NextResponse.json({
+    id: project_id,
+    ...patch,
+    ...(importApplied !== undefined ? { import_applied: importApplied } : {}),
+  })
 }
 
 // DELETE /api/projects?project_id=xxx — delete a project and all related data (owner only)

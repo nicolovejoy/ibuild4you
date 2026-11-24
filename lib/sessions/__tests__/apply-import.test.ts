@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import type { Firestore } from 'firebase-admin/firestore'
 import { applyImportToOpenSession } from '../apply-import'
+import { decideReminder } from '@/lib/api/reminder-cadence'
 
 // Minimal in-memory Firestore: collections of docs, where/orderBy/get, and a
 // batch that records writes (nothing is applied; tests assert on the record).
@@ -94,7 +95,42 @@ describe('applyImportToOpenSession', () => {
       id: 's1',
       data: { ...project, agent_model: null, last_kickoff_at: NOW, unqueued_notified_at: null, updated_at: NOW },
     })
-    expect(writes).toContainEqual({ op: 'update', collection: 'projects', id: 'p1', data: { maker_waiting_since: null } })
+    expect(writes).toContainEqual({
+      op: 'update',
+      collection: 'projects',
+      id: 'p1',
+      data: { maker_waiting_since: null, latest_session_created_at: NOW },
+    })
+  })
+
+  it('restarts the reminder cadence when a welcome is posted', async () => {
+    const { db, writes } = makeDb({ sessions: { s1: activeSession }, messages: { m: makerEarly, g: greeting } })
+    await applyImportToOpenSession(db, 'p1', project, NOW)
+    expect(writes).toContainEqual({
+      op: 'update',
+      collection: 'projects',
+      id: 'p1',
+      data: { maker_waiting_since: null, latest_session_created_at: NOW },
+    })
+  })
+
+  it('leaves the reminder cadence alone when no welcome is posted', async () => {
+    const { db, writes } = makeDb({
+      sessions: { s1: { ...activeSession, welcome_message: 'Fresh welcome' } },
+      messages: { m: makerEarly, g: greeting },
+    })
+    await applyImportToOpenSession(db, 'p1', project, NOW)
+    const projectUpdate = writes.find((w) => w.op === 'update' && w.collection === 'projects')
+    expect(projectUpdate?.data).toEqual({ maker_waiting_since: null })
+  })
+
+  it('after a posted welcome the cron no longer says the maker already responded', async () => {
+    const lastMakerMessageAt = makerEarly.created_at
+    const base = { autoRemindersEnabled: true, requesterEmail: 'maya@example.com', remindersSentCount: 0, lastMakerMessageAt }
+    const before = decideReminder({ ...base, latestSessionCreatedAt: '2026-10-10T00:00:00.000Z' }, new Date('2026-10-30T00:00:00.000Z'))
+    expect(before).toEqual({ send: false, reason: 'maker_already_responded' })
+    const after = decideReminder({ ...base, latestSessionCreatedAt: NOW }, new Date('2026-10-30T00:00:00.000Z'))
+    expect(after.send).toBe(true)
   })
 
   it('re-snapshots the project model as agent_model, null when unset (#189)', async () => {
@@ -116,7 +152,20 @@ describe('applyImportToOpenSession', () => {
     const sets = writes.filter((w) => w.op === 'set')
     expect(sets).toHaveLength(1)
     expect(sets[0].collection).toBe('messages')
-    expect(sets[0].data).toEqual({ session_id: 's1', role: 'agent', content: 'Fresh welcome', created_at: NOW, updated_at: NOW })
+    expect(sets[0].data).toEqual({ session_id: 's1', role: 'agent', kind: 'welcome', content: 'Fresh welcome', created_at: NOW, updated_at: NOW })
+  })
+
+  it('keeps a canned greeting the maker rated, and still deletes an unrated one', async () => {
+    const { db, writes } = makeDb({
+      sessions: { s1: activeSession },
+      messages: {
+        gRated: { ...greeting, rating: 'down' },
+        gPlain: { ...greeting, created_at: '2026-10-10T10:05:00.000Z' },
+      },
+    })
+    expect(await applyImportToOpenSession(db, 'p1', project, NOW)).toBe('applied')
+    expect(writes).not.toContainEqual(expect.objectContaining({ op: 'delete', id: 'gRated' }))
+    expect(writes).toContainEqual({ op: 'delete', collection: 'messages', id: 'gPlain' })
   })
 
   it('does not post a welcome an earlier session already used', async () => {
@@ -174,5 +223,83 @@ describe('applyImportToOpenSession', () => {
     await applyImportToOpenSession(db, 'p1', project, NOW)
     const upd = writes.find((w) => w.collection === 'sessions' && w.op === 'update')
     expect(upd?.data?.last_kickoff_at).toBeNull()
+  })
+
+  // Project 5: replace an unanswered opening, judge replies from the opening point.
+  const T1 = '2026-10-10T09:00:00.000Z'
+  const T2 = '2026-10-10T10:00:00.000Z'
+  const T3 = '2026-10-10T11:00:00.000Z'
+  const T4 = '2026-10-10T12:00:00.000Z'
+  const maker = (created_at: string) => ({ session_id: 's1', role: 'user', created_at })
+  const sam = (content: string, created_at: string, extra: Row = {}) => ({ session_id: 's1', role: 'agent', content, created_at, ...extra })
+  const deletes = (writes: { op: string; id: string }[]) => writes.filter((w) => w.op === 'delete').map((w) => w.id)
+
+  it('a maker message before an import-posted welcome is not a reply → applied', async () => {
+    const { db } = makeDb({
+      sessions: { s1: activeSession },
+      messages: { m1: maker(T1), a1: sam('Sam reply', T2), w1: sam('Older welcome', T3, { kind: 'welcome' }) },
+    })
+    expect(await applyImportToOpenSession(db, 'p1', project, NOW)).toBe('applied')
+  })
+
+  it('a maker message after an import-posted welcome is a reply → maker_replied, no writes', async () => {
+    const { db, writes } = makeDb({
+      sessions: { s1: activeSession },
+      messages: { m1: maker(T1), a1: sam('Sam reply', T2), w1: sam('Older welcome', T3, { kind: 'welcome' }), m2: maker(T4) },
+    })
+    expect(await applyImportToOpenSession(db, 'p1', project, NOW)).toBe('maker_replied')
+    expect(writes).toEqual([])
+  })
+
+  it('replaces an unanswered creation welcome instead of adding a second', async () => {
+    const { db, writes } = makeDb({
+      sessions: { s1: activeSession },
+      messages: { w0: sam('Old', T1) },
+    })
+    await applyImportToOpenSession(db, 'p1', project, NOW)
+    expect(writes).toContainEqual({ op: 'delete', collection: 'messages', id: 'w0' })
+    const sets = writes.filter((w) => w.op === 'set' && w.collection === 'messages')
+    expect(sets).toHaveLength(1)
+    expect(sets[0].data).toMatchObject({ kind: 'welcome', content: 'Fresh welcome' })
+  })
+
+  it('replaces an unanswered import-posted welcome and keeps the answered history', async () => {
+    const { db, writes } = makeDb({
+      sessions: { s1: activeSession },
+      messages: { m1: maker(T1), a1: sam('Sam reply', T2), w1: sam('Middle', T3, { kind: 'welcome' }) },
+    })
+    await applyImportToOpenSession(db, 'p1', project, NOW)
+    expect(deletes(writes)).toEqual(['w1'])
+    expect(writes.filter((w) => w.op === 'set')).toHaveLength(1)
+  })
+
+  it('re-opening after a greeting deletes the greeting only', async () => {
+    const { db, writes } = makeDb({
+      sessions: { s1: activeSession },
+      messages: { m1: maker(T1), a1: sam('Sam reply', T2), g: { ...greeting, created_at: T3 } },
+    })
+    await applyImportToOpenSession(db, 'p1', project, NOW)
+    expect(deletes(writes)).toEqual(['g'])
+    expect(writes.filter((w) => w.op === 'set')).toHaveLength(1)
+  })
+
+  it('deletes nothing but greetings when no welcome is posted', async () => {
+    const { db, writes } = makeDb({
+      sessions: { s1: { ...activeSession, welcome_message: 'Fresh welcome' } },
+      messages: { w0: sam('Fresh welcome', T1) },
+    })
+    await applyImportToOpenSession(db, 'p1', project, NOW)
+    expect(deletes(writes)).toEqual([])
+    expect(writes.filter((w) => w.op === 'set')).toEqual([])
+  })
+
+  it('keeps an unanswered opening the maker rated', async () => {
+    const { db, writes } = makeDb({
+      sessions: { s1: activeSession },
+      messages: { w0: sam('Old', T1, { rating: 'up' }) },
+    })
+    await applyImportToOpenSession(db, 'p1', project, NOW)
+    expect(deletes(writes)).toEqual([])
+    expect(writes.filter((w) => w.op === 'set')).toHaveLength(1)
   })
 })

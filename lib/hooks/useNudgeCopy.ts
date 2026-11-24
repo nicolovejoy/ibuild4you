@@ -2,9 +2,10 @@ import { useCallback, useState } from 'react'
 import { useUpdateProject } from '@/lib/query/hooks'
 
 /**
- * Copy a nudge/reminder message to the clipboard and record it as "sent"
- * (copying is treated as sending). Flips `copied` true for 2s and stamps
- * `last_nudged_at` + `last_builder_activity_at` on the project.
+ * Copy a nudge/reminder message to the clipboard and record the copy. Flips
+ * `copied` true for 2s and stamps `last_nudged_at` + `last_builder_activity_at`
+ * on the project. The server marks a PATCHed `last_nudged_at` as a copy
+ * (`last_nudged_method: 'copy'`): the app sent nothing.
  *
  * Extracted from the two identical copy-and-track blocks in BuilderProjectView
  * (NudgeDispatch + StartDispatch).

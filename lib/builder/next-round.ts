@@ -1,5 +1,6 @@
 import type { Project, Session } from '@/lib/types'
 import { welcomeToPost } from '@/lib/sessions/welcome'
+import { isPayloadQueued } from '@/lib/sessions/queued'
 
 // =============================================================================
 // NEXT ROUND (read-only panel on the builder Conversations tab)
@@ -18,7 +19,8 @@ import { welcomeToPost } from '@/lib/sessions/welcome'
 export type NextRoundOpening =
   | { kind: 'welcome'; text: string } // the builder's welcome, word for word
   | { kind: 'default' } // first conversation, no welcome set: the default copy
-  | { kind: 'kickoff' } // return conversation, nothing new: Sam greets
+  | { kind: 'kickoff' } // return conversation, a paste is queued: Sam greets with it
+  | { kind: 'nothing_queued' } // return conversation, nothing pasted since the maker spoke: the canned note
 
 export interface NextRound {
   opening: NextRoundOpening
@@ -41,6 +43,7 @@ export function nextRound(args: {
     | 'nudge_message'
     | 'payload_pasted_at'
     | 'payload_pasted_version'
+    | 'last_maker_message_at'
   >
   // The conversations the builder can see, in any order.
   sessions: Pick<Session, 'id' | 'welcome_message'>[]
@@ -60,7 +63,11 @@ export function nextRound(args: {
     ? { kind: 'welcome', text: welcome }
     : isFirstSession
       ? { kind: 'default' }
-      : { kind: 'kickoff' }
+      : // The kickoff of a new, empty return conversation posts the canned
+        // "nothing queued yet" note unless a paste is queued (isUnqueuedReturn).
+        isPayloadQueued(project)
+        ? { kind: 'kickoff' }
+        : { kind: 'nothing_queued' }
 
   const mode = project.session_mode || 'discover'
   const points = (mode === 'discover' ? project.seed_questions : project.builder_directives) || []

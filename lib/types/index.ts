@@ -45,7 +45,21 @@ export interface Project extends BaseEntity {
   requester_first_name?: string
   requester_last_name?: string
   shared_at?: string // when the project was shared with the maker
-  last_nudged_at?: string // when the builder last copied a nudge message
+  // The builder's latest reminder to the maker, emailed by the app (the email
+  // route writes it, for kinds reminder and nudge) or copied by the builder
+  // (PATCH /api/projects writes it). It is the newer of the two. Server-written
+  // together with the three fields below.
+  last_nudged_at?: string
+  // 'email' = the app sent it, 'copy' = the builder copied the text. null or
+  // missing = recorded before 2026-11-23.
+  last_nudged_method?: 'email' | 'copy' | null
+  // The addresses the last email actually went to. A copy does not touch it, so
+  // it always describes the last email.
+  last_nudged_to?: string[] | null
+  // When the last reminder email was sent (kinds reminder and nudge). A copy does
+  // not touch it. Missing on projects stamped before this field existed; the
+  // reminder line then falls back to last_nudged_at when the method is 'email'.
+  last_nudge_emailed_at?: string
   prep_copied_at?: string // when the builder last copied the prep prompt (client-set, UTC ISO)
   payload_pasted_at?: string // when the builder last pasted a brief payload (client-set, UTC ISO)
   maker_waiting_since?: string | null // set when the maker greeted/spoke into an unqueued session (#214); cleared when a payload is queued
@@ -96,6 +110,10 @@ export interface Project extends BaseEntity {
   auto_reminders_enabled?: boolean
   reminders_sent_count?: number
   last_reminder_sent_at?: string | null
+  // When the cron last sent an automatic reminder. Unlike last_reminder_sent_at
+  // (nulled by every maker message), nothing clears it; the builder's reminder
+  // line reads it.
+  last_auto_reminder_at?: string | null
   // Written by the notify cron's note writer (app/api/cron/notify, #229; the
   // field names predate it). The error is cleared on the next successful note;
   // the Brief tab shows it until then.
@@ -158,7 +176,9 @@ export interface Message extends BaseEntity {
   sender_email?: string // who sent this message (for user messages)
   sender_display_name?: string // cached display name at write time
   file_ids?: string[] // attached file IDs
-  kind?: 'unqueued_greeting' // canned "nothing queued" greeting, not model output (#214)
+  // 'unqueued_greeting' = canned "nothing queued" greeting, not model output (#214)
+  // 'welcome' = a builder welcome an import posted into an open conversation (Project 5)
+  kind?: 'unqueued_greeting' | 'welcome'
   sender_side?: 'builder' // an owner/builder turn or Sam's reply to it; kickoff ignores these (#254)
   rating?: 'up' | 'down' | null // maker's 👍/👎 on an agent message (#130)
   rating_reason?: string | null // maker's optional "what was off?" on a 👎

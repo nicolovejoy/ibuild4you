@@ -37,7 +37,11 @@ export function NextRoundPanel({
             <p className="whitespace-pre-wrap text-gray-800">{round.opening.text}</p>
           ) : (
             <p className="text-brand-ink-soft">
-              {round.opening.kind === 'default' ? t.openingDefault : t.openingKickoff}
+              {round.opening.kind === 'default'
+                ? t.openingDefault
+                : round.opening.kind === 'nothing_queued'
+                  ? t.openingNothingQueued
+                  : t.openingKickoff}
             </p>
           )}
         </Row>
