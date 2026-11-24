@@ -53,6 +53,12 @@ export function makerAnsweredOpening(messages: ReplyCheckMessage[]): boolean {
   return userMessageAfter(messages, newestAt(messages, ['welcome']))
 }
 
+// True when some role 'user' message has created_at after `since`.
+// Asked by the builder's header right after an import posted a welcome.
+export function makerSpokeAfter(messages: ReplyCheckMessage[], since: string): boolean {
+  return userMessageAfter(messages, since)
+}
+
 // Asked by the import (lib/sessions/apply-import.ts).
 export function makerRepliedSinceReopen(messages: ReplyCheckMessage[]): boolean {
   return userMessageAfter(messages, reopenPoint(messages))
