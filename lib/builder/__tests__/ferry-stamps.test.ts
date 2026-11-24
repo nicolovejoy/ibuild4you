@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { ferryStamps, makerNewerThanPaste, formatStampPacific } from '../ferry-stamps'
+import { ferryStamps, makerNewerThanPaste, formatStampPacific, pasteStatus } from '../ferry-stamps'
 
 const NOW = new Date('2026-10-17T18:00:00.000Z')
 
@@ -26,6 +26,39 @@ describe('makerNewerThanPaste', () => {
   it('false when there is no maker activity', () => {
     expect(makerNewerThanPaste({ payload_pasted_at: '2026-10-16T23:40:00.000Z' })).toBe(false)
     expect(makerNewerThanPaste({})).toBe(false)
+  })
+})
+
+describe('pasteStatus', () => {
+  const PASTE = '2026-10-16T23:40:00.000Z'
+  const BEFORE = '2026-10-16T10:00:00.000Z'
+  const AFTER = '2026-10-17T18:00:00.000Z'
+  const LATER = '2026-10-17T19:00:00.000Z'
+
+  it("'none' when nothing was ever pasted", () => {
+    expect(pasteStatus({})).toBe('none')
+    expect(pasteStatus({ last_maker_message_at: AFTER, prep_copied_at: LATER })).toBe('none')
+    expect(pasteStatus({ payload_pasted_at: 'garbage' })).toBe('none')
+  })
+  it("'current' when the maker has not written since the paste", () => {
+    expect(pasteStatus({ payload_pasted_at: PASTE })).toBe('current')
+    expect(pasteStatus({ payload_pasted_at: PASTE, last_maker_message_at: BEFORE })).toBe('current')
+  })
+  it("'used' when the maker has written since the paste", () => {
+    expect(pasteStatus({ payload_pasted_at: PASTE, last_maker_message_at: AFTER })).toBe('used')
+    // A prep copied before the maker's last message does not close the round.
+    expect(
+      pasteStatus({ payload_pasted_at: PASTE, last_maker_message_at: AFTER, prep_copied_at: BEFORE })
+    ).toBe('used')
+  })
+  it("'used_prep_copied' when the prep was copied after the maker's last message", () => {
+    expect(
+      pasteStatus({ payload_pasted_at: PASTE, last_maker_message_at: AFTER, prep_copied_at: LATER })
+    ).toBe('used_prep_copied')
+  })
+  it('ferryStamps carries it', () => {
+    expect(ferryStamps({ payload_pasted_at: PASTE }, NOW).pasteStatus).toBe('current')
+    expect(ferryStamps({}, NOW).pasteStatus).toBe('none')
   })
 })
 

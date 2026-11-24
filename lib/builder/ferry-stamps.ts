@@ -14,7 +14,16 @@ export type FerryStamp = {
   relative: string
   recency: StampRecency | null
 }
+// Whether the last paste is still the one the maker has to answer.
+//   none             nothing was ever pasted
+//   current          pasted, and the maker has not written since
+//   used             the maker has written since: the round is the builder's
+//   used_prep_copied the same, and the prep was copied after the maker's last
+//                    message: the next paste is what is missing
+export type PasteStatus = 'none' | 'current' | 'used' | 'used_prep_copied'
+
 export type FerryStamps = {
+  pasteStatus: PasteStatus
   copied: FerryStamp
   pasted: FerryStamp & { version: number | null }
   maker: FerryStamp & { who: string | null; newerThanPaste: boolean }
@@ -46,6 +55,20 @@ export function makerNewerThanPaste(p: {
   if (!isValid(p.last_maker_message_at)) return false
   if (!isValid(p.payload_pasted_at)) return true
   return new Date(p.last_maker_message_at).getTime() > new Date(p.payload_pasted_at).getTime()
+}
+
+/** Where the round stands, read from the same three stamps as the cards. */
+export function pasteStatus(p: {
+  payload_pasted_at?: string | null
+  last_maker_message_at?: string | null
+  prep_copied_at?: string | null
+}): PasteStatus {
+  if (!isValid(p.payload_pasted_at)) return 'none'
+  if (!makerNewerThanPaste(p)) return 'current'
+  const prepAfterMaker =
+    isValid(p.prep_copied_at) &&
+    new Date(p.prep_copied_at).getTime() > new Date(p.last_maker_message_at!).getTime()
+  return prepAfterMaker ? 'used_prep_copied' : 'used'
 }
 
 function stamp(iso: string | null | undefined, now: Date): FerryStamp {
@@ -85,6 +108,7 @@ export function ferryStamps(
 ): FerryStamps {
   const who = project.requester_first_name || project.requester_email?.split('@')[0] || null
   const stamps: FerryStamps = {
+    pasteStatus: pasteStatus(project),
     copied: stamp(project.prep_copied_at, now),
     pasted: { ...stamp(project.payload_pasted_at, now), version: project.payload_pasted_version ?? null },
     maker: {
