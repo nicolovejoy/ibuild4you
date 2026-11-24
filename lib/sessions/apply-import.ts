@@ -15,13 +15,20 @@ const CONFIG_FIELDS = ['session_mode', 'seed_questions', 'builder_directives', '
 // flags, and post the new welcome if it is new for this round (#214). A new
 // welcome replaces the unanswered opening instead of following it (Project 5).
 // The import reads and writes in one transaction, so a maker reply or rating
-// that lands meanwhile is seen.
+// that lands meanwhile is seen. welcomePosted tells the builder's header whether
+// the conversation now opens with a welcome the maker has not answered.
+export type ImportOutcome = {
+  result: 'no_session' | 'maker_replied' | 'applied'
+  // True only when result is 'applied' and a new welcome was posted (kind 'welcome').
+  welcomePosted: boolean
+}
+
 export async function applyImportToOpenSession(
   db: Firestore,
   projectId: string,
   project: Record<string, unknown>,
   now: string
-): Promise<'no_session' | 'maker_replied' | 'applied'> {
+): Promise<ImportOutcome> {
   // One transaction from the first read to the last write: a maker message or
   // a rating that lands while the import runs is either seen (Firestore re-runs
   // this callback with the new state) or waits until the import has committed.
@@ -32,7 +39,7 @@ export async function applyImportToOpenSession(
     const active = sessionSnap.docs
       .filter((d) => d.data().status === 'active')
       .sort((a, b) => String(b.data().created_at).localeCompare(String(a.data().created_at)))[0]
-    if (!active) return 'no_session'
+    if (!active) return { result: 'no_session', welcomePosted: false }
 
     const msgSnap = await tx.get(
       db.collection('messages').where('session_id', '==', active.id).orderBy('created_at', 'asc')
@@ -40,7 +47,7 @@ export async function applyImportToOpenSession(
     const messages = msgSnap.docs
     const greetings = messages.filter((d) => d.data().kind === 'unqueued_greeting')
     const replyRows = messages.map((d) => d.data() as ReplyCheckMessage)
-    if (makerRepliedSinceReopen(replyRows)) return 'maker_replied'
+    if (makerRepliedSinceReopen(replyRows)) return { result: 'maker_replied', welcomePosted: false }
 
     // The welcome the session already opened with (its snapshot, read before we
     // overwrite it) counts as used, so re-importing an unchanged welcome is a no-op.
@@ -115,6 +122,6 @@ export async function applyImportToOpenSession(
       })
     }
 
-    return 'applied'
+    return { result: 'applied', welcomePosted: toPost !== null }
   })
 }

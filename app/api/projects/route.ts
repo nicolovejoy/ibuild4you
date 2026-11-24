@@ -276,13 +276,16 @@ export async function PATCH(request: Request) {
   // Best effort; the project update above already succeeded.
   // The answer says what the import did, so the builder's page does not have to
   // guess it from messages that may still be stale. null = the step threw.
-  let importApplied: Awaited<ReturnType<typeof applyImportToOpenSession>> | null | undefined
+  let importApplied: Awaited<ReturnType<typeof applyImportToOpenSession>>['result'] | null | undefined
+  let importWelcomePosted: boolean | undefined
   if ('payload_pasted_at' in updates) {
     importApplied = null
+    importWelcomePosted = false
     try {
-      const result = await applyImportToOpenSession(db, project_id, { ...projectDoc.data(), ...patch }, patch.updated_at as string)
-      console.log('[projects] apply_import', { project_id, result })
-      importApplied = result
+      const outcome = await applyImportToOpenSession(db, project_id, { ...projectDoc.data(), ...patch }, patch.updated_at as string)
+      console.log('[projects] apply_import', { project_id, result: outcome.result, welcome_posted: outcome.welcomePosted })
+      importApplied = outcome.result
+      importWelcomePosted = outcome.welcomePosted
     } catch (err) {
       console.error('[projects] apply_import_failed', err)
     }
@@ -291,7 +294,9 @@ export async function PATCH(request: Request) {
   return NextResponse.json({
     id: project_id,
     ...patch,
-    ...(importApplied !== undefined ? { import_applied: importApplied } : {}),
+    ...(importApplied !== undefined
+      ? { import_applied: importApplied, import_welcome_posted: importWelcomePosted }
+      : {}),
   })
 }
 

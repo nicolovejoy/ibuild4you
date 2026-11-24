@@ -53,7 +53,11 @@ function makeDb(data: Data, opts: { interleave?: (data: Data) => void } = {}) {
       for (let attempt = 1; ; attempt++) {
         const pending: typeof writes = []
         const tx = {
-          get: (q: { _run: () => Promise<unknown> }) => q._run(),
+          get: (q: { _run: () => Promise<unknown> }) => {
+            // Real Firestore refuses a read after a write in the same transaction.
+            if (pending.length > 0) throw new Error('Firestore transactions must read before they write')
+            return q._run()
+          },
           delete: (r: Ref) => pending.push({ op: 'delete', collection: r.collection, id: r.id }),
           update: (r: Ref, d: Row) => pending.push({ op: 'update', collection: r.collection, id: r.id, data: d }),
           set: (r: Ref, d: Row) => pending.push({ op: 'set', collection: r.collection, id: r.id, data: d }),
@@ -88,7 +92,7 @@ const activeSession = { project_id: 'p1', status: 'active', created_at: '2026-10
 describe('applyImportToOpenSession', () => {
   it('no active session → no_session, no writes', async () => {
     const { db, writes } = makeDb({ sessions: { s1: { ...activeSession, status: 'completed' } } })
-    expect(await applyImportToOpenSession(db, 'p1', project, NOW)).toBe('no_session')
+    expect((await applyImportToOpenSession(db, 'p1', project, NOW)).result).toBe('no_session')
     expect(writes).toEqual([])
   })
 
@@ -97,13 +101,13 @@ describe('applyImportToOpenSession', () => {
       sessions: { s1: activeSession },
       messages: { g: greeting, m: { session_id: 's1', role: 'user', created_at: '2026-10-11T00:00:00.000Z' } },
     })
-    expect(await applyImportToOpenSession(db, 'p1', project, NOW)).toBe('maker_replied')
+    expect((await applyImportToOpenSession(db, 'p1', project, NOW)).result).toBe('maker_replied')
     expect(writes).toEqual([])
   })
 
   it('no greeting but a maker message → maker_replied', async () => {
     const { db, writes } = makeDb({ sessions: { s1: activeSession }, messages: { m: makerEarly } })
-    expect(await applyImportToOpenSession(db, 'p1', project, NOW)).toBe('maker_replied')
+    expect((await applyImportToOpenSession(db, 'p1', project, NOW)).result).toBe('maker_replied')
     expect(writes).toEqual([])
   })
 
@@ -112,7 +116,7 @@ describe('applyImportToOpenSession', () => {
       sessions: { s1: activeSession },
       messages: { m: makerEarly, g: greeting },
     })
-    expect(await applyImportToOpenSession(db, 'p1', project, NOW)).toBe('applied')
+    expect((await applyImportToOpenSession(db, 'p1', project, NOW)).result).toBe('applied')
     expect(writes).toContainEqual({ op: 'delete', collection: 'messages', id: 'g' })
     expect(writes).not.toContainEqual(expect.objectContaining({ op: 'delete', id: 'm' }))
     expect(writes).toContainEqual({
@@ -189,7 +193,7 @@ describe('applyImportToOpenSession', () => {
         gPlain: { ...greeting, created_at: '2026-10-10T10:05:00.000Z' },
       },
     })
-    expect(await applyImportToOpenSession(db, 'p1', project, NOW)).toBe('applied')
+    expect((await applyImportToOpenSession(db, 'p1', project, NOW)).result).toBe('applied')
     expect(writes).not.toContainEqual(expect.objectContaining({ op: 'delete', id: 'gRated' }))
     expect(writes).toContainEqual({ op: 'delete', collection: 'messages', id: 'gPlain' })
   })
@@ -199,13 +203,13 @@ describe('applyImportToOpenSession', () => {
       sessions: { s1: activeSession, s0: { project_id: 'p1', status: 'completed', created_at: '2026-10-01T00:00:00.000Z', welcome_message: 'Fresh welcome' } },
       messages: { g: greeting },
     })
-    expect(await applyImportToOpenSession(db, 'p1', project, NOW)).toBe('applied')
+    expect((await applyImportToOpenSession(db, 'p1', project, NOW)).result).toBe('applied')
     expect(writes.filter((w) => w.op === 'set')).toEqual([])
   })
 
   it('session with no greeting and no maker message → applied (re-snapshot only)', async () => {
     const { db, writes } = makeDb({ sessions: { s1: activeSession }, messages: {} })
-    expect(await applyImportToOpenSession(db, 'p1', project, NOW)).toBe('applied')
+    expect((await applyImportToOpenSession(db, 'p1', project, NOW)).result).toBe('applied')
     expect(writes.filter((w) => w.op === 'delete')).toEqual([])
     expect(writes).toContainEqual(expect.objectContaining({ op: 'update', collection: 'sessions', id: 's1' }))
   })
@@ -224,7 +228,7 @@ describe('applyImportToOpenSession', () => {
       sessions: { s1: { ...activeSession, welcome_message: 'Fresh welcome' } },
       messages: { g: greeting },
     })
-    expect(await applyImportToOpenSession(db, 'p1', project, NOW)).toBe('applied')
+    expect((await applyImportToOpenSession(db, 'p1', project, NOW)).result).toBe('applied')
     expect(writes.filter((w) => w.op === 'set')).toEqual([])
   })
 
@@ -265,7 +269,7 @@ describe('applyImportToOpenSession', () => {
       sessions: { s1: activeSession },
       messages: { m1: maker(T1), a1: sam('Sam reply', T2), w1: sam('Older welcome', T3, { kind: 'welcome' }) },
     })
-    expect(await applyImportToOpenSession(db, 'p1', project, NOW)).toBe('applied')
+    expect((await applyImportToOpenSession(db, 'p1', project, NOW)).result).toBe('applied')
   })
 
   it('a maker message after an import-posted welcome is a reply → maker_replied, no writes', async () => {
@@ -273,7 +277,7 @@ describe('applyImportToOpenSession', () => {
       sessions: { s1: activeSession },
       messages: { m1: maker(T1), a1: sam('Sam reply', T2), w1: sam('Older welcome', T3, { kind: 'welcome' }), m2: maker(T4) },
     })
-    expect(await applyImportToOpenSession(db, 'p1', project, NOW)).toBe('maker_replied')
+    expect((await applyImportToOpenSession(db, 'p1', project, NOW)).result).toBe('maker_replied')
     expect(writes).toEqual([])
   })
 
@@ -343,7 +347,7 @@ describe('applyImportToOpenSession', () => {
       { sessions: { s1: activeSession }, messages: { w0: sam('Old', T1) } },
       { interleave: (d) => { d.messages.m9 = maker(T2) } }
     )
-    expect(await applyImportToOpenSession(db, 'p1', project, NOW)).toBe('maker_replied')
+    expect((await applyImportToOpenSession(db, 'p1', project, NOW)).result).toBe('maker_replied')
     expect(writes).toEqual([])
   })
 
@@ -366,5 +370,30 @@ describe('applyImportToOpenSession', () => {
     )
     await applyImportToOpenSession(db, 'p1', project, NOW)
     expect(writes.filter((w) => w.op === 'set' && w.collection === 'messages')).toEqual([])
+  })
+
+  // #293 item 2: the answer says whether a welcome was posted.
+  it('says a welcome was posted when it posts one', async () => {
+    const { db } = makeDb({ sessions: { s1: activeSession }, messages: { g: greeting } })
+    expect(await applyImportToOpenSession(db, 'p1', project, NOW)).toEqual({ result: 'applied', welcomePosted: true })
+  })
+
+  it('says no welcome was posted when it only re-arms the conversation', async () => {
+    const { db, writes } = makeDb({
+      sessions: { s1: { ...activeSession, welcome_message: 'Fresh welcome' } },
+      messages: { m: makerEarly, g: greeting },
+    })
+    expect(await applyImportToOpenSession(db, 'p1', project, NOW)).toEqual({ result: 'applied', welcomePosted: false })
+    expect(writes).toContainEqual({ op: 'delete', collection: 'messages', id: 'g' })
+  })
+
+  it('never says a welcome was posted when it did not apply', async () => {
+    const none = makeDb({ sessions: { s1: { ...activeSession, status: 'completed' } } })
+    expect((await applyImportToOpenSession(none.db, 'p1', project, NOW)).welcomePosted).toBe(false)
+    const replied = makeDb({
+      sessions: { s1: activeSession },
+      messages: { g: greeting, m: { session_id: 's1', role: 'user', created_at: '2026-10-11T00:00:00.000Z' } },
+    })
+    expect((await applyImportToOpenSession(replied.db, 'p1', project, NOW)).welcomePosted).toBe(false)
   })
 })

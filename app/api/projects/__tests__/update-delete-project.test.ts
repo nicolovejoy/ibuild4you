@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { NextResponse } from 'next/server'
 import { PATCH, DELETE } from '../route'
 
-const mockApplyImport = vi.fn(async () => 'applied')
+const mockApplyImport = vi.fn(async () => ({ result: 'applied', welcomePosted: true }))
 vi.mock('@/lib/sessions/apply-import', () => ({
   applyImportToOpenSession: (...args: unknown[]) => (mockApplyImport as (...a: unknown[]) => unknown)(...args),
 }))
@@ -287,10 +287,10 @@ describe('PATCH /api/projects', () => {
   })
 
   it('PATCH logs the import outcome (no emails, no content)', async () => {
-    mockApplyImport.mockResolvedValueOnce('maker_replied')
+    mockApplyImport.mockResolvedValueOnce({ result: 'maker_replied', welcomePosted: false })
     const spy = vi.spyOn(console, 'log').mockImplementation(() => {})
     await PATCH(makePatchRequest({ project_id: 'proj-1', payload_pasted_at: '2026-10-17T00:00:00.000Z' }))
-    expect(spy).toHaveBeenCalledWith('[projects] apply_import', { project_id: 'proj-1', result: 'maker_replied' })
+    expect(spy).toHaveBeenCalledWith('[projects] apply_import', { project_id: 'proj-1', result: 'maker_replied', welcome_posted: false })
     spy.mockRestore()
   })
 
@@ -309,25 +309,40 @@ describe('PATCH /api/projects', () => {
   })
 
   it('PATCH with payload_pasted_at answers what the import did', async () => {
-    mockApplyImport.mockResolvedValueOnce('applied')
+    mockApplyImport.mockResolvedValueOnce({ result: 'applied', welcomePosted: true })
     const res = await PATCH(makePatchRequest({ project_id: 'proj-1', payload_pasted_at: '2026-10-17T00:00:00.000Z' }))
     expect((await res.json()).import_applied).toBe('applied')
-    mockApplyImport.mockResolvedValueOnce('maker_replied')
+    mockApplyImport.mockResolvedValueOnce({ result: 'maker_replied', welcomePosted: false })
     const res2 = await PATCH(makePatchRequest({ project_id: 'proj-1', payload_pasted_at: '2026-10-17T00:00:00.000Z' }))
     expect((await res2.json()).import_applied).toBe('maker_replied')
+  })
+
+  it('PATCH answers whether the import posted a welcome', async () => {
+    mockApplyImport.mockResolvedValueOnce({ result: 'applied', welcomePosted: false })
+    const res = await PATCH(makePatchRequest({ project_id: 'proj-1', payload_pasted_at: '2026-10-17T00:00:00.000Z' }))
+    const body = await res.json()
+    expect(body.import_applied).toBe('applied')
+    expect(body.import_welcome_posted).toBe(false)
+    mockApplyImport.mockResolvedValueOnce({ result: 'applied', welcomePosted: true })
+    const res2 = await PATCH(makePatchRequest({ project_id: 'proj-1', payload_pasted_at: '2026-10-17T00:00:00.000Z' }))
+    expect((await res2.json()).import_welcome_posted).toBe(true)
   })
 
   it('PATCH answers import_applied null when the import step threw', async () => {
     mockApplyImport.mockRejectedValueOnce(new Error('boom'))
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
     const res = await PATCH(makePatchRequest({ project_id: 'proj-1', payload_pasted_at: '2026-10-17T00:00:00.000Z' }))
-    expect((await res.json()).import_applied).toBeNull()
+    const body = await res.json()
+    expect(body.import_applied).toBeNull()
+    expect(body.import_welcome_posted).toBe(false)
     spy.mockRestore()
   })
 
   it('PATCH without payload_pasted_at has no import_applied', async () => {
     const res = await PATCH(makePatchRequest({ project_id: 'proj-1', context: 'x' }))
-    expect('import_applied' in (await res.json())).toBe(false)
+    const body = await res.json()
+    expect('import_applied' in body).toBe(false)
+    expect('import_welcome_posted' in body).toBe(false)
   })
 
   it('marks a PATCHed last_nudged_at as a copy', async () => {
