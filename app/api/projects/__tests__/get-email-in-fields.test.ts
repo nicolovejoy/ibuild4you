@@ -219,6 +219,18 @@ describe('GET /api/projects (the list): removed members', () => {
     expect(await get()).toEqual([])
   })
 
+  // An admin with no active row on a brief is just an admin there: the default
+  // role, not the removed row's.
+  it('ignores the removed row of a system admin', async () => {
+    auth.systemRoles = ['admin']
+    members = [
+      { project_id: 'p1', user_id: 'u1', email: 'viewer@example.com', role: 'maker', removed_at: REMOVED },
+    ]
+    const list = (await get()) as Doc[]
+    expect(list).toHaveLength(2)
+    expect(list.find((p) => p.id === 'p1')!.viewer_role).toBe('admin')
+  })
+
   it('leaves it out when the removed row matches by email only', async () => {
     members = [
       { project_id: 'p1', user_id: null, email: 'viewer@example.com', role: 'builder', removed_at: REMOVED },

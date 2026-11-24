@@ -1233,6 +1233,11 @@ function StatusStrip({
   const router = useRouter()
   const { data: members } = useProjectMembers(project.id)
   const { data: activeMessages } = useMessages(activeSession?.id)
+  // The maker spoke after the import landed (any kind of import). The Start
+  // window opens by itself only for the import the builder just made, never
+  // because the maker answered later while the banner is still up.
+  const makerSpokeSinceImport =
+    !!activeMessages && !!justImported?.importedAt && makerSpokeAfter(activeMessages, justImported.importedAt)
   // Has the maker answered the conversation's opening? An import that posts a
   // new welcome re-opens it, so earlier maker messages stop counting (Project 5).
   // While the banner after a paste is up and the server says the import posted
@@ -1242,13 +1247,8 @@ function StatusStrip({
   // its modal. Otherwise, the messages decide.
   const welcomeJustPosted = !!justImported?.welcomePosted && !!activeSession
   const makerAnswered = welcomeJustPosted
-    ? !!activeMessages && !!justImported?.importedAt && makerSpokeAfter(activeMessages, justImported.importedAt)
+    ? makerSpokeSinceImport
     : activeMessages ? makerAnsweredOpening(activeMessages) : false
-  // The maker spoke after the import landed (any kind of import). The Start
-  // window opens by itself only for the import the builder just made, never
-  // because the maker answered later while the banner is still up.
-  const makerSpokeSinceImport =
-    !!activeMessages && !!justImported?.importedAt && makerSpokeAfter(activeMessages, justImported.importedAt)
   // The badge reads the project's last-message time, which still says the maker
   // spoke after an import re-opened their conversation. With the messages in
   // hand, say it is the maker's turn there.

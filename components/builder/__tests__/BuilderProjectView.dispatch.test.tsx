@@ -372,7 +372,7 @@ describe('the banner after a paste', () => {
     expect(screen.queryByRole('button', { name: /Start conversation 2/ })).toBeNull()
   })
 
-  it('stays on Start through the banner when the import re-armed the conversation without posting a welcome', async () => {
+  it('offers Start and opens the Start window when the import re-armed the conversation without posting a welcome', async () => {
     welcomePosted = false
     answers['/api/messages'] = [userMsg('m1', T1), agentMsg('m2', T2)]
     await pasteAndImport()
@@ -387,6 +387,18 @@ describe('the banner after a paste', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: copy.modal.close }))
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
     expect(screen.getByRole('button', { name: /Start conversation 2/ })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /^Nudge/ })).toBeNull()
+  })
+
+  it('opens the Start window by itself in the ferry case, when the maker had already replied', async () => {
+    importApplied = 'maker_replied'
+    answers['/api/messages'] = [userMsg('m1', T1), agentMsg('m2', T2)]
+    await pasteAndImport()
+    await waitFor(() => expect(apiFetch.mock.calls.some(([u]) => u.startsWith('/api/messages'))).toBe(true))
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20))
+    })
+    expect(await screen.findByRole('dialog')).toBeTruthy()
     expect(screen.queryByRole('button', { name: /^Nudge/ })).toBeNull()
   })
 

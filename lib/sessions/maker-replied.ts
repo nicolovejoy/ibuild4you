@@ -1,6 +1,7 @@
 // One rule for "has the maker answered this conversation's opening" (Project 5).
-// Asked by the import (apply-import), POST /api/sessions and the builder's
-// Conversations header, so the three never disagree.
+// The opening rule is asked by the import (apply-import), POST /api/sessions
+// and the builder's Conversations header, so the three never disagree. The
+// header also asks makerSpokeAfter (below), a plain "since" check.
 //
 // 1. A welcome posted by an import carries kind 'welcome'. Welcomes posted at
 //    creation stay untagged.
@@ -54,7 +55,9 @@ export function makerAnsweredOpening(messages: ReplyCheckMessage[]): boolean {
 }
 
 // True when some role 'user' message has created_at after `since`.
-// Asked by the builder's header right after an import posted a welcome.
+// Asked by the builder's header after any import: to count a maker reply to a
+// welcome the import posted, and to keep the Start window from opening by
+// itself when the maker spoke after the import.
 export function makerSpokeAfter(messages: ReplyCheckMessage[], since: string): boolean {
   return userMessageAfter(messages, since)
 }

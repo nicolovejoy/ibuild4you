@@ -7,6 +7,13 @@ import { makerRepliedSinceReopen, reopenPoint, type ReplyCheckMessage } from './
 // (plus agent_model, always written, below).
 const CONFIG_FIELDS = ['session_mode', 'seed_questions', 'builder_directives', 'welcome_message', 'identity'] as const
 
+// What the import did to the open conversation.
+export type ImportOutcome = {
+  result: 'no_session' | 'maker_replied' | 'applied'
+  // True only when result is 'applied' and a new welcome was posted (kind 'welcome').
+  welcomePosted: boolean
+}
+
 // A builder imports a later payload (payload_pasted_at stamped) while a
 // conversation is already open. The import re-opens the conversation when the
 // maker has not spoken since its last opening (an import-posted welcome or the
@@ -17,12 +24,6 @@ const CONFIG_FIELDS = ['session_mode', 'seed_questions', 'builder_directives', '
 // The import reads and writes in one transaction, so a maker reply or rating
 // that lands meanwhile is seen. welcomePosted tells the builder's header whether
 // the conversation now opens with a welcome the maker has not answered.
-export type ImportOutcome = {
-  result: 'no_session' | 'maker_replied' | 'applied'
-  // True only when result is 'applied' and a new welcome was posted (kind 'welcome').
-  welcomePosted: boolean
-}
-
 export async function applyImportToOpenSession(
   db: Firestore,
   projectId: string,

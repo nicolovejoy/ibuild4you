@@ -142,6 +142,8 @@ export async function GET(request: Request) {
     for (const doc of projects) viewerRoles.set(doc.id, 'admin')
     for (const doc of adminMemberSnap.docs) {
       const d = doc.data()
+      // A removed row says nothing about the admin's role: they stay admin there.
+      if (!isActiveMember(d)) continue
       viewerRoles.set(d.project_id as string, d.role as string)
       viewerBriefRoles.set(d.project_id as string, (d.brief_role as BriefRole | null) ?? null)
       viewerArchived.set(d.project_id as string, !!d.archived_at)
