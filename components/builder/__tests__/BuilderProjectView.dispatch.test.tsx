@@ -28,10 +28,10 @@ const apiFetch = vi.fn(async (url: string, init?: { method?: string; body?: stri
       ...(answers['/api/projects'] as object),
       last_nudged_at: '2026-11-23T22:10:00.000Z', // after the welcome the tests post (T3)
       last_nudged_method: 'email',
-      last_nudged_to: ['sam@example.com'],
+      last_nudged_to: ['maya@example.com'],
     }
     return new Response(
-      JSON.stringify({ ok: true, results: [], to: ['sam@example.com'], suppressed: false }),
+      JSON.stringify({ ok: true, results: [], to: ['maya@example.com'], suppressed: false }),
       { status: 200 }
     )
   }
@@ -102,7 +102,7 @@ beforeEach(() => {
     slug: 'cafe',
     title: 'Cafe',
     language: 'en',
-    requester_email: 'sam@example.com',
+    requester_email: 'maya@example.com',
     session_mode: 'discover',
     welcome_message: 'Round two hello',
   }
@@ -138,7 +138,7 @@ describe('Conversations header: Nudge or Start', () => {
     answers['/api/messages'] = [userMsg('m1', T1), agentMsg('m2', T2), agentMsg('m3', T3, 'welcome')]
     await renderView()
     expect(await screen.findByRole('button', { name: /^Nudge/ })).toBeTruthy()
-    expect(screen.getByText('Waiting on sam')).toBeTruthy()
+    expect(screen.getByText('Waiting on maya')).toBeTruthy()
     expect(screen.queryByText('Your turn')).toBeNull()
   })
 
@@ -305,13 +305,13 @@ describe('the last reminder on the header', () => {
       ...(answers['/api/projects'] as object),
       last_nudged_at: emailedAt,
       last_nudged_method: 'email',
-      last_nudged_to: ['sam@example.com'],
+      last_nudged_to: ['maya@example.com'],
     }
     answers['/api/messages'] = [userMsg('m1', T1), agentMsg('m2', T2), agentMsg('m3', T3, 'welcome')]
     await renderView()
     expect(await screen.findByRole('button', { name: /^Nudge/ })).toBeTruthy()
-    const line = reminderText({ kind: 'emailed', at: emailedAt, to: ['sam@example.com'] })
-    expect(line).toBe('Reminder emailed to sam@example.com, November 23, 2:10 PM.')
+    const line = reminderText({ kind: 'emailed', at: emailedAt, to: ['maya@example.com'] })
+    expect(line).toBe('Reminder emailed to maya@example.com, November 23, 2:10 PM.')
     expect(screen.getByText(line)).toBeTruthy()
   })
 
@@ -365,7 +365,7 @@ describe('the last reminder on the header', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
     expect(screen.getByRole('button', { name: /^Nudge/ })).toBeTruthy()
     // The line now says it was emailed, to the address the server reported.
-    expect(await screen.findByText(/^Reminder emailed to sam@example\.com, /)).toBeTruthy()
+    expect(await screen.findByText(/^Reminder emailed to maya@example\.com, /)).toBeTruthy()
     expect(screen.queryByText(copy.reminderLine.none)).toBeNull()
   })
 })

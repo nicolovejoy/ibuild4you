@@ -77,7 +77,12 @@ try {
   if (second.length === 1 && second[0].content === W2) pass('return conversation with a new welcome opens with it verbatim (URL intact)')
   else fail(`return/new welcome: ${JSON.stringify(second.map((m) => [m.role, m.content]))}`)
 
-  // 3. Return conversation, welcome unchanged.
+  // 3. Return conversation, welcome unchanged. A conversation with no maker
+  // message counts as unused (#214), so its welcome would be replayed. Post a
+  // message in the second one first (the owner's chat message counts; reply:false
+  // skips the model call), so the third opens empty and the kickoff greets.
+  const said = await api('POST', '/api/chat', { session_id: s2, content: 'Thanks, got it.', reply: false })
+  if (said.status() !== 200 && said.status() !== 201) throw new Error(`POST /api/chat (second conversation) → ${said.status()}`)
   const s3 = await newSession()
   const third = await messagesOf(s3)
   if (third.length === 0) pass('return conversation with an unchanged welcome opens empty (kickoff greets)')

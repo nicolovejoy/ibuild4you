@@ -702,7 +702,8 @@ export const copy = {
     emailed: (to: string, when: string) => `Reminder emailed to ${to}, ${when}.`,
     copied: (when: string) => `Reminder text copied ${when}. The app did not send it.`,
     automatic: (when: string) => `Automatic reminder emailed ${when}.`,
-    // A stamp with no stored method (before 2026-11-23, or nothing went out).
+    // A stamp with no stored method (recorded before 2026-11-23). A send that
+    // delivered nothing (all recipients suppressed on preview) records nothing.
     recorded: (when: string) =>
       `Reminder recorded ${when}. The app did not save whether it was emailed or copied.`,
   },
