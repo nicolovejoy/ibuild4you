@@ -177,6 +177,46 @@ describe('planArchive', () => {
   })
 })
 
+// #296: a conversation archived earlier is not a survivor. Its start, and a
+// welcome an import posted into it, must not reach the counters.
+describe('conversations archived earlier are left out of the counters (#296)', () => {
+  const sessions = [
+    sess('s1', '2026-01-01T00:00:00Z', 'completed', 5),
+    sess('s2', '2026-02-01T00:00:00Z', 'active', 0),
+    sess('old', '2026-03-01T00:00:00Z', 'archived', 2, '2026-04-01T00:00:00Z'),
+  ]
+
+  it('planArchive does not count one', () => {
+    const plan = planArchive({ sessions, sessionId: 's2', briefTitle: 'Cafe App', now: NOW })
+    if ('error' in plan) throw new Error(plan.error)
+    expect(plan.projectPatch).toEqual({
+      session_count: 1,
+      latest_session_created_at: '2026-01-01T00:00:00Z',
+      updated_at: NOW,
+    })
+  })
+
+  it('planReopen does not count one', () => {
+    const plan = planReopen({ sessions, reopenId: 's1', archiveId: 's2', now: NOW })
+    if ('error' in plan) throw new Error(plan.error)
+    expect(plan.projectPatch).toEqual({
+      session_count: 1,
+      latest_session_created_at: '2026-01-01T00:00:00Z',
+      updated_at: NOW,
+    })
+  })
+
+  it('planReopen counts the reopened conversation when it was the archived one', () => {
+    const plan = planReopen({ sessions, reopenId: 'old', now: NOW })
+    if ('error' in plan) throw new Error(plan.error)
+    expect(plan.projectPatch).toEqual({
+      session_count: 3,
+      latest_session_created_at: '2026-04-01T00:00:00Z',
+      updated_at: NOW,
+    })
+  })
+})
+
 describe('planResetToFresh', () => {
   it('archives ALL sessions (reversible) and zeroes the counters', () => {
     const sessions = [sess('s1', '2026-01-01T00:00:00Z', 'completed', 9), sess('s2', '2026-02-01T00:00:00Z', 'active', 0)]

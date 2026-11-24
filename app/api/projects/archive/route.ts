@@ -5,6 +5,7 @@ import {
   getProjectRole,
 } from '@/lib/api/firebase-server-helpers'
 import { normalizeEmail } from '@/lib/email/normalize'
+import { findViewerMemberRows } from '@/lib/members/find'
 
 // PATCH /api/projects/archive — the caller archives/unarchives THIS brief from
 // their own dashboard. Per-viewer: the flag lives on the caller's membership, so
@@ -41,29 +42,24 @@ export async function PATCH(request: Request) {
 
   const archivedAt = archived ? new Date().toISOString() : null
 
-  // Find the caller's own membership (by uid, then email). Legacy briefs the
-  // caller owns via requester_* may have no membership row yet — create one so
-  // the archive flag has a home.
-  const byUid = await db
-    .collection('project_members')
-    .where('project_id', '==', projectId)
-    .where('user_id', '==', auth.uid)
-    .limit(1)
-    .get()
-  const memberDoc = byUid.empty
-    ? (
-        await db
-          .collection('project_members')
-          .where('project_id', '==', projectId)
-          .where('email', '==', email)
-          .limit(1)
-          .get()
-      ).docs[0]
-    : byUid.docs[0]
+  // Find the caller's own ACTIVE membership (by uid, then email). The flag
+  // never goes on a removed row (#295): the list and the Settings tab read the
+  // active row, so a flag on a removed one would show in neither.
+  const { active: memberDoc, removed } = await findViewerMemberRows(db, projectId, auth.uid, email)
 
   if (memberDoc) {
     await memberDoc.ref.update({ archived_at: archivedAt, updated_at: new Date().toISOString() })
+  } else if (removed) {
+    // Only an instance admin gets here (a removed member has no role). Adding
+    // a second row beside the removed one would leave two rows for one person
+    // once the first is restored, so nothing is written.
+    return NextResponse.json(
+      { error: 'You were removed from this brief. Restore your membership under People before archiving it.' },
+      { status: 409 }
+    )
   } else {
+    // An instance admin with no membership row yet — create one so the
+    // archive flag has a home.
     const now = new Date().toISOString()
     await db.collection('project_members').add({
       project_id: projectId,

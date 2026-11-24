@@ -11,6 +11,7 @@ import { resolveBriefRole } from '@/lib/roles/brief-role'
 import { copy } from '@/lib/copy'
 import { normalizeEmail, isValidEmail } from '@/lib/email/normalize'
 import { isSelfRow } from '@/lib/members/self'
+import { findMemberRows } from '@/lib/members/find'
 import { welcomeToPost } from '@/lib/sessions/welcome'
 import { isArchivedSession } from '@/lib/sessions/active'
 import { briefModelSnapshot } from '@/lib/agent/model-choices'
@@ -61,6 +62,17 @@ export async function POST(request: Request) {
   const projectData = projectDoc.data()!
   const now = new Date().toISOString()
 
+  // #295: an invite to someone who was removed from this brief used to update
+  // the removed row and leave removed_at set: the email went out and the link
+  // answered "not found". Restore is the way back in. Refuse before any write.
+  const invited = await findMemberRows(db, project_id, 'email', normalizedEmail)
+  if (!invited.active && invited.removed) {
+    return NextResponse.json(
+      { error: 'This person was removed from the brief. Restore them under People instead of inviting them again.' },
+      { status: 409 }
+    )
+  }
+
   // Add email to approved_emails so they can sign in
   await db.collection('approved_emails').doc(normalizedEmail).set({
     email: normalizedEmail,
@@ -72,14 +84,7 @@ export async function POST(request: Request) {
   const assignedRole = memberRole || 'maker'
   const assignedBriefRole = resolveBriefRole(brief_role, assignedRole)
 
-  const existingMember = await db
-    .collection('project_members')
-    .where('project_id', '==', project_id)
-    .where('email', '==', normalizedEmail)
-    .limit(1)
-    .get()
-
-  if (existingMember.empty) {
+  if (!invited.active) {
     await db.collection('project_members').add({
       project_id,
       user_id: '', // will be set on claim
@@ -92,7 +97,7 @@ export async function POST(request: Request) {
     })
   } else {
     // Update role on a re-share
-    await existingMember.docs[0].ref.update({
+    await invited.active.ref.update({
       role: assignedRole,
       brief_role: assignedBriefRole,
       updated_at: now,

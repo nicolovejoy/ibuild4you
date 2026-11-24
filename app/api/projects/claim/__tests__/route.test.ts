@@ -36,9 +36,7 @@ const mockCollection = vi.fn((name: string) => {
       where: vi.fn((field2: string, _op2: string, value2: string) => {
         if (field2 === 'email') mockEmailWhere(value2)
         return {
-          limit: vi.fn(() => ({
-            get: async () => ({ empty: memberDocs.length === 0, docs: memberDocs }),
-          })),
+          get: async () => ({ empty: memberDocs.length === 0, docs: memberDocs }),
         }
       }),
     })),
@@ -105,6 +103,29 @@ describe('POST /api/projects/claim', () => {
     expect(mockProjectUpdate).toHaveBeenCalledWith(
       expect.objectContaining({ requester_id: 'u1' })
     )
+  })
+
+  // #295: a removed member's row stays for the history and grants nothing.
+  it('rejects with 403 when the caller was removed from the brief (#295)', async () => {
+    memberDocs = [
+      { data: () => ({ removed_at: '2026-11-01T00:00:00.000Z' }), ref: { update: mockMemberUpdate } },
+    ]
+    const res = await POST(makeReq({ project_id: 'p1' }))
+    expect(res.status).toBe(403)
+    expect(mockMemberUpdate).not.toHaveBeenCalled()
+    expect(mockProjectUpdate).not.toHaveBeenCalled()
+  })
+
+  it('claims on the active row when a removed row sits beside it (#295)', async () => {
+    const activeUpdate = vi.fn(async () => {})
+    memberDocs = [
+      { data: () => ({ removed_at: '2026-11-01T00:00:00.000Z' }), ref: { update: mockMemberUpdate } },
+      { data: () => ({ removed_at: null }), ref: { update: activeUpdate } },
+    ]
+    const res = await POST(makeReq({ project_id: 'p1' }))
+    expect(res.status).toBe(200)
+    expect(mockMemberUpdate).not.toHaveBeenCalled()
+    expect(activeUpdate).toHaveBeenCalledWith(expect.objectContaining({ user_id: 'u1' }))
   })
 
   // Garm PR E: requester_* on the project doc is display-only — a matching

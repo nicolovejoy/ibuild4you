@@ -4,6 +4,7 @@ import { ADMIN_EMAILS, isAdminEmail } from '@/lib/constants'
 import type { BriefRole, MemberRole, SystemRole } from '@/lib/types'
 import { getCachedUser, setCachedUser } from './auth-cache'
 import { isActiveMember } from '@/lib/members/lifecycle'
+import { findViewerMemberRows } from '@/lib/members/find'
 import { normalizeEmail } from '@/lib/email/normalize'
 import { garmCheck, resolveCanonicalEmail, GARM_PROJECT } from '@/lib/garm'
 
@@ -135,7 +136,8 @@ export async function getViewerBriefRole(
 // What the viewer's own membership row says about them on this brief: their
 // brief_role, and whether they archived the brief from their dashboard (the
 // archive flag is per viewer, see PATCH /api/projects/archive). One lookup for
-// both, by uid first and then by email. No row means no role and not archived.
+// both, by uid first and then by email. No active row means no role and not
+// archived: a removed row (removed_at set) is never read (#295).
 export async function getViewerMembership(
   db: FirebaseFirestore.Firestore,
   projectId: string,
@@ -148,23 +150,8 @@ export async function getViewerMembership(
     archived: !!data.archived_at,
   })
 
-  const byUid = await db
-    .collection('project_members')
-    .where('project_id', '==', projectId)
-    .where('user_id', '==', userId)
-    .limit(1)
-    .get()
-  if (!byUid.empty) return read(byUid.docs[0].data())
-
-  const byEmail = await db
-    .collection('project_members')
-    .where('project_id', '==', projectId)
-    .where('email', '==', email)
-    .limit(1)
-    .get()
-  if (!byEmail.empty) return read(byEmail.docs[0].data())
-
-  return { brief_role: null, archived: false }
+  const { active } = await findViewerMemberRows(db, projectId, userId, email)
+  return active ? read(active.data()) : { brief_role: null, archived: false }
 }
 
 // Require a minimum role on a project. Returns a 403 response if insufficient, or null if OK.
