@@ -92,24 +92,18 @@ vi.mock('@/lib/email-in/address', async (importOriginal) => {
 })
 
 let storedEmails: Record<string, unknown>[] = []
-// The route reads the panel's rows through the bounded read, not the full list.
-const mockListRecent = vi.fn(async (_db: unknown, _projectId: string, limit: number) =>
-  [...storedEmails]
-    .sort((a, b) => String(b.received_at).localeCompare(String(a.received_at)))
-    .slice(0, limit)
-    .map((e) => ({
-      id: e.id,
-      from_name: e.from_name,
-      from_role: e.from_role,
-      received_at: e.received_at,
-      subject: e.subject,
-    }))
+// The route reads every email of the project: a preview comes from the reading,
+// and the reading depends on the emails before.
+const mockListAll = vi.fn(async () =>
+  [...storedEmails].sort((a, b) => String(a.received_at).localeCompare(String(b.received_at)))
 )
-const mockListAll = vi.fn()
 vi.mock('@/lib/email-in/store', () => ({
-  listRecentProjectEmailRows: (...a: [unknown, string, number]) => mockListRecent(...a),
-  listProjectEmails: (...a: unknown[]) => mockListAll(...a),
+  listProjectEmails: (...a: unknown[]) => mockListAll(...(a as [])),
 }))
+vi.mock('@/lib/email-in/members', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/email-in/members')>()
+  return { ...actual, loadSenderMembers: vi.fn(async () => []) }
+})
 
 import { GET, POST } from '../route'
 
@@ -307,7 +301,7 @@ describe('GET /api/projects/email-in', () => {
     })
   })
 
-  it('gives a builder the address, the newest 10 emails newest first, and no email text', async () => {
+  it('gives a builder the address and the newest 10 emails newest first, each with the start of its typed text', async () => {
     projectData = { slug: 'musicforge', email_in_address: 'musicforge-abcd@inbox.ibuild4you.com' }
     storedEmails = makeEmails(12)
     const res = await GET(getReq('p1'))
@@ -321,17 +315,33 @@ describe('GET /api/projects/email-in', () => {
       from_role: 'builder',
       received_at: '2026-11-12T10:00:00.000Z',
       subject: 'Subject 11',
+      preview: 'SECRET BODY 11',
     })
     expect(body.recent[9].subject).toBe('Subject 2')
-    expect(mockListRecent).toHaveBeenCalledWith(expect.anything(), 'p1', 10)
-    expect(mockListAll).not.toHaveBeenCalled()
     for (const row of body.recent) {
-      expect(Object.keys(row).sort()).toEqual(['from_name', 'from_role', 'id', 'received_at', 'subject'])
+      expect(Object.keys(row).sort()).toEqual(['from_name', 'from_role', 'id', 'preview', 'received_at', 'subject'])
     }
+    // Never the sender's address or the attachments.
     const raw = JSON.stringify(body)
-    expect(raw).not.toContain('SECRET BODY')
     expect(raw).not.toContain('example.com')
     expect(raw).not.toContain('secret.pdf')
+  })
+
+  it('previews only what the sender typed, on one line, cut at 200 characters', async () => {
+    projectData = { slug: 'musicforge', email_in_address: 'musicforge-abcd@inbox.ibuild4you.com' }
+    const [first, second, third] = makeEmails(3)
+    storedEmails = [
+      { ...first, text: 'Should the app work offline?' },
+      {
+        ...second,
+        text: 'Yes, it must.\n\nOn a phone too.\n\nOn Nov 1, 2026, at 10:00 AM, Bill 0 <bill0@example.com> wrote:\n> Should the app work offline?',
+      },
+      { ...third, text: 'word '.repeat(100) },
+    ]
+    const body = await (await GET(getReq('p1'))).json()
+    expect(body.recent[1].preview).toBe('Yes, it must. On a phone too.')
+    expect(body.recent[0].preview.length).toBeLessThanOrEqual(201)
+    expect(body.recent[0].preview.endsWith('…')).toBe(true)
   })
 
   it('works for an owner', async () => {

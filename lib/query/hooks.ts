@@ -1240,8 +1240,16 @@ export function useRevokeBuildStatusKey() {
 
 export interface ProjectEmailIn {
   address: string | null
-  // The newest 10, newest first. Who and when only; the server never sends email text.
-  recent: { id: string; from_name: string; from_role: 'maker' | 'builder'; received_at: string; subject: string }[]
+  // The newest 10, newest first. `preview` is the start of what the sender
+  // typed ('' when nothing typed was kept); the rest is read by opening the email.
+  recent: {
+    id: string
+    from_name: string
+    from_role: 'maker' | 'builder'
+    received_at: string
+    subject: string
+    preview: string
+  }[]
   dropped: {
     not_member: number
     auth_failed: number

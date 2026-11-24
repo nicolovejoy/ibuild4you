@@ -23,6 +23,9 @@ const dayFmt = new Intl.DateTimeFormat('en-US', {
 const button =
   'px-3 py-1.5 text-sm border border-brand-line rounded text-brand-charcoal hover:border-brand-navy hover:text-brand-navy disabled:opacity-30 disabled:cursor-not-allowed transition-colors'
 
+// How many received emails show before "Show more".
+const RECENT_SHOWN = 4
+
 // Who the GET accepts: an owner or builder on the project, or a system admin
 // (an implicit owner on every project; their viewer_role can be a membership
 // role or 'admin'). The mount checks this before the panel, so the hook never
@@ -104,8 +107,8 @@ function EmailMessage({ message }: { message: ProjectEmailMessage }) {
 
 // The project's email address: the builder keeps it on CC, and mail from
 // members becomes brief notes. Shows the address (or offers to create it), the
-// newest emails received (who, when, subject; never the text), and what was
-// ignored and why.
+// newest emails received (who, when, subject, and the start of what the sender
+// typed; the first few, the rest behind "Show more"), and what was ignored and why.
 export function ProjectEmailPanel({ projectId }: { projectId: string }) {
   const { data, isLoading, error: loadError } = useProjectEmailIn(projectId)
   const create = useCreateProjectEmailIn(projectId)
@@ -113,6 +116,8 @@ export function ProjectEmailPanel({ projectId }: { projectId: string }) {
   // The received email that is open in the modal; closing clears it.
   const [opened, setOpened] = useState<{ id: string; subject: string } | null>(null)
   const message = useProjectEmailMessage(projectId, opened?.id ?? null)
+  // Whether the whole received list is shown, or only the first few.
+  const [showAll, setShowAll] = useState(false)
 
   const onCreate = async () => {
     setError(null)
@@ -171,25 +176,40 @@ export function ProjectEmailPanel({ projectId }: { projectId: string }) {
             {data.recent.length === 0 ? (
               <p className="text-sm text-brand-ink-soft">{t.noneReceived}</p>
             ) : (
-              <ul className="space-y-0.5">
-                {data.recent.map((e) => (
-                  <li key={e.id} className="text-sm text-brand-charcoal">
-                    {/* Looks like the plain row it was; the text is the button's name. */}
-                    <button
-                      type="button"
-                      onClick={() => setOpened({ id: e.id, subject: e.subject })}
-                      className="text-left break-words hover:underline focus-visible:outline-2 focus-visible:outline-brand-navy rounded-sm"
-                    >
-                      {t.recentRow(
-                        dayFmt.format(new Date(e.received_at)),
-                        e.from_name,
-                        t.roles[e.from_role],
-                        e.subject || t.noSubject
-                      )}
-                    </button>
-                  </li>
-                ))}
-              </ul>
+              <>
+                <ul id={`project-email-recent-${projectId}`} className="space-y-2">
+                  {(showAll ? data.recent : data.recent.slice(0, RECENT_SHOWN)).map((e) => (
+                    <li key={e.id} className="text-sm text-brand-charcoal">
+                      {/* Looks like the plain row it was; the text is the button's name. */}
+                      <button
+                        type="button"
+                        onClick={() => setOpened({ id: e.id, subject: e.subject })}
+                        className="text-left break-words hover:underline focus-visible:outline-2 focus-visible:outline-brand-navy rounded-sm"
+                      >
+                        {t.recentRow(
+                          dayFmt.format(new Date(e.received_at)),
+                          e.from_name,
+                          t.roles[e.from_role],
+                          e.subject || t.noSubject
+                        )}
+                      </button>
+                      {/* The start of what the sender typed, two lines at most. */}
+                      {e.preview && <p className="text-xs text-brand-ink-soft break-words line-clamp-2">{e.preview}</p>}
+                    </li>
+                  ))}
+                </ul>
+                {data.recent.length > RECENT_SHOWN && (
+                  <button
+                    type="button"
+                    aria-expanded={showAll}
+                    aria-controls={`project-email-recent-${projectId}`}
+                    onClick={() => setShowAll((v) => !v)}
+                    className="text-xs text-brand-navy hover:underline focus-visible:outline-2 focus-visible:outline-brand-navy rounded-sm"
+                  >
+                    {showAll ? t.showFewer : t.showMore(data.recent.length - RECENT_SHOWN)}
+                  </button>
+                )}
+              </>
             )}
           </div>
 

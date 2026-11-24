@@ -10,7 +10,7 @@ import React from 'react'
 const ADDRESS = 'musicforge-7k2q@inbox.ibuild4you.com'
 type Status = {
   address: string | null
-  recent: { id: string; from_name: string; from_role: 'maker' | 'builder'; received_at: string; subject: string }[]
+  recent: { id: string; from_name: string; from_role: 'maker' | 'builder'; received_at: string; subject: string; preview: string }[]
   dropped: {
     not_member: number
     auth_failed: number
@@ -98,8 +98,8 @@ describe('ProjectEmailPanel with an address', () => {
       address: ADDRESS,
       recent: [
         // 02:00 UTC on Nov 20 is still Nov 19 in Pacific.
-        { id: 'e1', from_name: 'Bill Duris', from_role: 'maker', received_at: '2026-11-20T02:00:00.000Z', subject: 'Re: the menu' },
-        { id: 'e2', from_name: 'Nico', from_role: 'builder', received_at: '2026-11-18T18:00:00.000Z', subject: '' },
+        { id: 'e1', from_name: 'Bill Duris', from_role: 'maker', received_at: '2026-11-20T02:00:00.000Z', subject: 'Re: the menu', preview: 'The menu needs a kids section.' },
+        { id: 'e2', from_name: 'Nico', from_role: 'builder', received_at: '2026-11-18T18:00:00.000Z', subject: '', preview: '' },
       ],
       dropped: noDrops,
     }
@@ -123,6 +123,45 @@ describe('ProjectEmailPanel with an address', () => {
     expect(screen.getByRole('button', { name: 'November 19 · Bill Duris (maker) · Re: the menu' })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'November 18 · Nico (builder) · (no subject)' })).toBeTruthy()
     expect(screen.queryByText('Nothing received yet.')).toBeNull()
+  })
+
+  it('shows the start of what the sender typed under a row, and nothing when there is none', async () => {
+    renderPanel()
+    const preview = await screen.findByText('The menu needs a kids section.')
+    expect(preview.className).toContain('line-clamp-2')
+    // The row button's name stays the row text alone.
+    expect(screen.getByRole('button', { name: 'November 19 · Bill Duris (maker) · Re: the menu' })).toBeTruthy()
+    expect(screen.getAllByRole('listitem')[1].querySelector('p')).toBeNull()
+  })
+
+  it('shows four emails, and the rest behind Show more', async () => {
+    status = {
+      ...status,
+      recent: Array.from({ length: 6 }, (_, i) => ({
+        id: `e${i}`,
+        from_name: 'Bill Duris',
+        from_role: 'maker' as const,
+        received_at: '2026-11-20T02:00:00.000Z',
+        subject: `Subject ${i}`,
+        preview: '',
+      })),
+    }
+    renderPanel()
+    const more = await screen.findByRole('button', { name: 'Show 2 more' })
+    expect(more.getAttribute('aria-expanded')).toBe('false')
+    expect(screen.getAllByRole('listitem')).toHaveLength(4)
+    fireEvent.click(more)
+    expect(screen.getAllByRole('listitem')).toHaveLength(6)
+    const fewer = screen.getByRole('button', { name: 'Show fewer' })
+    expect(fewer.getAttribute('aria-expanded')).toBe('true')
+    fireEvent.click(fewer)
+    expect(screen.getAllByRole('listitem')).toHaveLength(4)
+  })
+
+  it('has no Show more for four emails or fewer', async () => {
+    renderPanel()
+    await screen.findByText('Received')
+    expect(screen.queryByRole('button', { name: /Show \d+ more/ })).toBeNull()
   })
 
   it('says so when nothing was received', async () => {
@@ -202,8 +241,8 @@ describe('ProjectEmailPanel opening an email', () => {
     status = {
       address: ADDRESS,
       recent: [
-        { id: 'e1', from_name: 'Bill Duris', from_role: 'maker', received_at: '2026-11-20T02:00:00.000Z', subject: 'Re: the menu' },
-        { id: 'e/2', from_name: 'Nico', from_role: 'builder', received_at: '2026-11-18T18:00:00.000Z', subject: '' },
+        { id: 'e1', from_name: 'Bill Duris', from_role: 'maker', received_at: '2026-11-20T02:00:00.000Z', subject: 'Re: the menu', preview: 'The menu needs a kids section.' },
+        { id: 'e/2', from_name: 'Nico', from_role: 'builder', received_at: '2026-11-18T18:00:00.000Z', subject: '', preview: '' },
       ],
       dropped: noDrops,
     }

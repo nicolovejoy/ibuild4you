@@ -816,6 +816,8 @@ export const copy = {
     addressLabel: 'Project email address',
     recentHeading: 'Received',
     noneReceived: 'Nothing received yet.',
+    showMore: (n: number) => `Show ${n} more`,
+    showFewer: 'Show fewer',
     noSubject: '(no subject)',
     // A received email: day (Pacific), who, their role, subject.
     recentRow: (day: string, name: string, role: string, subject: string) =>

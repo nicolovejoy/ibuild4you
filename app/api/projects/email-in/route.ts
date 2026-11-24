@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server'
 import { getAuthenticatedUser, getAdminDb, getProjectRole, requireRole } from '@/lib/api/firebase-server-helpers'
 import { mintEmailInAddress, randomTail } from '@/lib/email-in/address'
-import { listRecentProjectEmailRows } from '@/lib/email-in/store'
+import { listProjectEmails } from '@/lib/email-in/store'
+import { emailProjectOf, loadSenderMembers } from '@/lib/email-in/members'
+import { emailPreview, readProjectEmails } from '@/lib/email-in/reading'
 
 const MAX_MINT_ATTEMPTS = 5
 // notes_through_at for a project with no brief and no note: earlier than any
@@ -15,9 +17,10 @@ function count(value: unknown): number {
 }
 
 // GET /api/projects/email-in?project_id= — what the Setup panel shows (builder+):
-// the address (null until minted), the newest emails as id/who/when/subject, and
-// the drop counters with when the last drop was. Never an email's text, sender
-// address or attachments; one email's text is read through ./message.
+// the address (null until minted), the newest emails as id/who/when/subject with
+// the start of what the sender typed, and the drop counters with when the last
+// drop was. Never an email's sender address, attachments or quoted text; one
+// email in full is read through ./message.
 export async function GET(request: Request) {
   const auth = await getAuthenticatedUser(request)
   if (auth.error) return auth.error
@@ -49,8 +52,22 @@ export async function GET(request: Request) {
   }
   const dropped = project.email_in_dropped ?? {}
 
-  // The newest 10, newest first, read without the emails' text.
-  const recent = await listRecentProjectEmailRows(db, projectId, RECENT_EMAILS)
+  // The newest 10, newest first. The preview is the start of what the sender
+  // typed in the reading the message route serves, and what counts as typed and
+  // new depends on the emails before, so every email of the project is read.
+  const emails = await listProjectEmails(db, projectId)
+  const members = emails.length > 0 ? await loadSenderMembers(db, emailProjectOf(projectId, projectDoc.data())) : []
+  const recent = readProjectEmails(emails, members)
+    .slice(-RECENT_EMAILS)
+    .reverse()
+    .map(({ email, typed }) => ({
+      id: email.id,
+      from_name: email.from_name,
+      from_role: email.from_role,
+      received_at: email.received_at,
+      subject: email.subject,
+      preview: emailPreview(typed),
+    }))
 
   return NextResponse.json({
     address: project.email_in_address ?? null,

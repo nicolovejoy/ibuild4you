@@ -196,3 +196,14 @@ export function readingSize(reading: { typed: string; quotes: ReadingQuote[] }):
   }
   return size
 }
+
+// The start of what the sender typed, on one line, for the panel's list: enough
+// to tell one email from another without opening it. '' when nothing typed was
+// kept (a repeat, or an email that is all quote).
+export const EMAIL_PREVIEW_MAX = 200
+
+export function emailPreview(typed: string): string {
+  const oneLine = typed.replace(/\s+/g, ' ').trim()
+  if (oneLine.length <= EMAIL_PREVIEW_MAX) return oneLine
+  return `${oneLine.slice(0, EMAIL_PREVIEW_MAX).trimEnd()}…`
+}
