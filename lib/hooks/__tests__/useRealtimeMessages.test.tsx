@@ -69,9 +69,17 @@ describe('useRealtimeMessages', () => {
     expect((client.getQueryData(['messages', 's1']) as { id: string }[]).map((m) => m.id)).toEqual(['new', 'reply'])
   })
 
-  it('asks for metadata changes, so the cache-to-server switch raises a snapshot even when no document differs', () => {
+  it('passes includeMetadataChanges, so the SDK raises the cache-to-server switch even when no document differs', () => {
     setup()
     const opts = onSnapshot.mock.calls[0][1] as { includeMetadataChanges?: boolean }
     expect(opts.includeMetadataChanges).toBe(true)
+  })
+
+  it('writes a server snapshot whose documents equal the cached one it follows', () => {
+    const client = setup()
+    act(() => emit(snap(true, 'a')))
+    expect(client.getQueryData(['messages', 's1'])).toBeUndefined()
+    act(() => emit(snap(false, 'a')))
+    expect((client.getQueryData(['messages', 's1']) as { id: string }[]).map((m) => m.id)).toEqual(['a'])
   })
 })

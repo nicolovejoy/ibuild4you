@@ -176,6 +176,8 @@ describe('latestReminder with last_nudge_emailed_at', () => {
 
   it('a legacy stamp (no method) still reads recorded, and an automatic one can follow it', () => {
     expect(latestReminder({ last_nudged_at: T1 })).toEqual({ kind: 'recorded', at: T1 })
+    expect(latestReminder({ last_nudged_at: T1, last_auto_reminder_at: T2 })).toEqual({ kind: 'automatic', at: T2 })
+    expect(latestReminder({ last_nudged_at: T1, last_reminder_sent_at: T2 })).toEqual({ kind: 'automatic', at: T2 })
   })
 })
 
