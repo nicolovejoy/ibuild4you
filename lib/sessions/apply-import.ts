@@ -89,7 +89,16 @@ export async function applyImportToOpenSession(
     unqueued_notified_at: null,
     updated_at: now,
   })
-  batch.update(db.collection('projects').doc(projectId), { maker_waiting_since: null })
+  const projectUpdate: Record<string, unknown> = { maker_waiting_since: null }
+  // A posted welcome starts the automatic-reminder cadence over, as Start does
+  // through POST /api/sessions. Otherwise the cron sees a maker message newer
+  // than latest_session_created_at and skips with maker_already_responded, so
+  // the new welcome would never be reminded. The field name is historical: here
+  // it marks when the conversation was re-opened with a new welcome. The
+  // dashboard recomputes its own value from the sessions (and keeps this one
+  // when it is later), so nothing else reads it differently.
+  if (toPost) projectUpdate.latest_session_created_at = now
+  batch.update(db.collection('projects').doc(projectId), projectUpdate)
 
   if (toPost) {
     batch.set(db.collection('messages').doc(), {

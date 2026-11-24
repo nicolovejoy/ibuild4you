@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import type { Firestore } from 'firebase-admin/firestore'
 import { applyImportToOpenSession } from '../apply-import'
+import { decideReminder } from '@/lib/api/reminder-cadence'
 
 // Minimal in-memory Firestore: collections of docs, where/orderBy/get, and a
 // batch that records writes (nothing is applied; tests assert on the record).
@@ -94,7 +95,42 @@ describe('applyImportToOpenSession', () => {
       id: 's1',
       data: { ...project, agent_model: null, last_kickoff_at: NOW, unqueued_notified_at: null, updated_at: NOW },
     })
-    expect(writes).toContainEqual({ op: 'update', collection: 'projects', id: 'p1', data: { maker_waiting_since: null } })
+    expect(writes).toContainEqual({
+      op: 'update',
+      collection: 'projects',
+      id: 'p1',
+      data: { maker_waiting_since: null, latest_session_created_at: NOW },
+    })
+  })
+
+  it('restarts the reminder cadence when a welcome is posted', async () => {
+    const { db, writes } = makeDb({ sessions: { s1: activeSession }, messages: { m: makerEarly, g: greeting } })
+    await applyImportToOpenSession(db, 'p1', project, NOW)
+    expect(writes).toContainEqual({
+      op: 'update',
+      collection: 'projects',
+      id: 'p1',
+      data: { maker_waiting_since: null, latest_session_created_at: NOW },
+    })
+  })
+
+  it('leaves the reminder cadence alone when no welcome is posted', async () => {
+    const { db, writes } = makeDb({
+      sessions: { s1: { ...activeSession, welcome_message: 'Fresh welcome' } },
+      messages: { m: makerEarly, g: greeting },
+    })
+    await applyImportToOpenSession(db, 'p1', project, NOW)
+    const projectUpdate = writes.find((w) => w.op === 'update' && w.collection === 'projects')
+    expect(projectUpdate?.data).toEqual({ maker_waiting_since: null })
+  })
+
+  it('after a posted welcome the cron no longer says the maker already responded', async () => {
+    const lastMakerMessageAt = makerEarly.created_at
+    const base = { autoRemindersEnabled: true, requesterEmail: 'maya@example.com', remindersSentCount: 0, lastMakerMessageAt }
+    const before = decideReminder({ ...base, latestSessionCreatedAt: '2026-10-10T00:00:00.000Z' }, new Date('2026-10-30T00:00:00.000Z'))
+    expect(before).toEqual({ send: false, reason: 'maker_already_responded' })
+    const after = decideReminder({ ...base, latestSessionCreatedAt: NOW }, new Date('2026-10-30T00:00:00.000Z'))
+    expect(after.send).toBe(true)
   })
 
   it('re-snapshots the project model as agent_model, null when unset (#189)', async () => {

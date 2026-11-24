@@ -56,7 +56,7 @@ describe('latestReminder', () => {
       kind: 'automatic',
       at: T1,
     })
-    // And it still loses to a newer manual reminder.
+    // A newer copy follows it.
     expect(
       latestReminder({
         last_nudged_at: T2,
@@ -64,16 +64,32 @@ describe('latestReminder', () => {
         last_reminder_sent_at: null,
         last_auto_reminder_at: T1,
       })
-    ).toEqual({ kind: 'copied', at: T2 })
+    ).toEqual({ kind: 'automatic', at: T1, copiedAt: T2 })
   })
 
-  it('the newer of manual and automatic wins', () => {
-    expect(
-      latestReminder({ last_nudged_at: T2, last_nudged_method: 'copy', last_reminder_sent_at: T1 })
-    ).toEqual({ kind: 'copied', at: T2 })
+  it('the newer of the manual email and the automatic reminder leads', () => {
+    const email = { last_nudged_method: 'email' as const, last_nudged_to: ['a@x.com'] }
+    expect(latestReminder({ ...email, last_nudged_at: T2, last_nudge_emailed_at: T2, last_reminder_sent_at: T1 })).toEqual({
+      kind: 'emailed',
+      at: T2,
+      to: ['a@x.com'],
+    })
+    expect(latestReminder({ ...email, last_nudged_at: T1, last_nudge_emailed_at: T1, last_reminder_sent_at: T2 })).toEqual({
+      kind: 'automatic',
+      at: T2,
+    })
+  })
+
+  it('a copy older than the automatic reminder is not shown', () => {
     expect(
       latestReminder({ last_nudged_at: T1, last_nudged_method: 'copy', last_reminder_sent_at: T2 })
     ).toEqual({ kind: 'automatic', at: T2 })
+  })
+
+  it('a copy newer than the automatic reminder follows it', () => {
+    expect(
+      latestReminder({ last_nudged_at: T2, last_nudged_method: 'copy', last_reminder_sent_at: T1 })
+    ).toEqual({ kind: 'automatic', at: T1, copiedAt: T2 })
   })
 
   it('at the same instant the manual one wins (it carries the address)', () => {
@@ -99,6 +115,67 @@ describe('latestReminder', () => {
       kind: 'recorded',
       at: T1,
     })
+  })
+})
+
+describe('latestReminder with last_nudge_emailed_at', () => {
+  const emailed = { last_nudge_emailed_at: T1, last_nudged_to: ['a@x.com'] }
+
+  it('email then copy → the email, then the copy after it', () => {
+    expect(
+      latestReminder({ ...emailed, last_nudged_at: T2, last_nudged_method: 'copy' })
+    ).toEqual({ kind: 'emailed', at: T1, to: ['a@x.com'], copiedAt: T2 })
+  })
+
+  it('copy then email → only the email (the email route stamps both times alike)', () => {
+    expect(
+      latestReminder({ ...emailed, last_nudged_at: T1, last_nudge_emailed_at: T1, last_nudged_method: 'email' })
+    ).toEqual({ kind: 'emailed', at: T1, to: ['a@x.com'] })
+  })
+
+  it('a copy with no email at all → only the copy', () => {
+    expect(latestReminder({ last_nudged_at: T2, last_nudged_method: 'copy', last_nudged_to: null })).toEqual({
+      kind: 'copied',
+      at: T2,
+    })
+  })
+
+  it('an older copy than the email is not shown', () => {
+    expect(
+      latestReminder({ ...emailed, last_nudge_emailed_at: T2, last_nudged_at: T2, last_nudged_method: 'email' })
+    ).toEqual({ kind: 'emailed', at: T2, to: ['a@x.com'] })
+  })
+
+  it('the newer of the email and the automatic reminder leads, a newer copy follows', () => {
+    expect(
+      latestReminder({
+        ...emailed,
+        last_nudged_at: T3,
+        last_nudged_method: 'copy',
+        last_auto_reminder_at: T2,
+      })
+    ).toEqual({ kind: 'automatic', at: T2, copiedAt: T3 })
+    expect(
+      latestReminder({
+        ...emailed,
+        last_nudge_emailed_at: T2,
+        last_nudged_at: T3,
+        last_nudged_method: 'copy',
+        last_auto_reminder_at: T1,
+      })
+    ).toEqual({ kind: 'emailed', at: T2, to: ['a@x.com'], copiedAt: T3 })
+  })
+
+  it('a project stamped by earlier code (email, no emailed_at) uses last_nudged_at as the email time', () => {
+    expect(latestReminder({ last_nudged_at: T1, last_nudged_method: 'email', last_nudged_to: ['a@x.com'] })).toEqual({
+      kind: 'emailed',
+      at: T1,
+      to: ['a@x.com'],
+    })
+  })
+
+  it('a legacy stamp (no method) still reads recorded, and an automatic one can follow it', () => {
+    expect(latestReminder({ last_nudged_at: T1 })).toEqual({ kind: 'recorded', at: T1 })
   })
 })
 
@@ -157,6 +234,23 @@ describe('headerReminderLine', () => {
     })
   })
 
+  it('the opening rule applies to each part: an old email is dropped, a newer copy stays', () => {
+    const project = {
+      last_nudge_emailed_at: T1,
+      last_nudged_to: ['a@x.com'],
+      last_nudged_at: T3,
+      last_nudged_method: 'copy' as const,
+    }
+    expect(headerReminderLine({ dispatchKind: 'nudge', project, openingAt: T2 })).toEqual({ kind: 'copied', at: T3 })
+    expect(headerReminderLine({ dispatchKind: 'nudge', project, openingAt: T1 })).toEqual({
+      kind: 'emailed',
+      at: T1,
+      to: ['a@x.com'],
+      copiedAt: T3,
+    })
+    expect(headerReminderLine({ dispatchKind: 'start', project, openingAt: T3 })).toEqual({ kind: 'copied', at: T3 })
+  })
+
   it('Start state with no open conversation → null', () => {
     expect(headerReminderLine({ dispatchKind: 'start', project: copied, openingAt: null })).toBeNull()
   })
@@ -177,6 +271,24 @@ describe('reminderText', () => {
     )
     expect(reminderText({ kind: 'emailed', at: '2026-11-23T22:10:00.000Z', to: ['a@x.com', 'b@x.com'] })).toBe(
       'Reminder emailed to a@x.com, b@x.com, November 23, 2:10 PM.'
+    )
+  })
+
+  it('an email followed by a copy shows both sentences', () => {
+    expect(
+      reminderText({
+        kind: 'emailed',
+        at: '2026-11-23T18:00:00.000Z',
+        to: ['a@x.com'],
+        copiedAt: '2026-11-23T18:05:00.000Z',
+      })
+    ).toBe(
+      'Reminder emailed to a@x.com, November 23, 10:00 AM. Reminder text copied November 23, 10:05 AM. The app did not send it.'
+    )
+    expect(
+      reminderText({ kind: 'automatic', at: '2026-11-23T17:00:00.000Z', copiedAt: '2026-11-23T18:05:00.000Z' })
+    ).toBe(
+      'Automatic reminder emailed November 23, 9:00 AM. Reminder text copied November 23, 10:05 AM. The app did not send it.'
     )
   })
 

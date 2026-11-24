@@ -135,8 +135,11 @@ describe('POST /api/projects/[id]/email', () => {
         last_nudged_at: expect.any(String),
         last_nudged_method: 'email',
         last_nudged_to: ['maker@example.com'],
+        last_nudge_emailed_at: expect.any(String),
       })
     )
+    const written = mockProjectUpdate.mock.calls[0][0]
+    expect(written.last_nudge_emailed_at).toBe(written.last_nudged_at)
   })
 
   it('writes the reminder, nudge and invite in French for a French brief', async () => {
@@ -232,6 +235,7 @@ describe('POST /api/projects/[id]/email', () => {
         last_nudged_at: expect.any(String),
         last_nudged_method: 'email',
         last_nudged_to: ['matt@example.com', 'scott@example.com'],
+        last_nudge_emailed_at: expect.any(String),
       })
     )
   })
@@ -243,6 +247,7 @@ describe('POST /api/projects/[id]/email', () => {
     expect('last_nudged_at' in written).toBe(false)
     expect('last_nudged_method' in written).toBe(false)
     expect('last_nudged_to' in written).toBe(false)
+    expect('last_nudge_emailed_at' in written).toBe(false)
   })
 
   it('excludes removed makers from the nudge recipients', async () => {
@@ -343,6 +348,7 @@ describe('POST /api/projects/[id]/email', () => {
     expect('last_nudged_at' in written).toBe(false)
     expect('last_nudged_method' in written).toBe(false)
     expect('last_nudged_to' in written).toBe(false)
+    expect('last_nudge_emailed_at' in written).toBe(false)
   })
 
   it('still sends on preview when the maker is allowlisted (@ibuild4you.com)', async () => {

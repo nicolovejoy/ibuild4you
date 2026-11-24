@@ -315,9 +315,27 @@ describe('PATCH /api/projects', () => {
       expect.objectContaining({
         last_nudged_at: expect.any(String),
         last_nudged_method: 'copy',
-        last_nudged_to: null,
       })
     )
+  })
+
+  it('a copy does not touch the last email (its addresses or its time)', async () => {
+    await PATCH(makePatchRequest({ project_id: 'proj-1', last_nudged_at: '2026-11-23T22:10:00.000Z' }))
+    const written = mockDocUpdate.mock.calls[0][0]
+    expect('last_nudged_to' in written).toBe(false)
+    expect('last_nudge_emailed_at' in written).toBe(false)
+  })
+
+  it('a client cannot write last_nudge_emailed_at', async () => {
+    await PATCH(
+      makePatchRequest({
+        project_id: 'proj-1',
+        last_nudged_at: '2026-11-23T22:10:00.000Z',
+        last_nudge_emailed_at: '2026-11-23T22:10:00.000Z',
+      })
+    )
+    const written = mockDocUpdate.mock.calls[0][0]
+    expect('last_nudge_emailed_at' in written).toBe(false)
   })
 
   describe('a copy is timed by the server, not the browser clock', () => {
@@ -375,8 +393,9 @@ describe('PATCH /api/projects', () => {
       })
     )
     expect(mockDocUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({ last_nudged_method: 'copy', last_nudged_to: null })
+      expect.objectContaining({ last_nudged_method: 'copy' })
     )
+    expect('last_nudged_to' in mockDocUpdate.mock.calls[0][0]).toBe(false)
   })
 
   it('PATCH ignores maker_waiting_since from the client', async () => {

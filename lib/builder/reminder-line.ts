@@ -11,16 +11,25 @@ type ReminderProject = Pick<
   | 'last_nudged_at'
   | 'last_nudged_method'
   | 'last_nudged_to'
+  | 'last_nudge_emailed_at'
   | 'last_reminder_sent_at'
   | 'last_auto_reminder_at'
 >
 
-export type ReminderLine =
-  | { kind: 'none' }
+// A reminder that was really sent (or recorded as sent).
+type SentPart =
   | { kind: 'emailed'; at: string; to: string[] }
-  | { kind: 'copied'; at: string }
   | { kind: 'automatic'; at: string }
   | { kind: 'recorded'; at: string }
+
+// What the line says. A copy newer than the reminder that was sent follows it
+// (`copiedAt`): a copy never hides the last email.
+export type ReminderLine =
+  | { kind: 'none' }
+  | { kind: 'emailed'; at: string; to: string[]; copiedAt?: string }
+  | { kind: 'automatic'; at: string; copiedAt?: string }
+  | { kind: 'recorded'; at: string; copiedAt?: string }
+  | { kind: 'copied'; at: string }
 
 const dateFmt = new Intl.DateTimeFormat('en-US', {
   timeZone: 'America/Los_Angeles',
@@ -41,24 +50,47 @@ export function pacificDateTime(iso: string): string {
   return `${dateFmt.format(d)}, ${timeFmt.format(d).replace(/ /g, ' ')}`
 }
 
-// The newest reminder, manual (last_nudged_at: emailed or copied) or automatic
-// (the cron). The cron writes last_auto_reminder_at, which nothing clears;
-// last_reminder_sent_at is nulled by every maker message (it drives the cadence),
-// so it is only the fallback for reminders sent before the new field. On a tie the manual one wins: it carries
-// the address. Timestamps are UTC ISO strings, so string order is time order.
-export function latestReminder(project: ReminderProject): ReminderLine {
-  const manualAt = project.last_nudged_at
-  const autoAt = project.last_auto_reminder_at ?? project.last_reminder_sent_at
-  if (!manualAt && !autoAt) return { kind: 'none' }
-  if (autoAt && (!manualAt || autoAt > manualAt)) return { kind: 'automatic', at: autoAt }
-  const at = manualAt as string
-  if (project.last_nudged_method === 'copy') return { kind: 'copied', at }
-  const to = project.last_nudged_to
-  if (project.last_nudged_method === 'email' && to && to.length > 0) {
-    return { kind: 'emailed', at, to }
+type Parts = { sent: SentPart | null; copiedAt: string | null }
+
+// The two things the line can say. `sent` is the newer of the manual email and
+// the automatic reminder (on a tie the manual one wins: it carries the address).
+// `copiedAt` is a copy, kept only when it is newer than `sent`. The cron writes
+// last_auto_reminder_at, which nothing clears; last_reminder_sent_at is nulled by
+// every maker message (it drives the cadence), so it is only the fallback for
+// reminders sent before the new field. Timestamps are UTC ISO strings, so string
+// order is time order.
+function reminderParts(project: ReminderProject): Parts {
+  const stamp = project.last_nudged_at
+  const method = project.last_nudged_method
+
+  let manual: SentPart | null = null
+  let copiedAt: string | null = null
+  if (stamp && method === 'copy') copiedAt = stamp
+  // The email time: its own field, else (a project stamped before that field
+  // existed) last_nudged_at when the method says the last stamp was an email.
+  const emailedAt = project.last_nudge_emailed_at ?? (method === 'email' ? stamp : undefined)
+  if (emailedAt) {
+    const to = project.last_nudged_to
+    manual = to && to.length > 0 ? { kind: 'emailed', at: emailedAt, to } : { kind: 'recorded', at: emailedAt }
+  } else if (stamp && method !== 'copy') {
+    // No stored method (before 2026-11-23): say only that it happened.
+    manual = { kind: 'recorded', at: stamp }
   }
-  // No stored method, or an email with no addresses: say only that it happened.
-  return { kind: 'recorded', at }
+
+  const autoAt = project.last_auto_reminder_at ?? project.last_reminder_sent_at
+  const sent: SentPart | null =
+    autoAt && (!manual || autoAt > manual.at) ? { kind: 'automatic', at: autoAt } : manual
+
+  return { sent, copiedAt: copiedAt && (!sent || copiedAt > sent.at) ? copiedAt : null }
+}
+
+function composeLine({ sent, copiedAt }: Parts): ReminderLine {
+  if (!sent) return copiedAt ? { kind: 'copied', at: copiedAt } : { kind: 'none' }
+  return copiedAt ? { ...sent, copiedAt } : sent
+}
+
+export function latestReminder(project: ReminderProject): ReminderLine {
+  return composeLine(reminderParts(project))
 }
 
 type OpeningMessage = { kind?: string | null; created_at?: string | null }
@@ -87,13 +119,18 @@ export function headerReminderLine(args: {
   openingAt: string | null
 }): ReminderLine | null {
   if (args.dispatchKind === 'invite') return null
-  const latest = latestReminder(args.project)
-  const sinceOpening =
-    latest.kind !== 'none' && (args.openingAt === null || latest.at >= args.openingAt)
-  if (args.dispatchKind === 'nudge') return sinceOpening ? latest : { kind: 'none' }
   // Start: with no open conversation there is nothing to be "since".
-  if (args.openingAt === null) return null
-  return sinceOpening ? latest : null
+  if (args.dispatchKind === 'start' && args.openingAt === null) return null
+  // The "since the welcome" rule applies to each part on its own: an old email
+  // is dropped while a newer copy stays.
+  const { sent, copiedAt } = reminderParts(args.project)
+  const since = (at: string) => args.openingAt === null || at >= args.openingAt
+  const line = composeLine({
+    sent: sent && since(sent.at) ? sent : null,
+    copiedAt: copiedAt && since(copiedAt) ? copiedAt : null,
+  })
+  if (line.kind !== 'none') return line
+  return args.dispatchKind === 'nudge' ? line : null
 }
 
 export function reminderText(line: ReminderLine): string {
@@ -101,13 +138,18 @@ export function reminderText(line: ReminderLine): string {
   switch (line.kind) {
     case 'none':
       return t.none
-    case 'emailed':
-      return t.emailed(line.to.join(', '), pacificDateTime(line.at))
     case 'copied':
       return t.copied(pacificDateTime(line.at))
+    case 'emailed':
+      return withCopy(t.emailed(line.to.join(', '), pacificDateTime(line.at)), line.copiedAt)
     case 'automatic':
-      return t.automatic(pacificDateTime(line.at))
+      return withCopy(t.automatic(pacificDateTime(line.at)), line.copiedAt)
     case 'recorded':
-      return t.recorded(pacificDateTime(line.at))
+      return withCopy(t.recorded(pacificDateTime(line.at)), line.copiedAt)
   }
+}
+
+// The copy sentence follows the sent one when a copy is newer.
+function withCopy(sentence: string, copiedAt: string | undefined): string {
+  return copiedAt ? `${sentence} ${copy.reminderLine.copied(pacificDateTime(copiedAt))}` : sentence
 }

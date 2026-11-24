@@ -252,10 +252,11 @@ export async function PATCH(request: Request) {
   if ('model' in updates && !isBriefModel(updates.model)) patch.model = null
   // Only the copy buttons send last_nudged_at, so the server records it as a
   // copy. The client cannot claim an email, and the email route is the only
-  // writer of method 'email'. The two method fields are not in `allowed`.
+  // writer of method 'email'. A copy leaves last_nudged_to and
+  // last_nudge_emailed_at alone, so they always describe the last email. The
+  // three method and email fields are not in `allowed`.
   if ('last_nudged_at' in updates) {
     patch.last_nudged_method = 'copy'
-    patch.last_nudged_to = null
     // The browser's clock is not compared with server times (the reminder line
     // takes the newest of copies, emails and the cron), so the server's time
     // replaces the client's. Builder activity sent in the same request is the

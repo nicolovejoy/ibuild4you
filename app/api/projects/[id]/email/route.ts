@@ -223,6 +223,7 @@ export async function POST(
     const delivered = results.filter((r) => !r.suppressed).map((r) => r.to)
     if (delivered.length > 0) {
       update.last_nudged_at = now
+      update.last_nudge_emailed_at = now
       update.last_nudged_method = 'email'
       update.last_nudged_to = delivered
     }
