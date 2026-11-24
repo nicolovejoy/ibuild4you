@@ -18,7 +18,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { isArchivedSession } from '@/lib/sessions/active'
 import { isPayloadQueued } from '@/lib/sessions/queued'
 import { isBuilderSideRole } from '@/lib/roles/member-role'
-import type { BriefContent, BriefRole } from '@/lib/types'
+import type { BriefContent, BriefRole, Message } from '@/lib/types'
 
 // Debounce window for maker-activity notifications. The cron at /api/cron/notify
 // sends a digest email only once notify_after has passed with no new messages.
@@ -194,7 +194,7 @@ async function handleChat(
         file_ids: (data.file_ids as string[] | undefined) || [],
         sender_email: (data.sender_email as string | undefined) || '',
         sender_display_name: (data.sender_display_name as string | undefined) || '',
-        kind: data.kind as 'unqueued_greeting' | undefined,
+        kind: data.kind as Message['kind'],
       }
     })
     // An empty turn in history is a 400 from Anthropic ("all messages must

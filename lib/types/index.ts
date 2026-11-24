@@ -158,7 +158,9 @@ export interface Message extends BaseEntity {
   sender_email?: string // who sent this message (for user messages)
   sender_display_name?: string // cached display name at write time
   file_ids?: string[] // attached file IDs
-  kind?: 'unqueued_greeting' // canned "nothing queued" greeting, not model output (#214)
+  // 'unqueued_greeting' = canned "nothing queued" greeting, not model output (#214)
+  // 'welcome' = a builder welcome an import posted into an open conversation (Project 5)
+  kind?: 'unqueued_greeting' | 'welcome'
   sender_side?: 'builder' // an owner/builder turn or Sam's reply to it; kickoff ignores these (#254)
   rating?: 'up' | 'down' | null // maker's 👍/👎 on an agent message (#130)
   rating_reason?: string | null // maker's optional "what was off?" on a 👎
