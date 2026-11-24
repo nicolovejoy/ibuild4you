@@ -470,6 +470,47 @@ Independent of Tasks 1 to 5. With Task 6 merged, a viewer with no role also gets
 
 ---
 
+### Task 8: the project list leaves out briefs the viewer was removed from (found in Task 6's review)
+
+Independent of Tasks 1 to 5 and 7. Same file as Task 6, different branch of the GET.
+
+**Files:**
+- Modify: `app/api/projects/route.ts` (GET, the non-admin list branch: the two `project_members` queries and the two loops that follow them)
+- Modify: `app/api/projects/__tests__/get-email-in-fields.test.ts`
+
+**What is wrong today.** Removing a member sets `removed_at` on their `project_members` row and never deletes it (`lib/members/lifecycle.ts`, `isActiveMember`). The slug lookup refuses a removed member (`getProjectRole` skips removed rows, and Task 6 turned no role into a 404). The list does not: for a non-admin, `GET /api/projects` collects project ids from every row matching the viewer's `user_id` or `email` (`const memberSnap`, `const memberByEmail`), with no check of `removed_at`, and builds `viewerRoles` from the same rows. A removed member therefore still receives the whole project document of every brief they were removed from, with their old role as `viewer_role`; a removed builder or owner also keeps the email-in fields and `last_nudged_to`, since `withoutEmailInFields` keys on that stale role.
+
+**Wanted.** The list uses only active membership rows. Right after the two queries, keep the active rows, and use those arrays everywhere the code used `memberSnap.docs` and `memberByEmail.docs` (the two id-collecting loops and the two role-map loops):
+
+```ts
+// A removed member (removed_at set) has no access: their row stays for the
+// history, but it must not bring the brief into their list.
+const activeByUid = memberSnap.docs.filter((doc) => isActiveMember(doc.data()))
+const activeByEmail = memberByEmail.docs.filter((doc) => isActiveMember(doc.data()))
+```
+
+`isActiveMember` comes from `@/lib/members/lifecycle`; the file may already import it (the slug branch uses it), so do not import it twice. Nothing else changes: the admin branch (all projects) is untouched, the empty-list early return stays, and a viewer whose uid row is removed but whose email row is active (or the reverse) still gets the brief with the active row's role.
+
+- [ ] **Step 1: write the failing tests** in `get-email-in-fields.test.ts`, new `describe('GET /api/projects (the list): removed members')`, using the file's existing fake db, `get`, `getRes` and `hasNone`/`hasAll` helpers:
+
+1. `it('leaves out a brief the viewer was removed from')`: `members = [{ project_id: 'p1', user_id: 'u1', email: 'viewer@example.com', role: 'builder', removed_at: '2026-11-01T00:00:00.000Z' }, { project_id: 'p2', user_id: 'u1', email: 'viewer@example.com', role: 'maker' }]`. The list has exactly one project, id `'p2'`.
+2. `it('answers an empty list when every membership was removed')`: one row for `p1` with `removed_at` set. `await get()` equals `[]`.
+3. `it('leaves it out when the removed row matches by email only')`: `members = [{ project_id: 'p1', user_id: null, email: 'viewer@example.com', role: 'builder', removed_at: '2026-11-01T00:00:00.000Z' }]`. `await get()` equals `[]`.
+4. `it('keeps a brief when one of two rows is active, with the active row role')`: `members = [{ project_id: 'p1', user_id: 'u1', email: 'old@example.com', role: 'builder', removed_at: '2026-11-01T00:00:00.000Z' }, { project_id: 'p1', user_id: null, email: 'viewer@example.com', role: 'maker' }]`. The list has one project, id `'p1'`, `viewer_role` `'maker'`, and `hasNone(p1)` is true (the removed builder row must not lend its role).
+5. In the existing `describe('GET /api/projects?slug=: who may read one project')`, `it('answers 404 to a viewer with no role when the brief is addressed by its id')`: `mockGetProjectRole.mockResolvedValue(null)`; `getRes('?slug=p1')` → status 404, JSON `toEqual({ error: 'Project not found' })`. (This pins Task 6's check on the id fallback; it should pass before any change in this task.)
+
+How they prove the defect: on today's code test 1 gets two projects, tests 2 and 3 get `p1`, and test 4 gets `viewer_role: 'builder'` with the email-in fields present.
+
+- [ ] **Step 2: run** `npx vitest run app/api/projects/__tests__/get-email-in-fields.test.ts`. Expect tests 1 to 4 to fail and test 5 to pass.
+
+- [ ] **Step 3: change** the route as specified.
+
+- [ ] **Step 4: run** the file and `npm test` (if another suite fails because its fake member rows lack a field, fix its setup; never weaken the check). Then the verification. Commit: `Project list: leave out briefs the viewer was removed from (#291)`.
+
+**Reviewer checks:** no use of `memberSnap.docs` or `memberByEmail.docs` remains after the filter; the admin branch is unchanged; test 4 fails if only the id-collecting loops were switched and the role-map loops were not.
+
+---
+
 ## Verification (controller, after the tasks)
 
 1. In the worktree: `npm test`, `npm run lint`, then the build line from Global Constraints 6, then `npm run type-check`.
