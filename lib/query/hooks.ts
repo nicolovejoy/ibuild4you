@@ -72,6 +72,9 @@ export function useCreateProject() {
   const queryClient = useQueryClient()
 
   return useMutation({
+    // No retry (the app default is one). If the first request created the brief
+    // and only the answer was lost, a repeat creates a second one (slug "-2").
+    retry: false,
     mutationFn: async (payload: { title: string; [key: string]: unknown }) => {
       const res = await apiFetch('/api/projects', {
         method: 'POST',
@@ -93,6 +96,11 @@ export function useShareProject() {
   const queryClient = useQueryClient()
 
   return useMutation({
+    // No retry (the app default is one). Every refusal here is final (400, 403,
+    // 404, 409 for a removed member), and the retry held the message back about
+    // a second (2026-11-24). A repeat after a 500 would be safe; the builder can
+    // press Share again.
+    retry: false,
     mutationFn: async ({ project_id, email, first_name, last_name, role, brief_role }: { project_id: string; email: string; first_name?: string; last_name?: string; role?: string; brief_role?: string }) => {
       const res = await apiFetch('/api/projects/share', {
         method: 'POST',
@@ -125,6 +133,10 @@ export function useSendMakerEmail() {
   const queryClient = useQueryClient()
 
   return useMutation({
+    // No retry (the app default is one). The route sends the email before it
+    // stamps the project, so a repeat after a failed stamp or a lost answer
+    // emails the maker twice.
+    retry: false,
     mutationFn: async ({
       project_id,
       kind,
@@ -646,6 +658,10 @@ export function useCreateSession() {
   const queryClient = useQueryClient()
 
   return useMutation({
+    // No retry (the app default is one). The route closes every active
+    // conversation and opens a new one, so a repeat after a lost answer closes
+    // the one just opened and opens another.
+    retry: false,
     mutationFn: async ({ project_id }: { project_id: string }) => {
       const res = await apiFetch('/api/sessions', {
         method: 'POST',
