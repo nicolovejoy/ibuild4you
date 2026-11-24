@@ -74,6 +74,23 @@ describe('makerRepliedSinceReopen', () => {
   })
 })
 
+describe('equal and missing timestamps', () => {
+  it('a maker message with exactly the tagged welcome created_at does not count as answering it', () => {
+    const messages = [agent(T1, 'welcome'), user(T1)]
+    expect(makerAnsweredOpening(messages)).toBe(false)
+    expect(makerRepliedSinceReopen(messages)).toBe(false)
+  })
+
+  it('with no welcome and no greeting, a maker message with a missing or null created_at still counts', () => {
+    const noStamp: ReplyCheckMessage = { role: 'user' }
+    const nullStamp: ReplyCheckMessage = { role: 'user', created_at: null }
+    for (const m of [noStamp, nullStamp]) {
+      expect(makerAnsweredOpening([m])).toBe(true)
+      expect(makerRepliedSinceReopen([m])).toBe(true)
+    }
+  })
+})
+
 describe('reopenPoint', () => {
   it('returns null with neither kind present', () => {
     expect(reopenPoint([user(T1), agent(T2)])).toBeNull()
