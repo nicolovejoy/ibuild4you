@@ -37,6 +37,11 @@ export function Modal({ isOpen, onClose, title, label, children, size = 'md' }: 
     if (!isOpen) return
 
     const handleKeyDown = (e: KeyboardEvent) => {
+      // One modal can open from inside another ("Send this email now?" from
+      // the Share and Invite window). Each has its own listener, so only the
+      // top one, the last dialog in the document, acts on the key.
+      const open = document.querySelectorAll('[role="dialog"][aria-modal="true"]')
+      if (open.length > 1 && open[open.length - 1] !== dialogRef.current) return
       if (e.key === 'Escape') {
         onClose()
         return
