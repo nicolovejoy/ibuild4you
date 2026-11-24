@@ -125,6 +125,7 @@ export function BuilderProjectView({ projectId }: { projectId: string }) {
   // loaded-confirmation when it isn't start's turn). One-shot, consumed when
   // the modal closes / the line is dismissed.
   const [importedPayload, setImportedPayload] = useState<{ configUpdated: boolean } | null>(null)
+  const queryClient = useQueryClient()
   const activeTab: TabId = resolveBuilderTab(searchParams.get('tab'), searchParams.get('session'))
 
   const setTab = (tab: TabId) => {
@@ -305,7 +306,16 @@ export function BuilderProjectView({ projectId }: { projectId: string }) {
               briefLoading={briefLoading}
               project={project}
               files={projectFiles || []}
-              onImported={(r) => { setImportedPayload(r); setTab('conversations') }}
+              onImported={(r) => {
+                // The import changes the open conversation's messages (it can post
+                // a welcome), and the paste does not touch the messages cache. Drop
+                // what was cached before it, so the Conversations header waits for
+                // fresh messages instead of deciding on stale ones and opening the
+                // Start modal by itself.
+                queryClient.removeQueries({ queryKey: ['messages'] })
+                setImportedPayload(r)
+                setTab('conversations')
+              }}
               autoOpenImport={openImport}
               onAutoOpenConsumed={() => setOpenImport(false)}
             />
@@ -1183,7 +1193,7 @@ function StatusStrip({
   projectId,
   sessions,
   activeSession,
-  turn,
+  turn: turnFromProject,
   onShare,
   onOpenImport,
   justImported,
@@ -1205,6 +1215,13 @@ function StatusStrip({
   // Has the maker answered the conversation's opening? An import that posts a
   // new welcome re-opens it, so earlier maker messages stop counting (Project 5).
   const makerAnswered = activeMessages ? makerAnsweredOpening(activeMessages) : false
+  // The badge reads the project's last-message time, which still says the maker
+  // spoke after an import re-opened their conversation. With the messages in
+  // hand, say it is the maker's turn there.
+  const turn =
+    activeSession && activeMessages && !makerAnswered
+      ? getTurnIndicator({ ...project, session_count: sessions.length }, 'builder', 'en', { makerAnsweredOpening: false })
+      : turnFromProject
 
   const joinConversation = () => router.push(`/projects/${project.slug || project.id}?view=chat`)
 
@@ -1894,7 +1911,9 @@ function StartDispatch({
       ? opening.text.trim().replace(/\s+/g, ' ')
       : opening.kind === 'default'
         ? copy.nextRound.openingDefault
-        : copy.nextRound.openingKickoff
+        : opening.kind === 'nothing_queued'
+          ? copy.nextRound.openingNothingQueued
+          : copy.nextRound.openingKickoff
   const busy = updateProject.isPending || createSession.isPending || sendEmail.isPending
   const actionError = updateProject.error || createSession.error || sendEmail.error
 

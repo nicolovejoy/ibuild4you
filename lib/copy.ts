@@ -667,6 +667,7 @@ export const copy = {
     opening: 'Sam opens with',
     openingDefault: 'The standard welcome. No opening message is set.',
     openingKickoff: 'No new opening message. Sam greets the maker and picks up where they left off.',
+    openingNothingQueued: 'Nothing new pasted since the maker last spoke. Sam posts a short note saying nothing is queued yet.',
     mode: 'Mode',
     modes: {
       discover: 'Discover',

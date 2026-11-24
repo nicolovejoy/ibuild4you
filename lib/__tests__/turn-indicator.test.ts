@@ -104,6 +104,23 @@ describe('getTurnIndicator', () => {
     const result = getTurnIndicator(project, 'builder')
     expect(result?.label).toBe('Waiting on sam')
   })
+
+  describe("when the maker has not answered the conversation's opening", () => {
+    // An import re-opened the maker's old conversation with a new welcome: the
+    // project fields say the maker spoke in it, but the builder waits on them.
+    const spokeEarlier = { last_maker_message_at: '2026-01-03T00:00:00Z' }
+
+    it('is waiting on the maker for the builder', () => {
+      const result = getTurnIndicator(makeProject(spokeEarlier), 'builder', 'en', { makerAnsweredOpening: false })
+      expect(result?.state).toBe('waiting')
+      expect(result?.label).toBe('Waiting on Sam')
+    })
+
+    it('changes nothing when the maker did answer, or when it is not said', () => {
+      expect(getTurnIndicator(makeProject(spokeEarlier), 'builder', 'en', { makerAnsweredOpening: true })?.state).toBe('your_turn')
+      expect(getTurnIndicator(makeProject(spokeEarlier), 'builder')?.state).toBe('your_turn')
+    })
+  })
 })
 
 describe('getTurnIndicator in French', () => {

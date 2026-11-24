@@ -12,6 +12,9 @@ import { reminderText } from '@/lib/builder/reminder-line'
 
 // GET answers by path. PUT /api/briefs and PATCH /api/projects answer fixed bodies.
 const answers: Record<string, unknown> = {}
+// When set, GET /api/messages waits for it, so a test can look at the header
+// while the messages are still being fetched.
+let messagesGate: Promise<void> | null = null
 const apiFetch = vi.fn(async (url: string, init?: { method?: string; body?: string }) => {
   const path = url.split('?')[0]
   const method = init?.method ?? 'GET'
@@ -25,6 +28,7 @@ const apiFetch = vi.fn(async (url: string, init?: { method?: string; body?: stri
       { status: 200 }
     )
   }
+  if (path === '/api/messages' && messagesGate) await messagesGate
   const answer = path in answers ? answers[path] : []
   return new Response(JSON.stringify(answer), { status: 200 })
 })
@@ -83,6 +87,7 @@ async function renderView() {
 
 beforeEach(() => {
   search = 'tab=conversations'
+  messagesGate = null
   for (const key of Object.keys(answers)) delete answers[key]
   apiFetch.mockClear()
   answers['/api/projects'] = {
@@ -114,6 +119,22 @@ describe('Conversations header: Nudge or Start', () => {
     expect(screen.queryByRole('button', { name: /Start conversation 2/ })).toBeNull()
   })
 
+  it('says waiting on the maker, not your turn, beside Nudge after an import-posted welcome', async () => {
+    // The project fields say the maker spoke in this conversation (their message
+    // is newer than it), but the import re-opened it with a welcome they have not answered.
+    answers['/api/projects'] = {
+      ...(answers['/api/projects'] as object),
+      session_count: 1,
+      latest_session_created_at: T0,
+      last_maker_message_at: T1,
+    }
+    answers['/api/messages'] = [userMsg('m1', T1), agentMsg('m2', T2), agentMsg('m3', T3, 'welcome')]
+    await renderView()
+    expect(await screen.findByRole('button', { name: /^Nudge/ })).toBeTruthy()
+    expect(screen.getByText('Waiting on sam')).toBeTruthy()
+    expect(screen.queryByText('Your turn')).toBeNull()
+  })
+
   it('offers Start when the maker answered the import-posted welcome', async () => {
     answers['/api/messages'] = [
       userMsg('m1', T1),
@@ -143,10 +164,10 @@ const payloadWithWelcome = JSON.stringify({
 })
 
 // Pastes the payload on the Brief tab and clicks Import.
-async function pasteAndImport() {
+async function pasteAndImport(client = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
   search = ''
   render(
-    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+    <QueryClientProvider client={client}>
       <BuilderProjectView projectId="p1" />
     </QueryClientProvider>
   )
@@ -162,10 +183,62 @@ const bannerHas = (text: string) => (content: string) => content.includes(text)
 
 describe('the banner after a paste', () => {
   it('says the config applies to the open conversation', async () => {
+    // An empty conversation: the maker has not spoken, so the config was applied to it.
     answers['/api/messages'] = []
     await pasteAndImport()
+    // Wait for the open conversation's messages to load before reading the banner:
+    // while they load the banner would say the same thing whatever they hold.
+    await waitFor(() => expect(apiFetch.mock.calls.some(([u]) => u.startsWith('/api/messages'))).toBe(true))
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20))
+    })
     expect(await screen.findByText(bannerHas(copy.nextRound.importAppliedToOpen))).toBeTruthy()
     expect(screen.queryByText(bannerHas(copy.nextRound.importAppliesNext))).toBeNull()
+  })
+
+  it('says the config applies to the open conversation after the import posted a welcome the maker has not answered', async () => {
+    // The maker spoke earlier; the import posted a tagged welcome after that.
+    answers['/api/messages'] = [userMsg('m1', T1), agentMsg('m2', T2), agentMsg('m3', T3, 'welcome')]
+    await pasteAndImport()
+    await waitFor(() => expect(apiFetch.mock.calls.some(([u]) => u.startsWith('/api/messages'))).toBe(true))
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20))
+    })
+    expect(await screen.findByText(bannerHas(copy.nextRound.importAppliedToOpen))).toBeTruthy()
+    expect(screen.getByRole('button', { name: /^Nudge/ })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /Start conversation 2/ })).toBeNull()
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('never opens the Start modal from messages cached before the paste', async () => {
+    // Cached before the paste: the maker spoke and the canned greeting followed.
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    client.setQueryData(['messages', 's1'], [
+      userMsg('m1', T1),
+      agentMsg('m2', T2),
+      agentMsg('m3', T2, 'unqueued_greeting'),
+    ])
+    // The server now holds the import-posted welcome, but its answer is slow.
+    answers['/api/messages'] = [userMsg('m1', T1), agentMsg('m2', T2), agentMsg('m3', T3, 'welcome')]
+    let release: () => void = () => {}
+    messagesGate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    await pasteAndImport(client)
+    // Let the view move to Conversations and read the messages query.
+    await waitFor(() => expect(apiFetch.mock.calls.some(([u]) => u.startsWith('/api/messages'))).toBe(true))
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20))
+    })
+    // The fetch is still pending: the header must not act on the stale cache.
+    expect(screen.queryAllByRole('button', { name: /Start conversation 2/ })).toHaveLength(0)
+    expect(screen.queryByRole('dialog')).toBeNull()
+    await act(async () => {
+      release()
+      await new Promise((resolve) => setTimeout(resolve, 20))
+    })
+    expect(await screen.findByRole('button', { name: /^Nudge/ })).toBeTruthy()
+    expect(screen.queryByRole('dialog')).toBeNull()
   })
 
   it('says the config applies from the next conversation when none is open', async () => {
@@ -179,7 +252,7 @@ describe('the banner after a paste', () => {
 })
 
 describe('the Start modal', () => {
-  it("shows Sam's greeting when the welcome was already used", async () => {
+  it('says the canned note will be posted when the welcome was already used and nothing is queued', async () => {
     answers['/api/projects'] = { ...(answers['/api/projects'] as object), welcome_message: 'Hello' }
     answers['/api/sessions'] = [
       { id: 's0', project_id: 'p1', status: 'completed', created_at: T0, welcome_message: 'Hello' },
@@ -189,8 +262,27 @@ describe('the Start modal', () => {
     await renderView()
     fireEvent.click(await screen.findByRole('button', { name: /Start conversation 3/ }))
     const dialog = within(await screen.findByRole('dialog'))
-    expect(dialog.getByText(copy.nextRound.openingKickoff)).toBeTruthy()
+    // Nothing was pasted since the maker spoke, so the kickoff posts the canned note.
+    expect(dialog.getByText(copy.nextRound.openingNothingQueued)).toBeTruthy()
     expect(dialog.queryByText('Hello')).toBeNull()
+  })
+
+  it('says Sam greets with the new material when a paste is queued', async () => {
+    answers['/api/projects'] = {
+      ...(answers['/api/projects'] as object),
+      welcome_message: 'Hello',
+      payload_pasted_at: T4,
+      last_maker_message_at: T2,
+    }
+    answers['/api/sessions'] = [
+      { id: 's0', project_id: 'p1', status: 'completed', created_at: T0, welcome_message: 'Hello' },
+      { id: 's1', project_id: 'p1', status: 'active', created_at: T1, welcome_message: 'Hello' },
+    ]
+    answers['/api/messages'] = [userMsg('m1', T2)]
+    await renderView()
+    fireEvent.click(await screen.findByRole('button', { name: /Start conversation 3/ }))
+    const dialog = within(await screen.findByRole('dialog'))
+    expect(dialog.getByText(copy.nextRound.openingKickoff)).toBeTruthy()
   })
 })
 
