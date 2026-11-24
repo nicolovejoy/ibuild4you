@@ -1,16 +1,19 @@
 import type { Firestore } from 'firebase-admin/firestore'
 import { welcomeToPost } from './welcome'
 import { briefModelSnapshot } from '@/lib/agent/model-choices'
+import { makerRepliedSinceReopen, reopenPoint, type ReplyCheckMessage } from './maker-replied'
 
 // Same five fields app/api/sessions/route.ts snapshots onto a new session
 // (plus agent_model, always written, below).
 const CONFIG_FIELDS = ['session_mode', 'seed_questions', 'builder_directives', 'welcome_message', 'identity'] as const
 
 // A builder imports a later payload (payload_pasted_at stamped) while a
-// conversation is already open. If the maker hasn't answered yet, the canned
-// greeting stored at open time is stale: drop it, re-snapshot the new config
-// onto the session, clear the "maker is waiting" flags, and post the new
-// welcome if it is new for this round (#214).
+// conversation is already open. The import re-opens the conversation when the
+// maker has not spoken since its last opening (an import-posted welcome or the
+// canned greeting; see maker-replied.ts). Then: drop the stale canned greeting,
+// re-snapshot the new config onto the session, clear the "maker is waiting"
+// flags, and post the new welcome if it is new for this round (#214). A new
+// welcome replaces the unanswered opening instead of following it (Project 5).
 export async function applyImportToOpenSession(
   db: Firestore,
   projectId: string,
@@ -31,13 +34,8 @@ export async function applyImportToOpenSession(
     .get()
   const messages = msgSnap.docs
   const greetings = messages.filter((d) => d.data().kind === 'unqueued_greeting')
-  const lastGreeting = greetings[greetings.length - 1]
-  const makerReplied = messages.some(
-    (d) =>
-      d.data().role === 'user' &&
-      (!lastGreeting || String(d.data().created_at) > String(lastGreeting.data().created_at))
-  )
-  if (makerReplied) return 'maker_replied'
+  const replyRows = messages.map((d) => d.data() as ReplyCheckMessage)
+  if (makerRepliedSinceReopen(replyRows)) return 'maker_replied'
 
   // The welcome the session already opened with (its snapshot, read before we
   // overwrite it) counts as used, so re-importing an unchanged welcome is a no-op.
@@ -55,8 +53,25 @@ export async function applyImportToOpenSession(
     )
   const toPost = alreadyPosted ? null : welcome
 
+  // Greetings always go. When a new welcome is posted, the unanswered opening
+  // goes too: every agent message at or after the opening point (>=, because an
+  // earlier import's welcome has created_at equal to its own point). We only get
+  // here when the maker has not spoken after that point, so none of these was
+  // answered. Agent messages before it (Sam's replies to the maker) stay, and so
+  // does a message the maker rated.
+  const toDelete = new Map<string, (typeof messages)[number]>()
+  for (const g of greetings) toDelete.set(g.id, g)
+  if (toPost) {
+    const point = reopenPoint(replyRows)
+    for (const d of messages) {
+      const m = d.data()
+      if (m.role !== 'agent' || m.rating) continue
+      if (point === null || String(m.created_at ?? '') >= point) toDelete.set(d.id, d)
+    }
+  }
+
   const batch = db.batch()
-  for (const g of greetings) batch.delete(g.ref)
+  for (const d of toDelete.values()) batch.delete(d.ref)
 
   const sessionUpdate: Record<string, unknown> = {}
   for (const field of CONFIG_FIELDS) {
@@ -77,6 +92,7 @@ export async function applyImportToOpenSession(
     batch.set(db.collection('messages').doc(), {
       session_id: active.id,
       role: 'agent',
+      kind: 'welcome',
       content: toPost,
       created_at: now,
       updated_at: now,
