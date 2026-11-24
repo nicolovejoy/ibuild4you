@@ -96,6 +96,12 @@ export async function GET(request: Request) {
     const viewerRole = hasSystemRole(auth, 'admin')
       ? 'admin'
       : await getProjectRole(db, docId, auth.uid, auth.email, auth.systemRoles, auth)
+    // No role on this brief: answer as for an unknown one, so a non-member learns
+    // nothing about it (not even that it exists). Admins resolve to 'admin' above;
+    // invited members who have not claimed yet match by email in getProjectRole.
+    if (!viewerRole) {
+      return NextResponse.json({ error: 'Project not found' }, { status: 404 })
+    }
     // Viewer's stored brief_role so chrome badges reflect what they're *doing*
     // (Contributor vs Originator), not just their access tier.
     // The same row says whether they archived the brief from their dashboard,

@@ -84,7 +84,8 @@ vi.mock('@/lib/api/sort-projects-by-activity', () => ({
 
 import { GET } from '../route'
 
-const get = async (query = '') => (await GET(new Request(`http://localhost/api/projects${query}`))).json()
+const getRes = (query: string) => GET(new Request(`http://localhost/api/projects${query}`))
+const get = async (query = '') => (await getRes(query)).json()
 
 const hasNone = (p: Doc) =>
   !('email_in_address' in p) && !('last_email_at' in p) && !('email_in_dropped' in p)
@@ -104,9 +105,30 @@ beforeEach(() => {
   members = []
 })
 
+describe('GET /api/projects?slug=: who may read one project', () => {
+  it('answers 404 to a viewer with no role on the brief, as for an unknown one', async () => {
+    mockGetProjectRole.mockResolvedValue(null)
+    const res = await getRes('?slug=cafe')
+    expect(res.status).toBe(404)
+    expect(await res.json()).toEqual({ error: 'Project not found' })
+  })
+
+  it('answers 404 for an unknown slug', async () => {
+    const res = await getRes('?slug=nope')
+    expect(res.status).toBe(404)
+    expect(await res.json()).toEqual({ error: 'Project not found' })
+  })
+
+  it('does not read the membership of a viewer with no role', async () => {
+    mockGetProjectRole.mockResolvedValue(null)
+    await getRes('?slug=cafe')
+    expect(mockGetViewerMembership).not.toHaveBeenCalled()
+  })
+})
+
 describe('GET /api/projects?slug= (one project)', () => {
-  for (const role of ['maker', 'apprentice', null]) {
-    it(`leaves the email-in fields out for role ${role ?? 'none'}`, async () => {
+  for (const role of ['maker', 'apprentice']) {
+    it(`leaves the email-in fields out for role ${role}`, async () => {
       mockGetProjectRole.mockResolvedValue(role)
       const body = await get('?slug=cafe')
       expect(body.title).toBe('Cafe')
