@@ -685,6 +685,11 @@ export const copy = {
     nudgeDrafted: 'Sam drafts it.',
     readOnly: 'Read only. To change any of this, paste a new payload.',
     pasteLink: 'Go to the paste box on Brief',
+    // The banner after a paste, when the header is not on Start. The first
+    // applies when the paste reached the open conversation, the second when
+    // the config waits for the next one.
+    importAppliedToOpen: '; agent config applied to the open conversation',
+    importAppliesNext: '; agent config applies from the next conversation',
     // Under the Start conversation modal's buttons.
     startHint: 'What Sam opens with is under Next round on this tab. A new paste changes it.',
   },

@@ -65,6 +65,7 @@ import { FerryDesk } from './FerryDesk'
 import { ConversationComposer } from './ConversationComposer'
 import { SettingsTab } from './SettingsTab'
 import { NextRoundPanel } from './NextRoundPanel'
+import { nextRound, type NextRoundOpening } from '@/lib/builder/next-round'
 import { OpenQuestionsCard } from './OpenQuestionsCard'
 import { StalePrepNotice, UnfoldedNotesList } from './BriefNotes'
 import { makerQuestions, riskOwner, riskText } from '@/lib/brief/risks'
@@ -1215,6 +1216,13 @@ function StatusStrip({
     makerRepliedInActive: makerAnswered,
   })
   const remindersLine = remindersStripLine(project, Date.now())
+  // After a paste: the server applied the config to the open conversation when
+  // the maker has not answered it; otherwise it waits for the next one.
+  const configNote =
+    activeSession && !makerAnswered ? copy.nextRound.importAppliedToOpen : copy.nextRound.importAppliesNext
+  // What the next conversation will open with, for the Start modal's "Opens with".
+  const unusedSessionId = activeSession && !makerAnswered ? activeSession.id : null
+  const opening = nextRound({ project, sessions, unusedSessionId }).opening
 
   // Post-dispatch confirmation, rendered full-width under the strip so the
   // sent/copied/suppressed outcome stays visible after the modal closes.
@@ -1274,6 +1282,7 @@ function StatusStrip({
               onShare={onShare}
               onOpenImport={onOpenImport}
               onResult={setResult}
+              opening={opening}
               justImported={justImported}
               onImportedConsumed={onImportedConsumed}
             />
@@ -1283,7 +1292,8 @@ function StatusStrip({
 
       {/* Payload landed but it isn't start's turn (maker still mid-conversation,
           or no maker yet) — confirm the paste took instead of opening the Start
-          modal. Config only snapshots into the NEXT session, hence the caveat. */}
+          modal. The server applies the config to the open conversation when the
+          maker has not answered it; otherwise it waits for the next one. */}
       {justImported && dispatch.kind !== 'start' && (
         <div className="flex items-start justify-between gap-2 text-sm border-t border-brand-line-soft pt-2">
           <div className="flex items-start gap-2">
@@ -1291,7 +1301,7 @@ function StatusStrip({
             <p>
               <span className="font-medium text-green-800">Payload loaded.</span>{' '}
               <span className="text-brand-ink-soft">
-                Brief updated{justImported.configUpdated ? '; agent config applies from the next conversation' : ''}.
+                {`Brief updated${justImported.configUpdated ? configNote : ''}.`}
               </span>
             </p>
           </div>
@@ -1325,7 +1335,7 @@ function StatusStrip({
       <NextRoundPanel
         project={project}
         sessions={sessions}
-        unusedSessionId={activeSession && !makerAnswered ? activeSession.id : null}
+        unusedSessionId={unusedSessionId}
         onOpenImport={onOpenImport}
       />
     )}
@@ -1771,6 +1781,7 @@ function StartDispatch({
   onShare,
   onOpenImport,
   onResult,
+  opening,
   justImported,
   onImportedConsumed,
 }: {
@@ -1782,6 +1793,8 @@ function StartDispatch({
   onShare: (mode?: 'maker' | 'add') => void
   onOpenImport?: () => void
   onResult: (r: { sessionNumber: number; sent?: string[]; copied?: boolean; suppressed?: boolean }) => void
+  // What the new conversation will really open with (not always the project's welcome).
+  opening: NextRoundOpening
   justImported?: { configUpdated: boolean } | null
   onImportedConsumed?: () => void
 }) {
@@ -1879,7 +1892,12 @@ function StartDispatch({
   const mechanicalFocus = `${sessionMode === 'converge' ? 'Converge' : 'Discover'}${firstFocusItem ? ` · ${firstFocusItem}` : ''}`
   const focusLine = prep?.focus || mechanicalFocus
   const prepping = generatePrep.isPending && !prep
-  const openerPreview = (project.welcome_message || '').trim().replace(/\s+/g, ' ')
+  const openerPreview =
+    opening.kind === 'welcome'
+      ? opening.text.trim().replace(/\s+/g, ' ')
+      : opening.kind === 'default'
+        ? copy.nextRound.openingDefault
+        : copy.nextRound.openingKickoff
   const busy = updateProject.isPending || createSession.isPending || sendEmail.isPending
   const actionError = updateProject.error || createSession.error || sendEmail.error
 
@@ -1915,12 +1933,10 @@ function StartDispatch({
                 <span className="text-gray-700">{focusLine}</span>
               )}
             </div>
-            {openerPreview && (
-              <div className="flex gap-2 min-w-0">
-                <span className="text-gray-400 w-20 shrink-0">Opens with</span>
-                <span className="text-brand-ink-soft truncate">{openerPreview}</span>
-              </div>
-            )}
+            <div className="flex gap-2 min-w-0">
+              <span className="text-gray-400 w-20 shrink-0">Opens with</span>
+              <span className="text-brand-ink-soft truncate">{openerPreview}</span>
+            </div>
           </div>
           <p className="text-sm text-brand-ink-soft">
             This <span className="font-medium text-gray-900">closes the current conversation</span> and starts a fresh
