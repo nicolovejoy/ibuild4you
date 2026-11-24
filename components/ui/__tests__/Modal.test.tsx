@@ -2,6 +2,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, fireEvent, cleanup } from '@testing-library/react'
 import React, { useState } from 'react'
+import { flushSync } from 'react-dom'
 import { Modal } from '../Modal'
 
 afterEach(cleanup)
@@ -224,5 +225,63 @@ describe('Modal', () => {
     ;(document.activeElement as HTMLElement).blur()
     expect(() => fireEvent.keyDown(document.body, { key: 'Tab' })).not.toThrow()
     expect(dialog.contains(document.activeElement)).toBe(true)
+  })
+
+  // "Send this email now?" opens from inside the Share and Invite window, so
+  // two modals can be open at once. Only the top one acts on the keyboard.
+  it('with one modal open inside another, Escape closes only the inner one', () => {
+    const closeOuter = vi.fn()
+    const closeInner = vi.fn()
+    render(
+      <Modal isOpen onClose={closeOuter} title="Outer">
+        <button>Outer button</button>
+        <Modal isOpen onClose={closeInner} title="Inner">
+          <button>Inner button</button>
+        </Modal>
+      </Modal>
+    )
+    fireEvent.keyDown(document.body, { key: 'Escape' })
+    expect(closeInner).toHaveBeenCalledTimes(1)
+    expect(closeOuter).not.toHaveBeenCalled()
+  })
+
+  it('with one modal open inside another, Tab stays in the inner one', () => {
+    render(
+      <Modal isOpen onClose={() => {}} title="Outer">
+        <button>Outer button</button>
+        <Modal isOpen onClose={() => {}} title="Inner">
+          <button>Inner button</button>
+        </Modal>
+      </Modal>
+    )
+    const inner = screen.getByRole('dialog', { name: 'Inner' })
+    const innerButton = screen.getByRole('button', { name: 'Inner button' })
+    innerButton.focus()
+    // Inner button is the last stop of both dialogs: Tab wraps to the inner
+    // dialog's first stop, not the outer one's.
+    fireEvent.keyDown(innerButton, { key: 'Tab' })
+    expect(inner.contains(document.activeElement)).toBe(true)
+  })
+
+  // In a browser React removes the inner modal as soon as its listener
+  // returns, before the outer modal's listener runs for the same key press.
+  // flushSync reproduces that here. The outer modal must still stay open.
+  it('Escape closes only the inner modal even when it is gone before the outer listener runs', () => {
+    const closeOuter = vi.fn()
+    function Stacked() {
+      const [innerOpen, setInnerOpen] = useState(true)
+      return (
+        <Modal isOpen onClose={closeOuter} title="Outer">
+          <button>Outer button</button>
+          <Modal isOpen={innerOpen} onClose={() => flushSync(() => setInnerOpen(false))} title="Inner">
+            <button>Inner button</button>
+          </Modal>
+        </Modal>
+      )
+    }
+    render(<Stacked />)
+    document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    expect(screen.queryByRole('dialog', { name: 'Inner' })).toBeNull()
+    expect(closeOuter).not.toHaveBeenCalled()
   })
 })
