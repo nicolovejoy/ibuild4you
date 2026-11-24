@@ -11,11 +11,12 @@ const NOW = '2026-07-01T00:00:00.000Z'
 
 // Minimal session shapes the planners operate on. `messageCount` is supplied by
 // the caller (the API route counts messages per session before planning).
-const sess = (id: string, created_at: string, status = 'active', messageCount = 0) => ({
+const sess = (id: string, created_at: string, status = 'active', messageCount = 0, openedAt?: string | null) => ({
   id,
   status,
   created_at,
   messageCount,
+  ...(openedAt !== undefined ? { openedAt } : {}),
 })
 
 describe('recomputeCounters', () => {
@@ -27,6 +28,22 @@ describe('recomputeCounters', () => {
     ])
     expect(r.session_count).toBe(3)
     expect(r.latest_session_created_at).toBe('2026-03-01T00:00:00Z')
+  })
+
+  it('takes a later opening (an import-posted welcome) over a session start', () => {
+    const r = recomputeCounters([
+      { id: 'a', created_at: '2026-01-01T00:00:00Z', openedAt: '2026-03-15T00:00:00Z' },
+      { id: 'b', created_at: '2026-02-01T00:00:00Z' },
+    ])
+    expect(r.session_count).toBe(2)
+    expect(r.latest_session_created_at).toBe('2026-03-15T00:00:00Z')
+  })
+
+  it('ignores an opening earlier than its session start', () => {
+    const r = recomputeCounters([
+      { id: 'a', created_at: '2026-02-01T00:00:00Z', openedAt: '2026-01-01T00:00:00Z' },
+    ])
+    expect(r.latest_session_created_at).toBe('2026-02-01T00:00:00Z')
   })
 
   it('returns 0 / null for an empty set', () => {
@@ -84,6 +101,17 @@ describe('planReopen', () => {
     const plan = planReopen({ sessions, reopenId: 's1', archiveId: 'nope', now: NOW })
     expect('error' in plan && plan.error).toMatch(/not found/i)
   })
+
+  it("keeps the import's restart of the open conversation", () => {
+    const restarted = [
+      sess('s1', '2026-01-01T00:00:00Z', 'completed', 5),
+      sess('s2', '2026-02-01T00:00:00Z', 'active', 4, '2026-03-01T00:00:00Z'),
+      sess('s3', '2026-02-15T00:00:00Z', 'active', 0),
+    ]
+    const plan = planReopen({ sessions: restarted, reopenId: 's1', archiveId: 's3', now: NOW })
+    if ('error' in plan) throw new Error(plan.error)
+    expect(plan.projectPatch!.latest_session_created_at).toBe('2026-03-01T00:00:00Z')
+  })
 })
 
 describe('planArchive', () => {
@@ -121,6 +149,31 @@ describe('planArchive', () => {
   it('errors when the target does not exist', () => {
     const plan = planArchive({ sessions, sessionId: 'nope', briefTitle: 'x', now: NOW })
     expect('error' in plan && plan.error).toMatch(/not found/i)
+  })
+
+  describe('with an import restart on the open conversation', () => {
+    const restarted = [
+      sess('s1', '2026-02-01T00:00:00Z', 'active', 4, '2026-03-01T00:00:00Z'),
+      sess('s2', '2026-02-15T00:00:00Z', 'active', 0),
+    ]
+
+    it("keeps the import's restart when archiving another conversation", () => {
+      const plan = planArchive({ sessions: restarted, sessionId: 's2', briefTitle: 'Cafe App', now: NOW })
+      if ('error' in plan) throw new Error(plan.error)
+      expect(plan.projectPatch!.latest_session_created_at).toBe('2026-03-01T00:00:00Z')
+    })
+
+    it('drops the restart when archiving the conversation that holds it', () => {
+      const plan = planArchive({
+        sessions: restarted,
+        sessionId: 's1',
+        briefTitle: 'Cafe App',
+        typedConfirm: 'Cafe App',
+        now: NOW,
+      })
+      if ('error' in plan) throw new Error(plan.error)
+      expect(plan.projectPatch!.latest_session_created_at).toBe('2026-02-15T00:00:00Z')
+    })
   })
 })
 

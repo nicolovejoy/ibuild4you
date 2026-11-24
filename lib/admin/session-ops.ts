@@ -10,13 +10,16 @@
 //   - NON-DESTRUCTIVE: sessions are archived (status:'archived' + archived_at),
 //     never deleted. Archiving a session WITH messages needs an explicit confirm.
 //   - Denormalized counters (session_count, latest_session_created_at) are always
-//     recomputed from the surviving (non-archived) set.
+//     recomputed from the surviving (non-archived) set. latest_session_created_at
+//     includes the later opening an import posted into a conversation (a welcome
+//     message), so reopen and archive keep the import's reminder restart.
 
 export interface PlannerSession {
   id: string
   status: string
   created_at: string
   messageCount: number
+  openedAt?: string | null // created_at of the newest kind 'welcome' message (an import re-opened the conversation); null or absent = none
 }
 
 interface SessionUpdate {
@@ -51,10 +54,10 @@ const archivePatch = (now: string) => ({ status: 'archived', archived_at: now, u
 
 /** session_count + latest_session_created_at over the surviving session set. */
 export function recomputeCounters(
-  survivors: Array<{ id: string; created_at: string }>
+  survivors: Array<{ id: string; created_at: string; openedAt?: string | null }>
 ): { session_count: number; latest_session_created_at: string | null } {
   const latest = survivors
-    .map((s) => String(s.created_at))
+    .map((s) => (s.openedAt && s.openedAt > String(s.created_at) ? s.openedAt : String(s.created_at)))
     .sort()
     .at(-1)
   return { session_count: survivors.length, latest_session_created_at: latest ?? null }
