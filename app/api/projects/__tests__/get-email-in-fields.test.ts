@@ -119,6 +119,13 @@ describe('GET /api/projects?slug=: who may read one project', () => {
     expect(await res.json()).toEqual({ error: 'Project not found' })
   })
 
+  it('answers 404 to a viewer with no role when the brief is addressed by its id', async () => {
+    mockGetProjectRole.mockResolvedValue(null)
+    const res = await getRes('?slug=p1')
+    expect(res.status).toBe(404)
+    expect(await res.json()).toEqual({ error: 'Project not found' })
+  })
+
   it('does not read the membership of a viewer with no role', async () => {
     mockGetProjectRole.mockResolvedValue(null)
     await getRes('?slug=cafe')
@@ -189,6 +196,46 @@ describe('GET /api/projects (the list)', () => {
     const list = (await get()) as Doc[]
     expect(list).toHaveLength(2)
     expect(list.every(hasAll)).toBe(true)
+  })
+})
+
+describe('GET /api/projects (the list): removed members', () => {
+  const REMOVED = '2026-11-01T00:00:00.000Z'
+
+  it('leaves out a brief the viewer was removed from', async () => {
+    members = [
+      { project_id: 'p1', user_id: 'u1', email: 'viewer@example.com', role: 'builder', removed_at: REMOVED },
+      { project_id: 'p2', user_id: 'u1', email: 'viewer@example.com', role: 'maker' },
+    ]
+    const list = (await get()) as Doc[]
+    expect(list).toHaveLength(1)
+    expect(list[0].id).toBe('p2')
+  })
+
+  it('answers an empty list when every membership was removed', async () => {
+    members = [
+      { project_id: 'p1', user_id: 'u1', email: 'viewer@example.com', role: 'builder', removed_at: REMOVED },
+    ]
+    expect(await get()).toEqual([])
+  })
+
+  it('leaves it out when the removed row matches by email only', async () => {
+    members = [
+      { project_id: 'p1', user_id: null, email: 'viewer@example.com', role: 'builder', removed_at: REMOVED },
+    ]
+    expect(await get()).toEqual([])
+  })
+
+  it('keeps a brief when one of two rows is active, with the active row role', async () => {
+    members = [
+      { project_id: 'p1', user_id: 'u1', email: 'old@example.com', role: 'builder', removed_at: REMOVED },
+      { project_id: 'p1', user_id: null, email: 'viewer@example.com', role: 'maker' },
+    ]
+    const list = (await get()) as Doc[]
+    expect(list).toHaveLength(1)
+    expect(list[0].id).toBe('p1')
+    expect(list[0].viewer_role).toBe('maker')
+    expect(hasNone(list[0])).toBe(true)
   })
 })
 

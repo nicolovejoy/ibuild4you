@@ -20,6 +20,7 @@ import { deleteS3Object } from '@/lib/s3/client'
 import { stampDecisionProvenance } from '@/lib/api/brief-merge'
 import { normalizeEmail, isValidEmail } from '@/lib/email/normalize'
 import { scheduleGarmGrantSync } from '@/lib/garm-grants'
+import { isActiveMember } from '@/lib/members/lifecycle'
 import { BRIEF_MODELS, isBriefModel, briefModelSnapshot } from '@/lib/agent/model-choices'
 import type { BriefRole, MemberRole } from '@/lib/types'
 
@@ -163,11 +164,16 @@ export async function GET(request: Request) {
     .where('email', '==', auth.email)
     .get()
 
+  // A removed member (removed_at set) has no access: their row stays for the
+  // history, but it must not bring the brief into their list.
+  const activeByUid = memberSnap.docs.filter((doc) => isActiveMember(doc.data()))
+  const activeByEmail = memberByEmail.docs.filter((doc) => isActiveMember(doc.data()))
+
   // Collect all project IDs. Membership rows are the only access source —
   // projects.requester_* is display-only denormalization (Garm PR E).
   const projectIds = new Set<string>()
-  for (const doc of memberSnap.docs) projectIds.add(doc.data().project_id as string)
-  for (const doc of memberByEmail.docs) projectIds.add(doc.data().project_id as string)
+  for (const doc of activeByUid) projectIds.add(doc.data().project_id as string)
+  for (const doc of activeByEmail) projectIds.add(doc.data().project_id as string)
 
   if (projectIds.size === 0) {
     return NextResponse.json([])
@@ -194,13 +200,13 @@ export async function GET(request: Request) {
   const viewerRoles = new Map<string, string>()
   const viewerBriefRoles = new Map<string, BriefRole | null>()
   const viewerArchived = new Map<string, boolean>()
-  for (const doc of memberSnap.docs) {
+  for (const doc of activeByUid) {
     const d = doc.data()
     viewerRoles.set(d.project_id as string, d.role as string)
     viewerBriefRoles.set(d.project_id as string, (d.brief_role as BriefRole | null) ?? null)
     viewerArchived.set(d.project_id as string, !!d.archived_at)
   }
-  for (const doc of memberByEmail.docs) {
+  for (const doc of activeByEmail) {
     const d = doc.data()
     if (!viewerRoles.has(d.project_id as string)) {
       viewerRoles.set(d.project_id as string, d.role as string)
