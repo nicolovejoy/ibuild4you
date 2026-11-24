@@ -141,6 +141,14 @@ export const copy = {
       'PS — if this landed in your junk folder, please move it to your inbox so our emails reach you next time.',
     ].join('\n'),
 
+  // The project page when the brief cannot be shown (#291). Maker-facing too:
+  // lib/copy-maker.ts reads these and holds the French.
+  projectPage: {
+    notFound: 'This brief was not found. It may have been deleted, or it was not shared with you.',
+    loadFailed: 'This brief could not be loaded. Reload the page to try again.',
+    backToDashboard: 'Back to your briefs',
+  },
+
   // --- Dashboard ---
   // NOTE: in the UI the umbrella construct is called "brief". The internal data
   // model + API + collection are still named `project` / `projects` (avoiding a

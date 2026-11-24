@@ -13,20 +13,39 @@ import {
 // on a brief's conversations. Env-agnostic (works in prod, guarded by confirms),
 // audit-logged to `admin_actions`. Never hard-deletes — sessions are archived.
 
+// `withOpenings` also reads each session's messages to find its newest import-posted
+// welcome (kind 'welcome'). The ops rewrite latest_session_created_at, and an import
+// that posted a welcome restarted the reminder cadence later than its conversation's
+// start, so the recompute needs that time. Without it: a count() per session.
 async function loadSessionsWithCounts(
   db: ReturnType<typeof getAdminDb>,
-  projectId: string
+  projectId: string,
+  opts: { withOpenings?: boolean } = {}
 ): Promise<PlannerSession[]> {
   const snap = await db.collection('sessions').where('project_id', '==', projectId).get()
   const sessions = await Promise.all(
     snap.docs.map(async (doc) => {
-      const count = (await db.collection('messages').where('session_id', '==', doc.id).count().get()).data().count
       const d = doc.data()
+      let messageCount: number
+      let openedAt: string | null = null
+      if (opts.withOpenings) {
+        const msgs = await db.collection('messages').where('session_id', '==', doc.id).get()
+        messageCount = msgs.size
+        for (const m of msgs.docs) {
+          const md = m.data()
+          if (md.kind !== 'welcome') continue
+          const at = String(md.created_at ?? '')
+          if (at && (openedAt === null || at > openedAt)) openedAt = at
+        }
+      } else {
+        messageCount = (await db.collection('messages').where('session_id', '==', doc.id).count().get()).data().count
+      }
       return {
         id: doc.id,
         status: String(d.status ?? 'active'),
         created_at: String(d.created_at ?? ''),
-        messageCount: count,
+        messageCount,
+        ...(opts.withOpenings ? { openedAt } : {}),
       }
     })
   )
@@ -103,7 +122,7 @@ export async function POST(request: Request) {
   }
   const briefTitle = (proj.data()!.title as string) || ''
 
-  const sessions = await loadSessionsWithCounts(db, projectId)
+  const sessions = await loadSessionsWithCounts(db, projectId, { withOpenings: true })
   const now = new Date().toISOString()
 
   let result: Plan | { error: string }

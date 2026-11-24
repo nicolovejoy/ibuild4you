@@ -22,7 +22,7 @@ import { getProjectShareLink } from '@/lib/url'
 import { lockedFirst } from '@/lib/api/brief-merge'
 import { sessionNumberById, decisionProvenanceMarkdown } from '@/lib/builder/decision-provenance'
 import { Modal } from '@/components/ui/Modal'
-import { makerAnsweredOpening } from '@/lib/sessions/maker-replied'
+import { makerAnsweredOpening, makerSpokeAfter } from '@/lib/sessions/maker-replied'
 import { conversationOpeningAt, headerReminderLine, reminderText } from '@/lib/builder/reminder-line'
 import {
   useProject,
@@ -94,11 +94,15 @@ type SavedBrief = {
   size_warning?: string | null
 }
 
-// What the builder was told after a paste. `applied` is the server's word that
-// the import went into the open conversation (the PATCH answers
-// import_applied: 'applied'); the header believes it over the messages, which
-// can still be stale right after the import.
-type ImportedPayload = { configUpdated: boolean; applied: boolean }
+// What the builder was told after a paste, from the PATCH answer.
+// applied: the import went into the open conversation (import_applied 'applied');
+//   the banner says the config was applied to it.
+// welcomePosted: it posted a new welcome there (import_welcome_posted); the header
+//   then counts only maker messages after importedAt, since the cached messages
+//   can predate the import.
+// importedAt: the PATCH answer's updated_at (server time, same as the welcome's
+//   created_at); null when the answer had none.
+type ImportedPayload = { configUpdated: boolean; applied: boolean; welcomePosted: boolean; importedAt: string | null }
 
 export function BuilderProjectView({ projectId }: { projectId: string }) {
   const router = useRouter()
@@ -529,7 +533,7 @@ function BriefTab({
   const [briefCopied, setBriefCopied] = useState(false)
   const [pasteJson, setPasteJson] = useState('')
   const [pasteError, setPasteError] = useState<string | null>(null)
-  const [importWarnings, setImportWarnings] = useState<{ messages: string[]; configUpdated: boolean; applied: boolean } | null>(null)
+  const [importWarnings, setImportWarnings] = useState<({ messages: string[] } & ImportedPayload) | null>(null)
   const [showGenConfirm, setShowGenConfirm] = useState(false)
   const queryClient = useQueryClient()
   const [generating, setGenerating] = useState(false)
@@ -758,6 +762,8 @@ function BriefTab({
       // Did the server apply the import to the open conversation? Only its own
       // answer counts (import_applied), never a guess from the messages.
       let applied = false
+      let welcomePosted = false
+      let importedAt: string | null = null
       let warnings: string[] = []
       // What the brief save answered (or, on a retry, what the first save answered).
       let saved: { version?: number; locks_kept?: string[]; size_warning?: string | null } | undefined
@@ -778,6 +784,8 @@ function BriefTab({
             payload_pasted_version: pastedVersion,
           })
           applied = res?.import_applied === 'applied'
+          welcomePosted = res?.import_welcome_posted === true
+          importedAt = typeof res?.updated_at === 'string' ? res.updated_at : null
         } catch (err) {
           console.error('Failed to write payload_pasted_at stamp:', err)
         }
@@ -813,6 +821,8 @@ function BriefTab({
             payload_pasted_version: saved?.version,
           } as Parameters<typeof updateProject.mutateAsync>[0])
           applied = res?.import_applied === 'applied'
+          welcomePosted = res?.import_welcome_posted === true
+          importedAt = typeof res?.updated_at === 'string' ? res.updated_at : null
           configUpdated = true
         } else {
           await stampPasted(saved?.version)
@@ -841,12 +851,12 @@ function BriefTab({
       setStalePrep(null)
       // Ignored fields: stay on the Brief tab so the builder reads the warning.
       if (warnings.length > 0) {
-        setImportWarnings({ messages: warnings, configUpdated, applied })
+        setImportWarnings({ messages: warnings, configUpdated, applied, welcomePosted, importedAt })
         return
       }
       // Import succeeded — hand the builder to the next step instead of leaving
       // them staring at the updated brief with no cue (#25).
-      onImported?.({ configUpdated, applied })
+      onImported?.({ configUpdated, applied, welcomePosted, importedAt })
     } catch (err) {
       if (err instanceof StalePrepError) {
         setStalePrep({ info: err.info, payload })
@@ -986,9 +996,9 @@ function BriefTab({
                         variant="secondary"
                         size="sm"
                         onClick={() => {
-                          const { configUpdated, applied } = importWarnings
+                          const { configUpdated, applied, welcomePosted, importedAt } = importWarnings
                           setImportWarnings(null)
-                          onImported?.({ configUpdated, applied })
+                          onImported?.({ configUpdated, applied, welcomePosted, importedAt })
                         }}
                       >
                         {copy.brief.importContinueButton}
@@ -1223,21 +1233,27 @@ function StatusStrip({
   const router = useRouter()
   const { data: members } = useProjectMembers(project.id)
   const { data: activeMessages } = useMessages(activeSession?.id)
+  // The maker spoke after the import landed (any kind of import). The Start
+  // window opens by itself only for the import the builder just made, never
+  // because the maker answered later while the banner is still up.
+  const makerSpokeSinceImport =
+    !!activeMessages && !!justImported?.importedAt && makerSpokeAfter(activeMessages, justImported.importedAt)
   // Has the maker answered the conversation's opening? An import that posts a
   // new welcome re-opens it, so earlier maker messages stop counting (Project 5).
-  // While the banner after a paste is up and the server said the import was
-  // applied to the open conversation, that is the truth: the maker has not
-  // answered it, whatever the messages hold. They can be stale right after the
-  // import (a snapshot of the old documents from the browser's own cache), and
-  // must not flip the header to Start or open its modal. Dismissing the banner
-  // hands the decision back to the messages.
-  const importApplied = !!justImported?.applied && !!activeSession
-  const makerAnswered = importApplied ? false : activeMessages ? makerAnsweredOpening(activeMessages) : false
+  // While the banner after a paste is up and the server says the import posted
+  // a welcome into the open conversation, only a maker message after the import
+  // counts: the cached messages can predate it (a snapshot of the old documents
+  // from the browser's own cache) and must not flip the header to Start or open
+  // its modal. Otherwise, the messages decide.
+  const welcomeJustPosted = !!justImported?.welcomePosted && !!activeSession
+  const makerAnswered = welcomeJustPosted
+    ? makerSpokeSinceImport
+    : activeMessages ? makerAnsweredOpening(activeMessages) : false
   // The badge reads the project's last-message time, which still says the maker
   // spoke after an import re-opened their conversation. With the messages in
   // hand, say it is the maker's turn there.
   const turn =
-    activeSession && (activeMessages || importApplied) && !makerAnswered
+    activeSession && (activeMessages || welcomeJustPosted) && !makerAnswered
       ? getTurnIndicator({ ...project, session_count: sessions.length }, 'builder', 'en', { makerAnsweredOpening: false })
       : turnFromProject
 
@@ -1327,6 +1343,7 @@ function StatusStrip({
               onResult={setResult}
               opening={opening}
               justImported={justImported}
+              makerSpokeSinceImport={makerSpokeSinceImport}
               onImportedConsumed={onImportedConsumed}
             />
           )}
@@ -1818,6 +1835,7 @@ function StartDispatch({
   onResult,
   opening,
   justImported,
+  makerSpokeSinceImport,
   onImportedConsumed,
 }: {
   project: Project
@@ -1831,6 +1849,9 @@ function StartDispatch({
   // What the new conversation will really open with (not always the project's welcome).
   opening: NextRoundOpening
   justImported?: ImportedPayload | null
+  // True when the maker has written since the import: the header is on Start
+  // because of that, not because the builder just pasted.
+  makerSpokeSinceImport?: boolean
   onImportedConsumed?: () => void
 }) {
   const [open, setOpen] = useState(false)
@@ -1838,13 +1859,16 @@ function StartDispatch({
   // Return leg of the ferry: arriving from a successful payload paste opens
   // the modal directly — the paste's whole purpose is starting the next
   // conversation. One-shot; closing the modal (any way) consumes the flag.
+  // Not when the header reached Start some other way: the import posted a
+  // welcome (the header was on Nudge), or the maker wrote after the import.
+  // The builder did not ask for the window then.
   const autoOpenedRef = useRef(false)
   useEffect(() => {
-    if (justImported && !autoOpenedRef.current) {
+    if (justImported && !justImported.welcomePosted && !makerSpokeSinceImport && !autoOpenedRef.current) {
       autoOpenedRef.current = true
       setOpen(true)
     }
-  }, [justImported])
+  }, [justImported, makerSpokeSinceImport])
   const close = () => {
     setOpen(false)
     if (justImported) onImportedConsumed?.()

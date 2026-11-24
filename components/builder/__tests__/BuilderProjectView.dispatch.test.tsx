@@ -18,6 +18,8 @@ let messagesGate: Promise<void> | null = null
 // What PATCH /api/projects says the import did (the real route answers it when
 // the request carries payload_pasted_at). null = the import step threw.
 let importApplied: 'applied' | 'no_session' | 'maker_replied' | null = 'applied'
+// Whether an 'applied' import posted a new welcome (import_welcome_posted).
+let welcomePosted = true
 const apiFetch = vi.fn(async (url: string, init?: { method?: string; body?: string }) => {
   const path = url.split('?')[0]
   const method = init?.method ?? 'GET'
@@ -26,7 +28,15 @@ const apiFetch = vi.fn(async (url: string, init?: { method?: string; body?: stri
   }
   if (path === '/api/projects' && method === 'PATCH') {
     const body = JSON.parse(init?.body ?? '{}')
-    const answer = 'payload_pasted_at' in body ? { id: 'p1', import_applied: importApplied } : { id: 'p1' }
+    const answer =
+      'payload_pasted_at' in body
+        ? {
+            id: 'p1',
+            updated_at: IMPORTED_AT,
+            import_applied: importApplied,
+            import_welcome_posted: importApplied === 'applied' ? welcomePosted : false,
+          }
+        : { id: 'p1' }
     return new Response(JSON.stringify(answer), { status: 200 })
   }
   if (path === '/api/projects/p1/email' && method === 'POST') {
@@ -73,6 +83,8 @@ const T1 = '2026-11-20T10:00:00.000Z'
 const T2 = '2026-11-20T10:05:00.000Z'
 const T3 = '2026-11-23T09:00:00.000Z'
 const T4 = '2026-11-23T10:00:00.000Z'
+// The server time of the import (the PATCH answer's updated_at), after T4.
+const IMPORTED_AT = '2026-11-23T11:00:00.000Z'
 
 const userMsg = (id: string, created_at: string) => ({ id, session_id: 's1', role: 'user', content: 'Hi', created_at })
 const agentMsg = (id: string, created_at: string, kind?: string) => ({
@@ -103,6 +115,7 @@ beforeEach(() => {
   search = 'tab=conversations'
   messagesGate = null
   importApplied = 'applied'
+  welcomePosted = true
   for (const key of Object.keys(answers)) delete answers[key]
   apiFetch.mockClear()
   answers['/api/projects'] = {
@@ -320,6 +333,94 @@ describe('the banner after a paste', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Dismiss' }))
     expect(await screen.findByRole('button', { name: /Start conversation 2/ })).toBeTruthy()
     expect(screen.queryByRole('button', { name: /^Nudge/ })).toBeNull()
+  })
+
+  it('moves to Start, without opening the Start window, when the maker answers the new welcome while the banner is up', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const serverMessages = [userMsg('m1', T1), agentMsg('m2', T2), agentMsg('w', IMPORTED_AT, 'welcome')]
+    answers['/api/messages'] = serverMessages
+    await pasteAndImport(client)
+    await waitFor(() => expect(apiFetch.mock.calls.some(([u]) => u.startsWith('/api/messages'))).toBe(true))
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20))
+    })
+    expect(screen.getByRole('button', { name: /^Nudge/ })).toBeTruthy()
+    // What the realtime listener does when the maker answers.
+    await act(async () => {
+      client.setQueryData(['messages', 's1'], [...serverMessages, userMsg('m5', '2026-11-23T11:05:00.000Z')])
+      await new Promise((resolve) => setTimeout(resolve, 20))
+    })
+    expect(screen.getByRole('button', { name: /Start conversation 2/ })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /^Nudge/ })).toBeNull()
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('a maker message from before the import still does not count while the banner is up', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const serverMessages = [userMsg('m1', T1), agentMsg('m2', T2), agentMsg('w', IMPORTED_AT, 'welcome')]
+    answers['/api/messages'] = serverMessages
+    await pasteAndImport(client)
+    await waitFor(() => expect(apiFetch.mock.calls.some(([u]) => u.startsWith('/api/messages'))).toBe(true))
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20))
+    })
+    await act(async () => {
+      client.setQueryData(['messages', 's1'], [...serverMessages, userMsg('m5', T4)])
+      await new Promise((resolve) => setTimeout(resolve, 20))
+    })
+    expect(screen.getByRole('button', { name: /^Nudge/ })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /Start conversation 2/ })).toBeNull()
+  })
+
+  it('offers Start and opens the Start window when the import re-armed the conversation without posting a welcome', async () => {
+    welcomePosted = false
+    answers['/api/messages'] = [userMsg('m1', T1), agentMsg('m2', T2)]
+    await pasteAndImport()
+    await waitFor(() => expect(apiFetch.mock.calls.some(([u]) => u.startsWith('/api/messages'))).toBe(true))
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20))
+    })
+    expect(screen.queryByRole('button', { name: /^Nudge/ })).toBeNull()
+    // The ferry case: the Start window opens by itself (its own button is in the
+    // dialog too, so the header's button is looked at after it is closed).
+    const dialog = await screen.findByRole('dialog')
+    fireEvent.click(within(dialog).getByRole('button', { name: copy.modal.close }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(screen.getByRole('button', { name: /Start conversation 2/ })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /^Nudge/ })).toBeNull()
+  })
+
+  it('opens the Start window by itself in the ferry case, when the maker had already replied', async () => {
+    importApplied = 'maker_replied'
+    answers['/api/messages'] = [userMsg('m1', T1), agentMsg('m2', T2)]
+    await pasteAndImport()
+    await waitFor(() => expect(apiFetch.mock.calls.some(([u]) => u.startsWith('/api/messages'))).toBe(true))
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20))
+    })
+    expect(await screen.findByRole('dialog')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /^Nudge/ })).toBeNull()
+  })
+
+  it('does not open the Start window when the maker answers after an import that posted no welcome and the header was on Nudge', async () => {
+    welcomePosted = false
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    // The maker had not spoken: the header is on Nudge.
+    const serverMessages = [agentMsg('m2', T2)]
+    answers['/api/messages'] = serverMessages
+    await pasteAndImport(client)
+    await waitFor(() => expect(apiFetch.mock.calls.some(([u]) => u.startsWith('/api/messages'))).toBe(true))
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20))
+    })
+    expect(screen.getByRole('button', { name: /^Nudge/ })).toBeTruthy()
+    expect(screen.queryByRole('dialog')).toBeNull()
+    await act(async () => {
+      client.setQueryData(['messages', 's1'], [...serverMessages, userMsg('m5', '2026-11-23T11:05:00.000Z')])
+      await new Promise((resolve) => setTimeout(resolve, 20))
+    })
+    expect(screen.getByRole('button', { name: /Start conversation 2/ })).toBeTruthy()
+    expect(screen.queryByRole('dialog')).toBeNull()
   })
 
   it('says the config applies from the next conversation when none is open', async () => {

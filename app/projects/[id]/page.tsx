@@ -2,9 +2,10 @@
 
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useApproval } from '@/lib/hooks/useApproval'
-import { useClaimProject, useResolveProject } from '@/lib/query/hooks'
+import { ProjectNotFoundError, useClaimProject, useResolveProject } from '@/lib/query/hooks'
 import { useRouter, useParams, useSearchParams } from 'next/navigation'
 import { useEffect } from 'react'
+import Link from 'next/link'
 import { BuilderProjectView } from '@/components/builder/BuilderProjectView'
 import { MakerProjectView } from '@/components/maker/MakerProjectView'
 import { selectProjectView, isBuilderSideRole } from '@/lib/projects/project-view'
@@ -17,13 +18,15 @@ export default function ProjectPage() {
   const params = useParams()
   const searchParams = useSearchParams()
   const slugOrId = params.id as string
-  const { common } = useMakerCopy()
+  const { common, projectPage } = useMakerCopy()
 
   // Resolve slug or Firestore ID to a project. Response includes viewer_role —
   // no separate /api/projects/role round-trip.
-  const { data: resolved, isLoading: resolving } = useResolveProject(
-    user && approved ? slugOrId : undefined
-  )
+  const {
+    data: resolved,
+    isLoading: resolving,
+    error: resolveError,
+  } = useResolveProject(user && approved ? slugOrId : undefined)
   const projectId = resolved?.id
   const role = resolved?.viewer_role ?? null
 
@@ -44,6 +47,31 @@ export default function ProjectPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, user, approved])
+
+  // Show the message when the first lookup failed for good (a 404 is not retried;
+  // anything else was retried once), or when a later lookup says 404: the brief is
+  // gone or the viewer lost access. A later failure of any other kind keeps the
+  // view that already loaded, so a flaky network does not unmount a chat in progress.
+  if (
+    user &&
+    approved &&
+    resolveError &&
+    (!resolved || resolveError instanceof ProjectNotFoundError)
+  ) {
+    const notFound = resolveError instanceof ProjectNotFoundError
+    return (
+      <div className="min-h-screen bg-brand-cream flex items-center justify-center px-4">
+        <div className="max-w-md text-center space-y-4">
+          <p className="text-brand-slate">
+            {notFound ? projectPage.notFound : projectPage.loadFailed}
+          </p>
+          <Link href="/dashboard" className="text-brand-navy underline underline-offset-2">
+            {projectPage.backToDashboard}
+          </Link>
+        </div>
+      </div>
+    )
+  }
 
   if (authLoading || approvalLoading || !user || !approved || resolving || !projectId) {
     return (

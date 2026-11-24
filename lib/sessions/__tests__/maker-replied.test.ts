@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   makerAnsweredOpening,
   makerRepliedSinceReopen,
+  makerSpokeAfter,
   reopenPoint,
   type ReplyCheckMessage,
 } from '../maker-replied'
@@ -100,5 +101,23 @@ describe('reopenPoint', () => {
     expect(
       reopenPoint([agent(T3, 'unqueued_greeting'), user(T4), agent(T1, 'welcome'), agent(T2, 'welcome')])
     ).toBe(T3)
+  })
+})
+
+describe('makerSpokeAfter', () => {
+  it('false with no maker message after the time', () => {
+    expect(makerSpokeAfter([user(T1)], T2)).toBe(false)
+  })
+
+  it('true with a maker message after the time', () => {
+    expect(makerSpokeAfter([user(T1), user(T3)], T2)).toBe(true)
+  })
+
+  it('a message at the same instant does not count', () => {
+    expect(makerSpokeAfter([user(T2)], T2)).toBe(false)
+  })
+
+  it('agent messages never count', () => {
+    expect(makerSpokeAfter([agent(T3)], T2)).toBe(false)
   })
 })

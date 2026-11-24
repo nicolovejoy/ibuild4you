@@ -20,6 +20,7 @@ import { deleteS3Object } from '@/lib/s3/client'
 import { stampDecisionProvenance } from '@/lib/api/brief-merge'
 import { normalizeEmail, isValidEmail } from '@/lib/email/normalize'
 import { scheduleGarmGrantSync } from '@/lib/garm-grants'
+import { isActiveMember } from '@/lib/members/lifecycle'
 import { BRIEF_MODELS, isBriefModel, briefModelSnapshot } from '@/lib/agent/model-choices'
 import type { BriefRole, MemberRole } from '@/lib/types'
 
@@ -96,6 +97,12 @@ export async function GET(request: Request) {
     const viewerRole = hasSystemRole(auth, 'admin')
       ? 'admin'
       : await getProjectRole(db, docId, auth.uid, auth.email, auth.systemRoles, auth)
+    // No role on this brief: answer as for an unknown one, so a non-member learns
+    // nothing about it (not even that it exists). Admins resolve to 'admin' above;
+    // invited members who have not claimed yet match by email in getProjectRole.
+    if (!viewerRole) {
+      return NextResponse.json({ error: 'Project not found' }, { status: 404 })
+    }
     // Viewer's stored brief_role so chrome badges reflect what they're *doing*
     // (Contributor vs Originator), not just their access tier.
     // The same row says whether they archived the brief from their dashboard,
@@ -135,6 +142,8 @@ export async function GET(request: Request) {
     for (const doc of projects) viewerRoles.set(doc.id, 'admin')
     for (const doc of adminMemberSnap.docs) {
       const d = doc.data()
+      // A removed row says nothing about the admin's role: they stay admin there.
+      if (!isActiveMember(d)) continue
       viewerRoles.set(d.project_id as string, d.role as string)
       viewerBriefRoles.set(d.project_id as string, (d.brief_role as BriefRole | null) ?? null)
       viewerArchived.set(d.project_id as string, !!d.archived_at)
@@ -157,11 +166,16 @@ export async function GET(request: Request) {
     .where('email', '==', auth.email)
     .get()
 
+  // A removed member (removed_at set) has no access: their row stays for the
+  // history, but it must not bring the brief into their list.
+  const activeByUid = memberSnap.docs.filter((doc) => isActiveMember(doc.data()))
+  const activeByEmail = memberByEmail.docs.filter((doc) => isActiveMember(doc.data()))
+
   // Collect all project IDs. Membership rows are the only access source —
   // projects.requester_* is display-only denormalization (Garm PR E).
   const projectIds = new Set<string>()
-  for (const doc of memberSnap.docs) projectIds.add(doc.data().project_id as string)
-  for (const doc of memberByEmail.docs) projectIds.add(doc.data().project_id as string)
+  for (const doc of activeByUid) projectIds.add(doc.data().project_id as string)
+  for (const doc of activeByEmail) projectIds.add(doc.data().project_id as string)
 
   if (projectIds.size === 0) {
     return NextResponse.json([])
@@ -188,13 +202,13 @@ export async function GET(request: Request) {
   const viewerRoles = new Map<string, string>()
   const viewerBriefRoles = new Map<string, BriefRole | null>()
   const viewerArchived = new Map<string, boolean>()
-  for (const doc of memberSnap.docs) {
+  for (const doc of activeByUid) {
     const d = doc.data()
     viewerRoles.set(d.project_id as string, d.role as string)
     viewerBriefRoles.set(d.project_id as string, (d.brief_role as BriefRole | null) ?? null)
     viewerArchived.set(d.project_id as string, !!d.archived_at)
   }
-  for (const doc of memberByEmail.docs) {
+  for (const doc of activeByEmail) {
     const d = doc.data()
     if (!viewerRoles.has(d.project_id as string)) {
       viewerRoles.set(d.project_id as string, d.role as string)
@@ -276,13 +290,16 @@ export async function PATCH(request: Request) {
   // Best effort; the project update above already succeeded.
   // The answer says what the import did, so the builder's page does not have to
   // guess it from messages that may still be stale. null = the step threw.
-  let importApplied: Awaited<ReturnType<typeof applyImportToOpenSession>> | null | undefined
+  let importApplied: Awaited<ReturnType<typeof applyImportToOpenSession>>['result'] | null | undefined
+  let importWelcomePosted: boolean | undefined
   if ('payload_pasted_at' in updates) {
     importApplied = null
+    importWelcomePosted = false
     try {
-      const result = await applyImportToOpenSession(db, project_id, { ...projectDoc.data(), ...patch }, patch.updated_at as string)
-      console.log('[projects] apply_import', { project_id, result })
-      importApplied = result
+      const outcome = await applyImportToOpenSession(db, project_id, { ...projectDoc.data(), ...patch }, patch.updated_at as string)
+      console.log('[projects] apply_import', { project_id, result: outcome.result, welcome_posted: outcome.welcomePosted })
+      importApplied = outcome.result
+      importWelcomePosted = outcome.welcomePosted
     } catch (err) {
       console.error('[projects] apply_import_failed', err)
     }
@@ -291,7 +308,9 @@ export async function PATCH(request: Request) {
   return NextResponse.json({
     id: project_id,
     ...patch,
-    ...(importApplied !== undefined ? { import_applied: importApplied } : {}),
+    ...(importApplied !== undefined
+      ? { import_applied: importApplied, import_welcome_posted: importWelcomePosted }
+      : {}),
   })
 }
 
