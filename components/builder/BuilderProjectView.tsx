@@ -22,6 +22,7 @@ import { getProjectShareLink } from '@/lib/url'
 import { lockedFirst } from '@/lib/api/brief-merge'
 import { sessionNumberById, decisionProvenanceMarkdown } from '@/lib/builder/decision-provenance'
 import { Modal } from '@/components/ui/Modal'
+import { makerAnsweredOpening } from '@/lib/sessions/maker-replied'
 import {
   useProject,
   useBrief,
@@ -1199,7 +1200,9 @@ function StatusStrip({
   const router = useRouter()
   const { data: members } = useProjectMembers(project.id)
   const { data: activeMessages } = useMessages(activeSession?.id)
-  const hasUserMessages = activeMessages?.some((m) => m.role === 'user') ?? false
+  // Has the maker answered the conversation's opening? An import that posts a
+  // new welcome re-opens it, so earlier maker messages stop counting (Project 5).
+  const makerAnswered = activeMessages ? makerAnsweredOpening(activeMessages) : false
 
   const joinConversation = () => router.push(`/projects/${project.slug || project.id}?view=chat`)
 
@@ -1209,7 +1212,7 @@ function StatusStrip({
     members,
     sessionCount: sessions.length,
     hasActiveSession: !!activeSession,
-    makerRepliedInActive: hasUserMessages,
+    makerRepliedInActive: makerAnswered,
   })
   const remindersLine = remindersStripLine(project, Date.now())
 
@@ -1322,7 +1325,7 @@ function StatusStrip({
       <NextRoundPanel
         project={project}
         sessions={sessions}
-        unusedSessionId={activeSession && !hasUserMessages ? activeSession.id : null}
+        unusedSessionId={activeSession && !makerAnswered ? activeSession.id : null}
         onOpenImport={onOpenImport}
       />
     )}
