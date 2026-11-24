@@ -119,6 +119,19 @@ describe('applyImportToOpenSession', () => {
     expect(sets[0].data).toEqual({ session_id: 's1', role: 'agent', kind: 'welcome', content: 'Fresh welcome', created_at: NOW, updated_at: NOW })
   })
 
+  it('keeps a canned greeting the maker rated, and still deletes an unrated one', async () => {
+    const { db, writes } = makeDb({
+      sessions: { s1: activeSession },
+      messages: {
+        gRated: { ...greeting, rating: 'down' },
+        gPlain: { ...greeting, created_at: '2026-10-10T10:05:00.000Z' },
+      },
+    })
+    expect(await applyImportToOpenSession(db, 'p1', project, NOW)).toBe('applied')
+    expect(writes).not.toContainEqual(expect.objectContaining({ op: 'delete', id: 'gRated' }))
+    expect(writes).toContainEqual({ op: 'delete', collection: 'messages', id: 'gPlain' })
+  })
+
   it('does not post a welcome an earlier session already used', async () => {
     const { db, writes } = makeDb({
       sessions: { s1: activeSession, s0: { project_id: 'p1', status: 'completed', created_at: '2026-10-01T00:00:00.000Z', welcome_message: 'Fresh welcome' } },

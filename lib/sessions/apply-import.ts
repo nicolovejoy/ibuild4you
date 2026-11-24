@@ -53,14 +53,17 @@ export async function applyImportToOpenSession(
     )
   const toPost = alreadyPosted ? null : welcome
 
-  // Greetings always go. When a new welcome is posted, the unanswered opening
+  // Canned greetings go, except one the maker rated (deleting it would leave
+  // projects.thumbs_down_count too high). When a new welcome is posted, the unanswered opening
   // goes too: every agent message at or after the opening point (>=, because an
   // earlier import's welcome has created_at equal to its own point). We only get
   // here when the maker has not spoken after that point, so none of these was
   // answered. Agent messages before it (Sam's replies to the maker) stay, and so
   // does a message the maker rated.
   const toDelete = new Map<string, (typeof messages)[number]>()
-  for (const g of greetings) toDelete.set(g.id, g)
+  for (const g of greetings) {
+    if (!g.data().rating) toDelete.set(g.id, g)
+  }
   if (toPost) {
     const point = reopenPoint(replyRows)
     for (const d of messages) {

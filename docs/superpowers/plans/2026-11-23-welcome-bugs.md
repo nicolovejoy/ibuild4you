@@ -343,4 +343,5 @@ Also re-run `node scripts/e2e-214-stale-greeting.mjs` and `node scripts/e2e-204-
    3. Conversations already showing two welcomes: cosmetic history. No repair.
 4. `POST /api/sessions` now reads all messages of the open conversation instead of one. Normally tens of documents; acceptable.
 5. Task 7 changes the dashboard card for builders: "Nudged 2h ago" becomes a full sentence with a Pacific date, and automatic reminders now show there too. Maker viewers see no change. Every brief nudged before the deploy reads "Reminder recorded …" until its next reminder; no backfill (the method was never stored, so none is possible).
-6. Inferred, not verified: that no other code path reads `message.kind` and would mis-handle `'welcome'`. A grep on main found only `app/api/chat/route.ts:197`, `:390` and `lib/sessions/apply-import.ts:33`.
+6. The import reads the messages and then writes in a batch, not in a transaction. If the maker answers or rates the old welcome between the two (tens of milliseconds), the import still replaces it. Before this change the old welcome would have stayed. A transaction would close this gap and is not in this PR.
+7. Inferred, not verified: that no other code path reads `message.kind` and would mis-handle `'welcome'`. A grep on main found only `app/api/chat/route.ts:197`, `:390` and `lib/sessions/apply-import.ts:33`.
