@@ -218,6 +218,12 @@ export async function POST(
     update.shared_at = now
   } else {
     update.last_nudged_at = now
+    // Record how it went out and to whom. Only addresses the email really went
+    // to count; when every recipient was suppressed (preview), nothing was
+    // emailed, so method and addresses are null.
+    const delivered = results.filter((r) => !r.suppressed).map((r) => r.to)
+    update.last_nudged_method = delivered.length > 0 ? 'email' : null
+    update.last_nudged_to = delivered.length > 0 ? delivered : null
   }
   await projectDoc.ref.update(update)
 

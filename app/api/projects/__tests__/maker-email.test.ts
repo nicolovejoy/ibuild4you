@@ -131,7 +131,11 @@ describe('POST /api/projects/[id]/email', () => {
     expect(call.html).toMatch(/>Open the .+ conversation<\/a>/)
     expect(call.subject).not.toContain('"')
     expect(mockProjectUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({ last_nudged_at: expect.any(String) })
+      expect.objectContaining({
+        last_nudged_at: expect.any(String),
+        last_nudged_method: 'email',
+        last_nudged_to: ['maker@example.com'],
+      })
     )
   })
 
@@ -219,6 +223,28 @@ describe('POST /api/projects/[id]/email', () => {
     expect(data.suppressed).toBe(false)
   })
 
+  it('a nudge stamps email and every address it went to', async () => {
+    twoMakers()
+    const res = await POST(makeReq({ kind: 'nudge' }), { params })
+    expect(res.status).toBe(200)
+    expect(mockProjectUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        last_nudged_at: expect.any(String),
+        last_nudged_method: 'email',
+        last_nudged_to: ['matt@example.com', 'scott@example.com'],
+      })
+    )
+  })
+
+  it('an invite does not touch the reminder fields', async () => {
+    const res = await POST(makeReq({ kind: 'invite' }), { params })
+    expect(res.status).toBe(200)
+    const written = mockProjectUpdate.mock.calls[0][0]
+    expect('last_nudged_at' in written).toBe(false)
+    expect('last_nudged_method' in written).toBe(false)
+    expect('last_nudged_to' in written).toBe(false)
+  })
+
   it('excludes removed makers from the nudge recipients', async () => {
     twoMakers()
     memberSnap.docs.push({
@@ -290,6 +316,10 @@ describe('POST /api/projects/[id]/email', () => {
       expect.objectContaining({ to: 'test@ibuild4you.com', suppressed: false }),
       expect.objectContaining({ to: 'stranger@example.com', suppressed: true }),
     ])
+    // Only the address the email really went to is recorded.
+    expect(mockProjectUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ last_nudged_method: 'email', last_nudged_to: ['test@ibuild4you.com'] })
+    )
   })
 
   it('sends the nudge_message override verbatim when set', async () => {
@@ -308,8 +338,9 @@ describe('POST /api/projects/[id]/email', () => {
     const data = await res.json()
     expect(data.suppressed).toBe(true)
     expect(sendMakerEmailMock).not.toHaveBeenCalled()
+    // Nothing was emailed, so the method and addresses are null.
     expect(mockProjectUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({ last_nudged_at: expect.any(String) })
+      expect.objectContaining({ last_nudged_at: expect.any(String), last_nudged_method: null, last_nudged_to: null })
     )
   })
 

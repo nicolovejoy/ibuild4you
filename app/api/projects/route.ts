@@ -245,6 +245,13 @@ export async function PATCH(request: Request) {
     }
   }
   if ('model' in updates && !isBriefModel(updates.model)) patch.model = null
+  // Only the copy buttons send last_nudged_at, so the server records it as a
+  // copy. The client cannot claim an email, and the email route is the only
+  // writer of method 'email'. The two method fields are not in `allowed`.
+  if ('last_nudged_at' in updates) {
+    patch.last_nudged_method = 'copy'
+    patch.last_nudged_to = null
+  }
 
   // Regenerate slug when title changes
   if (patch.title && typeof patch.title === 'string') {

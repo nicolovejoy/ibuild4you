@@ -8,6 +8,7 @@ import { render, screen, cleanup, waitFor, act, fireEvent, within } from '@testi
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import React from 'react'
 import { copy } from '@/lib/copy'
+import { reminderText } from '@/lib/builder/reminder-line'
 
 // GET answers by path. PUT /api/briefs and PATCH /api/projects answer fixed bodies.
 const answers: Record<string, unknown> = {}
@@ -18,6 +19,12 @@ const apiFetch = vi.fn(async (url: string, init?: { method?: string; body?: stri
     return new Response(JSON.stringify({ version: 4, content: {}, size_warning: null, locks_kept: [] }), { status: 200 })
   }
   if (path === '/api/projects' && method === 'PATCH') return new Response(JSON.stringify({ id: 'p1' }), { status: 200 })
+  if (path === '/api/projects/p1/email' && method === 'POST') {
+    return new Response(
+      JSON.stringify({ ok: true, results: [], to: ['sam@example.com'], suppressed: false }),
+      { status: 200 }
+    )
+  }
   const answer = path in answers ? answers[path] : []
   return new Response(JSON.stringify(answer), { status: 200 })
 })
@@ -184,5 +191,79 @@ describe('the Start modal', () => {
     const dialog = within(await screen.findByRole('dialog'))
     expect(dialog.getByText(copy.nextRound.openingKickoff)).toBeTruthy()
     expect(dialog.queryByText('Hello')).toBeNull()
+  })
+})
+
+// Any of the five reminder sentences. The strip also says "Reminders on ...",
+// which this does not match.
+const REMINDER_SENTENCE = /No reminder sent|Reminder emailed|Reminder text copied|Automatic reminder|Reminder recorded/
+
+describe('the last reminder on the header', () => {
+  const emailedAt = '2026-11-23T22:10:00.000Z'
+
+  it('shows the stored reminder beside Nudge after a reload', async () => {
+    answers['/api/projects'] = {
+      ...(answers['/api/projects'] as object),
+      last_nudged_at: emailedAt,
+      last_nudged_method: 'email',
+      last_nudged_to: ['sam@example.com'],
+    }
+    answers['/api/messages'] = [userMsg('m1', T1), agentMsg('m2', T2), agentMsg('m3', T3, 'welcome')]
+    await renderView()
+    expect(await screen.findByRole('button', { name: /^Nudge/ })).toBeTruthy()
+    const line = reminderText({ kind: 'emailed', at: emailedAt, to: ['sam@example.com'] })
+    expect(line).toBe('Reminder emailed to sam@example.com, November 23, 2:10 PM.')
+    expect(screen.getByText(line)).toBeTruthy()
+  })
+
+  it('says no reminder was sent in the Nudge state when none was', async () => {
+    answers['/api/messages'] = [userMsg('m1', T1), agentMsg('m2', T2), agentMsg('m3', T3, 'welcome')]
+    await renderView()
+    expect(await screen.findByText('No reminder sent since the welcome was posted.')).toBeTruthy()
+  })
+
+  it('does not show a reminder from before the welcome was posted', async () => {
+    answers['/api/projects'] = {
+      ...(answers['/api/projects'] as object),
+      last_nudged_at: T2,
+      last_nudged_method: 'copy',
+      last_nudged_to: null,
+    }
+    answers['/api/messages'] = [userMsg('m1', T1), agentMsg('m2', T2), agentMsg('m3', T3, 'welcome')]
+    await renderView()
+    expect(await screen.findByText('No reminder sent since the welcome was posted.')).toBeTruthy()
+    expect(screen.queryByText(/Reminder text copied/)).toBeNull()
+  })
+
+  it('shows nothing about reminders in the Start state when none was sent for this conversation', async () => {
+    answers['/api/messages'] = [userMsg('m1', T1), agentMsg('m2', T2)]
+    await renderView()
+    expect(await screen.findByRole('button', { name: /Start conversation 2/ })).toBeTruthy()
+    expect(screen.queryByText(REMINDER_SENTENCE)).toBeNull()
+  })
+
+  it('shows a reminder sent for this conversation in the Start state', async () => {
+    answers['/api/projects'] = {
+      ...(answers['/api/projects'] as object),
+      last_nudged_at: emailedAt,
+      last_nudged_method: 'copy',
+      last_nudged_to: null,
+    }
+    answers['/api/messages'] = [userMsg('m1', T1), agentMsg('m2', T2)]
+    await renderView()
+    expect(await screen.findByRole('button', { name: /Start conversation 2/ })).toBeTruthy()
+    expect(screen.getByText('Reminder text copied November 23, 2:10 PM. The app did not send it.')).toBeTruthy()
+  })
+
+  it('keeps the Nudge button after a reminder is sent', async () => {
+    answers['/api/messages'] = [userMsg('m1', T1), agentMsg('m2', T2), agentMsg('m3', T3, 'welcome')]
+    await renderView()
+    fireEvent.click(await screen.findByRole('button', { name: /^Nudge/ }))
+    fireEvent.click(await screen.findByRole('button', { name: /Send reminder/ }))
+    await waitFor(() =>
+      expect(apiFetch.mock.calls.some(([u, init]) => u === '/api/projects/p1/email' && (init as { method?: string })?.method === 'POST')).toBe(true)
+    )
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(screen.getByRole('button', { name: /^Nudge/ })).toBeTruthy()
   })
 })

@@ -308,6 +308,42 @@ describe('PATCH /api/projects', () => {
     expect(mockApplyImport).not.toHaveBeenCalled()
   })
 
+  it('marks a PATCHed last_nudged_at as a copy', async () => {
+    const res = await PATCH(makePatchRequest({ project_id: 'proj-1', last_nudged_at: '2026-11-23T22:10:00.000Z' }))
+    expect(res.status).toBe(200)
+    expect(mockDocUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        last_nudged_at: '2026-11-23T22:10:00.000Z',
+        last_nudged_method: 'copy',
+        last_nudged_to: null,
+      })
+    )
+  })
+
+  it('ignores last_nudged_method and last_nudged_to sent by the client', async () => {
+    const res = await PATCH(
+      makePatchRequest({ project_id: 'proj-1', last_nudged_method: 'email', last_nudged_to: ['a@x.com'], context: 'x' })
+    )
+    expect(res.status).toBe(200)
+    const written = mockDocUpdate.mock.calls[0][0]
+    expect('last_nudged_method' in written).toBe(false)
+    expect('last_nudged_to' in written).toBe(false)
+  })
+
+  it('a client cannot claim an email by sending last_nudged_at with method email', async () => {
+    await PATCH(
+      makePatchRequest({
+        project_id: 'proj-1',
+        last_nudged_at: '2026-11-23T22:10:00.000Z',
+        last_nudged_method: 'email',
+        last_nudged_to: ['a@x.com'],
+      })
+    )
+    expect(mockDocUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ last_nudged_method: 'copy', last_nudged_to: null })
+    )
+  })
+
   it('PATCH ignores maker_waiting_since from the client', async () => {
     const res = await PATCH(makePatchRequest({ project_id: 'proj-1', maker_waiting_since: null, context: 'x' }))
     const data = await res.json()

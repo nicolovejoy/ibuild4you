@@ -23,6 +23,7 @@ import { lockedFirst } from '@/lib/api/brief-merge'
 import { sessionNumberById, decisionProvenanceMarkdown } from '@/lib/builder/decision-provenance'
 import { Modal } from '@/components/ui/Modal'
 import { makerAnsweredOpening } from '@/lib/sessions/maker-replied'
+import { conversationOpeningAt, headerReminderLine, reminderText } from '@/lib/builder/reminder-line'
 import {
   useProject,
   useBrief,
@@ -1223,6 +1224,9 @@ function StatusStrip({
   // What the next conversation will open with, for the Start modal's "Opens with".
   const unusedSessionId = activeSession && !makerAnswered ? activeSession.id : null
   const opening = nextRound({ project, sessions, unusedSessionId }).opening
+  // The last reminder, beside the dispatch button (null = show nothing).
+  const openingAt = activeSession ? conversationOpeningAt(activeSession, activeMessages ?? []) : null
+  const reminder = headerReminderLine({ dispatchKind: dispatch.kind, project, openingAt })
 
   // Post-dispatch confirmation, rendered full-width under the strip so the
   // sent/copied/suppressed outcome stays visible after the modal closes.
@@ -1258,7 +1262,8 @@ function StatusStrip({
             </button>
           )}
         </div>
-        <div className="shrink-0">
+        <div className="shrink-0 flex flex-wrap items-center justify-end gap-x-3 gap-y-1">
+          {reminder && <span className="text-xs text-brand-ink-soft">{reminderText(reminder)}</span>}
           {dispatch.kind === 'invite' && (
             <LoadingButton variant="primary" size="sm" icon={Share2} onClick={() => onShare('maker')}>
               Invite a maker
@@ -1701,7 +1706,6 @@ function NudgeDispatch({
   const [open, setOpen] = useState(false)
   const sendEmail = useSendMakerEmail()
   const { copied, copyNudge } = useNudgeCopy(projectId)
-  const [sentTo, setSentTo] = useState<string | null>(null)
 
   const shareLink = getProjectShareLink(project.slug, projectId)
   const reminderMessage = outboundCopyFor(project.language).nudge.reminder({
@@ -1712,14 +1716,8 @@ function NudgeDispatch({
     canReply: true,
   })
 
-  if (sentTo) {
-    return (
-      <span className="flex items-center gap-1.5 text-xs text-green-600 font-medium">
-        <Check className="h-3.5 w-3.5" /> Reminder sent to {sentTo}
-      </span>
-    )
-  }
-
+  // No "sent" state here: the server stamps the send and the header shows it
+  // from the project (reminder-line.ts), so it survives a reload.
   return (
     <>
       <LoadingButton variant="primary" size="sm" icon={Mail} onClick={() => { sendEmail.reset(); setOpen(true) }}>
@@ -1751,8 +1749,7 @@ function NudgeDispatch({
               disabled={!project.requester_email}
               onClick={async () => {
                 try {
-                  const r = await sendEmail.mutateAsync({ project_id: projectId, kind: 'reminder' })
-                  setSentTo(r.to.join(' + '))
+                  await sendEmail.mutateAsync({ project_id: projectId, kind: 'reminder' })
                   setOpen(false)
                 } catch {
                   // surfaced via sendEmail.isError; keep the modal open

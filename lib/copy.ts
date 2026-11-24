@@ -694,6 +694,18 @@ export const copy = {
     startHint: 'What Sam opens with is under Next round on this tab. A new paste changes it.',
   },
 
+  // --- Builder: the last reminder to the maker, on the Conversations header and the
+  // dashboard card. English only; maker viewers never see these. ---
+  reminderLine: {
+    none: 'No reminder sent since the welcome was posted.',
+    emailed: (to: string, when: string) => `Reminder emailed to ${to}, ${when}.`,
+    copied: (when: string) => `Reminder text copied ${when}. The app did not send it.`,
+    automatic: (when: string) => `Automatic reminder emailed ${when}.`,
+    // A stamp with no stored method (before 2026-11-23, or nothing went out).
+    recorded: (when: string) =>
+      `Reminder recorded ${when}. The app did not save whether it was emailed or copied.`,
+  },
+
   // --- Admin: Loop feedback inbox bulk actions (#232). English only. ---
   adminFeedback: {
     showArchived: 'Show archived',

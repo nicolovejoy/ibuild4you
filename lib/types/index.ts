@@ -45,7 +45,16 @@ export interface Project extends BaseEntity {
   requester_first_name?: string
   requester_last_name?: string
   shared_at?: string // when the project was shared with the maker
-  last_nudged_at?: string // when the builder last copied a nudge message
+  // The builder's last reminder to the maker: emailed by the app (the email route
+  // writes it, for kinds reminder and nudge) or copied by the builder (PATCH
+  // /api/projects writes it). Server-written together with the two fields below.
+  last_nudged_at?: string
+  // 'email' = the app sent it, 'copy' = the builder copied the text. null or
+  // missing = recorded before 2026-11-23, or nothing went out (all recipients
+  // suppressed on preview).
+  last_nudged_method?: 'email' | 'copy' | null
+  // The addresses the email actually went to; null for a copy.
+  last_nudged_to?: string[] | null
   prep_copied_at?: string // when the builder last copied the prep prompt (client-set, UTC ISO)
   payload_pasted_at?: string // when the builder last pasted a brief payload (client-set, UTC ISO)
   maker_waiting_since?: string | null // set when the maker greeted/spoke into an unqueued session (#214); cleared when a payload is queued
