@@ -13,7 +13,6 @@ const NEW_PROJECT_PAYLOAD = `{
   "context": "Background the agent uses to skip basic discovery questions. Multi-sentence is fine.",
   "welcome_message": "Posted word for word as the agent's first message when the maker first opens the project. Sets tone.",
   "nudge_message": "Optional. Verbatim outbound nudge text used to invite the maker back. Omit to let the system auto-draft.",
-  "voice_sample": "Optional. One paragraph showing how the builder texts this person by hand — anchors AI-generated outbound copy.",
   "identity": "Optional. Custom agent persona override. Omit unless you want a non-default persona.",
   "session_mode": "discover (broad exploration) or converge (narrow toward decisions). Defaults to discover.",
   "seed_questions": ["Questions the agent should weave into the first session (discover mode only)"],

@@ -26,7 +26,6 @@ const NEXT_CONVO_PAYLOAD = `{
   },
   "welcome_message": "Posted word for word as the agent's first message when the maker opens the next session. Omit it to let the agent greet them itself.",
   "nudge_message": "Optional. Verbatim outbound nudge text used to invite the maker back. Omit to let the system auto-draft.",
-  "voice_sample": "Optional. One paragraph showing how the builder texts this person by hand — anchors AI-generated outbound copy.",
   "identity": "Optional. Custom agent persona override. Omit unless you want a non-default persona.",
   "context": "Optional. Background the agent uses to skip basic discovery questions. Update only if new background surfaced.",
   "session_mode": "discover (broad exploration) or converge (narrow toward decisions).",

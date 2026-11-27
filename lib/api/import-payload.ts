@@ -39,7 +39,6 @@ export type NextConvoPayload =
 export const NEXT_CONVO_IMPORT_FIELDS = [
   'welcome_message',
   'nudge_message',
-  'voice_sample',
   'identity',
   'context',
   'session_mode',

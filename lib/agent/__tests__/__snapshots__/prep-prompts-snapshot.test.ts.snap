@@ -19,7 +19,6 @@ When I say "give me the output", produce ONLY valid JSON matching this schema (n
   "context": "Background info the agent uses to skip basic discovery questions. Multi-sentence is fine.",
   "welcome_message": "Posted word for word as the agent's first message when the maker opens the project for the first time. Sets tone.",
   "nudge_message": "Optional. Verbatim outbound nudge text used to invite the maker back. Omit to let the system auto-draft.",
-  "voice_sample": "Optional. One paragraph showing how the builder texts this person by hand — anchors AI-generated outbound copy.",
   "identity": "Optional. Custom agent persona override. Omit unless the builder explicitly wants a non-default persona.",
   "session_mode": "discover (broad exploration) or converge (narrow toward decisions). Defaults to discover when omitted.",
   "seed_questions": ["Questions the agent should weave into the first session. Used only in discover mode."],
@@ -38,7 +37,7 @@ When I say "give me the output", produce ONLY valid JSON matching this schema (n
 }
 
 Rules:
-- Only include top-level fields we've actually discussed. Omit fields with no signal — don't invent a \`nudge_message\` or \`voice_sample\` from thin air.
+- Only include top-level fields we've actually discussed. Omit fields with no signal — don't invent a \`nudge_message\` from thin air.
 - \`session_opener\` is accepted as a legacy alias for \`welcome_message\` — prefer \`welcome_message\`.
 - If the maker should be addressed in a language other than English, set \`language\` (e.g. "fr") and write \`welcome_message\` and \`nudge_message\` in that language. The language setting makes the agent use it from the first message, so don't add a directive for it. The brief itself always stays in English (the builder reads it): translate anything the maker said in another language.
 - \`title\` is required; everything else is optional.
@@ -84,7 +83,6 @@ When I say "give me the output", produce ONLY valid JSON matching this schema (n
   },
   "welcome_message": "Posted word for word as the agent's first message when the maker opens the next session, so include any link or step they need. Omit it to let the agent greet them itself.",
   "nudge_message": "Optional. Verbatim outbound nudge text used to invite the maker back. Omit to let the system auto-draft.",
-  "voice_sample": "Optional. One paragraph showing how the builder texts this person by hand — anchors AI-generated outbound copy.",
   "identity": "Optional. Custom agent persona override for this project. Omit unless the builder explicitly wants a non-default persona.",
   "context": "Optional. Background the agent uses to skip basic discovery questions. Update only if new background surfaced in the conversation.",
   "session_mode": "discover (broad exploration) or converge (narrow toward decisions)",
@@ -106,7 +104,7 @@ Rules:
 - In \`brief_patch\`, \`features\`, \`open_risks\`, \`queued\` and \`shipped\` add: send only the new entries. An entry already in the brief is not added twice (a \`shipped\` item already in any batch is skipped). A new \`shipped\` item joins the batch with the same \`date\`, or starts a new batch. A patch cannot merge \`shipped\` batches or remove one; that takes a whole \`brief\`.
 - An open risk in \`brief_patch\` that matches one already in the brief keeps the brief's text; only its \`owner\` can change. To reword a feature or a risk, drop the old text and add the new one.
 - \`drop\` removes entries: decisions by \`topic\`; features, open risks and queued items by text. Copy each topic and text from the brief as shown. A drop that matches nothing refuses the whole payload, and nothing is imported.
-- For the other top-level fields, include only what our discussion actually addressed. Omit the rest — don't invent a \`nudge_message\` or \`voice_sample\` from thin air.
+- For the other top-level fields, include only what our discussion actually addressed. Omit the rest — don't invent a \`nudge_message\` from thin air.
 - \`session_opener\` is accepted as a legacy alias for \`welcome_message\` — prefer \`welcome_message\`.
 - In \`welcome_message\`, keep three kinds of statement apart, each in its own short paragraph, and only when there is something to say: what is live now, what is proposed and not built, and what you would like them to try. "Live" means it is in \`shipped\`, in the \`live\` list of a build report below, or the builder told you in this chat that it is deployed. Say plainly that a proposed thing does not exist yet. Give test steps only for things that are live. Never describe a proposed screen, button or choice as if the maker can already see it.
 - The maker's language is given in the <project> block. Write \`welcome_message\` and \`nudge_message\` in that language. The project's language setting already makes the agent use it, so don't add a directive for it. The brief itself always stays in English, because the agents that read it (Sam, the comms agent, Claude Code) work in English: translate anything the maker said in another language.
@@ -252,7 +250,6 @@ When I say "give me the output", produce ONLY valid JSON matching this schema (n
   },
   "welcome_message": "Posted word for word as the agent's first message when the maker opens the next session, so include any link or step they need. Omit it to let the agent greet them itself.",
   "nudge_message": "Optional. Verbatim outbound nudge text used to invite the maker back. Omit to let the system auto-draft.",
-  "voice_sample": "Optional. One paragraph showing how the builder texts this person by hand — anchors AI-generated outbound copy.",
   "identity": "Optional. Custom agent persona override for this project. Omit unless the builder explicitly wants a non-default persona.",
   "context": "Optional. Background the agent uses to skip basic discovery questions. Update only if new background surfaced in the conversation.",
   "session_mode": "discover (broad exploration) or converge (narrow toward decisions)",
@@ -274,7 +271,7 @@ Rules:
 - In \`brief_patch\`, \`features\`, \`open_risks\`, \`queued\` and \`shipped\` add: send only the new entries. An entry already in the brief is not added twice (a \`shipped\` item already in any batch is skipped). A new \`shipped\` item joins the batch with the same \`date\`, or starts a new batch. A patch cannot merge \`shipped\` batches or remove one; that takes a whole \`brief\`.
 - An open risk in \`brief_patch\` that matches one already in the brief keeps the brief's text; only its \`owner\` can change. To reword a feature or a risk, drop the old text and add the new one.
 - \`drop\` removes entries: decisions by \`topic\`; features, open risks and queued items by text. Copy each topic and text from the brief as shown. A drop that matches nothing refuses the whole payload, and nothing is imported.
-- For the other top-level fields, include only what our discussion actually addressed. Omit the rest — don't invent a \`nudge_message\` or \`voice_sample\` from thin air.
+- For the other top-level fields, include only what our discussion actually addressed. Omit the rest — don't invent a \`nudge_message\` from thin air.
 - \`session_opener\` is accepted as a legacy alias for \`welcome_message\` — prefer \`welcome_message\`.
 - In \`welcome_message\`, keep three kinds of statement apart, each in its own short paragraph, and only when there is something to say: what is live now, what is proposed and not built, and what you would like them to try. "Live" means it is in \`shipped\`, in the \`live\` list of a build report below, or the builder told you in this chat that it is deployed. Say plainly that a proposed thing does not exist yet. Give test steps only for things that are live. Never describe a proposed screen, button or choice as if the maker can already see it.
 - The maker's language is given in the <project> block. Write \`welcome_message\` and \`nudge_message\` in that language. The project's language setting already makes the agent use it, so don't add a directive for it. The brief itself always stays in English, because the agents that read it (Sam, the comms agent, Claude Code) work in English: translate anything the maker said in another language.
@@ -433,7 +430,6 @@ When I say "give me the output", produce ONLY valid JSON matching this schema (n
   },
   "welcome_message": "Posted word for word as the agent's first message when the maker opens the next session, so include any link or step they need. Omit it to let the agent greet them itself.",
   "nudge_message": "Optional. Verbatim outbound nudge text used to invite the maker back. Omit to let the system auto-draft.",
-  "voice_sample": "Optional. One paragraph showing how the builder texts this person by hand — anchors AI-generated outbound copy.",
   "identity": "Optional. Custom agent persona override for this project. Omit unless the builder explicitly wants a non-default persona.",
   "context": "Optional. Background the agent uses to skip basic discovery questions. Update only if new background surfaced in the conversation.",
   "session_mode": "discover (broad exploration) or converge (narrow toward decisions)",
@@ -455,7 +451,7 @@ Rules:
 - In \`brief_patch\`, \`features\`, \`open_risks\`, \`queued\` and \`shipped\` add: send only the new entries. An entry already in the brief is not added twice (a \`shipped\` item already in any batch is skipped). A new \`shipped\` item joins the batch with the same \`date\`, or starts a new batch. A patch cannot merge \`shipped\` batches or remove one; that takes a whole \`brief\`.
 - An open risk in \`brief_patch\` that matches one already in the brief keeps the brief's text; only its \`owner\` can change. To reword a feature or a risk, drop the old text and add the new one.
 - \`drop\` removes entries: decisions by \`topic\`; features, open risks and queued items by text. Copy each topic and text from the brief as shown. A drop that matches nothing refuses the whole payload, and nothing is imported.
-- For the other top-level fields, include only what our discussion actually addressed. Omit the rest — don't invent a \`nudge_message\` or \`voice_sample\` from thin air.
+- For the other top-level fields, include only what our discussion actually addressed. Omit the rest — don't invent a \`nudge_message\` from thin air.
 - \`session_opener\` is accepted as a legacy alias for \`welcome_message\` — prefer \`welcome_message\`.
 - In \`welcome_message\`, keep three kinds of statement apart, each in its own short paragraph, and only when there is something to say: what is live now, what is proposed and not built, and what you would like them to try. "Live" means it is in \`shipped\`, in the \`live\` list of a build report below, or the builder told you in this chat that it is deployed. Say plainly that a proposed thing does not exist yet. Give test steps only for things that are live. Never describe a proposed screen, button or choice as if the maker can already see it.
 - The maker's language is given in the <project> block. Write \`welcome_message\` and \`nudge_message\` in that language. The project's language setting already makes the agent use it, so don't add a directive for it. The brief itself always stays in English, because the agents that read it (Sam, the comms agent, Claude Code) work in English: translate anything the maker said in another language.
@@ -591,7 +587,6 @@ When I say "give me the output", produce ONLY valid JSON matching this schema (n
   },
   "welcome_message": "Posted word for word as the agent's first message when the maker opens the next session, so include any link or step they need. Omit it to let the agent greet them itself.",
   "nudge_message": "Optional. Verbatim outbound nudge text used to invite the maker back. Omit to let the system auto-draft.",
-  "voice_sample": "Optional. One paragraph showing how the builder texts this person by hand — anchors AI-generated outbound copy.",
   "identity": "Optional. Custom agent persona override for this project. Omit unless the builder explicitly wants a non-default persona.",
   "context": "Optional. Background the agent uses to skip basic discovery questions. Update only if new background surfaced in the conversation.",
   "session_mode": "discover (broad exploration) or converge (narrow toward decisions)",
@@ -613,7 +608,7 @@ Rules:
 - In \`brief_patch\`, \`features\`, \`open_risks\`, \`queued\` and \`shipped\` add: send only the new entries. An entry already in the brief is not added twice (a \`shipped\` item already in any batch is skipped). A new \`shipped\` item joins the batch with the same \`date\`, or starts a new batch. A patch cannot merge \`shipped\` batches or remove one; that takes a whole \`brief\`.
 - An open risk in \`brief_patch\` that matches one already in the brief keeps the brief's text; only its \`owner\` can change. To reword a feature or a risk, drop the old text and add the new one.
 - \`drop\` removes entries: decisions by \`topic\`; features, open risks and queued items by text. Copy each topic and text from the brief as shown. A drop that matches nothing refuses the whole payload, and nothing is imported.
-- For the other top-level fields, include only what our discussion actually addressed. Omit the rest — don't invent a \`nudge_message\` or \`voice_sample\` from thin air.
+- For the other top-level fields, include only what our discussion actually addressed. Omit the rest — don't invent a \`nudge_message\` from thin air.
 - \`session_opener\` is accepted as a legacy alias for \`welcome_message\` — prefer \`welcome_message\`.
 - In \`welcome_message\`, keep three kinds of statement apart, each in its own short paragraph, and only when there is something to say: what is live now, what is proposed and not built, and what you would like them to try. "Live" means it is in \`shipped\`, in the \`live\` list of a build report below, or the builder told you in this chat that it is deployed. Say plainly that a proposed thing does not exist yet. Give test steps only for things that are live. Never describe a proposed screen, button or choice as if the maker can already see it.
 - The maker's language is given in the <project> block. Write \`welcome_message\` and \`nudge_message\` in that language. The project's language setting already makes the agent use it, so don't add a directive for it. The brief itself always stays in English, because the agents that read it (Sam, the comms agent, Claude Code) work in English: translate anything the maker said in another language.

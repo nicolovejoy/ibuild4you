@@ -23,7 +23,6 @@ When I say "give me the output", produce ONLY valid JSON matching this schema (n
   "context": "Background info the agent uses to skip basic discovery questions. Multi-sentence is fine.",
   "welcome_message": "Posted word for word as the agent's first message when the maker opens the project for the first time. Sets tone.",
   "nudge_message": "Optional. Verbatim outbound nudge text used to invite the maker back. Omit to let the system auto-draft.",
-  "voice_sample": "Optional. One paragraph showing how the builder texts this person by hand — anchors AI-generated outbound copy.",
   "identity": "Optional. Custom agent persona override. Omit unless the builder explicitly wants a non-default persona.",
   "session_mode": "discover (broad exploration) or converge (narrow toward decisions). Defaults to discover when omitted.",
   "seed_questions": ["Questions the agent should weave into the first session. Used only in discover mode."],
@@ -42,7 +41,7 @@ When I say "give me the output", produce ONLY valid JSON matching this schema (n
 }
 
 Rules:
-- Only include top-level fields we've actually discussed. Omit fields with no signal — don't invent a \`nudge_message\` or \`voice_sample\` from thin air.
+- Only include top-level fields we've actually discussed. Omit fields with no signal — don't invent a \`nudge_message\` from thin air.
 - \`session_opener\` is accepted as a legacy alias for \`welcome_message\` — prefer \`welcome_message\`.
 - If the maker should be addressed in a language other than English, set \`language\` (e.g. "fr") and write \`welcome_message\` and \`nudge_message\` in that language. The language setting makes the agent use it from the first message, so don't add a directive for it. The brief itself always stays in English (the builder reads it): translate anything the maker said in another language.
 - \`title\` is required; everything else is optional.

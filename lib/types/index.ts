@@ -66,7 +66,6 @@ export interface Project extends BaseEntity {
   payload_pasted_version?: number // brief version that last paste produced (client-set, from the PUT /api/briefs result)
   welcome_message?: string // admin-reviewed welcome message for the maker
   nudge_message?: string // builder-authored outbound nudge; used verbatim when set
-  voice_sample?: string // builder's voice anchor for AI-generated outbound copy
   // AI-prepped "next session" handoff (slice 2). Written only by /prep/generate,
   // never the client PATCH. nudge_message override still wins over prep_nudge.
   prep_nudge?: string // AI-drafted nudge body (no link); default when no override

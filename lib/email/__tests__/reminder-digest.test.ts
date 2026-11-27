@@ -60,7 +60,7 @@ describe('buildReminderEmail', () => {
       [
         'Hi Sam,',
         '',
-        "Conversation #3 about Sam's Cafe is ready on iBuild4you. Sam picks up where you left off. It takes about 15 minutes, and you can stop and come back any time.",
+        "Conversation #3 about Sam's Cafe is ready on iBuild4you. Sam picks up where you left off.",
         '',
         'Here is your link: https://ibuild4you.com/projects/sams-cafe',
         '',
@@ -124,7 +124,7 @@ describe('buildReminderEmail', () => {
       [
         'Bonjour Sam,',
         '',
-        "Votre conversation au sujet de Sam's Cafe est prête sur iBuild4you. Sam, l’assistant, vous posera des questions sur votre idée et prendra des notes au fil de l’échange. Comptez environ 15 minutes ; vous pouvez vous arrêter et reprendre à tout moment.",
+        "Votre conversation au sujet de Sam's Cafe est prête sur iBuild4you. Sam, l’assistant, vous posera des questions sur votre idée et prendra des notes au fil de l’échange.",
         '',
         'Voici votre lien : https://ibuild4you.com/projects/sams-cafe',
         '',

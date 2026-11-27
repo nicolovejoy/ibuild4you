@@ -71,24 +71,18 @@ const fr: OutboundCopy = {
       ].join('\n'),
   },
   nudge: {
-    bodyText: ({ projectTitle, note, sessionMode }) => {
-      const modeHint =
-        sessionMode === 'converge'
-          ? 'Il est temps d’affiner et d’arrêter quelques décisions.'
-          : 'J’aimerais revenir sur quelques points abordés la dernière fois.'
-      return `Nouvelle conversation prête pour ${projectTitle}. ${note || modeHint}`
-    },
+    bodyText: ({ projectTitle, note }) =>
+      note ? `Nouvelle conversation prête pour ${projectTitle}. ${note}` : `Nouvelle conversation prête pour ${projectTitle}.`,
     body: ({ projectTitle, shareLink, note, sessionMode }) =>
       [fr.nudge.bodyText({ projectTitle, note, sessionMode }), '', shareLink].join('\n'),
     reminder: ({ firstName, sessionNumber, projectTitle, shareLink, canReply }) => {
-      const length = 'Comptez environ 15 minutes ; vous pouvez vous arrêter et reprendre à tout moment.'
       let about: string
       if (sessionNumber === 1) {
-        about = `Votre conversation au sujet de ${projectTitle} est prête sur iBuild4you. Sam, l’assistant, vous posera des questions sur votre idée et prendra des notes au fil de l’échange. ${length}`
+        about = `Votre conversation au sujet de ${projectTitle} est prête sur iBuild4you. Sam, l’assistant, vous posera des questions sur votre idée et prendra des notes au fil de l’échange.`
       } else if (sessionNumber) {
-        about = `La conversation nº ${sessionNumber} au sujet de ${projectTitle} est prête sur iBuild4you. Sam reprend là où la précédente s’est arrêtée. ${length}`
+        about = `La conversation nº ${sessionNumber} au sujet de ${projectTitle} est prête sur iBuild4you. Sam reprend là où la précédente s’est arrêtée.`
       } else {
-        about = `Votre prochaine conversation au sujet de ${projectTitle} est prête sur iBuild4you. ${length}`
+        about = `Votre prochaine conversation au sujet de ${projectTitle} est prête sur iBuild4you.`
       }
       const lines = [firstName ? `Bonjour ${firstName},` : 'Bonjour,', '', about, '', `Voici votre lien : ${shareLink}`]
       if (canReply) lines.push('', 'Une question ? Répondez à cet e-mail.')

@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest'
-import { buildPrepUserContent, prepConfigHash, type PrepInput } from '../prep-outbound'
+import {
+  buildPrepUserContent,
+  prepConfigHash,
+  PREP_SYSTEM_PROMPT,
+  type PrepInput,
+} from '../prep-outbound'
+import { OUTBOUND_RULES } from '../outbound-rules'
 
 const base: PrepInput = {
   projectTitle: "Sam's Cafe App",
@@ -71,10 +77,24 @@ describe('buildPrepUserContent', () => {
     expect(out).toContain('first invite')
   })
 
-  it('includes the voice sample when provided', () => {
-    const out = buildPrepUserContent({ ...base, voiceSample: 'hey! quick one for you' })
-    expect(out).toContain('hey! quick one for you')
-    expect(out).toContain('texting voice')
+  // voice_sample is gone (2026-11-27): a casual sample pulled the draft away
+  // from plain and professional.
+  it('never sends a voice sample', () => {
+    const out = buildPrepUserContent({ ...base, voiceSample: 'hey! quick one for you' } as PrepInput)
+    expect(out).not.toContain('quick one')
+  })
+})
+
+describe('PREP_SYSTEM_PROMPT', () => {
+  it('lists every outbound rule under "Never write"', () => {
+    for (const rule of OUTBOUND_RULES) expect(PREP_SYSTEM_PROMPT).toContain(`- ${rule}`)
+    expect(PREP_SYSTEM_PROMPT).toContain('Never write:')
+  })
+
+  it('no longer asks for a time estimate or a low-pressure ask', () => {
+    expect(PREP_SYSTEM_PROMPT).not.toContain('whenever you\'ve got a moment")')
+    expect(PREP_SYSTEM_PROMPT).not.toMatch(/low-pressure/)
+    expect(PREP_SYSTEM_PROMPT).not.toMatch(/voice sample/i)
   })
 })
 
@@ -88,6 +108,12 @@ describe('prepConfigHash', () => {
     expect(prepConfigHash({ ...base, sessionMode: 'converge' })).not.toBe(a)
     expect(prepConfigHash({ ...base, seedQuestions: ['different'] })).not.toBe(a)
     expect(prepConfigHash({ ...base, welcomeMessage: 'hi' })).not.toBe(a)
+  })
+
+  // A stored draft made under an older prompt or rule list must not keep
+  // going out: the prompt text is part of the fingerprint.
+  it('changes when the prompt changes', () => {
+    expect(prepConfigHash(base, 'prompt v1')).not.toBe(prepConfigHash(base, 'prompt v2'))
   })
 
   it('changes when the brief signal changes', () => {

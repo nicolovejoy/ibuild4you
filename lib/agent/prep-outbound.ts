@@ -1,12 +1,12 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { AGENT_MODEL } from './constants'
+import { OUTBOUND_RULES } from './outbound-rules'
 import { logAnthropicCall } from '@/lib/observability/anthropic'
 import type { BriefContent } from '@/lib/types'
 
 // Slice 2 of the Builder Setup dispatch card: one Sonnet "prep" call that returns
 // BOTH a maker-facing nudge body and a one-line builder-facing focus summary.
-// Fired eagerly at config-set time so both are pre-warmed on the card. House tone
-// is friendly + terse (see feedback_outbound_tone memory).
+// Fired eagerly at config-set time so both are pre-warmed on the card.
 
 import { LOCALE_NAMES, type Locale } from '@/lib/locale'
 
@@ -22,7 +22,6 @@ export interface PrepInput {
   seedQuestions?: string[]
   builderDirectives?: string[]
   welcomeMessage?: string | null
-  voiceSample?: string | null
   // Brief language — the nudge is written in it (default English).
   language?: Locale
 }
@@ -34,17 +33,27 @@ export interface PrepResult {
   nudge_message: string
 }
 
-// House tone, locked. Keep in sync with feedback_outbound_tone memory + slice-2 spec.
-const PREP_SYSTEM_PROMPT = `You prepare the "next session" handoff for an iBuild4you brief — a living document a developer builds from. You produce two things in one shot:
+// The invitation is a plain notice: a new conversation is ready, and what it
+// covers (Nico, 2026-11-27). What it must never say lives in outbound-rules.ts.
+// Exported so the tests and the cache key read the same text.
+export const PREP_SYSTEM_PROMPT = `You prepare the "next session" handoff for an iBuild4you brief. You produce two things in one call.
 
-1. nudge_message — a short message inviting the maker (the non-technical person with the idea) back for the next session. Tone: friendly, helpful, terse, on-point. 2-3 sentences MAX. Warm but not gushing. Reference where they left off and what this round will cover, concretely. End with a light, low-pressure ask (e.g. "~10 min whenever you've got a moment"). Do NOT include a link, sign-off, subject line, or placeholders — just the body. Address the makers by first name if names are given — greet every listed name, never just the first (e.g. "Hi Matt and Scott" when two are listed).
+1. nudge_message: the email body that tells the maker (the person with the idea) that a new conversation is ready, and what it covers.
 
-2. focus — a single short line (≤ 10 words, no trailing period) for the builder's dashboard summarizing what this next session drives at. Plain language.
+- Two sentences plain and professional.
+- First sentence: the maker's first name, then that a new conversation is ready on their page, named by the brief's title ("on your advisory board page"). If several names are listed, use all of them ("Matt and Scott, there's...").
+- Second sentence: what the conversation covers. Take it from "Agent will open with" when it is given, otherwise from the builder's directives or questions. Don't extrapolate.
+- No link, sign-off, subject line or placeholders.
 
-Plain language only — never jargon like "user journeys", "MVP", "sprints", "wireframes". Use straight ASCII quotes. Mirror the builder's voice sample if one is provided.
+Never write:
+${OUTBOUND_RULES.map((r) => `- ${r}`).join('\n')}
 
-Good nudge example:
-"Hi Tom — ready for round 2 on the advisory board. Last time you landed on three names; this round we'll pin down the ask for each and who to approach first. ~10 min whenever you've got a moment."`
+Good example:
+"Tom, there's a new conversation on your advisory board page. It goes through the three names you picked and what to ask each of them."
+
+2. focus: a single short line (10 words at most, no trailing period) for the builder's dashboard summarizing what this next session drives at. Plain language.
+
+Plain language only, never jargon like "user journeys", "MVP", "sprints", "wireframes". Use straight ASCII quotes.`
 
 const PREP_TOOL: Anthropic.Tool = {
   name: 'emit_prep',
@@ -54,7 +63,7 @@ const PREP_TOOL: Anthropic.Tool = {
     properties: {
       nudge_message: {
         type: 'string',
-        description: 'Maker-facing nudge body, 2-3 sentences, no link or sign-off.',
+        description: 'Maker-facing nudge body, two sentences, no link or sign-off.',
       },
       focus: {
         type: 'string',
@@ -104,8 +113,6 @@ export function buildPrepUserContent(input: PrepInput): string {
     `\nWhere the last session left off:\n${recapFromMessages(input.lastSessionMessages)}`,
     `\nWhat the next session is set up to do:\n${intent.join('\n')}`,
   ]
-  if (input.voiceSample?.trim())
-    sections.push(`\nMatch this builder's texting voice:\n${input.voiceSample.trim()}`)
   if (input.language && input.language !== 'en')
     sections.push(`\nWrite the nudge in ${LOCALE_NAMES[input.language]}. Keep the focus line in English (the builder reads it).`)
   sections.push('\nCall emit_prep with the nudge_message and focus.')
@@ -114,19 +121,22 @@ export function buildPrepUserContent(input: PrepInput): string {
 
 // Pure: stable fingerprint of the inputs that should trigger regeneration. When
 // this is unchanged the route serves the stored prep instead of paying for a new
-// Sonnet call (guards against the brief-regen cost runaway lesson).
+// Sonnet call (guards against the brief-regen cost runaway lesson). The prompt is
+// part of it, so a stored draft made under an older prompt or rule list is
+// redrafted, not sent.
 export function prepConfigHash(
   input: Pick<
     PrepInput,
-    'sessionMode' | 'seedQuestions' | 'builderDirectives' | 'welcomeMessage' | 'voiceSample' | 'makerNames' | 'language'
+    'sessionMode' | 'seedQuestions' | 'builderDirectives' | 'welcomeMessage' | 'makerNames' | 'language'
   > & { briefSignal?: string | number | null },
+  prompt: string = PREP_SYSTEM_PROMPT,
 ): string {
   const payload = JSON.stringify({
     m: input.sessionMode || 'discover',
     s: input.seedQuestions || [],
     d: input.builderDirectives || [],
     w: (input.welcomeMessage || '').trim(),
-    v: (input.voiceSample || '').trim(),
+    p: prompt,
     n: (input.makerNames || '').trim(),
     b: input.briefSignal ?? '',
     // Only present for non-English so existing English hashes don't change.
