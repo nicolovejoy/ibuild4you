@@ -246,7 +246,7 @@ export async function PATCH(request: Request) {
   }
 
   // Only allow updating specific setup fields; unknown fields are ignored.
-  const allowed = ['welcome_message', 'nudge_message', 'voice_sample', 'seed_questions', 'context', 'title', 'builder_directives', 'session_mode', 'requester_first_name', 'requester_last_name', 'last_nudged_at', 'prep_copied_at', 'payload_pasted_at', 'payload_pasted_version', 'last_builder_activity_at', 'identity', 'github_repo', 'auto_reminders_enabled', 'language', 'hide_title_in_previews', 'model'] as const
+  const allowed = ['welcome_message', 'nudge_message', 'seed_questions', 'context', 'title', 'builder_directives', 'session_mode', 'requester_first_name', 'requester_last_name', 'last_nudged_at', 'prep_copied_at', 'payload_pasted_at', 'payload_pasted_version', 'last_builder_activity_at', 'identity', 'github_repo', 'auto_reminders_enabled', 'language', 'hide_title_in_previews', 'model'] as const
   if ('language' in updates && !isLocale(updates.language)) {
     return NextResponse.json({ error: 'language must be one of: en, fr' }, { status: 400 })
   }
@@ -465,7 +465,7 @@ export async function POST(request: Request) {
   }
 
   // Optional setup fields — include only if provided
-  const optionalStrings = ['context', 'requester_first_name', 'requester_last_name', 'requester_email', 'welcome_message', 'nudge_message', 'voice_sample', 'identity'] as const
+  const optionalStrings = ['context', 'requester_first_name', 'requester_last_name', 'requester_email', 'welcome_message', 'nudge_message', 'identity'] as const
   for (const field of optionalStrings) {
     if (typeof body[field] === 'string' && body[field].trim()) {
       projectData[field] = body[field].trim()

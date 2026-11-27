@@ -48,11 +48,11 @@ export const copy = {
       note?: string
       sessionMode?: 'discover' | 'converge'
     }) => {
-      const modeHint =
-        sessionMode === 'converge'
-          ? 'Ready to narrow things down and lock in a few decisions.'
-          : 'Want to dig into a few things from last time.'
-      return `New conversation ready for ${projectTitle}. ${note || modeHint}`
+      // A plain notice (2026-11-27): the old mode lines ("Want to dig into a
+      // few things from last time.") are gone. sessionMode is still accepted
+      // so callers need not change.
+      void sessionMode
+      return note ? `New conversation ready for ${projectTitle}. ${note}` : `New conversation ready for ${projectTitle}.`
     },
     body: ({
       projectTitle,
@@ -87,14 +87,14 @@ export const copy = {
       shareLink: string
       canReply?: boolean
     }) => {
-      const length = 'It takes about 15 minutes, and you can stop and come back any time.'
+      // No time estimate (2026-11-27): "It takes about 15 minutes…" is gone.
       let about: string
       if (sessionNumber === 1) {
-        about = `Your conversation about ${projectTitle} is ready on iBuild4you. Sam, the assistant, will ask about your idea and keep notes as you go. ${length}`
+        about = `Your conversation about ${projectTitle} is ready on iBuild4you. Sam, the assistant, will ask about your idea and keep notes as you go.`
       } else if (sessionNumber) {
-        about = `Conversation #${sessionNumber} about ${projectTitle} is ready on iBuild4you. Sam picks up where you left off. ${length}`
+        about = `Conversation #${sessionNumber} about ${projectTitle} is ready on iBuild4you. Sam picks up where you left off.`
       } else {
-        about = `Your next conversation about ${projectTitle} is ready on iBuild4you. ${length}`
+        about = `Your next conversation about ${projectTitle} is ready on iBuild4you.`
       }
       const lines = [firstName ? `Hi ${firstName},` : 'Hello,', '', about, '', `Here is your link: ${shareLink}`]
       if (canReply) lines.push('', 'Questions? Reply to this email.')

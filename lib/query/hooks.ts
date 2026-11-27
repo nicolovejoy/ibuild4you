@@ -331,7 +331,6 @@ export function useUpdateProject() {
       project_id: string
       welcome_message?: string
       nudge_message?: string
-      voice_sample?: string
       seed_questions?: string[]
       context?: string
       title?: string

@@ -21,7 +21,6 @@ Only `title` is required. All other fields are optional.
   "context": "Background info the agent uses to skip basic discovery questions. Do not suggest technologies.",
   "welcome_message": "Hey Sam — tell me about your cafe idea!",
   "nudge_message": "Optional. When set, used verbatim as the outbound nudge text for the next session and skips AI generation. Leave blank to let the AI draft.",
-  "voice_sample": "Optional. One paragraph showing how you'd text this person by hand. Used as a style anchor for AI-generated outbound copy (nudge/invite/reminder). Ignored when nudge_message is set.",
   "session_mode": "converge",
   "language": "fr",
   "model": "claude-sonnet-5-5",
@@ -102,4 +101,4 @@ When the merged brief equals the live one, no version is written; notes and repo
 
 ### Update (PATCH /api/projects)
 
-Requires `project_id`. Only these fields are accepted: `title`, `context`, `welcome_message`, `nudge_message`, `voice_sample`, `session_mode`, `seed_questions`, `builder_directives`, `requester_first_name`, `requester_last_name`, `last_nudged_at`, `prep_copied_at`, `payload_pasted_at`, `payload_pasted_version`, `last_builder_activity_at`, `identity`, `github_repo`, `auto_reminders_enabled`, `language` (`en`|`fr`, else 400), `model` (one of the three ids; `''`/null = Default; else 400), `hide_title_in_previews` (boolean, else 400). Changing `title` regenerates the slug.
+Requires `project_id`. Only these fields are accepted: `title`, `context`, `welcome_message`, `nudge_message`, `session_mode`, `seed_questions`, `builder_directives`, `requester_first_name`, `requester_last_name`, `last_nudged_at`, `prep_copied_at`, `payload_pasted_at`, `payload_pasted_version`, `last_builder_activity_at`, `identity`, `github_repo`, `auto_reminders_enabled`, `language` (`en`|`fr`, else 400), `model` (one of the three ids; `''`/null = Default; else 400), `hide_title_in_previews` (boolean, else 400). Changing `title` regenerates the slug.

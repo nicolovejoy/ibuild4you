@@ -18,7 +18,6 @@ const NEW_PROJECT_FIELDS = [
   'context',
   'welcome_message',
   'nudge_message',
-  'voice_sample',
   'identity',
   'session_mode',
   'seed_questions',

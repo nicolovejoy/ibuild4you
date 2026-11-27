@@ -40,7 +40,7 @@ describe('outboundCopy.fr', () => {
       [
         'Bonjour Mathilde,',
         '',
-        'Votre conversation au sujet de L’album est prête sur iBuild4you. Sam, l’assistant, vous posera des questions sur votre idée et prendra des notes au fil de l’échange. Comptez environ 15 minutes ; vous pouvez vous arrêter et reprendre à tout moment.',
+        'Votre conversation au sujet de L’album est prête sur iBuild4you. Sam, l’assistant, vous posera des questions sur votre idée et prendra des notes au fil de l’échange.',
         '',
         `Voici votre lien : ${link}`,
         '',
@@ -70,8 +70,13 @@ describe('outboundCopy.fr', () => {
   it('nudge body ends with the share link and uses the note when given', () => {
     const withNote = outboundCopy.fr.nudge.body({ projectTitle: 'L’album', shareLink: link, note: 'Une question.' })
     expect(withNote).toBe(['Nouvelle conversation prête pour L’album. Une question.', '', link].join('\n'))
-    const converge = outboundCopy.fr.nudge.bodyText({ projectTitle: 'L’album', sessionMode: 'converge' })
-    expect(converge).toContain('arrêter quelques décisions')
+    // No note: the plain notice alone, no mode line (2026-11-27).
+    expect(outboundCopy.fr.nudge.bodyText({ projectTitle: 'L’album', sessionMode: 'converge' })).toBe(
+      'Nouvelle conversation prête pour L’album.',
+    )
+    expect(outboundCopy.en.nudge.bodyText({ projectTitle: 'Stem Karaoke', sessionMode: 'discover' })).toBe(
+      'New conversation ready for Stem Karaoke.',
+    )
   })
 
   it('invite falls back to the forgot-password hint when no reset link was minted', () => {
@@ -89,6 +94,15 @@ describe('outboundCopy.fr', () => {
     expect(outboundCopy.en.subject.invite('Stem Karaoke')).toBe('Your brief for Stem Karaoke')
   })
 
+  // No time estimate in any reminder (2026-11-27).
+  it('reminders say nothing about how long it takes', () => {
+    for (const lang of ['en', 'fr'] as const)
+      for (const sessionNumber of [1, 3, null])
+        expect(
+          outboundCopy[lang].nudge.reminder({ firstName: 'A', sessionNumber, projectTitle: 'T', shareLink: link }),
+        ).not.toMatch(/minute/)
+  })
+
   it('English reminder: first conversation, return conversation, and the reply line only when asked', () => {
     const first = outboundCopy.en.nudge.reminder({
       firstName: 'Bobby',
@@ -101,7 +115,7 @@ describe('outboundCopy.fr', () => {
       [
         'Hi Bobby,',
         '',
-        'Your conversation about Stem Karaoke is ready on iBuild4you. Sam, the assistant, will ask about your idea and keep notes as you go. It takes about 15 minutes, and you can stop and come back any time.',
+        'Your conversation about Stem Karaoke is ready on iBuild4you. Sam, the assistant, will ask about your idea and keep notes as you go.',
         '',
         `Here is your link: ${link}`,
         '',

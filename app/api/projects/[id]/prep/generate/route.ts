@@ -89,7 +89,6 @@ export async function POST(
     seedQuestions: (project.seed_questions as string[] | undefined) ?? [],
     builderDirectives: (project.builder_directives as string[] | undefined) ?? [],
     welcomeMessage: (project.welcome_message as string | undefined) ?? null,
-    voiceSample: (project.voice_sample as string | undefined) ?? null,
     language: toLocale(project.language),
   }
 

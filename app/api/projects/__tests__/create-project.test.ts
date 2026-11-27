@@ -413,7 +413,8 @@ describe('POST /api/projects', () => {
     expect(data.welcome_message).toBe('Hi Sam!')
   })
 
-  it('saves nudge_message and voice_sample on the project', async () => {
+  // voice_sample was removed (2026-11-27): it is no longer saved.
+  it('saves nudge_message and ignores voice_sample', async () => {
     const res = await POST(makeRequest({
       title: 'With Nudge Setup',
       nudge_message: 'Hey — quick check-in, two questions when you have a sec.',
@@ -423,20 +424,18 @@ describe('POST /api/projects', () => {
     expect(res.status).toBe(201)
     const data = await res.json()
     expect(data.nudge_message).toBe('Hey — quick check-in, two questions when you have a sec.')
-    expect(data.voice_sample).toBe('I write short. No emoji. Mostly questions.')
+    expect(data.voice_sample).toBeUndefined()
   })
 
-  it('does not snapshot nudge_message or voice_sample onto the session', async () => {
+  it('does not snapshot nudge_message onto the session', async () => {
     // These are project-level outbound copy fields, not session-scoped agent config.
     await POST(makeRequest({
       title: 'Test',
       nudge_message: 'override',
-      voice_sample: 'voice anchor',
     }))
 
     const sessions = addedDocs['sessions']
     expect(sessions[0].nudge_message).toBeUndefined()
-    expect(sessions[0].voice_sample).toBeUndefined()
   })
 
   it('snapshots config fields onto the first session', async () => {

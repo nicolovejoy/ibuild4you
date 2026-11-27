@@ -166,7 +166,8 @@ describe('PATCH /api/projects', () => {
     expect(data.id).toBe('proj-1')
   })
 
-  it('updates nudge_message and voice_sample', async () => {
+  // voice_sample was removed (2026-11-27): a PATCH carrying it is not stored.
+  it('updates nudge_message and ignores voice_sample', async () => {
     const res = await PATCH(
       makePatchRequest({
         project_id: 'proj-1',
@@ -178,7 +179,7 @@ describe('PATCH /api/projects', () => {
 
     const data = await res.json()
     expect(data.nudge_message).toBe('Hand-written nudge text.')
-    expect(data.voice_sample).toBe('Short. Direct. No filler.')
+    expect(data.voice_sample).toBeUndefined()
   })
 
   it('persists prep_copied_at, payload_pasted_at and payload_pasted_version verbatim', async () => {

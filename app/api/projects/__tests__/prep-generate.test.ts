@@ -155,7 +155,6 @@ describe('POST /api/projects/[id]/prep/generate', () => {
       seedQuestions: ['Q1'],
       builderDirectives: [],
       welcomeMessage: null,
-      voiceSample: null,
       makerNames: null,
       briefSignal: '',
     })
@@ -180,7 +179,6 @@ describe('POST /api/projects/[id]/prep/generate', () => {
       seedQuestions: ['Q1'],
       builderDirectives: [],
       welcomeMessage: null,
-      voiceSample: null,
       makerNames: null,
       briefSignal: '',
     })
