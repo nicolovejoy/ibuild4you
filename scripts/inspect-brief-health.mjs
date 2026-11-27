@@ -5,7 +5,7 @@
 // its api_usage rows by route (output_tokens near NOTE_MAX_TOKENS = a truncated note).
 //
 // Usage:
-//   op run --env-file=.env.ops.tpl -- node scripts/with-prod-env-ro.mjs node scripts/inspect-brief-health.mjs --slug f4fc
+//   op run --env-file=.env.ops.tpl -- node scripts/with-prod-env-ro.mjs node scripts/inspect-brief-health.mjs --slug l6-shapes-positions-game   (F4FC)
 //   ... --project <id>
 import { initializeApp, cert, getApps } from 'firebase-admin/app'
 import { getFirestore } from 'firebase-admin/firestore'
