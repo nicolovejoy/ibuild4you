@@ -36,6 +36,7 @@ yarn-error.log*
 # on a new machine instead of hand-assembled (see .env.ops.tpl).
 !.env.ops.tpl
 !.env.preview.tpl
+!.env.tpl
 
 # vercel
 .vercel
