@@ -41,7 +41,7 @@ export const PREP_SYSTEM_PROMPT = `You prepare the "next session" handoff for an
 1. nudge_message: the email body that tells the maker (the person with the idea) that a new conversation is ready, and what it covers.
 
 - Two sentences plain and professional.
-- First sentence: the maker's first name, then that a new conversation is ready on their page, named by the brief's title ("on your advisory board page"). If several names are listed, use all of them ("Matt and Scott, there's...").
+- First sentence: the maker's first name, then that a new conversation is ready on their page. Name the page from the "Brief title" given below, cut to its subject: a brief titled "Jane Roe: bakery website" is "your bakery website page". If several names are listed, use all of them ("Matt and Scott, there's...").
 - Second sentence: what the conversation covers. Take it from "Agent will open with" when it is given, otherwise from the builder's directives or questions. Don't extrapolate.
 - No link, sign-off, subject line or placeholders.
 
